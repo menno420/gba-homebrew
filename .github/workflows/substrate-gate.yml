@@ -54,8 +54,14 @@ jobs:
         if: steps.lane.outputs.control_only != 'true'
         # Gate on the session card THIS PR/push touches (CI flattens
         # mtimes, so the engine's newest-by-mtime guess is unreliable
-        # here). No card in the diff -> no --session-log argument ->
-        # the engine's mtime fallback (fail-open).
+        # here). No card in the diff -> pass an explicitly named,
+        # nonexistent sentinel WITHOUT --require-session-log: per the
+        # engine's contract an explicit absent card is ADVISORY, while
+        # the bare mtime fallback latches onto the mid-session
+        # in-progress card and reds every unrelated PR (hit live on
+        # PR #3, 2026-07-10 — this comment previously claimed that
+        # path was fail-open; it wasn't). Card-touching PRs, including
+        # every session close, still get the full locked-door gate.
         run: |
           if [ -n "${{ github.base_ref }}" ]; then
             range="origin/${{ github.base_ref }}...HEAD"
@@ -63,5 +69,9 @@ jobs:
             range="${{ github.event.before }}..${{ github.sha }}"
           fi
           card="$(git diff --name-only --diff-filter=d "$range" -- '.sessions/*.md' ':!.sessions/README.md' 2>/dev/null | tail -1)"
-          echo "session gate card: ${card:-<none - mtime fallback>}"
-          python3 bootstrap.py check --strict --require-session-log ${card:+--session-log "$card"}
+          echo "session gate card: ${card:-<none - advisory sentinel>}"
+          if [ -n "$card" ]; then
+            python3 bootstrap.py check --strict --require-session-log --session-log "$card"
+          else
+            python3 bootstrap.py check --strict --session-log .sessions/__no-card-in-diff__.md
+          fi

@@ -1,10 +1,10 @@
 ---
-state: routed
+state: promoted
 origin: lab
-shipped_pr: null
-shipped_repo: null
-merged_date: null
-outcome: open
+shipped_pr: 13
+shipped_repo: menno420/gba-homebrew
+merged_date: 2026-07-10
+outcome: shipped
 ---
 
 # Checksum-pin the devkitARM mirror packages (supply-chain hardening)

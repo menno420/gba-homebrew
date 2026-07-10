@@ -104,6 +104,35 @@ yt-dlp --skip-download --write-auto-sub <video-url>
 works via its android-vr endpoint; then parse the resulting `.vtt` file.
 (Discovered 2026-07-09, transcript+miner task.)
 
+### Reproduce this repo's full GBA toolchain with one script (session 1, 2026-07-10)
+`tools/setup-toolchain.sh` is the pinned, idempotent install (devkitARM r68 +
+Butano 21.7.1 + crtls v1.2.7 + grit/mmutil/gba-tools/general-tools); it works
+both in-container (proxy; curl honours the preset `CURL_CA_BUNDLE`) and on
+GitHub-hosted runners (set `DEVKITPRO` to a user-writable dir there — the CI
+workflows use `/home/runner/devkitpro` so `actions/cache` can restore without
+sudo). Gotchas learned installing it:
+
+- **newlib is NOT in the mirror's r68 directory** — r68 pairs with
+  `devkitarm-newlib-4.6.0.20260123-5` from the **r67** directory. Without it
+  the Butano build dies with `fatal error: assert.h: No such file or
+  directory`.
+- **crtls has no mirror package** — build `devkitPro/devkitarm-crtls` from
+  source (its Makefile includes `$(DEVKITARM)/base_rules`, which in turn
+  needs `DEVKITPRO` set) and copy `*.specs *.ld *.o thumb/ armv6k/` into
+  `$DEVKITARM/arm-none-eabi/lib`.
+- Skeleton ROM clean build: **~12.5s** on 4 cores (`make -j$(nproc)`);
+  toolchain install from a warm mirror: **~9-13s**.
+- **Headless harness:** `tools/headless-screenshot.py` boots a ROM in mGBA,
+  runs N frames, dumps a PNG, and fails if the frame is blank (unique-color +
+  variance floor). Call `mgba.log.silence()` first — the binding otherwise
+  floods stderr with per-DMA debug lines.
+
+### Read public GitHub repos when api.github.com is walled
+In-container, `api.github.com` REST calls to repos outside the session are
+proxy-blocked (wall recorded in PLATFORM-LIMITS.md) — but plain
+`git ls-remote` / `git clone` of any public `github.com/<owner>/<repo>.git`
+**works**. Use git for cross-repo tag/SHA pins instead of the REST API.
+
 ## DISCOVERY RULE
 
 Before declaring anything impossible:

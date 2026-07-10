@@ -1,0 +1,38 @@
+# Tier-1 fast-full gate (conventions rule 16): ONE required check, "ROM
+# builds", compiling the track's ROM per PR. Budget <60s warm — the toolchain
+# (~400MB devkitARM + ~120MB Butano) is cached; the skeleton ROM itself
+# builds in ~12-18s. Heavier checks (headless boot screenshot) are NOT per-PR
+# — see headless-boot.yml (workflow_dispatch only).
+name: ROM builds
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  rom-builds:
+    name: ROM builds
+    runs-on: ubuntu-latest
+    env:
+      # Install under $HOME so actions/cache can restore without sudo
+      # (the setup script honours $DEVKITPRO; default is /opt/devkitpro).
+      DEVKITPRO: /home/runner/devkitpro
+    steps:
+      - uses: actions/checkout@v4
+      - name: cache toolchain (devkitARM r68 + Butano pin)
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/devkitpro
+            third_party/butano
+          # The setup script IS the pin manifest — hashing it invalidates the
+          # cache exactly when a pin changes.
+          key: gba-toolchain-${{ runner.os }}-${{ hashFiles('tools/setup-toolchain.sh') }}
+      - name: setup toolchain (idempotent; skips on warm cache)
+        run: tools/setup-toolchain.sh
+      - name: build skeleton ROM
+        run: |
+          export DEVKITARM="$DEVKITPRO/devkitARM"
+          export PATH="$DEVKITARM/bin:$DEVKITPRO/tools/bin:$PATH"
+          make -C games/skeleton -j"$(nproc)"
+          test -f games/skeleton/skeleton.gba
+          echo "ROM built: $(ls -la games/skeleton/skeleton.gba)"

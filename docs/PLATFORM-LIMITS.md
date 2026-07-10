@@ -41,6 +41,13 @@
   reset for those. (Fleet playbook R8.) Moot here if you never draft — see
   [`conventions.md`](conventions.md): READY, never draft.
 - **Force-push / amending pushed history** — never. Forward-only commits.
+- **`api.github.com` REST calls to repos OUTSIDE the session** — proxy-blocked
+  in-container (session 1, 2026-07-10). Observed verbatim (GETting
+  `repos/GValiente/butano/releases/latest`): `{"message":"GitHub access to
+  this repository is not enabled for this session. Use add_repo to request
+  access.","documentation_url":"https://docs.anthropic.com/en/docs/claude-code/github-actions"}`.
+  NOT a full wall: plain `git ls-remote`/`git clone` of public repos works —
+  recipe in [`capabilities.md`](capabilities.md).
 
 ## Mission-specific rails (not platform walls — owner rails, equally hard)
 

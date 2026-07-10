@@ -1,0 +1,11 @@
+# Vendored toolchain/library checkouts (pinned by tools/setup-toolchain.sh)
+/third_party/
+
+# Butano/devkitARM build output
+games/*/build/
+games/*/*.gba
+games/*/*.elf
+games/*/*.map
+games/*/*.sav
+
+__pycache__/

@@ -1,0 +1,44 @@
+# Heavy check — NOT per-PR (fleet CI-tier standard: per-PR is the <60s "ROM
+# builds" gate only). Run on demand to regenerate the boot proof: builds the
+# skeleton ROM, boots it headless in mGBA for 300 frames, verifies the frame
+# is non-blank, and uploads the PNG as a workflow artifact.
+name: headless boot proof
+on:
+  workflow_dispatch:
+jobs:
+  headless-boot:
+    name: headless boot proof
+    runs-on: ubuntu-latest
+    env:
+      DEVKITPRO: /home/runner/devkitpro
+    steps:
+      - uses: actions/checkout@v4
+      - name: cache toolchain (devkitARM r68 + Butano pin)
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/devkitpro
+            third_party/butano
+          key: gba-toolchain-${{ runner.os }}-${{ hashFiles('tools/setup-toolchain.sh') }}
+      - name: setup toolchain
+        run: tools/setup-toolchain.sh
+      - name: build skeleton ROM
+        run: |
+          export DEVKITARM="$DEVKITPRO/devkitARM"
+          export PATH="$DEVKITARM/bin:$DEVKITPRO/tools/bin:$PATH"
+          make -C games/skeleton -j"$(nproc)"
+      - name: install mGBA (system libmgba 0.10.x + pinned python binding)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mgba-sdl
+          # Pin per docs/capabilities.md: mgba==0.10.2 must match system
+          # libmgba 0.10.x — drifting either side breaks the ABI.
+          pip install mgba==0.10.2
+      - name: boot ROM headless + screenshot
+        run: |
+          python3 tools/headless-screenshot.py \
+            games/skeleton/skeleton.gba boot-proof.png --frames 300
+      - uses: actions/upload-artifact@v4
+        with:
+          name: boot-proof
+          path: boot-proof.png

@@ -87,6 +87,34 @@ arcade loop.
   one more constant frame (+5 total vs the session-4 script — the run-start
   stall grew with audio+window init; re-bisected, headless-boot.yml updated).
   **The only list item still unbuilt: more cave beyond row 62.**
+- **POLISH PASS 3 (session 7, coordinator-directed) — the polish list is
+  now EXHAUSTED:** the last item, **more cave beyond row 62**, is BUILT.
+  The stored 64-row map used to BE the world — rows 62-63 were a solid
+  floor, every deep run capped at DEPTH 58 parked on the same dead end
+  waiting for the surge. Now every row is a pure function of the world row
+  and the stored map is a sliding 64-row window over an **endless
+  deterministic cave** (GBA regular backgrounds wrap; world row N lives in
+  buffer row N % 64): rows 0-61 reproduce the committed layout
+  cell-for-cell (the canonical replay passes unchanged — the offset is +4
+  now, the new rebake being two frames FASTER, re-bisected), THE DEEP's
+  squeeze continues through the old floor, and from row 64 twenty-row
+  **echo bands** cycle the three section looks forever over one continuous
+  spine ("ECHOES OF THE BLUFFS / THE GALLERY / THE DEEP" banners, cycling
+  rims, blobs/pillars/dense-crystal signatures — band transitions provably
+  passable). Deep-run proof: an autopilot-recorded deterministic script
+  (`docs/proof/session-7-deep-run-keys.txt`, replayed in CI) descends to
+  **DEPTH 95** alive — past the old cap at f1372, "ECHOES OF THE BLUFFS"
+  at f1500, a second band at f1960 — asserted from HUD text AND the new
+  numeric depth telemetry (gl_audio_hook slots 4-6);
+  `docs/proof/session-7-*.png`.
+
+  **STATUS: SCOPE-COMPLETE.** The committed scope (3 sessions,
+  first-complete) plus the FULL polish list from the first-complete note
+  (SRAM best · title screen · audio · light-radius mechanic · tuning ·
+  cave beyond row 62) are all built and proven. No further Lumen Drift
+  work is queued: the owner concept pick (this doc, ⚑ in
+  control/status.md) decides whether polish continues here or the generic
+  scaffolding transfers to Clockwork Courier / Shoal.
 
 ## 2. Clockwork Courier — rewind-ghost puzzle platformer
 

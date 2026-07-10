@@ -1,5 +1,5 @@
 /*
- * LUMEN DRIFT — polish pass 1 (title screen + SRAM best persistence).
+ * LUMEN DRIFT — polish pass 3 (more cave beyond row 62).
  *
  * You are a mote of light falling through a dark cave. Hold A to thrust
  * against gravity, steer laterally with the D-pad, drift through the
@@ -50,6 +50,26 @@
  *     frames (per-shard relief keeps the same ~44% share of the shorter
  *     horizon). No physics constant changed.
  *
+ * Polish pass 3 (the concept doc's LAST polish-list item — "more cave
+ * beyond row 62"):
+ *   - The stored 64-row hardware map used to BE the world: rows 62-63 were
+ *     a solid floor, so every deep run bottomed out at DEPTH 58 on the same
+ *     dead end and waited for the surge. Now every row's content is a PURE
+ *     function of the world row and the stored map is a sliding 64-row
+ *     window over an endless deterministic cave (GBA regular backgrounds
+ *     wrap, so world row N simply lives in buffer row N % 64). Rows 0-61
+ *     reproduce the committed layout cell-for-cell — the canonical replay
+ *     passes unchanged — and the cave now continues past the old floor:
+ *     THE DEEP's squeeze runs through row 63, then 20-row ECHO BANDS cycle
+ *     the three section looks forever ("ECHOES OF THE BLUFFS/GALLERY/THE
+ *     DEEP" banners, cycling rims, blobs/pillars/dense-crystal signatures)
+ *     over one continuous tunnel spine, so band transitions always stay
+ *     passable. Depth is once again bounded only by skill and the light.
+ *   - Headless telemetry: hook slots 4-6 now publish the mote's map
+ *     position and the depth high-water mark every frame, so deep-run
+ *     proofs assert depth numerically (--assert-watch) instead of only
+ *     reading HUD text.
+ *
  * Polish pass 1 (post-first-complete, from the concept doc's polish list):
  *   - TITLE SCREEN: the game boots to a "LUMEN DRIFT" card over the cave
  *     mouth showing the BEST depth and PRESS START; START begins the run.
@@ -81,6 +101,7 @@
 #include "bn_vector.h"
 #include "bn_colors.h"
 #include "bn_keypad.h"
+#include "bn_point.h"
 #include "bn_display.h"
 #include "bn_bg_palettes.h"
 #include "bn_camera_ptr.h"
@@ -98,7 +119,6 @@
 #include "gl_light_window.h"
 #include "gl_run_state.h"
 #include "gl_save.h"
-#include "gl_stage.h"
 #include "gl_tile_grid.h"
 
 #include "common_variable_8x8_sprite_font.h"
@@ -128,18 +148,54 @@ namespace
     constexpr int rim2_tile = 7;   // gallery (section 2) rim
     constexpr int rim3_tile = 8;   // deep (section 3) rim
 
-    // Cave sections: row bands with distinct rims + tunnel layouts. The
-    // banner fires when the depth high-water mark crosses a section's first
-    // row (section_depth = first_row - spawn_row, spawn row 3.5 -> 21/41).
+    // Cave sections (polish pass 3): the three committed sections keep
+    // their exact rows, and past the old row-62 floor the cave continues
+    // FOREVER — 20-row echo bands cycle the three section looks (rims,
+    // obstacles, hazard density) over one continuous tunnel spine. The
+    // banner fires when the depth high-water mark crosses a section's
+    // first row (depth = row - spawn row 3).
     constexpr int gallery_first_row = 24;
     constexpr int deep_first_row = 44;
-    constexpr int section_depths[] = {21, 41};
+    constexpr int echo_first_row = 64;   // first row past the old layout
+    constexpr int echo_band_rows = 20;
     constexpr const char* section_names[] = {"THE BLUFFS", "THE GALLERY",
                                              "THE DEEP"};
+    constexpr const char* echo_names[] = {"ECHOES OF THE BLUFFS",
+                                          "ECHOES OF THE GALLERY",
+                                          "ECHOES OF THE DEEP"};
 
-    [[nodiscard]] constexpr int section_of_row(int cy)
+    /// Unbounded section index: 0/1/2 are the committed sections, 3+ is
+    /// one index per echo band.
+    [[nodiscard]] constexpr int section_index_of_row(int cy)
     {
-        return cy < gallery_first_row ? 0 : (cy < deep_first_row ? 1 : 2);
+        if(cy < gallery_first_row)
+        {
+            return 0;
+        }
+
+        if(cy < deep_first_row)
+        {
+            return 1;
+        }
+
+        if(cy < echo_first_row)
+        {
+            return 2;
+        }
+
+        return 3 + (cy - echo_first_row) / echo_band_rows;
+    }
+
+    /// Which of the three section looks (rim/obstacles/hazards) an index
+    /// wears — echo bands cycle them.
+    [[nodiscard]] constexpr int section_look(int index)
+    {
+        return index < 3 ? index : (index - 3) % 3;
+    }
+
+    [[nodiscard]] constexpr const char* section_name(int index)
+    {
+        return index < 3 ? section_names[index] : echo_names[(index - 3) % 3];
     }
 
     // Physics tuning (pixels/frame): floaty mote.
@@ -179,6 +235,9 @@ namespace
     constexpr int audio_slot_thrust = 1;
     constexpr int audio_slot_shard = 2;
     constexpr int audio_slot_death = 3;
+    constexpr int hook_slot_x = 4;      // mote map-x (bn::fixed raw data)
+    constexpr int hook_slot_y = 5;      // mote map-y (bn::fixed raw data)
+    constexpr int hook_slot_depth = 6;  // depth high-water mark (cells)
     constexpr int hook_slot_tick = 7;  // game-loop iterations (headless
                                        // overrun evidence: ticks ~= frames)
     constexpr int thrust_retrigger_frames = 20;  // rumble cadence while A held
@@ -197,6 +256,207 @@ namespace
     constexpr int wave_a[16] = {0, 2, 4, 5, 6, 5, 4, 2, 0, -2, -4, -5, -6, -5, -4, -2};
     constexpr int wave_b[8] = {0, 1, 2, 1, 0, -1, -2, -1};
 
+    // --- Pure cave layout (polish pass 3) -------------------------------
+    // Every row's shape/obstacles/hazards/shards are a pure function of
+    // the WORLD row, not of stored state, so the cave no longer ends where
+    // the stored map does. Rows 0-61 reproduce the committed generation
+    // rules cell-for-cell (the canonical replay passes unchanged); the old
+    // "rows 62-63 are floor" cutoff is gone and rows 62+ are new content.
+
+    struct row_layout
+    {
+        int center = 16;
+        int half_width = 0;
+        int look = 0;          // 0 bluffs / 1 gallery / 2 deep signature
+        bool blobs = false;    // bluffs-style edge blobs on this row
+        bool pillar = false;   // gallery-style center pillar on this row
+        int crystal_step = 7;
+    };
+
+    [[nodiscard]] row_layout layout_of_row(int cy)
+    {
+        int index = section_index_of_row(cy);
+        row_layout row;
+        row.look = section_look(index);
+
+        if(index == 0)
+        {
+            // THE BLUFFS: the original medium tunnel.
+            row.center = 16 + wave_a[(cy / 2) % 16] + wave_b[(cy / 3) % 8];
+            row.half_width = bn::clamp(5 - (cy / 20), 2, 5);
+        }
+        else if(index == 1)
+        {
+            // THE GALLERY: wide slow-swaying halls (pillars below).
+            row.center = 16 + 2 * wave_b[(cy / 4) % 8];
+            row.half_width = 6;
+        }
+        else if(index == 2)
+        {
+            // THE DEEP: narrow, fast sway (the +8 phase offset makes the
+            // row-44 passage line up under the gallery's last row), final
+            // squeeze below row 54 — which now continues through the old
+            // row-62 floor instead of dead-ending on it.
+            row.center = 16 + wave_a[(cy + 8) % 16] + wave_b[(cy / 2) % 8];
+            row.half_width = cy < 54 ? 3 : 2;
+        }
+        else
+        {
+            // THE ECHOES (rows 64+): one continuous spine — the bluffs
+            // waveform keyed on the absolute row, so every band-to-band
+            // transition stays passable (adjacent centers differ by at
+            // most 3 columns and every band is at least 2 wide) — while
+            // each 20-row band wears one section's look: bluffs blobs, a
+            // hair-narrower gallery with its pillars, or the deep's tight
+            // corridor with denser crystals.
+            row.center = 16 + wave_a[(cy / 2) % 16] + wave_b[(cy / 3) % 8];
+            row.half_width = row.look == 1 ? 4 : 2;
+        }
+
+        row.center = bn::clamp(row.center, 4, map_cols - 5);
+        row.blobs = row.look == 0 && cy > 10 && cy % 9 == 4;
+        row.pillar = row.look == 1 && cy >= 26 && cy % 6 == 1;
+        row.crystal_step = row.look == 2 ? 5 : 7;
+        return row;
+    }
+
+    /// Pure solidity of one world row: borders, starting chamber, tunnel
+    /// carve, blobs/pillars, rest plate (the committed rules verbatim).
+    void row_solid(int cy, bool (&out)[map_cols])
+    {
+        for(int cx = 0; cx < map_cols; ++cx)
+        {
+            out[cx] = true;
+        }
+
+        if(cy <= 0)
+        {
+            return;  // the world border above the cave mouth
+        }
+
+        // Starting chamber under the ceiling.
+        if(cy <= 6)
+        {
+            for(int cx = 10; cx <= 22; ++cx)
+            {
+                out[cx] = false;
+            }
+        }
+
+        if(cy >= 5)
+        {
+            row_layout row = layout_of_row(cy);
+
+            for(int cx = row.center - row.half_width;
+                cx <= row.center + row.half_width; ++cx)
+            {
+                if(cx > 0 && cx < map_cols - 1)
+                {
+                    out[cx] = false;
+                }
+            }
+
+            // BLUFFS blobs every 9 rows, alternating sides — the passable
+            // gap stays on the other side.
+            if(row.blobs)
+            {
+                bool left = ((cy / 9) % 2) == 0;
+
+                for(int i = 0; i < 2; ++i)
+                {
+                    int cx = left ? row.center - row.half_width + i
+                                  : row.center + row.half_width - i;
+
+                    if(cx > 0 && cx < map_cols - 1)
+                    {
+                        out[cx] = true;
+                    }
+                }
+            }
+
+            // GALLERY pillar: a rock pillar splits the hall — pick a side.
+            if(row.pillar)
+            {
+                for(int cx = row.center - 1; cx <= row.center + 1; ++cx)
+                {
+                    if(cx > 0 && cx < map_cols - 1)
+                    {
+                        out[cx] = true;
+                    }
+                }
+            }
+        }
+
+        // Rest plate straight under the spawn: a no-input run settles here.
+        if(cy == 10)
+        {
+            for(int cx = 15; cx <= 17; ++cx)
+            {
+                out[cx] = true;
+            }
+        }
+    }
+
+    /// Pure hazards/pickups of one world row, given its solidity: crystal
+    /// spike clusters + spark shards (the committed placement rules
+    /// verbatim — only open cells turn deadly, so the passage keeps >= 2
+    /// clear cells; shards hug the tunnel edge, scanning inward).
+    void row_features(int cy, const bool (&solid)[map_cols],
+                      bool (&crystal)[map_cols], bool (&shard)[map_cols])
+    {
+        for(int cx = 0; cx < map_cols; ++cx)
+        {
+            crystal[cx] = false;
+            shard[cx] = false;
+        }
+
+        if(cy < 5)
+        {
+            return;
+        }
+
+        row_layout row = layout_of_row(cy);
+
+        if(cy > 12 && cy % row.crystal_step == 2)
+        {
+            bool left = ((cy / row.crystal_step) % 2) == 0;
+
+            for(int i = 0; i < 2; ++i)
+            {
+                int cx = left ? row.center - row.half_width + i
+                              : row.center + row.half_width - i;
+
+                if(cx > 0 && cx < map_cols - 1 && ! solid[cx])
+                {
+                    crystal[cx] = true;
+                }
+            }
+        }
+
+        if(cy > 6 && cy % 6 == 3)
+        {
+            bool left = ((cy / 6) % 2) == 0;
+
+            for(int i = 0; i < 3; ++i)
+            {
+                int cx = left ? row.center - row.half_width + i
+                              : row.center + row.half_width - i;
+
+                if(cx > 0 && cx < map_cols - 1 && ! solid[cx] && ! crystal[cx])
+                {
+                    shard[cx] = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    // The stored map is a sliding 64-row WINDOW over the endless pure
+    // layout: world row N lives in buffer row N % 64, and GBA regular
+    // backgrounds wrap, so the hardware shows the right cells with no
+    // extra work. The only mutable state: the window position, the shards
+    // collected this run, and the surge front row (so rows the ember wall
+    // consumed re-bake as consumed).
     class cave_map
     {
 
@@ -206,68 +466,140 @@ namespace
         cave_map() :
             map_item(_cells[0], bn::size(map_cols, map_rows))
         {
-            _generate();
+            rebake();
         }
 
         [[nodiscard]] bool solid(int cx, int cy) const
         {
-            if(cx < 0 || cx >= map_cols || cy < 0 || cy >= map_rows)
+            if(cx < 0 || cx >= map_cols || cy < 0)
             {
-                return true;  // the world border is impassable rock
+                return true;  // the side/top world border is impassable rock
             }
 
-            return _solid[cy][cx];
+            bool here[map_cols];
+            row_solid(cy, here);
+            return here[cx];
         }
 
         [[nodiscard]] bool crystal(int cx, int cy) const
         {
-            if(cx < 0 || cx >= map_cols || cy < 0 || cy >= map_rows)
+            if(cx < 0 || cx >= map_cols || cy < 0)
             {
                 return false;  // out-of-map space is rock, not hazard
             }
 
-            return _crystal[cy][cx];
+            bool here[map_cols];
+            bool crystal_row[map_cols];
+            bool shard_row[map_cols];
+            row_solid(cy, here);
+            row_features(cy, here, crystal_row, shard_row);
+            return crystal_row[cx];
         }
 
         [[nodiscard]] bool shard(int cx, int cy) const
         {
-            if(cx < 0 || cx >= map_cols || cy < 0 || cy >= map_rows)
+            if(cx < 0 || cx >= map_cols || cy < 0 || _collected(cx, cy))
             {
                 return false;  // out-of-map space is rock, not pickup
             }
 
-            return _shard[cy][cx];
+            bool here[map_cols];
+            bool crystal_row[map_cols];
+            bool shard_row[map_cols];
+            row_solid(cy, here);
+            row_features(cy, here, crystal_row, shard_row);
+            return shard_row[cx];
         }
 
-        /// Take the shard at (cx, cy): clears the pickup and its cell.
-        /// Caller reloads the bg map afterwards.
+        /// Take the shard at (cx, cy): remembers the pickup for this run
+        /// and clears its cell. Caller reloads the bg map afterwards.
         void collect_shard(int cx, int cy)
         {
-            _shard[cy][cx] = false;
-            _set_cell(cx, cy, empty_tile);
-        }
-
-        /// Re-bake all cells from the solidity/crystal/shard maps (restores
-        /// rows the surge overwrote AND respawns collected shards). Caller
-        /// reloads the bg map afterwards.
-        void rebake()
-        {
-            for(int cy = 0; cy < map_rows; ++cy)
+            if(_taken.full())
             {
-                for(int cx = 0; cx < map_cols; ++cx)
+                // Recycle a slot whose shard can no longer re-bake (it is
+                // outside the window; at most ~11 shards fit in 64 rows,
+                // so an in-window entry always survives eviction).
+                for(auto it = _taken.begin(); it != _taken.end(); ++it)
                 {
-                    _shard[cy][cx] = _shard_home[cy][cx];
+                    if(! _in_window(it->y()))
+                    {
+                        _taken.erase(it);
+                        break;
+                    }
+                }
+
+                if(_taken.full())
+                {
+                    _taken.pop_back();  // unreachable; stay safe anyway
                 }
             }
 
-            _bake();
+            _taken.push_back(bn::point(cx, cy));
+
+            if(_in_window(cy))
+            {
+                _set_cell(cx, cy, empty_tile);
+            }
+        }
+
+        /// Reset for a new run: window back to the cave mouth, collected
+        /// shards respawned, surge-consumed rows restored. Caller reloads
+        /// the bg map afterwards.
+        void rebake()
+        {
+            _window_top = 0;
+            _surge_row = -1000;
+            _taken.clear();
+
+            for(int cy = 0; cy < map_rows; ++cy)
+            {
+                _bake_row(cy);
+            }
+        }
+
+        /// Slide the window so world rows [first_row, last_row] are all
+        /// stored, baking rows that scroll in (from the pure layout, minus
+        /// collected shards, plus the surge's consumed overlay). True if
+        /// any cell changed — caller reloads the bg map.
+        bool ensure_window(int first_row, int last_row)
+        {
+            bool changed = false;
+
+            if(first_row < 0)
+            {
+                first_row = 0;
+            }
+
+            while(_window_top + map_rows - 1 < last_row)
+            {
+                ++_window_top;
+                _bake_row(_window_top + map_rows - 1);
+                changed = true;
+            }
+
+            while(_window_top > first_row)
+            {
+                --_window_top;
+                _bake_row(_window_top);
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        /// The surge front's world row — rows above it re-bake consumed.
+        void set_surge_row(int cy)
+        {
+            _surge_row = cy;
         }
 
         /// Overwrite one row's cells with a single tile (visual only —
-        /// solidity is untouched). Used by the surge; rebake() restores.
+        /// solidity is untouched). Used by the surge; rows outside the
+        /// window are skipped (they are off-screen). rebake() restores.
         void overwrite_row(int cy, int tile_index)
         {
-            if(cy < 0 || cy >= map_rows)
+            if(! _in_window(cy))
             {
                 return;
             }
@@ -280,228 +612,108 @@ namespace
 
     private:
         alignas(int) bn::regular_bg_map_cell _cells[map_cols * map_rows];
-        bool _solid[map_rows][map_cols];
-        bool _crystal[map_rows][map_cols];
-        bool _shard[map_rows][map_cols];
-        bool _shard_home[map_rows][map_cols];  // placement baseline for rebake()
+        bn::vector<bn::point, 24> _taken;  // shards collected this run
+        int _window_top = 0;   // world row living in the buffer's top row
+        int _surge_row = -1000;
 
-        void _carve(int cx, int cy)
+        [[nodiscard]] bool _in_window(int cy) const
         {
-            if(cx > 0 && cx < map_cols - 1 && cy > 0 && cy < map_rows - 2)
-            {
-                _solid[cy][cx] = false;
-            }
+            return cy >= _window_top && cy <= _window_top + map_rows - 1;
         }
 
-        void _generate()
+        [[nodiscard]] bool _collected(int cx, int cy) const
         {
-            // 1. Everything is rock; no crystals or shards yet.
-            for(int cy = 0; cy < map_rows; ++cy)
+            for(const bn::point& taken : _taken)
             {
-                for(int cx = 0; cx < map_cols; ++cx)
+                if(taken.x() == cx && taken.y() == cy)
                 {
-                    _solid[cy][cx] = true;
-                    _crystal[cy][cx] = false;
-                    _shard[cy][cx] = false;
+                    return true;
                 }
             }
 
-            // 2. Starting chamber under the ceiling.
-            for(int cy = 1; cy <= 6; ++cy)
-            {
-                for(int cx = 10; cx <= 22; ++cx)
-                {
-                    _carve(cx, cy);
-                }
-            }
-
-            // 3. The tunnel: swaying spine, one waveform + width per cave
-            //    section (rows above gallery_first_row keep increment 1's
-            //    exact shape, so the committed early-game proof scripts and
-            //    the no-input settle point still hold).
-            for(int cy = 5; cy < map_rows - 2; ++cy)
-            {
-                int section = section_of_row(cy);
-                int center;
-                int half_width;
-
-                if(section == 0)
-                {
-                    // THE BLUFFS: the original medium tunnel.
-                    center = 16 + wave_a[(cy / 2) % 16] + wave_b[(cy / 3) % 8];
-                    half_width = bn::clamp(5 - (cy / 20), 2, 5);
-                }
-                else if(section == 1)
-                {
-                    // THE GALLERY: wide slow-swaying halls (pillars below).
-                    center = 16 + 2 * wave_b[(cy / 4) % 8];
-                    half_width = 6;
-                }
-                else
-                {
-                    // THE DEEP: narrow, fast sway (the +8 phase offset makes
-                    // the row-44 passage line up under the gallery's last
-                    // row), final squeeze below row 54.
-                    center = 16 + wave_a[(cy + 8) % 16] + wave_b[(cy / 2) % 8];
-                    half_width = cy < 54 ? 3 : 2;
-                }
-
-                center = bn::clamp(center, 4, map_cols - 5);
-
-                for(int cx = center - half_width; cx <= center + half_width; ++cx)
-                {
-                    _carve(cx, cy);
-                }
-
-                // 4. Section obstacles.
-                //    BLUFFS: blobs every 9 rows, alternating sides — the
-                //    passable gap stays on the other side.
-                if(section == 0 && cy > 10 && cy % 9 == 4)
-                {
-                    bool left = ((cy / 9) % 2) == 0;
-
-                    for(int i = 0; i < 2; ++i)
-                    {
-                        int cx = left ? center - half_width + i : center + half_width - i;
-
-                        if(cx > 0 && cx < map_cols - 1)
-                        {
-                            _solid[cy][cx] = true;
-                        }
-                    }
-                }
-
-                //    GALLERY: a rock pillar splits the hall — pick a side.
-                if(section == 1 && cy >= 26 && cy % 6 == 1)
-                {
-                    for(int cx = center - 1; cx <= center + 1; ++cx)
-                    {
-                        if(cx > 0 && cx < map_cols - 1)
-                        {
-                            _solid[cy][cx] = true;
-                        }
-                    }
-                }
-
-                // 4b. Crystal spikes, alternating walls: a 2-cell cluster
-                //     growing from the tunnel edge into the passage. Deadly
-                //     but NOT solid — you can fly into a spike, and
-                //     shouldn't. Placed after the blobs/pillars so a spike
-                //     never hides inside rock; only open cells turn deadly,
-                //     so the passage keeps >= 2 clear cells. THE DEEP packs
-                //     them denser (every 5 rows vs every 7).
-                int crystal_step = section == 2 ? 5 : 7;
-
-                if(cy > 12 && cy % crystal_step == 2)
-                {
-                    bool left = ((cy / crystal_step) % 2) == 0;
-
-                    for(int i = 0; i < 2; ++i)
-                    {
-                        int cx = left ? center - half_width + i : center + half_width - i;
-
-                        if(cx > 0 && cx < map_cols - 1 && ! _solid[cy][cx])
-                        {
-                            _crystal[cy][cx] = true;
-                        }
-                    }
-                }
-
-                // 4c. Spark shards every 6 rows, alternating sides, hugging
-                //     the tunnel edge (scanning inward past rock/crystal
-                //     cells) — collecting rewards flying close to the walls
-                //     and spikes that increment 2 taught you to fear.
-                if(cy > 6 && cy % 6 == 3)
-                {
-                    bool left = ((cy / 6) % 2) == 0;
-
-                    for(int i = 0; i < 3; ++i)
-                    {
-                        int cx = left ? center - half_width + i : center + half_width - i;
-
-                        if(cx > 0 && cx < map_cols - 1 && ! _solid[cy][cx] &&
-                                ! _crystal[cy][cx])
-                        {
-                            _shard[cy][cx] = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // 5. Rest plate straight under the spawn: a no-input run settles
-            //    here (keeps the headless no-input proof frame deterministic
-            //    AND teaches "thrust + steer to slip past").
-            for(int cx = 15; cx <= 17; ++cx)
-            {
-                _solid[10][cx] = true;
-            }
-
-            // 6. Freeze the shard placement as the rebake() baseline.
-            for(int cy = 0; cy < map_rows; ++cy)
-            {
-                for(int cx = 0; cx < map_cols; ++cx)
-                {
-                    _shard_home[cy][cx] = _shard[cy][cx];
-                }
-            }
-
-            // 7. Bake cells.
-            _bake();
+            return false;
         }
 
         void _set_cell(int cx, int cy, int tile_index)
         {
-            bn::regular_bg_map_cell& cell = _cells[map_item.cell_index(cx, cy)];
+            // World row -> buffer row: the window guarantees no two stored
+            // world rows share a buffer row, and the wrapping hardware bg
+            // picks the right one from the scroll offset alone.
+            bn::regular_bg_map_cell& cell =
+                    _cells[map_item.cell_index(cx, cy % map_rows)];
             bn::regular_bg_map_cell_info cell_info(cell);
             cell_info.set_tile_index(tile_index);
             cell_info.set_palette_id(0);
             cell = cell_info.cell();
         }
 
-        // Bake cells: crystal hazard / spark shard on open cells; solid next
-        // to open = glowing rim (each section's rim color is its signature);
-        // deep rock otherwise; open = empty.
-        void _bake()
+        // Bake one world row's cells from the pure layout: crystal hazard /
+        // spark shard on open cells; solid next to open = glowing rim (each
+        // section look's rim color is its signature); deep rock otherwise;
+        // open = empty. Rows at or above the surge front come back already
+        // consumed.
+        void _bake_row(int cy)
         {
-            constexpr int section_rims[] = {rim_tile, rim2_tile, rim3_tile};
-
-            for(int cy = 0; cy < map_rows; ++cy)
+            if(cy <= _surge_row)
             {
                 for(int cx = 0; cx < map_cols; ++cx)
                 {
-                    int tile_index = empty_tile;
-
-                    if(_crystal[cy][cx])
-                    {
-                        tile_index = crystal_tile;
-                    }
-                    else if(_shard[cy][cx])
-                    {
-                        tile_index = shard_tile;
-                    }
-                    else if(_solid[cy][cx])
-                    {
-                        tile_index = _next_to_open(cx, cy) ?
-                                section_rims[section_of_row(cy)] : rock_tile;
-                    }
-
-                    _set_cell(cx, cy, tile_index);
+                    _set_cell(cx, cy, cy == _surge_row ? surge_tile
+                                                       : consumed_tile);
                 }
+
+                return;
+            }
+
+            bool above[map_cols];
+            bool here[map_cols];
+            bool below[map_cols];
+            bool crystal_row[map_cols];
+            bool shard_row[map_cols];
+            row_solid(cy - 1, above);
+            row_solid(cy, here);
+            row_solid(cy + 1, below);
+            row_features(cy, here, crystal_row, shard_row);
+
+            constexpr int section_rims[] = {rim_tile, rim2_tile, rim3_tile};
+            int rim = section_rims[section_look(section_index_of_row(cy))];
+
+            for(int cx = 0; cx < map_cols; ++cx)
+            {
+                int tile_index = empty_tile;
+
+                if(crystal_row[cx])
+                {
+                    tile_index = crystal_tile;
+                }
+                else if(shard_row[cx] && ! _collected(cx, cy))
+                {
+                    tile_index = shard_tile;
+                }
+                else if(here[cx])
+                {
+                    tile_index = _next_to_open(above, here, below, cx) ?
+                            rim : rock_tile;
+                }
+
+                _set_cell(cx, cy, tile_index);
             }
         }
 
-        [[nodiscard]] bool _next_to_open(int cx, int cy) const
+        [[nodiscard]] static bool _next_to_open(const bool (&above)[map_cols],
+                                                const bool (&here)[map_cols],
+                                                const bool (&below)[map_cols],
+                                                int cx)
         {
-            for(int dy = -1; dy <= 1; ++dy)
+            const bool (*rows[3])[map_cols] = {&above, &here, &below};
+
+            for(int dy = 0; dy < 3; ++dy)
             {
                 for(int dx = -1; dx <= 1; ++dx)
                 {
                     int nx = cx + dx;
-                    int ny = cy + dy;
 
-                    if(nx >= 0 && nx < map_cols && ny >= 0 && ny < map_rows &&
-                            ! _solid[ny][nx])
+                    if(nx >= 0 && nx < map_cols && ! (*rows[dy])[nx])
                     {
                         return true;
                     }
@@ -512,7 +724,7 @@ namespace
         }
     };
 
-    cave_map cave;  // statics live in EWRAM: 4KB cells + 8KB cell masks
+    cave_map cave;  // statics live in EWRAM: 4KB cells + the shard list
 
     // Map-space px -> Butano world coordinates (world origin = map center).
     [[nodiscard]] bn::fixed_point to_world(const bn::fixed_point& map_pos)
@@ -567,7 +779,7 @@ int main()
 
     gl::body mote_body;
     gl::run_state run;
-    gl::stage_track section_track(section_depths, 2);
+    int section_index = 0;  // high-water section (banner fires on raise)
     int depth = -1;      // force first HUD draw
     int max_depth_cells = 0;
     int sparks = 0;
@@ -591,14 +803,15 @@ int main()
     }
 
     // Camera chases a world position, clamped so the view never leaves the
-    // map (shared by the title's frozen view and the gameplay chase).
+    // cave sideways or above the mouth (shared by the title's frozen view
+    // and the gameplay chase). No bottom clamp any more — the cave is
+    // endless downward (polish pass 3).
     auto place_camera = [&](const bn::fixed_point& world_pos) {
         bn::fixed cam_x = bn::clamp(world_pos.x(),
                                     bn::fixed(-(map_width_px - bn::display::width()) / 2),
                                     bn::fixed((map_width_px - bn::display::width()) / 2));
-        bn::fixed cam_y = bn::clamp(world_pos.y(),
-                                    bn::fixed(-(map_height_px - bn::display::height()) / 2),
-                                    bn::fixed((map_height_px - bn::display::height()) / 2));
+        bn::fixed cam_y = bn::max(world_pos.y(),
+                                  bn::fixed(-(map_height_px - bn::display::height()) / 2));
         camera.set_position(cam_x, cam_y);
     };
 
@@ -619,7 +832,7 @@ int main()
         bg_map.reload_cells_ref();
         over_sprites.clear();
         section_sprites.clear();
-        section_track.reset();
+        section_index = 0;
         mote.set_visible(true);
         run.restart();
         light.set(to_world(spawn) - camera.position(), radius_full);
@@ -756,6 +969,13 @@ int main()
         int depth_cells = ((mote_body.pos.y() - spawn.y()) / cell_px).floor_integer();
         max_depth_cells = bn::max(max_depth_cells, depth_cells);
 
+        // Headless telemetry (hook slots 4-6): exact mote position + the
+        // depth high-water mark, readable over the bus every frame — deep
+        // runs are asserted numerically, not just via HUD text.
+        gl_audio_hook[hook_slot_x] = unsigned(mote_body.pos.x().data());
+        gl_audio_hook[hook_slot_y] = unsigned(mote_body.pos.y().data());
+        gl_audio_hook[hook_slot_depth] = unsigned(max_depth_cells);
+
         if(max_depth_cells != depth)
         {
             depth = max_depth_cells;
@@ -798,12 +1018,16 @@ int main()
 
         // Cave sections: crossing a section's first row raises a banner
         // (depth is a high-water mark, so a section never announces twice
-        // per run).
-        if(section_track.update(max_depth_cells) && section_track.stage() > 0)
+        // per run) — now unbounded: past the old row-62 floor, every
+        // 20-row echo band announces itself as it is reached.
+        int reached_index = section_index_of_row(max_depth_cells + 3);
+
+        if(reached_index > section_index)
         {
+            section_index = reached_index;
             section_sprites.clear();
             text_generator.set_center_alignment();
-            text_generator.generate(0, -40, section_names[section_track.stage()],
+            text_generator.generate(0, -40, section_name(section_index),
                                     section_sprites);
             text_generator.set_left_alignment();
             banner_frames = 150;
@@ -827,6 +1051,8 @@ int main()
 
         if(front_row != surge_row)
         {
+            cave.set_surge_row(front_row);
+
             for(int cy = bn::max(surge_row, 0); cy < front_row; ++cy)
             {
                 cave.overwrite_row(cy, consumed_tile);
@@ -856,10 +1082,25 @@ int main()
 
         bn::bg_palettes::set_fade_intensity(decay);
 
-        // Camera chases the mote, clamped so the view never leaves the map.
+        // Camera chases the mote, clamped so the view never leaves the map
+        // sideways or above the mouth.
         bn::fixed_point world_pos = to_world(mote_body.pos);
         mote.set_position(world_pos);
         place_camera(world_pos);
+
+        // Slide the stored-map window with the view: rows scrolling in
+        // from below (or back in from above) bake from the pure layout
+        // just before they can appear.
+        {
+            int camera_map_y = (camera.y() + map_height_px / 2).floor_integer();
+            int first_row = (camera_map_y - bn::display::height() / 2) / cell_px - 2;
+            int last_row = (camera_map_y + bn::display::height() / 2) / cell_px + 2;
+
+            if(cave.ensure_window(first_row, last_row))
+            {
+                bg_map.reload_cells_ref();
+            }
+        }
 
         // Light radius (the mechanic): visibility itself shrinks with the
         // light level — full view at run start, a tight pool at horizon end;

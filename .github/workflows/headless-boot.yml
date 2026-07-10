@@ -27,6 +27,12 @@ jobs:
           export DEVKITARM="$DEVKITPRO/devkitARM"
           export PATH="$DEVKITARM/bin:$DEVKITPRO/tools/bin:$PATH"
           make -C games/skeleton -j"$(nproc)"
+      # mgba==0.10.2 ships wheels only up to cp311 (no sdist), so the
+      # runner's default newer python resolves "from versions: none" —
+      # pin 3.11 to match the wheel (and the in-container recipe).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: install mGBA (system libmgba 0.10.x + pinned python binding)
         run: |
           sudo apt-get update -qq
@@ -70,6 +76,10 @@ jobs:
           export DEVKITARM="$DEVKITPRO/devkitARM"
           export PATH="$DEVKITARM/bin:$DEVKITPRO/tools/bin:$PATH"
           make -C games/lumen-drift -j"$(nproc)"
+      # Same cp311 wheel pin as the headless-boot job above.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: install mGBA (system libmgba 0.10.x + pinned python binding)
         run: |
           sudo apt-get update -qq

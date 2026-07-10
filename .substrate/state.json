@@ -1,0 +1,139 @@
+{
+  "graduation": {
+    "criteria": {
+      "blocking_questions": 0,
+      "critical_slots_filled_pct": 0.8
+    },
+    "soft_target_sessions": 50
+  },
+  "graduation_proposed": false,
+  "kit_version": "1.6.0",
+  "last_compaction_session": 0,
+  "mode": "active",
+  "mode_history": [
+    {
+      "date": "2026-07-10",
+      "mode": "active",
+      "session": 0
+    }
+  ],
+  "open_questions": [],
+  "planted_doc_hashes": {
+    ".session-journal.md": "38b0cd72a56f969f99abbf34b3c549bbd88b2fb9ec6fff7b6116de7adc9a40f1",
+    "CONSTITUTION.md": "4c0c25b4f18dece04550b4e2b668889b3986525e6e8e5e8aa4665a14987d9d1d",
+    "docs/AGENT_ORIENTATION.md": "1eeb160343af148540a4e4ae56955432fa4a5ac0db48e12b89183af069afafa6",
+    "docs/CAPABILITIES.md": "9bf2bc76b6ffd7d496809a36fc28037e1d515b3886f2c3946d48906e64e0c494",
+    "docs/ai-project-workflow.md": "ec87846d496e31098c4c61a7771aae153facf5fe3cfb27580659ecc6f1df018f",
+    "docs/architecture.md": "94ef523db506bd27c4e7e445fa792df2eb6684d505ccc06116dfa411b4ca1aa3",
+    "docs/collaboration-model.md": "864107ae556af326d719c1687502a431ff33dbffef6819586bf1d42b080e1cfa",
+    "docs/current-state.md": "3c89e7f55f134f7eca995f49b73e10dbbf66949b76bd768a5fd29b02ea6c9ed8",
+    "docs/decisions.md": "518262411880248ffa08fc7a646e315dc274c777e418e956f12e7385ff46ec82",
+    "docs/helper-policy.md": "6919058d9ca3e8356b323551e2f61b51774be3d5d04d6ac54d8d9f9ca406a87b",
+    "docs/ideas/README.md": "e49724afa38a5ddde6f781f8b669b242cc9af62e26132a44c402a82a2f0373c7",
+    "docs/owner-profile.md": "28334533c2b9807ff955384954394eddb814c73b7ee683d958bc2ab6c0488728",
+    "docs/ownership.md": "a65c89b82e8e08e9cce42e78fc967f10e5781aef7ccf6dfa05aad57476a06287",
+    "docs/question-router.md": "e996d0ae9388ce45be5f74148985af06fcda209318c477acf75b60f84a19b0e1",
+    "docs/repo-navigation-map.md": "38fbed56d895f8f49d5429ad07e1a3e3d5715a3bfd3c77d6c2cebaf5ffa7549e",
+    "docs/runtime_contracts.md": "3a92e985a38067b67d6340291f08b7b7f5e9d348acfdcaaf0d70e0ce0d48c939"
+  },
+  "project_id": "9dbe6fc2bf0e",
+  "promotion_rights": "propose",
+  "quiet_sessions": 0,
+  "reflection_buffer": {
+    "active_count": 0,
+    "last_mined": null
+  },
+  "review_log": [],
+  "session_anchor": {
+    "branch": "skeleton/track-b-walking-skeleton",
+    "epoch": 1783649461.010147,
+    "head": "9812054c7abb62b98d1fe4bf8a3798f9caa3be5e",
+    "ts": "2026-07-10T02:11:01+00:00"
+  },
+  "session_count": 0,
+  "slot_values": {
+    "architecture_layers": {
+      "question_id": "Q-004",
+      "source": "user",
+      "value": "Single-ROM homebrew repo: Butano engine (vendored/toolchain layer, arrives at walking skeleton) -> game code under src/ -> control plane (control/, claims/, .sessions/, docs/) governing how the lane works"
+    },
+    "doc_roots": {
+      "question_id": "Q-007",
+      "source": "user",
+      "value": "docs/, control/, claims/, .sessions/"
+    },
+    "drift_resolution": {
+      "question_id": "Q-011",
+      "source": "user",
+      "value": "Docs follow reality: on doc/code drift, fix the doc in the same PR that reveals it; binding conventions change only via a deliberate PR that says so; control-file drift is governed by control/README.md writer-ownership"
+    },
+    "integration_mode": {
+      "question_id": "Q-001",
+      "source": "user",
+      "value": "active"
+    },
+    "mutation_seam": {
+      "question_id": "Q-009",
+      "source": "user",
+      "value": "Game-state mutation stays inside the Butano update loop (scenes/entities under src/); repo-state mutation lands only via commits on claimed branches \u2014 no seam bypasses, no history rewrites (forward-only git, conventions rule 5)"
+    },
+    "new_area_ownership": {
+      "question_id": "Q-013",
+      "source": "user",
+      "value": "New areas default to the lane; claim before build via one file per claim in claims/ (first-declared + claim-filed wins, fleet R10)"
+    },
+    "owner_profile": {
+      "question_id": "Q-008",
+      "source": "user",
+      "value": "Hands-off human owner (Menno); agent-run lane with a written self-merge grant; owner touchpoints are post-merge review-queue rows and needs-owner flags only \u2014 no spend, no account creation, no external publishing without an owner action"
+    },
+    "ownership_model": {
+      "question_id": "Q-006",
+      "source": "user",
+      "value": "One agent lane (game-lab) owns all code and docs; the fleet manager owns control/inbox.md exclusively; owner (human) acts only on flagged click-level items under needs-owner"
+    },
+    "primary_language": {
+      "question_id": "Q-003",
+      "source": "user",
+      "value": "C++ (Butano/devkitARM) for the ROM; Python 3 for tooling"
+    },
+    "project_name": {
+      "question_id": "Q-002",
+      "source": "user",
+      "value": "gba-homebrew \u2014 game-lab Track B: original GBA homebrew on Butano"
+    },
+    "review_ritual": {
+      "question_id": "Q-010",
+      "source": "user",
+      "value": "Review is post-merge (conventions rule 3): merge on green, add a row to docs/review-queue.md and/or mention Codex on the PR; veto = revert. Nothing waits for pre-merge review"
+    },
+    "staleness_review": {
+      "question_id": "Q-012",
+      "source": "user",
+      "value": "Every session close: standing ritual re-reads inbox at HEAD and overwrites control/status.md; session cards flag stale docs as flags; check --strict staleness triggers back this up"
+    },
+    "verify_command": {
+      "question_id": "Q-005",
+      "source": "user",
+      "value": "python3 bootstrap.py check --strict (repo gate); ROM verify = the 'ROM builds' <60s compile check once the walking skeleton lands (conventions rule 16)"
+    }
+  },
+  "slots": {
+    "architecture_layers": "filled",
+    "doc_roots": "filled",
+    "drift_resolution": "filled",
+    "integration_mode": "filled",
+    "mutation_seam": "filled",
+    "new_area_ownership": "filled",
+    "owner_profile": "filled",
+    "ownership_model": "filled",
+    "primary_language": "filled",
+    "project_name": "filled",
+    "review_ritual": "filled",
+    "staleness_review": "filled",
+    "verify_command": "filled"
+  },
+  "stage": "integration",
+  "stance": "analysis",
+  "version": 1
+}

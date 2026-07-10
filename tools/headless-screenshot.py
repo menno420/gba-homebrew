@@ -10,10 +10,17 @@ Deps (pinned recipe — docs/capabilities.md):
 
 Usage:
     python3 tools/headless-screenshot.py ROM.gba OUT.png [--frames N]
-        [--keys START-END:NAME ...] [--shot FRAME:PATH ...] [--require-distinct]
+        [--keys START-END:NAME ...] [--keys-pattern START-END:PERIOD:DUTY:NAME ...]
+        [--shot FRAME:PATH ...] [--require-distinct]
 
 Input scripting (generic — works for any ROM):
     --keys 240-420:A        hold the A button during frames [240, 420)
+    --keys-pattern 30-140:3:1:A
+                            duty-cycle a button during frames [30, 140):
+                            held on the first DUTY frames of every PERIOD
+                            frames (throttled thrust/movement — an open-loop
+                            periodic pattern is invariant under a constant
+                            input-latency shift, unlike hand-tuned pulses)
     --shot 238:mid.png      also dump (and non-blank-verify) frame 238
     --require-distinct      assert consecutive shots differ (proves the
                             scripted input changed what is on screen)
@@ -95,13 +102,31 @@ MIN_DIFF_PIXELS = 100       # --require-distinct: consecutive shots must
 
 
 def parse_keys(spec):
-    """'START-END:NAME' -> (start_frame, end_frame, key). Held in [start, end)."""
+    """'START-END:NAME' -> (start, end, 1, 1, key). Held in [start, end)."""
     span, _, name = spec.partition(':')
     start, _, end = span.partition('-')
     key = KEY_NAMES.get(name.upper())
     if key is None:
         sys.exit(f'FAIL: unknown key {name!r} (known: {", ".join(sorted(KEY_NAMES))})')
-    return int(start), int(end), key
+    return int(start), int(end), 1, 1, key
+
+
+def parse_keys_pattern(spec):
+    """'START-END:PERIOD:DUTY:NAME' -> (start, end, period, duty, key).
+
+    Within [start, end) the key is held on frames whose offset from START
+    modulo PERIOD is < DUTY.
+    """
+    span, _, rest = spec.partition(':')
+    start, _, end = span.partition('-')
+    period, _, rest = rest.partition(':')
+    duty, _, name = rest.partition(':')
+    key = KEY_NAMES.get(name.upper())
+    if key is None:
+        sys.exit(f'FAIL: unknown key {name!r} (known: {", ".join(sorted(KEY_NAMES))})')
+    if int(period) < 1 or not 0 < int(duty) <= int(period):
+        sys.exit(f'FAIL: bad pattern {spec!r} (need PERIOD >= 1, 0 < DUTY <= PERIOD)')
+    return int(start), int(end), int(period), int(duty), key
 
 
 def parse_shot(spec):
@@ -134,6 +159,11 @@ def main():
                         help='frames to run before the final screenshot (default 300 = 5s)')
     parser.add_argument('--keys', action='append', default=[], metavar='START-END:NAME',
                         help='hold a button during frames [START, END); repeatable')
+    parser.add_argument('--keys-pattern', action='append', default=[],
+                        metavar='START-END:PERIOD:DUTY:NAME',
+                        help='duty-cycle a button during frames [START, END): '
+                             'held on the first DUTY frames of every PERIOD '
+                             'frames; repeatable')
     parser.add_argument('--shot', action='append', default=[], metavar='FRAME:PATH',
                         help='dump an extra verified screenshot at FRAME; repeatable')
     parser.add_argument('--require-distinct', action='store_true',
@@ -142,6 +172,7 @@ def main():
     args = parser.parse_args()
 
     key_spans = [parse_keys(spec) for spec in args.keys]
+    key_spans += [parse_keys_pattern(spec) for spec in args.keys_pattern]
     shots = sorted(parse_shot(spec) for spec in args.shot)
     if any(frame >= args.frames for frame, _ in shots):
         sys.exit('FAIL: --shot frame beyond --frames')
@@ -157,7 +188,9 @@ def main():
     saved = []  # (path, frame_number) in capture order
     shot_index = 0
     for frame_number in range(args.frames):
-        active = [key for start, end, key in key_spans if start <= frame_number < end]
+        active = [key for start, end, period, duty, key in key_spans
+                  if start <= frame_number < end
+                  and (frame_number - start) % period < duty]
         core.set_keys(*active)
         core.run_frame()
         if shot_index < len(shots) and shots[shot_index][0] == frame_number:
@@ -169,7 +202,7 @@ def main():
     with open(args.out_png, 'wb') as handle:
         frame.save_png(handle)
     saved.append((args.out_png, args.frames - 1))
-    held = ', '.join(args.keys) if args.keys else 'none'
+    held = ', '.join(args.keys + args.keys_pattern) or 'none'
     print(f'ran {args.frames} frames (keys: {held}), '
           f'saved {len(saved)} {width}x{height} PNG(s)')
 

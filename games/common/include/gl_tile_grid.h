@@ -59,6 +59,31 @@ public:
         return false;
     }
 
+    /// Call `visitor(cell_x, cell_y)` for every marked cell the AABB
+    /// centered at (x, y) overlaps. With a pickup/trigger predicate this
+    /// turns the grid into a collectible sensor that reports WHICH cells
+    /// were touched (overlaps() only says whether any was).
+    template<typename Visitor>
+    void visit_overlaps(bn::fixed x, bn::fixed y, bn::fixed half_w,
+                        bn::fixed half_h, Visitor visitor) const
+    {
+        int min_cx = _cell(x - half_w);
+        int max_cx = _cell(x + half_w - _epsilon);
+        int min_cy = _cell(y - half_h);
+        int max_cy = _cell(y + half_h - _epsilon);
+
+        for(int cy = min_cy; cy <= max_cy; ++cy)
+        {
+            for(int cx = min_cx; cx <= max_cx; ++cx)
+            {
+                if(_solid(cx, cy))
+                {
+                    visitor(cx, cy);
+                }
+            }
+        }
+    }
+
     /// Move `b` by its velocity, axis-separated, clipping against solid
     /// cells (the blocked axis' velocity is zeroed and the body is snapped
     /// flush to the wall). Returns a hit_x/hit_y bitmask.

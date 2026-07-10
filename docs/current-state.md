@@ -21,20 +21,40 @@
   `--savefile` battery persistence across emulator processes, and since
   session 6 ELF-resolved memory watches — `--elf`/`--watch`/
   `--watch-nonzero`/`--watch-log`/`--assert-watch` — the audio evidence
-  path) — deterministic on mGBA across sessions 1–6; the committed Lumen
+  path) — deterministic on mGBA across sessions 1–7; the committed Lumen
   Drift proof script replays with 21 text/audio assertions in the
-  `lumen-drift-proof` dispatch-tier CI job (`headless-boot.yml`). Replay
-  offset convention: the timeline is the session-4 script at a constant
-  **+5** (title screen +4, session-6 init +1 — both bisected).
+  `lumen-drift-proof` dispatch-tier CI job (`headless-boot.yml`), plus a
+  session-7 deep-run replay (2264 frames to DEPTH 95) asserted numerically
+  from the in-ROM position/depth telemetry (gl_audio_hook slots 4-6).
+  Replay offset convention: the timeline is the session-4 script at a
+  constant **+4** (title +4, session-6 init +1, session-7's faster rebake
+  −2 — all bisected; the deep-run script is per-frame with no settles and
+  must be re-recorded, never shifted).
 
 ## In flight
 
 (Nothing — lane idle pending owner concept pick / next order; see
-`control/status.md` ⚑ needs-owner. Lumen Drift is scope-complete with two
-polish passes; the concept doc's polish list has one item left: more cave
-beyond row 62.)
+`control/status.md` ⚑ needs-owner. **Lumen Drift is SCOPE-COMPLETE: the
+committed scope AND the entire concept-doc polish list are built and
+proven** — no further Lumen Drift work is queued without the pick.)
 
 ## Recently shipped (newest first)
+
+- **Session 7 — Lumen Drift polish pass 3: more cave beyond row 62**
+  (2026-07-10, PRs #22–#23): the cave is now ENDLESS — every row is a pure
+  function of the world row and the stored 64-row map slides as a window
+  over it (rows 0-61 cell-identical to the committed layout; 20-row echo
+  bands cycle the three section looks past row 64 with "ECHOES OF ..."
+  banners). Previously every deep run capped at DEPTH 58 on a solid floor.
+  Position/depth telemetry (hook slots 4-6) enables numeric depth
+  assertions and closed-loop route recording; a deterministic
+  autopilot-recorded script reaches DEPTH 95 in CI. Canonical replay
+  re-bisected to +4 (faster rebake). Proof:
+  [`proof/session-7-past-old-floor-depth-58.png`](proof/session-7-past-old-floor-depth-58.png),
+  [`proof/session-7-echo-bluffs-banner.png`](proof/session-7-echo-bluffs-banner.png),
+  [`proof/session-7-deep-run-depth-95.png`](proof/session-7-deep-run-depth-95.png)
+  (+1 more; script: `proof/session-7-deep-run-keys.txt`). Lumen Drift
+  marked scope-complete in the concepts doc.
 
 - **Session 6 — Lumen Drift polish pass 2: audio + light radius + tuning**
   (2026-07-10, PRs #19–#21): four original deterministic synthesized

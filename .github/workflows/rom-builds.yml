@@ -29,10 +29,17 @@ jobs:
           key: gba-toolchain-${{ runner.os }}-${{ hashFiles('tools/setup-toolchain.sh') }}
       - name: setup toolchain (idempotent; skips on warm cache)
         run: tools/setup-toolchain.sh
-      - name: build skeleton ROM
+      - name: build ALL game ROMs (games/*/Makefile)
         run: |
           export DEVKITARM="$DEVKITPRO/devkitARM"
           export PATH="$DEVKITARM/bin:$DEVKITPRO/tools/bin:$PATH"
-          make -C games/skeleton -j"$(nproc)"
-          test -f games/skeleton/skeleton.gba
-          echo "ROM built: $(ls -la games/skeleton/skeleton.gba)"
+          built=0
+          for dir in games/*/; do
+            [ -f "$dir/Makefile" ] || continue
+            make -C "$dir" -j"$(nproc)"
+            rom="$dir$(basename "$dir").gba"
+            test -f "$rom"
+            echo "ROM built: $(ls -la "$rom")"
+            built=$((built + 1))
+          done
+          test "$built" -ge 2 && echo "$built ROMs built"

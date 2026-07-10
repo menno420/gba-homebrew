@@ -8,8 +8,8 @@
 > scout session's chat**, not in any repo — this doc is the committed
 > distillation (playbook R2: verify against repos/evidence, and this IS the
 > evidence record). Consumed by
-> [`../prompts/game-lab-founding.md`](../prompts/game-lab-founding.md) and
-> [`../../environments/archetype-gba-lab.sh`](../../environments/archetype-gba-lab.sh).
+> [`../prompts/game-lab-founding.md`](https://github.com/menno420/fleet-manager/blob/main/docs/prompts/game-lab-founding.md) and
+> [`../../environments/archetype-gba-lab.sh`](https://github.com/menno420/fleet-manager/blob/main/environments/archetype-gba-lab.sh).
 
 ## Verdicts
 
@@ -74,5 +74,5 @@
   there; screenshots (retail-match diff, in-game dialogue mod, headless PNG
   dumps) live in that session's chat. Owner decision the same night:
   game-lab launches on both tracks
-  ([`../prompts/game-lab-founding.md`](../prompts/game-lab-founding.md),
-  [`../owner-queue.md`](../owner-queue.md) launch item).
+  ([`../prompts/game-lab-founding.md`](https://github.com/menno420/fleet-manager/blob/main/docs/prompts/game-lab-founding.md),
+  [`../owner-queue.md`](https://github.com/menno420/fleet-manager/blob/main/docs/owner-queue.md) launch item).

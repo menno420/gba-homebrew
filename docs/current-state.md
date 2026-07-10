@@ -8,22 +8,40 @@
 
 ## Stability baseline
 
-- **Toolchain** (sessions 1–3, re-verified each session): pinned devkitARM
+- **Toolchain** (sessions 1–4, re-verified each session): pinned devkitARM
   r68 + Butano 21.7.1 via `tools/setup-toolchain.sh` (idempotent; honors
-  `$DEVKITPRO`); both ROMs rebuild warm in ~1.4s locally; "ROM builds" CI
-  builds all `games/*/Makefile` ROMs in ~40s warm. Known caveat: unsigned
-  leseratte10 mirror ([checksum-pin idea routed](ideas/toolchain-checksum-pin-2026-07-10.md)).
+  `$DEVKITPRO`); both ROMs rebuild warm in ~1.5–1.8s locally; "ROM builds"
+  CI builds all `games/*/Makefile` ROMs in ~45–50s warm. Since PR #13 every
+  unsigned mirror package is **SHA-256-pinned** (install fails on mismatch;
+  trust-on-first-use posture —
+  [idea shipped](ideas/toolchain-checksum-pin-2026-07-10.md)).
 - **Headless proof loop**: `tools/headless-screenshot.py` (scripted button
-  spans, multi-shot, non-blank + `--require-distinct` assertions) —
-  deterministic on mGBA across sessions 1–3.
+  spans, `--keys-pattern` duty cycles, multi-shot, non-blank +
+  `--require-distinct` + `--assert-text` glyph-exact HUD/card assertions) —
+  deterministic on mGBA across sessions 1–4; the committed Lumen Drift
+  proof script replays with text assertions in the `lumen-drift-proof`
+  dispatch-tier CI job (`headless-boot.yml`).
 
 ## In flight
 
 (Nothing — lane idle pending owner concept pick / next order; see
-`control/status.md` ⚑ needs-owner.)
+`control/status.md` ⚑ needs-owner. Lumen Drift's committed concept scope is
+first-complete as of session 4.)
 
 ## Recently shipped (newest first)
 
+- **Session 4 — Lumen Drift increment 3: shards + cave sections; scope
+  first-complete** (2026-07-10, PRs #11–#13): spark shards (collect =
+  light-decay rewind + SPARKS HUD/game-over line) and 3 distinct cave
+  sections (THE BLUFFS / THE GALLERY / THE DEEP) with entry banners;
+  generic `gl_stage.h` + `gl_tile_grid::visit_overlaps`; both routed
+  quick-wins shipped in PR #13 (`--assert-text` CI assertions, toolchain
+  SHA-256 pins). Proof:
+  [`proof/session-4-gallery-banner.png`](proof/session-4-gallery-banner.png),
+  [`proof/session-4-deep-banner.png`](proof/session-4-deep-banner.png),
+  [`proof/session-4-game-over.png`](proof/session-4-game-over.png) (+3
+  more) — one deterministic 1780-frame run: two shard pickups, both
+  section banners, surge finish at DEPTH 45.
 - **Session 3 — Lumen Drift increment 2: hazards + fail state** (2026-07-10,
   PRs #8–#9): crystal spike clusters + the descending surge end the run on
   touch; game-over card with final DEPTH + BEST (persists across restarts in

@@ -42,6 +42,25 @@ arcade loop.
   SRAM best-score persistence. The generic half (input/kinematics/
   collision/run-state headers, harness input scripting) is committed in
   `games/common/` and transfers to either other concept.
+- **FIRST-COMPLETE (post-increment 3, 2026-07-10):** the concept's
+  committed scope is now **done in 3 sessions** (2 estimated to
+  first-playable + 1 to scope-complete). Increment 3 (PR #12) landed the
+  last two S2-list items: **spark shards** (edge-hugging collectibles that
+  rewind the light decay — the concept's "collect spark shards that extend
+  your light before it decays" — with a SPARKS HUD + game-over line) and
+  **3 cave sections** (THE BLUFFS / THE GALLERY / THE DEEP: per-section rim
+  colors, waveforms, widths, obstacles and hazard density, entry banners).
+  Quick-win PR #13 added the concept doc's own regression-test design:
+  scripted-input runs now ASSERT HUD/card text (`--assert-text`, e.g. "this
+  script still dies at DEPTH 45 with SPARKS 2") in the dispatch-tier CI.
+  **What a post-pick polish pass would add** (explicitly NOT built —
+  awaiting the owner pick): `bn::sram` best-depth persistence across power
+  cycles (session-3 card idea), audio (mmutil is installed and untouched),
+  a title screen, light-radius as a *mechanic* (shards currently rewind the
+  decay timer; the original text imagined a visible radius), difficulty
+  tuning from real play, and more cave beyond row 62. The generic half
+  (`gl_input/kinematics/tile_grid/run_state/stage` + harness scripting/
+  assertions) transfers to either other concept unchanged.
 
 ## 2. Clockwork Courier — rewind-ghost puzzle platformer
 

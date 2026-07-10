@@ -33,6 +33,20 @@ isn't — all three routes proven; full evidence record mirrored at
   ABI). Boot ROM → run N frames → dump PNG at **~290 fps** headless; scripted
   button injection verified changes live in-game — the full agents-only
   verify loop (no human, no display) is proven end-to-end.
+- **Headless battery-save persistence (SRAM power cycles, session 5):** a GBA
+  savefile is just the raw contents of the cartridge save memory — for a
+  Butano `bn::sram` ROM (Butano embeds the `SRAM_V113` marker, which is how
+  mGBA detects the save type) that's **32KB mapped at GBA bus address
+  `0xE000000`**, so byte N of a `.sav` file IS SRAM byte N. The harness's
+  `tools/headless-screenshot.py --savefile game.sav` uses exactly that
+  mapping: after `core.reset()` it copies the file into the region via
+  `core.memory.sram.u8` (= power-on with that battery; missing file = 32KB
+  of `0xFF`, factory-erased SRAM) and after the last frame snapshots the
+  region back to the file. Boot the same savefile in two separate emulator
+  processes + `--assert-text` the title's BEST line to prove power-cycle
+  persistence headlessly. ⚠ do NOT use the binding's native
+  `core.load_save()` + VFile instead — it segfaults after the game's first
+  SRAM write (verbatim error in [`PLATFORM-LIMITS.md`](PLATFORM-LIMITS.md)).
 
 ### View video / audio files (.mp4, .webm, .mov, .mp3, …)
 Sessions claim they can't view an .mp4. They CAN:

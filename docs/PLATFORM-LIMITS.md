@@ -48,6 +48,19 @@
   access.","documentation_url":"https://docs.anthropic.com/en/docs/claude-code/github-actions"}`.
   NOT a full wall: plain `git ls-remote`/`git clone` of public repos works —
   recipe in [`capabilities.md`](capabilities.md).
+- **mGBA python binding `core.load_save()` + a file VFile** — segfaults the
+  pinned binding (mgba==0.10.2 on system libmgba 0.10.x) ~64 frames AFTER the
+  game's first SRAM write, when mGBA's deferred savedata flush fires (attach,
+  boot, SRAM reads and even the write itself are all fine — crash reproduces
+  at 400 frames but not 380 with the write at ~332). Observed verbatim
+  (session 5, 2026-07-10, `python3 -X faulthandler`): `Fatal Python error:
+  Segmentation fault` / `Current thread 0x00007fa4bda3f080 (most recent call
+  first):` / `File "/usr/local/lib/python3.11/dist-packages/mgba/core.py",
+  line 269 in run_frame` — exit code 139. NOT a persistence wall: the
+  harness's `--savefile` copies the file through the emulated bus instead
+  (`core.memory.sram.u8` after `reset()`, snapshot back after the last
+  frame) — recipe in [`capabilities.md`](capabilities.md); SRAM power-cycle
+  persistence is fully proven headlessly.
 
 ## Mission-specific rails (not platform walls — owner rails, equally hard)
 

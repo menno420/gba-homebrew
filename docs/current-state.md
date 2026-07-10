@@ -13,10 +13,14 @@ should not be re-audited without a reported regression.)
 
 ## In flight
 
-- **Session 1 — walking skeleton** (branch `skeleton/track-b-walking-skeleton`,
-  2026-07-10): phase 1 = heartbeat + substrate-kit adoption (this snapshot);
-  phase 2 = toolchain + Butano example + headless screenshot + 3 game concepts
-  (ORDER 001). Standing self-review questions live in
+- **Session 1 — walking skeleton** (2026-07-10): phase 1 = heartbeat +
+  substrate-kit adoption (merged, PR #2); phase 2 = pinned toolchain
+  (`tools/setup-toolchain.sh`), original Butano skeleton ROM
+  (`games/skeleton/`), headless boot proof (`tools/headless-screenshot.py` →
+  [`proof/session-1-skeleton-boot.png`](proof/session-1-skeleton-boot.png)),
+  "ROM builds" CI gate, and the
+  [3 original game concepts](concepts/session-1-concepts.md) awaiting owner
+  pick (ORDER 001). Standing self-review questions live in
   [`retro/QUESTIONS.md`](retro/QUESTIONS.md).
 
 ## Recently shipped (newest first)

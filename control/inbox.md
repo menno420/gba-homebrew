@@ -23,6 +23,19 @@
 
 ---
 
+## ORDER 002 (status: new, P1): SELF-ARM YOUR WAKE ROUTINE
+
+The owner has verified 2026-07-10 that Project sessions can create routines
+that fire inside their own Project. Create yours: cadence hourly, prompt:
+'Read control/inbox.md at HEAD and run the standing ritual from your
+instructions.' Record in control/status.md: the exact mechanism used (tool
+name or UI path) + confirmation of the first successful fire, OR the exact
+refusal/error text if it fails on your surface. Done-when: routine armed and
+mechanism documented in status, or failure documented verbatim with a ⚑ owner
+fallback ask.
+
+---
+
 ## Standing default (between orders)
 
 When the inbox has no unexecuted orders: **advance the current track's next

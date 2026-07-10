@@ -17,19 +17,49 @@
   [idea shipped](ideas/toolchain-checksum-pin-2026-07-10.md)).
 - **Headless proof loop**: `tools/headless-screenshot.py` (scripted button
   spans, `--keys-pattern` duty cycles, multi-shot, non-blank +
-  `--require-distinct` + `--assert-text` glyph-exact HUD/card assertions) —
-  deterministic on mGBA across sessions 1–4; the committed Lumen Drift
-  proof script replays with text assertions in the `lumen-drift-proof`
-  dispatch-tier CI job (`headless-boot.yml`).
+  `--require-distinct` + `--assert-text` glyph-exact HUD/card assertions,
+  `--savefile` battery persistence across emulator processes, and since
+  session 6 ELF-resolved memory watches — `--elf`/`--watch`/
+  `--watch-nonzero`/`--watch-log`/`--assert-watch` — the audio evidence
+  path) — deterministic on mGBA across sessions 1–6; the committed Lumen
+  Drift proof script replays with 21 text/audio assertions in the
+  `lumen-drift-proof` dispatch-tier CI job (`headless-boot.yml`). Replay
+  offset convention: the timeline is the session-4 script at a constant
+  **+5** (title screen +4, session-6 init +1 — both bisected).
 
 ## In flight
 
 (Nothing — lane idle pending owner concept pick / next order; see
-`control/status.md` ⚑ needs-owner. Lumen Drift's committed concept scope is
-first-complete as of session 4.)
+`control/status.md` ⚑ needs-owner. Lumen Drift is scope-complete with two
+polish passes; the concept doc's polish list has one item left: more cave
+beyond row 62.)
 
 ## Recently shipped (newest first)
 
+- **Session 6 — Lumen Drift polish pass 2: audio + light radius + tuning**
+  (2026-07-10, PRs #19–#21): four original deterministic synthesized
+  sounds (maxmod pipeline; `games/lumen-drift/audio/generate_audio.py`)
+  with headless mixer+hook audio evidence (method in
+  [`capabilities.md`](capabilities.md); evidence log
+  [`proof/session-6-audio-watch-log.csv`](proof/session-6-audio-watch-log.csv));
+  light radius as a visible mechanic (generic
+  `games/common/include/gl_light_window.h` — a hardware-window circle of
+  light that shrinks with the light level and grows on shard pickup);
+  light-decay tuning (horizon 3600→2700, fade cap 0.45→0.40, shard refund
+  1500→1200; physics untouched). Proof:
+  [`proof/session-6-light-high-radius.png`](proof/session-6-light-high-radius.png)
+  vs
+  [`proof/session-6-light-low-radius.png`](proof/session-6-light-low-radius.png)
+  — same deterministic run, radius ~160 vs ~106.
+- **Session 5 — polish pass 1 + gate fixes upstreamed** (2026-07-10, PRs
+  #15–#18 + substrate-kit #105/#108): title screen ("LUMEN DRIFT" card with
+  BEST from SRAM + PRESS START) and SRAM best persistence across power
+  cycles (generic `gl_save.h`; harness `--savefile` bus-copy; two-boot
+  proof
+  [`proof/session-5-sram-run-2-reboot-title-best-3.png`](proof/session-5-sram-run-2-reboot-title-best-3.png));
+  both substrate-gate fixes merged upstream in `menno420/substrate-kit`;
+  headless-boot runner python pinned to 3.11 (mgba cp311 wheel gap,
+  PR #17).
 - **Session 4 — Lumen Drift increment 3: shards + cave sections; scope
   first-complete** (2026-07-10, PRs #11–#13): spark shards (collect =
   light-decay rewind + SPARKS HUD/game-over line) and 3 distinct cave

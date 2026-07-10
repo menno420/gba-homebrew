@@ -1,18 +1,28 @@
 /*
- * LUMEN DRIFT — increment 1 (first-playable slice).
+ * LUMEN DRIFT — increment 2 (hazards + fail state).
  *
  * You are a mote of light falling through a dark cave. Hold A to thrust
  * against gravity, steer laterally with the D-pad, drift through the
  * narrowing tunnel. Depth reached is the score; your light slowly decays
  * (thrust flares it back). START restarts the run.
  *
- * All code and assets original (graphics/generate_assets.py). The cave is
- * generated at boot from a fixed, handcrafted waveform — every run is the
- * same cave, which keeps the headless input-script proof deterministic.
+ * Increment 2 makes depth meaningful against risk:
+ *   - CRYSTAL SPIKES (pink) grow from the tunnel walls at fixed depths —
+ *     touch one and the run ends.
+ *   - THE SURGE (ember wall) descends from the cave mouth and consumes the
+ *     rock behind it — stall too long and it takes your light.
+ *   - Game over shows final DEPTH + BEST (best persists across restarts
+ *     in RAM); START starts the next run.
+ *
+ * All code and assets original (graphics/generate_assets.py). The cave,
+ * crystal placement and surge speed are fixed — every run is the same,
+ * which keeps the headless input-script proof deterministic.
  *
  * Generic pieces (games/common/): gl_input.h (D-pad vector), gl_kinematics.h
- * (fixed-point body), gl_tile_grid.h (tile collision). Game-specific here:
- * cave shape, tuning constants, light-decay palette trick, HUD.
+ * (fixed-point body), gl_tile_grid.h (tile collision — reused verbatim as
+ * the hazard sensor via a second predicate), gl_run_state.h (run lifecycle +
+ * best score). Game-specific here: cave shape, hazard placement/tuning,
+ * light-decay palette trick, HUD, game-over screen.
  */
 
 #include "bn_core.h"
@@ -34,6 +44,7 @@
 
 #include "gl_input.h"
 #include "gl_kinematics.h"
+#include "gl_run_state.h"
 #include "gl_tile_grid.h"
 
 #include "common_variable_8x8_sprite_font.h"
@@ -53,6 +64,9 @@ namespace
     constexpr int empty_tile = 0;
     constexpr int rock_tile = 1;
     constexpr int rim_tile = 2;
+    constexpr int crystal_tile = 3;
+    constexpr int surge_tile = 4;
+    constexpr int consumed_tile = 5;
 
     // Physics tuning (pixels/frame): floaty mote.
     constexpr bn::fixed gravity(0.045);
@@ -63,6 +77,14 @@ namespace
     constexpr bn::fixed drag_x(0.98);
 
     constexpr bn::fixed mote_half(3);  // collision half-extent (visual glow is bigger)
+    constexpr bn::fixed hazard_half(2);  // forgiving hazard hitbox (< mote_half)
+
+    // The surge: a wall of consuming ember light that descends from the cave
+    // mouth at a fixed speed — stalling is now a losing strategy. It starts
+    // above the map so the opening chamber gets a grace period.
+    constexpr bn::fixed surge_start(-32);      // map px (above the map top)
+    constexpr bn::fixed surge_speed(0.25);     // px/frame (~1.9 rows/s; max
+                                               // fall speed is 7x faster)
 
     constexpr bn::fixed_point spawn(16 * cell_px + 4, 3 * cell_px + 4);  // map px
 
@@ -93,9 +115,42 @@ namespace
             return _solid[cy][cx];
         }
 
+        [[nodiscard]] bool crystal(int cx, int cy) const
+        {
+            if(cx < 0 || cx >= map_cols || cy < 0 || cy >= map_rows)
+            {
+                return false;  // out-of-map space is rock, not hazard
+            }
+
+            return _crystal[cy][cx];
+        }
+
+        /// Re-bake all cells from the solidity/crystal maps (restores rows
+        /// the surge overwrote). Caller reloads the bg map afterwards.
+        void rebake()
+        {
+            _bake();
+        }
+
+        /// Overwrite one row's cells with a single tile (visual only —
+        /// solidity is untouched). Used by the surge; rebake() restores.
+        void overwrite_row(int cy, int tile_index)
+        {
+            if(cy < 0 || cy >= map_rows)
+            {
+                return;
+            }
+
+            for(int cx = 0; cx < map_cols; ++cx)
+            {
+                _set_cell(cx, cy, tile_index);
+            }
+        }
+
     private:
         alignas(int) bn::regular_bg_map_cell _cells[map_cols * map_rows];
         bool _solid[map_rows][map_cols];
+        bool _crystal[map_rows][map_cols];
 
         void _carve(int cx, int cy)
         {
@@ -107,12 +162,13 @@ namespace
 
         void _generate()
         {
-            // 1. Everything is rock.
+            // 1. Everything is rock; no crystals yet.
             for(int cy = 0; cy < map_rows; ++cy)
             {
                 for(int cx = 0; cx < map_cols; ++cx)
                 {
                     _solid[cy][cx] = true;
+                    _crystal[cy][cx] = false;
                 }
             }
 
@@ -154,6 +210,27 @@ namespace
                         }
                     }
                 }
+
+                // 4b. Crystal spikes every 7 rows, alternating walls: a
+                //     2-cell cluster growing from the tunnel edge into the
+                //     passage. Deadly but NOT solid — you can fly into a
+                //     spike, and shouldn't. Placed after the blobs so a
+                //     spike never hides inside rock; only open cells turn
+                //     deadly, so the passage keeps >= 2 clear cells.
+                if(cy > 12 && cy % 7 == 2)
+                {
+                    bool left = ((cy / 7) % 2) == 0;
+
+                    for(int i = 0; i < 2; ++i)
+                    {
+                        int cx = left ? center - half_width + i : center + half_width - i;
+
+                        if(cx > 0 && cx < map_cols - 1 && ! _solid[cy][cx])
+                        {
+                            _crystal[cy][cx] = true;
+                        }
+                    }
+                }
             }
 
             // 5. Rest plate straight under the spawn: a no-input run settles
@@ -164,24 +241,39 @@ namespace
                 _solid[10][cx] = true;
             }
 
-            // 6. Bake cells: open = empty tile; solid next to open = glowing
-            //    rim; deep rock otherwise.
+            // 6. Bake cells.
+            _bake();
+        }
+
+        void _set_cell(int cx, int cy, int tile_index)
+        {
+            bn::regular_bg_map_cell& cell = _cells[map_item.cell_index(cx, cy)];
+            bn::regular_bg_map_cell_info cell_info(cell);
+            cell_info.set_tile_index(tile_index);
+            cell_info.set_palette_id(0);
+            cell = cell_info.cell();
+        }
+
+        // Bake cells: crystal hazard on open cells; solid next to open =
+        // glowing rim; deep rock otherwise; open = empty.
+        void _bake()
+        {
             for(int cy = 0; cy < map_rows; ++cy)
             {
                 for(int cx = 0; cx < map_cols; ++cx)
                 {
                     int tile_index = empty_tile;
 
-                    if(_solid[cy][cx])
+                    if(_crystal[cy][cx])
+                    {
+                        tile_index = crystal_tile;
+                    }
+                    else if(_solid[cy][cx])
                     {
                         tile_index = _next_to_open(cx, cy) ? rim_tile : rock_tile;
                     }
 
-                    bn::regular_bg_map_cell& cell = _cells[map_item.cell_index(cx, cy)];
-                    bn::regular_bg_map_cell_info cell_info(cell);
-                    cell_info.set_tile_index(tile_index);
-                    cell_info.set_palette_id(0);
-                    cell = cell_info.cell();
+                    _set_cell(cx, cy, tile_index);
                 }
             }
         }
@@ -227,6 +319,7 @@ int main()
     bn::regular_bg_item bg_item(bn::regular_bg_tiles_items::ld_tiles,
                                 bn::bg_palette_items::ld_palette, cave.map_item);
     bn::regular_bg_ptr bg = bg_item.create_bg(0, 0);
+    bn::regular_bg_map_ptr bg_map = bg.map();
 
     bn::camera_ptr camera = bn::camera_ptr::create(0, 0);
     bg.set_camera(camera);
@@ -237,30 +330,79 @@ int main()
     bn::sprite_text_generator text_generator(common::variable_8x8_sprite_font);
     bn::vector<bn::sprite_ptr, 8> depth_sprites;
     bn::vector<bn::sprite_ptr, 16> hint_sprites;
+    bn::vector<bn::sprite_ptr, 16> over_sprites;
     text_generator.generate(-110, -72, "LUMEN DRIFT - A THRUST", hint_sprites);
 
+    // The SAME generic grid template drives wall collision and hazard
+    // sensing — only the predicate differs.
     gl::tile_grid grid(cell_px, [](int cx, int cy) {
         return cave.solid(cx, cy);
     });
+    gl::tile_grid crystal_sensor(cell_px, [](int cx, int cy) {
+        return cave.crystal(cx, cy);
+    });
 
     gl::body mote_body;
+    gl::run_state run;
     int depth = -1;      // force first HUD draw
     int max_depth_cells = 0;
     int flare = 0;       // frames of thrust-flare left
     int run_frames = 0;
+    bn::fixed surge_y = surge_start;
+    int surge_row = -1000;  // last drawn front row (forces first draw)
 
     auto restart = [&] {
         mote_body.pos = spawn;
         mote_body.vel = bn::fixed_point(0, 0);
         max_depth_cells = 0;
+        depth = -1;
         flare = 0;
         run_frames = 0;
+        surge_y = surge_start;
+        surge_row = -1000;
+        cave.rebake();  // restore rows the surge consumed
+        bg_map.reload_cells_ref();
+        over_sprites.clear();
+        mote.set_visible(true);
+        run.restart();
+    };
+
+    auto game_over = [&] {
+        run.fail(max_depth_cells);
+        mote.set_visible(false);
+        bn::bg_palettes::set_fade_intensity(bn::fixed(0.7));  // light is taken
+
+        bn::string<24> score_line("DEPTH ");
+        score_line += bn::to_string<6>(max_depth_cells);
+        score_line += " - BEST ";
+        score_line += bn::to_string<6>(run.best());
+
+        text_generator.set_center_alignment();
+        text_generator.generate(0, -18, "THE LIGHT IS TAKEN", over_sprites);
+        text_generator.generate(0, -4, score_line, over_sprites);
+        text_generator.generate(0, 14, "PRESS START", over_sprites);
+        text_generator.set_left_alignment();
     };
 
     restart();
 
     while(true)
     {
+        if(run.over())
+        {
+            // Fail state: world frozen, game-over card up. START restarts
+            // (after a short grace so a mashed button can't skip the score).
+            run.update();
+
+            if(run.frames_over() > 15 && bn::keypad::start_pressed())
+            {
+                restart();
+            }
+
+            bn::core::update();
+            continue;
+        }
+
         if(bn::keypad::start_pressed())
         {
             restart();
@@ -293,6 +435,24 @@ int main()
             text_generator.generate(-110, -62, label, depth_sprites);
         }
 
+        // The surge descends; rows it passes are consumed (visual only —
+        // the kill line is surge_y itself). Cell rewrites happen only when
+        // the front crosses a row boundary (every 32 frames at 0.25 px/f).
+        surge_y += surge_speed;
+        int front_row = (surge_y / cell_px).floor_integer();
+
+        if(front_row != surge_row)
+        {
+            for(int cy = bn::max(surge_row, 0); cy < front_row; ++cy)
+            {
+                cave.overwrite_row(cy, consumed_tile);
+            }
+
+            cave.overwrite_row(front_row, surge_tile);
+            surge_row = front_row;
+            bg_map.reload_cells_ref();
+        }
+
         // Light decay: the cave darkens as the run drags on; thrusting
         // flares the light back up (sprites are unaffected — the mote
         // itself never dims).
@@ -323,6 +483,15 @@ int main()
                                     bn::fixed(-(map_height_px - bn::display::height()) / 2),
                                     bn::fixed((map_height_px - bn::display::height()) / 2));
         camera.set_position(cam_x, cam_y);
+
+        // Hazards end the run: crystal spikes (forgiving sub-box via the
+        // generic grid sensor) or the surge front catching up.
+        if(crystal_sensor.overlaps(mote_body.pos.x(), mote_body.pos.y(),
+                                   hazard_half, hazard_half) ||
+                mote_body.pos.y() - mote_half < surge_y)
+        {
+            game_over();
+        }
 
         bn::core::update();
     }

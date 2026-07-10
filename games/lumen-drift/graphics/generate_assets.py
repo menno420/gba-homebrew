@@ -9,7 +9,9 @@ byte-for-byte (stdlib only, no Pillow).
     python3 games/lumen-drift/graphics/generate_assets.py
 
 Outputs (next to this script):
-    ld_tiles.bmp    4bpp 8x8 BG tiles: 0 empty · 1 rock · 2 rim-glow rock
+    ld_tiles.bmp    4bpp 8x8 BG tiles: 0 empty · 1 rock · 2 rim-glow rock ·
+                    3 crystal spike (hazard) · 4 surge front (hazard) ·
+                    5 consumed rock (behind the surge)
     ld_palette.bmp  8bpp palette carrier (16 BG colors)
     ld_mote.bmp     4bpp 16x16 sprite: the light mote (radial glow)
 """
@@ -73,11 +75,27 @@ BG_PALETTE = [
     (80, 72, 136),    # 3 rock speckle
     (136, 224, 208),  # 4 rim glow (bright moss)
     (72, 144, 160),   # 5 rim dim
+    (248, 88, 120),   # 6 crystal bright (hazard — warm pink vs the teal rim)
+    (160, 40, 88),    # 7 crystal dim
+    (248, 200, 112),  # 8 surge front hot ember
+    (112, 48, 40),    # 9 consumed rock ember
 ]
 
-# --- BG tiles: 3 tiles of 8x8, laid out horizontally (24x8 BMP) -------------
+# --- Crystal spike (hazard tile 3): hand-drawn 8x8, '.'=air 6=bright 7=dim --
+CRYSTAL = [
+    '...6....',
+    '..676.6.',
+    '..676676',
+    '.6777676',
+    '.6777776',
+    '67777776',
+    '67777776',
+    '66666666',
+]
+
+# --- BG tiles: 6 tiles of 8x8, laid out horizontally (48x8 BMP) -------------
 rand = lcg(0xC0FFEE)
-tiles = [[0] * 24 for _ in range(8)]
+tiles = [[0] * 48 for _ in range(8)]
 for y in range(8):
     for x in range(8):
         # tile 1 (rock): deep base with mid/speckle noise
@@ -87,6 +105,21 @@ for y in range(8):
         border = x in (0, 7) or y in (0, 7)
         inner = x in (1, 6) or y in (1, 6)
         tiles[y][16 + x] = 4 if border else (5 if inner else 2)
+        # tile 3 (crystal spike hazard): hand-drawn, sits on open cave air
+        c = CRYSTAL[y][x]
+        tiles[y][24 + x] = 0 if c == '.' else int(c)
+# Separate deterministic streams for the surge tiles (appending to the tile-1
+# stream would work too, but independent seeds keep each tile self-contained).
+rand_front = lcg(0x5EED01)
+rand_consumed = lcg(0x5EED02)
+for y in range(8):
+    for x in range(8):
+        # tile 4 (surge front): crackling hot ember wall
+        v = rand_front(16)
+        tiles[y][32 + x] = 8 if v < 9 else (6 if v < 12 else 9)
+        # tile 5 (consumed rock): dark ember cinders behind the front
+        v = rand_consumed(16)
+        tiles[y][40 + x] = 9 if v < 6 else 1
 TILE_PIXELS = [v for row in tiles for v in row]
 
 # --- Sprite: 16x16 light mote (radial glow) ---------------------------------
@@ -115,13 +148,13 @@ for y in range(16):
 
 
 def main():
-    write_bmp(os.path.join(OUT_DIR, 'ld_tiles.bmp'), 24, 8, 4,
+    write_bmp(os.path.join(OUT_DIR, 'ld_tiles.bmp'), 48, 8, 4,
               BG_PALETTE, TILE_PIXELS)
     # Palette carrier: 8bpp BMP whose BMP palette holds the 16 BG colors;
     # pixel content is an index ramp (grit reads the palette, not the pixels).
     ramp = [(x + y * 8) % 16 for y in range(8) for x in range(8)]
     write_bmp(os.path.join(OUT_DIR, 'ld_palette.bmp'), 8, 8, 8,
-              BG_PALETTE + [(0, 0, 0)] * 10, ramp)
+              BG_PALETTE + [(0, 0, 0)] * (16 - len(BG_PALETTE)), ramp)
     write_bmp(os.path.join(OUT_DIR, 'ld_mote.bmp'), 16, 16, 4,
               MOTE_PALETTE, mote)
     print('wrote ld_tiles.bmp, ld_palette.bmp, ld_mote.bmp')

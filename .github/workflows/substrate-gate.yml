@@ -60,8 +60,18 @@ jobs:
         # the bare mtime fallback latches onto the mid-session
         # in-progress card and reds every unrelated PR (hit live on
         # PR #3, 2026-07-10 — this comment previously claimed that
-        # path was fail-open; it wasn't). Card-touching PRs, including
-        # every session close, still get the full locked-door gate.
+        # path was fail-open; it wasn't). Second live-fire case
+        # (session 2): a heartbeat PR that ADDS the born-red card
+        # (conventions rule 10 REQUIRES the first commit to carry an
+        # in-progress card) can never satisfy the locked door — PR #2
+        # merged red because of exactly this. So: a card ADDED by the
+        # PR is gated ADVISORY via the absent sentinel (under
+        # --strict the engine reds ANY existing-but-incomplete card,
+        # required or not — born-red is the REQUIRED state at birth,
+        # so a heartbeat must not be judged on completeness); a card
+        # MODIFIED by the PR (every session close-out flips one)
+        # keeps the full locked-door gate, so a close-out that forgot
+        # to flip `complete` still reds.
         run: |
           if [ -n "${{ github.base_ref }}" ]; then
             range="origin/${{ github.base_ref }}...HEAD"
@@ -69,9 +79,13 @@ jobs:
             range="${{ github.event.before }}..${{ github.sha }}"
           fi
           card="$(git diff --name-only --diff-filter=d "$range" -- '.sessions/*.md' ':!.sessions/README.md' 2>/dev/null | tail -1)"
+          added="$(git diff --name-only --diff-filter=A "$range" -- '.sessions/*.md' ':!.sessions/README.md' 2>/dev/null | tail -1)"
           echo "session gate card: ${card:-<none - advisory sentinel>}"
-          if [ -n "$card" ]; then
+          if [ -n "$card" ] && [ "$card" != "$added" ]; then
             python3 bootstrap.py check --strict --require-session-log --session-log "$card"
+          elif [ -n "$card" ]; then
+            echo "card $card is newly ADDED by this PR (born-red heartbeat) — advisory sentinel gate"
+            python3 bootstrap.py check --strict --session-log .sessions/__born-red-card-added__.md
           else
             python3 bootstrap.py check --strict --session-log .sessions/__no-card-in-diff__.md
           fi

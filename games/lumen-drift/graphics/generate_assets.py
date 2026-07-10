@@ -11,7 +11,9 @@ byte-for-byte (stdlib only, no Pillow).
 Outputs (next to this script):
     ld_tiles.bmp    4bpp 8x8 BG tiles: 0 empty · 1 rock · 2 rim-glow rock ·
                     3 crystal spike (hazard) · 4 surge front (hazard) ·
-                    5 consumed rock (behind the surge)
+                    5 consumed rock (behind the surge) · 6 spark shard
+                    (collectible) · 7 gallery rim rock (section 2) ·
+                    8 deep rim rock (section 3)
     ld_palette.bmp  8bpp palette carrier (16 BG colors)
     ld_mote.bmp     4bpp 16x16 sprite: the light mote (radial glow)
 """
@@ -79,6 +81,25 @@ BG_PALETTE = [
     (160, 40, 88),    # 7 crystal dim
     (248, 200, 112),  # 8 surge front hot ember
     (112, 48, 40),    # 9 consumed rock ember
+    (248, 240, 168),  # 10 spark shard bright (warm near-white)
+    (168, 144, 72),   # 11 spark shard dim
+    (240, 168, 88),   # 12 gallery rim glow (amber — section 2 signature)
+    (144, 96, 56),    # 13 gallery rim dim
+    (184, 128, 248),  # 14 deep rim glow (violet — section 3 signature)
+    (104, 64, 152),   # 15 deep rim dim
+]
+
+# --- Spark shard (collectible tile 6): hand-drawn 8x8 diamond sparkle -------
+#     '.'=air A=bright(10) B=dim(11)
+SHARD = [
+    '...B....',
+    '..BAB...',
+    '.BAAAB..',
+    'BAAAAAB.',
+    '.BAAAB..',
+    '..BAB...',
+    '...B....',
+    '........',
 ]
 
 # --- Crystal spike (hazard tile 3): hand-drawn 8x8, '.'=air 6=bright 7=dim --
@@ -93,9 +114,9 @@ CRYSTAL = [
     '66666666',
 ]
 
-# --- BG tiles: 6 tiles of 8x8, laid out horizontally (48x8 BMP) -------------
+# --- BG tiles: 9 tiles of 8x8, laid out horizontally (72x8 BMP) -------------
 rand = lcg(0xC0FFEE)
-tiles = [[0] * 48 for _ in range(8)]
+tiles = [[0] * 72 for _ in range(8)]
 for y in range(8):
     for x in range(8):
         # tile 1 (rock): deep base with mid/speckle noise
@@ -120,6 +141,17 @@ for y in range(8):
         # tile 5 (consumed rock): dark ember cinders behind the front
         v = rand_consumed(16)
         tiles[y][40 + x] = 9 if v < 6 else 1
+for y in range(8):
+    for x in range(8):
+        # tile 6 (spark shard collectible): hand-drawn diamond sparkle
+        c = SHARD[y][x]
+        tiles[y][48 + x] = 0 if c == '.' else (10 if c == 'A' else 11)
+        # tiles 7/8 (section rim rocks): same shape as tile 2, recolored —
+        # the rim color is each cave section's visual signature
+        border = x in (0, 7) or y in (0, 7)
+        inner = x in (1, 6) or y in (1, 6)
+        tiles[y][56 + x] = 12 if border else (13 if inner else 2)  # gallery
+        tiles[y][64 + x] = 14 if border else (15 if inner else 2)  # deep
 TILE_PIXELS = [v for row in tiles for v in row]
 
 # --- Sprite: 16x16 light mote (radial glow) ---------------------------------
@@ -148,7 +180,7 @@ for y in range(16):
 
 
 def main():
-    write_bmp(os.path.join(OUT_DIR, 'ld_tiles.bmp'), 48, 8, 4,
+    write_bmp(os.path.join(OUT_DIR, 'ld_tiles.bmp'), 72, 8, 4,
               BG_PALETTE, TILE_PIXELS)
     # Palette carrier: 8bpp BMP whose BMP palette holds the 16 BG colors;
     # pixel content is an index ramp (grit reads the palette, not the pixels).

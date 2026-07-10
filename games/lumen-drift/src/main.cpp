@@ -1,12 +1,12 @@
 /*
- * LUMEN DRIFT — increment 2 (hazards + fail state).
+ * LUMEN DRIFT — increment 3 (spark shards + cave sections).
  *
  * You are a mote of light falling through a dark cave. Hold A to thrust
  * against gravity, steer laterally with the D-pad, drift through the
  * narrowing tunnel. Depth reached is the score; your light slowly decays
  * (thrust flares it back). START restarts the run.
  *
- * Increment 2 makes depth meaningful against risk:
+ * Increment 2 made depth meaningful against risk:
  *   - CRYSTAL SPIKES (pink) grow from the tunnel walls at fixed depths —
  *     touch one and the run ends.
  *   - THE SURGE (ember wall) descends from the cave mouth and consumes the
@@ -14,15 +14,28 @@
  *   - Game over shows final DEPTH + BEST (best persists across restarts
  *     in RAM); START starts the next run.
  *
+ * Increment 3 completes the concept doc's committed scope:
+ *   - SPARK SHARDS (glinting diamonds) sit at the tunnel edges, next to
+ *     walls and crystals — collecting one rewinds the light decay (the
+ *     cave brightens back up) and counts on the SPARKS HUD, so hugging
+ *     the dangerous edges pays. Shards respawn on restart.
+ *   - THREE CAVE SECTIONS with distinct looks and layouts as you descend:
+ *     THE BLUFFS (teal rims, the increment-1 tunnel), THE GALLERY (amber
+ *     rims, wide halls split by rock pillars) and THE DEEP (violet rims,
+ *     narrow fast-swaying passage, denser crystals). A banner names each
+ *     new section as you reach it.
+ *
  * All code and assets original (graphics/generate_assets.py). The cave,
- * crystal placement and surge speed are fixed — every run is the same,
- * which keeps the headless input-script proof deterministic.
+ * shard/crystal placement and surge speed are fixed — every run is the
+ * same, which keeps the headless input-script proof deterministic.
  *
  * Generic pieces (games/common/): gl_input.h (D-pad vector), gl_kinematics.h
  * (fixed-point body), gl_tile_grid.h (tile collision — reused verbatim as
- * the hazard sensor via a second predicate), gl_run_state.h (run lifecycle +
- * best score). Game-specific here: cave shape, hazard placement/tuning,
- * light-decay palette trick, HUD, game-over screen.
+ * hazard AND pickup sensors via extra predicates; visit_overlaps reports
+ * which shard cells were touched), gl_run_state.h (run lifecycle + best
+ * score), gl_stage.h (threshold-based section progression). Game-specific
+ * here: cave shape, hazard/shard placement/tuning, light-decay palette
+ * trick, HUD, game-over screen.
  */
 
 #include "bn_core.h"
@@ -45,6 +58,7 @@
 #include "gl_input.h"
 #include "gl_kinematics.h"
 #include "gl_run_state.h"
+#include "gl_stage.h"
 #include "gl_tile_grid.h"
 
 #include "common_variable_8x8_sprite_font.h"
@@ -67,6 +81,23 @@ namespace
     constexpr int crystal_tile = 3;
     constexpr int surge_tile = 4;
     constexpr int consumed_tile = 5;
+    constexpr int shard_tile = 6;
+    constexpr int rim2_tile = 7;   // gallery (section 2) rim
+    constexpr int rim3_tile = 8;   // deep (section 3) rim
+
+    // Cave sections: row bands with distinct rims + tunnel layouts. The
+    // banner fires when the depth high-water mark crosses a section's first
+    // row (section_depth = first_row - spawn_row, spawn row 3.5 -> 21/41).
+    constexpr int gallery_first_row = 24;
+    constexpr int deep_first_row = 44;
+    constexpr int section_depths[] = {21, 41};
+    constexpr const char* section_names[] = {"THE BLUFFS", "THE GALLERY",
+                                             "THE DEEP"};
+
+    [[nodiscard]] constexpr int section_of_row(int cy)
+    {
+        return cy < gallery_first_row ? 0 : (cy < deep_first_row ? 1 : 2);
+    }
 
     // Physics tuning (pixels/frame): floaty mote.
     constexpr bn::fixed gravity(0.045);
@@ -78,6 +109,9 @@ namespace
 
     constexpr bn::fixed mote_half(3);  // collision half-extent (visual glow is bigger)
     constexpr bn::fixed hazard_half(2);  // forgiving hazard hitbox (< mote_half)
+    constexpr bn::fixed pickup_half(4);  // generous shard pickup box (> mote_half)
+
+    constexpr int shard_light_refund = 1500;  // decay frames one shard rewinds (25s)
 
     // The surge: a wall of consuming ember light that descends from the cave
     // mouth at a fixed speed — stalling is now a losing strategy. It starts
@@ -125,10 +159,37 @@ namespace
             return _crystal[cy][cx];
         }
 
-        /// Re-bake all cells from the solidity/crystal maps (restores rows
-        /// the surge overwrote). Caller reloads the bg map afterwards.
+        [[nodiscard]] bool shard(int cx, int cy) const
+        {
+            if(cx < 0 || cx >= map_cols || cy < 0 || cy >= map_rows)
+            {
+                return false;  // out-of-map space is rock, not pickup
+            }
+
+            return _shard[cy][cx];
+        }
+
+        /// Take the shard at (cx, cy): clears the pickup and its cell.
+        /// Caller reloads the bg map afterwards.
+        void collect_shard(int cx, int cy)
+        {
+            _shard[cy][cx] = false;
+            _set_cell(cx, cy, empty_tile);
+        }
+
+        /// Re-bake all cells from the solidity/crystal/shard maps (restores
+        /// rows the surge overwrote AND respawns collected shards). Caller
+        /// reloads the bg map afterwards.
         void rebake()
         {
+            for(int cy = 0; cy < map_rows; ++cy)
+            {
+                for(int cx = 0; cx < map_cols; ++cx)
+                {
+                    _shard[cy][cx] = _shard_home[cy][cx];
+                }
+            }
+
             _bake();
         }
 
@@ -151,6 +212,8 @@ namespace
         alignas(int) bn::regular_bg_map_cell _cells[map_cols * map_rows];
         bool _solid[map_rows][map_cols];
         bool _crystal[map_rows][map_cols];
+        bool _shard[map_rows][map_cols];
+        bool _shard_home[map_rows][map_cols];  // placement baseline for rebake()
 
         void _carve(int cx, int cy)
         {
@@ -162,13 +225,14 @@ namespace
 
         void _generate()
         {
-            // 1. Everything is rock; no crystals yet.
+            // 1. Everything is rock; no crystals or shards yet.
             for(int cy = 0; cy < map_rows; ++cy)
             {
                 for(int cx = 0; cx < map_cols; ++cx)
                 {
                     _solid[cy][cx] = true;
                     _crystal[cy][cx] = false;
+                    _shard[cy][cx] = false;
                 }
             }
 
@@ -181,22 +245,48 @@ namespace
                 }
             }
 
-            // 3. The tunnel: swaying spine, narrowing with depth.
+            // 3. The tunnel: swaying spine, one waveform + width per cave
+            //    section (rows above gallery_first_row keep increment 1's
+            //    exact shape, so the committed early-game proof scripts and
+            //    the no-input settle point still hold).
             for(int cy = 5; cy < map_rows - 2; ++cy)
             {
-                int center = 16 + wave_a[(cy / 2) % 16] + wave_b[(cy / 3) % 8];
-                center = bn::clamp(center, 4, map_cols - 5);
+                int section = section_of_row(cy);
+                int center;
+                int half_width;
 
-                int half_width = bn::clamp(5 - (cy / 20), 2, 5);
+                if(section == 0)
+                {
+                    // THE BLUFFS: the original medium tunnel.
+                    center = 16 + wave_a[(cy / 2) % 16] + wave_b[(cy / 3) % 8];
+                    half_width = bn::clamp(5 - (cy / 20), 2, 5);
+                }
+                else if(section == 1)
+                {
+                    // THE GALLERY: wide slow-swaying halls (pillars below).
+                    center = 16 + 2 * wave_b[(cy / 4) % 8];
+                    half_width = 6;
+                }
+                else
+                {
+                    // THE DEEP: narrow, fast sway (the +8 phase offset makes
+                    // the row-44 passage line up under the gallery's last
+                    // row), final squeeze below row 54.
+                    center = 16 + wave_a[(cy + 8) % 16] + wave_b[(cy / 2) % 8];
+                    half_width = cy < 54 ? 3 : 2;
+                }
+
+                center = bn::clamp(center, 4, map_cols - 5);
 
                 for(int cx = center - half_width; cx <= center + half_width; ++cx)
                 {
                     _carve(cx, cy);
                 }
 
-                // 4. Obstacle blobs every 9 rows, alternating sides — the
+                // 4. Section obstacles.
+                //    BLUFFS: blobs every 9 rows, alternating sides — the
                 //    passable gap stays on the other side.
-                if(cy > 10 && cy % 9 == 4)
+                if(section == 0 && cy > 10 && cy % 9 == 4)
                 {
                     bool left = ((cy / 9) % 2) == 0;
 
@@ -211,15 +301,30 @@ namespace
                     }
                 }
 
-                // 4b. Crystal spikes every 7 rows, alternating walls: a
-                //     2-cell cluster growing from the tunnel edge into the
-                //     passage. Deadly but NOT solid — you can fly into a
-                //     spike, and shouldn't. Placed after the blobs so a
-                //     spike never hides inside rock; only open cells turn
-                //     deadly, so the passage keeps >= 2 clear cells.
-                if(cy > 12 && cy % 7 == 2)
+                //    GALLERY: a rock pillar splits the hall — pick a side.
+                if(section == 1 && cy >= 26 && cy % 6 == 1)
                 {
-                    bool left = ((cy / 7) % 2) == 0;
+                    for(int cx = center - 1; cx <= center + 1; ++cx)
+                    {
+                        if(cx > 0 && cx < map_cols - 1)
+                        {
+                            _solid[cy][cx] = true;
+                        }
+                    }
+                }
+
+                // 4b. Crystal spikes, alternating walls: a 2-cell cluster
+                //     growing from the tunnel edge into the passage. Deadly
+                //     but NOT solid — you can fly into a spike, and
+                //     shouldn't. Placed after the blobs/pillars so a spike
+                //     never hides inside rock; only open cells turn deadly,
+                //     so the passage keeps >= 2 clear cells. THE DEEP packs
+                //     them denser (every 5 rows vs every 7).
+                int crystal_step = section == 2 ? 5 : 7;
+
+                if(cy > 12 && cy % crystal_step == 2)
+                {
+                    bool left = ((cy / crystal_step) % 2) == 0;
 
                     for(int i = 0; i < 2; ++i)
                     {
@@ -228,6 +333,27 @@ namespace
                         if(cx > 0 && cx < map_cols - 1 && ! _solid[cy][cx])
                         {
                             _crystal[cy][cx] = true;
+                        }
+                    }
+                }
+
+                // 4c. Spark shards every 6 rows, alternating sides, hugging
+                //     the tunnel edge (scanning inward past rock/crystal
+                //     cells) — collecting rewards flying close to the walls
+                //     and spikes that increment 2 taught you to fear.
+                if(cy > 6 && cy % 6 == 3)
+                {
+                    bool left = ((cy / 6) % 2) == 0;
+
+                    for(int i = 0; i < 3; ++i)
+                    {
+                        int cx = left ? center - half_width + i : center + half_width - i;
+
+                        if(cx > 0 && cx < map_cols - 1 && ! _solid[cy][cx] &&
+                                ! _crystal[cy][cx])
+                        {
+                            _shard[cy][cx] = true;
+                            break;
                         }
                     }
                 }
@@ -241,7 +367,16 @@ namespace
                 _solid[10][cx] = true;
             }
 
-            // 6. Bake cells.
+            // 6. Freeze the shard placement as the rebake() baseline.
+            for(int cy = 0; cy < map_rows; ++cy)
+            {
+                for(int cx = 0; cx < map_cols; ++cx)
+                {
+                    _shard_home[cy][cx] = _shard[cy][cx];
+                }
+            }
+
+            // 7. Bake cells.
             _bake();
         }
 
@@ -254,10 +389,13 @@ namespace
             cell = cell_info.cell();
         }
 
-        // Bake cells: crystal hazard on open cells; solid next to open =
-        // glowing rim; deep rock otherwise; open = empty.
+        // Bake cells: crystal hazard / spark shard on open cells; solid next
+        // to open = glowing rim (each section's rim color is its signature);
+        // deep rock otherwise; open = empty.
         void _bake()
         {
+            constexpr int section_rims[] = {rim_tile, rim2_tile, rim3_tile};
+
             for(int cy = 0; cy < map_rows; ++cy)
             {
                 for(int cx = 0; cx < map_cols; ++cx)
@@ -268,9 +406,14 @@ namespace
                     {
                         tile_index = crystal_tile;
                     }
+                    else if(_shard[cy][cx])
+                    {
+                        tile_index = shard_tile;
+                    }
                     else if(_solid[cy][cx])
                     {
-                        tile_index = _next_to_open(cx, cy) ? rim_tile : rock_tile;
+                        tile_index = _next_to_open(cx, cy) ?
+                                section_rims[section_of_row(cy)] : rock_tile;
                     }
 
                     _set_cell(cx, cy, tile_index);
@@ -299,7 +442,7 @@ namespace
         }
     };
 
-    cave_map cave;  // statics live in EWRAM: 4KB cells + 2KB solidity
+    cave_map cave;  // statics live in EWRAM: 4KB cells + 8KB cell masks
 
     // Map-space px -> Butano world coordinates (world origin = map center).
     [[nodiscard]] bn::fixed_point to_world(const bn::fixed_point& map_pos)
@@ -329,23 +472,32 @@ int main()
 
     bn::sprite_text_generator text_generator(common::variable_8x8_sprite_font);
     bn::vector<bn::sprite_ptr, 8> depth_sprites;
+    bn::vector<bn::sprite_ptr, 8> spark_sprites;
     bn::vector<bn::sprite_ptr, 16> hint_sprites;
-    bn::vector<bn::sprite_ptr, 16> over_sprites;
+    bn::vector<bn::sprite_ptr, 24> over_sprites;
+    bn::vector<bn::sprite_ptr, 8> section_sprites;
     text_generator.generate(-110, -72, "LUMEN DRIFT - A THRUST", hint_sprites);
 
-    // The SAME generic grid template drives wall collision and hazard
-    // sensing — only the predicate differs.
+    // The SAME generic grid template drives wall collision, hazard sensing
+    // AND shard pickup — only the predicate differs.
     gl::tile_grid grid(cell_px, [](int cx, int cy) {
         return cave.solid(cx, cy);
     });
     gl::tile_grid crystal_sensor(cell_px, [](int cx, int cy) {
         return cave.crystal(cx, cy);
     });
+    gl::tile_grid shard_sensor(cell_px, [](int cx, int cy) {
+        return cave.shard(cx, cy);
+    });
 
     gl::body mote_body;
     gl::run_state run;
+    gl::stage_track section_track(section_depths, 2);
     int depth = -1;      // force first HUD draw
     int max_depth_cells = 0;
+    int sparks = 0;
+    int sparks_drawn = -1;  // force first HUD draw
+    int banner_frames = 0;  // section banner time left
     int flare = 0;       // frames of thrust-flare left
     int run_frames = 0;
     bn::fixed surge_y = surge_start;
@@ -356,13 +508,18 @@ int main()
         mote_body.vel = bn::fixed_point(0, 0);
         max_depth_cells = 0;
         depth = -1;
+        sparks = 0;
+        sparks_drawn = -1;
+        banner_frames = 0;
         flare = 0;
         run_frames = 0;
         surge_y = surge_start;
         surge_row = -1000;
-        cave.rebake();  // restore rows the surge consumed
+        cave.rebake();  // restore rows the surge consumed + respawn shards
         bg_map.reload_cells_ref();
         over_sprites.clear();
+        section_sprites.clear();
+        section_track.reset();
         mote.set_visible(true);
         run.restart();
     };
@@ -370,6 +527,8 @@ int main()
     auto game_over = [&] {
         run.fail(max_depth_cells);
         mote.set_visible(false);
+        section_sprites.clear();
+        banner_frames = 0;
         bn::bg_palettes::set_fade_intensity(bn::fixed(0.7));  // light is taken
 
         bn::string<24> score_line("DEPTH ");
@@ -377,10 +536,14 @@ int main()
         score_line += " - BEST ";
         score_line += bn::to_string<6>(run.best());
 
+        bn::string<24> spark_line("SPARKS ");
+        spark_line += bn::to_string<6>(sparks);
+
         text_generator.set_center_alignment();
-        text_generator.generate(0, -18, "THE LIGHT IS TAKEN", over_sprites);
-        text_generator.generate(0, -4, score_line, over_sprites);
-        text_generator.generate(0, 14, "PRESS START", over_sprites);
+        text_generator.generate(0, -24, "THE LIGHT IS TAKEN", over_sprites);
+        text_generator.generate(0, -10, score_line, over_sprites);
+        text_generator.generate(0, 4, spark_line, over_sprites);
+        text_generator.generate(0, 20, "PRESS START", over_sprites);
         text_generator.set_left_alignment();
     };
 
@@ -433,6 +596,58 @@ int main()
             bn::string<12> label("DEPTH ");
             label += bn::to_string<6>(depth);
             text_generator.generate(-110, -62, label, depth_sprites);
+        }
+
+        // Spark shards: the pickup box sweeps the generic grid sensor;
+        // every touched shard cell is collected — score up, light decay
+        // rewound (the cave visibly brightens back).
+        int collected = 0;
+
+        shard_sensor.visit_overlaps(mote_body.pos.x(), mote_body.pos.y(),
+                                    pickup_half, pickup_half,
+                                    [&](int cx, int cy) {
+                                        cave.collect_shard(cx, cy);
+                                        ++collected;
+                                    });
+
+        if(collected > 0)
+        {
+            sparks += collected;
+            run_frames = bn::max(run_frames - collected * shard_light_refund, 0);
+            flare = 30;
+            bg_map.reload_cells_ref();
+        }
+
+        if(sparks != sparks_drawn)
+        {
+            sparks_drawn = sparks;
+            spark_sprites.clear();
+            bn::string<16> label("SPARKS ");
+            label += bn::to_string<6>(sparks);
+            text_generator.generate(-110, -52, label, spark_sprites);
+        }
+
+        // Cave sections: crossing a section's first row raises a banner
+        // (depth is a high-water mark, so a section never announces twice
+        // per run).
+        if(section_track.update(max_depth_cells) && section_track.stage() > 0)
+        {
+            section_sprites.clear();
+            text_generator.set_center_alignment();
+            text_generator.generate(0, -40, section_names[section_track.stage()],
+                                    section_sprites);
+            text_generator.set_left_alignment();
+            banner_frames = 150;
+        }
+
+        if(banner_frames > 0)
+        {
+            --banner_frames;
+
+            if(banner_frames == 0)
+            {
+                section_sprites.clear();
+            }
         }
 
         // The surge descends; rows it passes are consumed (visual only —

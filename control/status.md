@@ -1,19 +1,11 @@
 # gba-homebrew (game-lab Track B) · status
 
-updated: 2026-07-10T02:05:42Z
-phase: session 1 — walking skeleton (in progress; phase 1 = heartbeat + kit adoption landed, phase 2 = toolchain + Butano example + headless screenshot + 3 game concepts, same session)
+updated: 2026-07-10T02:42:13Z
+phase: session 1 complete — walking skeleton merged on green (PR #3, merge 3e06604); lane idle pending owner concept pick / next order
 health: green
-kit: v1.6.0 · check: green · engaged: no (gate wired in .github/workflows/substrate-gate.yml; first live CI run pending this PR)
-last-shipped: none yet — this heartbeat/adoption PR is the first lane-authored one
+kit: v1.6.0 · check: green (full --strict exit 0, session card complete) · engaged: yes (substrate-gate ran live on PR #3 — first red caught a real gate bug, fixed same PR; "ROM builds" live too, 27s cold)
+last-shipped: PR #3 — Track B walking skeleton: pinned devkitARM r68 + Butano 21.7.1 toolchain (tools/setup-toolchain.sh), original skeleton ROM (games/skeleton, ~12.5s build), headless mGBA boot proof (docs/proof/session-1-skeleton-boot.png), "ROM builds" CI check, 3 original game concepts (docs/concepts/session-1-concepts.md)
 blockers: none
-orders: acked=001 done= claimed-by: 001 game-lab 2026-07-10T02:05Z
-⚑ needs-owner: none
-notes: Lane-written per control/README.md; inbox read at HEAD (manager seed PR #1)
-before this claim landed. Drift resolved, no ask: an earlier session-1 plan was
-drafted against a pre-seed snapshot where control/inbox.md did not exist in this
-repo; seed PR #1 landed it before this session's first commit, so the lane is
-executing the real Track B ORDER 001 text, not an inferred copy. Next: phase 2 —
-mirror-route devkitARM/Butano toolchain, build + run one Butano example headlessly
-(screenshot committed), "ROM builds" CI check, then the 3 original game concepts
-with scope estimates; flip the session card complete and re-read the inbox at HEAD
-before the closing status write.
+orders: acked=001 done=001 (this repo's half: skeleton merged on green + 3 concepts with estimates committed; joint done-when closes when Track A's half lands in pokemon-mod-lab) claimed-by: 001 game-lab 2026-07-10T02:05Z
+⚑ needs-owner: concept pick — WHAT: pick 1 of the 3 committed Track B concepts (Lumen Drift / Clockwork Courier / Shoal), jointly with Track A's 3 per ORDER 001. WHERE: docs/concepts/session-1-concepts.md. HOW: any signal (inbox order or PR comment). WHY-IT-MATTERS: the pick is the gate to first-playable work — without it the lane can only groom. VERIFIED-NEEDED: yes — ORDER 001's done-when explicitly reserves the pick to the owner ("committed for owner pick"); the lane cannot self-select. UNBLOCKS: next session starts the chosen game's first-playable build.
+notes: Lane-written per control/README.md; inbox re-read at HEAD (addc855 — unchanged since seed, no new orders) immediately before this write. Phase-1 handoff flagged an inbox typo ("Track A's half lives in menno420/gba-homebrew") — RESOLVED as moot: the file at HEAD already reads pokemon-mod-lab and was never edited; the flag was a phase-1 misread, no manager action needed. Supply-chain caveat stands: devkitARM route is the unsigned leseratte10 community mirror (recorded in tools/setup-toolchain.sh, docs/capabilities.md, docs/findings/); re-verify before anything owner-distributed — session idea filed to checksum-pin the packages. Kit gotcha fixed for future lanes: substrate-gate's no-card mtime fallback was NOT fail-open (redded PR #3); no-card PRs now use an explicit advisory sentinel — consider upstreaming to substrate-kit's staged CI template. Post-merge review queued: docs/review-queue.md row for PR #3.

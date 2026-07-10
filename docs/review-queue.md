@@ -9,4 +9,4 @@
 
 | PR | What to re-check | Why |
 |---|---|---|
-| #3 | `tools/setup-toolchain.sh` pins + supply-chain caveat; `games/skeleton` originality; "ROM builds" workflow correctness | Walking skeleton PR: unsigned community mirror (leseratte10) enters the build path; the CI check becomes the repo merge gate |
+| #3 | `tools/setup-toolchain.sh` pins + supply-chain caveat; `games/skeleton` originality; "ROM builds" workflow correctness | Walking skeleton PR: unsigned community mirror (leseratte10) enters the build path; the CI checks become the repo merge gate (incl. the substrate-gate no-card sentinel fix) |

@@ -12,6 +12,9 @@ Usage:
     python3 tools/headless-screenshot.py ROM.gba OUT.png [--frames N]
         [--keys START-END:NAME ...] [--keys-pattern START-END:PERIOD:DUTY:NAME ...]
         [--shot FRAME:PATH ...] [--require-distinct] [--savefile PATH]
+        [--elf ELF] [--watch NAME:ADDR:NWORDS ...]
+        [--watch-nonzero NAME:ADDR:NBYTES ...] [--watch-log PATH]
+        [--assert-watch FRAME:NAME:IDX:OP:VALUE ...]
 
 Input scripting (generic — works for any ROM):
     --keys 240-420:A        hold the A button during frames [240, 420)
@@ -52,6 +55,29 @@ Input scripting (generic — works for any ROM):
                             segfaults this binding pin ~64 frames after the
                             game's first SRAM write, when mGBA's deferred
                             savedata flush fires. See PLATFORM-LIMITS.md.)
+
+Memory watches (generic — the audio-evidence path; docs/capabilities.md):
+    --elf game.elf          resolve watch addresses from the ELF's symbol
+                            table (minimal stdlib ELF32 parser). A watch ADDR
+                            may then be a symbol name (exact match, or a
+                            unique substring for mangled/local symbols).
+    --watch hook:gl_audio_hook:4
+                            read 4 little-endian u32 words at the address
+                            every frame (over the emulated bus)
+    --watch-nonzero mix:maxmod_mixing_buffer:0x420
+                            read the region as u32 words every frame and
+                            record ONE value: how many words are nonzero
+                            (audio evidence: a mixing buffer is all-zero
+                            exactly when nothing is voiced)
+    --watch-log audio.csv   write every watch, every frame, as CSV
+                            (frame,name0,name0[1],...,name1,...) — a
+                            committable, diffable evidence artifact
+    --assert-watch 30:hook:0:eq:1
+                            at frame 30, watch `hook` word [0] must == 1.
+                            OPs: eq ne lt le gt ge. Exit non-zero on failure.
+                            Screenshots cannot hear — asserting sound-trigger
+                            counters AND mixer-buffer activity at must-play
+                            vs must-be-silent frames is the audio proof.
 """
 
 import argparse
@@ -172,6 +198,79 @@ def parse_shot(spec):
     """'FRAME:PATH' -> (frame, path)."""
     frame, _, path = spec.partition(':')
     return int(frame), path
+
+
+def elf_symbols(path):
+    """Minimal ELF32 symbol table reader -> {name: (address, size)}."""
+    with open(path, 'rb') as handle:
+        data = handle.read()
+    if data[:4] != b'\x7fELF' or data[4] != 1:
+        sys.exit(f'FAIL: {path} is not a 32-bit ELF')
+    endian = '<' if data[5] == 1 else '>'
+    shoff, = struct.unpack_from(endian + 'I', data, 32)
+    shentsize, shnum = struct.unpack_from(endian + 'HH', data, 46)
+    sections = []
+    for index in range(shnum):
+        fields = struct.unpack_from(endian + '10I', data, shoff + index * shentsize)
+        # (name, type, flags, addr, offset, size, link, info, align, entsize)
+        sections.append(fields)
+    symbols = {}
+    for section in sections:
+        if section[1] != 2:  # SHT_SYMTAB
+            continue
+        strtab_offset = sections[section[6]][4]
+        for index in range(section[5] // section[9]):
+            name_offset, value, size, _info, _other, shndx = struct.unpack_from(
+                endian + 'IIIBBH', data, section[4] + index * section[9])
+            if name_offset and shndx:  # skip unnamed + SHN_UNDEF
+                end = data.index(b'\0', strtab_offset + name_offset)
+                name = data[strtab_offset + name_offset:end].decode('ascii',
+                                                                    'replace')
+                symbols[name] = (value, size)
+    return symbols
+
+
+def resolve_address(token, symbols):
+    """'0x...'/decimal literal, or an ELF symbol name (unique substring)."""
+    try:
+        return int(token, 0)
+    except ValueError:
+        pass
+    if symbols is None:
+        sys.exit(f'FAIL: watch address {token!r} is a symbol — pass --elf')
+    if token in symbols:
+        return symbols[token][0]
+    matches = [name for name in symbols if token in name]
+    if len(matches) != 1:
+        sys.exit(f'FAIL: symbol {token!r} matches {len(matches)} ELF symbols'
+                 + (f' ({", ".join(sorted(matches)[:5])} ...)' if matches else ''))
+    return symbols[matches[0]][0]
+
+
+def parse_watch(spec, nonzero):
+    """'NAME:ADDR:COUNT' -> (name, addr_token, count, nonzero). COUNT is
+    u32 words for --watch, bytes for --watch-nonzero (rounded up to words)."""
+    parts = spec.split(':')
+    if len(parts) != 3:
+        sys.exit(f'FAIL: bad watch {spec!r} (want NAME:ADDR:COUNT)')
+    name, addr_token, count = parts
+    if int(count, 0) < 1:
+        sys.exit(f'FAIL: bad watch {spec!r} (COUNT must be >= 1)')
+    return name, addr_token, int(count, 0), nonzero
+
+
+WATCH_OPS = {'eq': lambda a, b: a == b, 'ne': lambda a, b: a != b,
+             'lt': lambda a, b: a < b, 'le': lambda a, b: a <= b,
+             'gt': lambda a, b: a > b, 'ge': lambda a, b: a >= b}
+
+
+def parse_assert_watch(spec):
+    """'FRAME:NAME:IDX:OP:VALUE' -> (frame, name, idx, op, value)."""
+    parts = spec.split(':')
+    if len(parts) != 5 or parts[3] not in WATCH_OPS:
+        sys.exit(f'FAIL: bad --assert-watch {spec!r} '
+                 f'(want FRAME:NAME:IDX:OP:VALUE, OP in {sorted(WATCH_OPS)})')
+    return int(parts[0]), parts[1], int(parts[2]), parts[3], int(parts[4], 0)
 
 
 def parse_assert_text(spec):
@@ -310,6 +409,25 @@ def main():
                         help='assert STRING is rendered on screen at FRAME '
                              '(Butano common variable_8x8 font, exact pixels); '
                              'repeatable')
+    parser.add_argument('--elf', metavar='PATH',
+                        help='ELF matching the ROM: resolve --watch symbol '
+                             'addresses from its symbol table')
+    parser.add_argument('--watch', action='append', default=[],
+                        metavar='NAME:ADDR:NWORDS',
+                        help='read NWORDS u32 words at ADDR (hex literal or '
+                             'ELF symbol) every frame; repeatable')
+    parser.add_argument('--watch-nonzero', action='append', default=[],
+                        metavar='NAME:ADDR:NBYTES',
+                        help='count nonzero u32 words in the NBYTES region '
+                             'at ADDR every frame (one value per frame — '
+                             'e.g. audio mixing-buffer activity); repeatable')
+    parser.add_argument('--watch-log', metavar='PATH',
+                        help='write all watches to a CSV evidence log '
+                             '(frame, then each watch value per column)')
+    parser.add_argument('--assert-watch', action='append', default=[],
+                        metavar='FRAME:NAME:IDX:OP:VALUE',
+                        help='assert watch NAME word [IDX] against VALUE at '
+                             'FRAME (OP: eq/ne/lt/le/gt/ge); repeatable')
     parser.add_argument('--savefile', metavar='PATH',
                         help='attach a persistent battery-save file (created '
                              'as 32KB of 0xFF if missing); in-game SRAM '
@@ -326,6 +444,26 @@ def main():
     if any(frame >= args.frames for frame, _ in asserts):
         sys.exit('FAIL: --assert-text frame beyond --frames')
     font = load_font() if asserts else None
+
+    watches = [parse_watch(spec, False) for spec in args.watch]
+    watches += [parse_watch(spec, True) for spec in args.watch_nonzero]
+    watch_names = [name for name, _, _, _ in watches]
+    if len(set(watch_names)) != len(watch_names):
+        sys.exit('FAIL: duplicate watch names')
+    watch_asserts = [parse_assert_watch(spec) for spec in args.assert_watch]
+    for frame_number, name, _, _, _ in watch_asserts:
+        if name not in watch_names:
+            sys.exit(f'FAIL: --assert-watch names unknown watch {name!r}')
+        if frame_number >= args.frames:
+            sys.exit('FAIL: --assert-watch frame beyond --frames')
+    if args.watch_log and not watches:
+        sys.exit('FAIL: --watch-log without any --watch/--watch-nonzero')
+    symbols = elf_symbols(args.elf) if args.elf else None
+    watches = [(name, resolve_address(addr_token, symbols), count, nonzero)
+               for name, addr_token, count, nonzero in watches]
+    for name, address, count, nonzero in watches:
+        kind = 'nonzero-u32-count of' if nonzero else 'u32 words'
+        print(f'watch {name}: {kind} {count} at 0x{address:08x}')
 
     save_data = None
     if args.savefile:
@@ -354,6 +492,20 @@ def main():
         for address, byte in enumerate(save_data):
             sram[address] = byte
 
+    watch_log = None
+    if args.watch_log:
+        watch_log = open(args.watch_log, 'w', encoding='ascii')
+        columns = ['frame']
+        for name, _, count, nonzero in watches:
+            columns += [name] if nonzero or count == 1 else \
+                       [f'{name}[{index}]' for index in range(count)]
+        watch_log.write(','.join(columns) + '\n')
+
+    def read_watch(address, count, nonzero):
+        words = core.memory.u32[address:address + count * 4:4] if not nonzero \
+            else core.memory.u32[address:address + ((count + 3) & ~3):4]
+        return [sum(1 for word in words if word)] if nonzero else words
+
     saved = []  # (path, frame_number) in capture order
     shot_index = 0
     assert_index = 0
@@ -364,6 +516,25 @@ def main():
                   and (frame_number - start) % period < duty]
         core.set_keys(*active)
         core.run_frame()
+        if watches:
+            values = {name: read_watch(address, count, nonzero)
+                      for name, address, count, nonzero in watches}
+            if watch_log:
+                row = [str(frame_number)]
+                for name, _, _, _ in watches:
+                    row += [str(value) for value in values[name]]
+                watch_log.write(','.join(row) + '\n')
+            for target, name, index, op, expected in watch_asserts:
+                if target != frame_number:
+                    continue
+                actual = values[name][index]
+                if WATCH_OPS[op](actual, expected):
+                    print(f'assert-watch: {name}[{index}] = {actual} '
+                          f'{op} {expected} OK (frame {frame_number})')
+                else:
+                    print(f'ASSERT FAIL: {name}[{index}] = {actual}, want '
+                          f'{op} {expected} (frame {frame_number})')
+                    assert_failures += 1
         if shot_index < len(shots) and shots[shot_index][0] == frame_number:
             path = shots[shot_index][1]
             with open(path, 'wb') as handle:
@@ -389,6 +560,10 @@ def main():
     with open(args.out_png, 'wb') as handle:
         frame.save_png(handle)
     saved.append((args.out_png, args.frames - 1))
+    if watch_log:
+        watch_log.close()
+        print(f'watch-log: {args.frames} frames x {len(watches)} watch(es) '
+              f'written to {args.watch_log}')
     if save_data is not None:
         # Snapshot cartridge SRAM back to the battery file (the game's
         # bn::sram writes survive this process).
@@ -400,7 +575,8 @@ def main():
           f'saved {len(saved)} {width}x{height} PNG(s)')
 
     if assert_failures:
-        sys.exit(f'FAIL: {assert_failures} --assert-text assertion(s) failed')
+        sys.exit(f'FAIL: {assert_failures} --assert-text/--assert-watch '
+                 'assertion(s) failed')
 
     previous = None
     for path, frame_number in saved:

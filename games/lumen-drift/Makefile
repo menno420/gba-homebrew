@@ -5,6 +5,7 @@
 #---------------------------------------------------------------------------------------------------------------------
 ROMTITLE    	:=  LUMEN DRIFT
 ROMCODE     	:=  GLLD
+AUDIO       	:=  audio
 
 # Butano re-invokes make from the build dir, so resolve the shared fragment
 # to an absolute path once and export it (same trick butano.mak plays with

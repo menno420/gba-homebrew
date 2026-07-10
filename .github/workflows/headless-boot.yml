@@ -42,3 +42,57 @@ jobs:
         with:
           name: boot-proof
           path: boot-proof.png
+
+  # Semantic regression for Lumen Drift (docs/ideas/hud-depth-ci-assert):
+  # replays the committed session-4 proof script and asserts the HUD/card
+  # text via OCR-free glyph matching — "this input script still collects the
+  # shards, crosses both cave sections and dies at DEPTH 45". Deliberately
+  # in this workflow_dispatch tier, NOT per-PR: the per-PR gate stays the
+  # <60s "ROM builds" budget.
+  lumen-drift-proof:
+    name: lumen drift scripted-run assertions
+    runs-on: ubuntu-latest
+    env:
+      DEVKITPRO: /home/runner/devkitpro
+    steps:
+      - uses: actions/checkout@v4
+      - name: cache toolchain (devkitARM r68 + Butano pin)
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/devkitpro
+            third_party/butano
+          key: gba-toolchain-${{ runner.os }}-${{ hashFiles('tools/setup-toolchain.sh') }}
+      - name: setup toolchain
+        run: tools/setup-toolchain.sh
+      - name: build lumen-drift ROM
+        run: |
+          export DEVKITARM="$DEVKITPRO/devkitARM"
+          export PATH="$DEVKITARM/bin:$DEVKITPRO/tools/bin:$PATH"
+          make -C games/lumen-drift -j"$(nproc)"
+      - name: install mGBA (system libmgba 0.10.x + pinned python binding)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mgba-sdl
+          pip install mgba==0.10.2
+      - name: replay committed proof script + assert HUD/card text
+        run: |
+          python3 tools/headless-screenshot.py \
+            games/lumen-drift/lumen-drift.gba proof-final.png --frames 1780 \
+            --keys 0-220:RIGHT --keys-pattern 20-180:6:2:A \
+            --keys 260-560:LEFT --keys-pattern 390-470:4:1:A \
+            --keys 620-690:RIGHT --keys 620-647:A --keys 690-718:LEFT \
+            --keys 810-855:RIGHT \
+            --shot 240:proof-shard.png \
+            --shot 560:proof-gallery.png \
+            --shot 960:proof-deep.png \
+            --require-distinct \
+            --assert-text '240:SPARKS 1' \
+            --assert-text '560:THE GALLERY' \
+            --assert-text '960:THE DEEP' \
+            --assert-text '1779:DEPTH 45 - BEST 45' \
+            --assert-text '1779:SPARKS 2'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lumen-drift-proof
+          path: proof-*.png

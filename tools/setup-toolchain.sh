@@ -13,10 +13,15 @@
 #     mirror carries no crtls package).
 #   * Butano 21.7.1 (zlib license) — pinned clone into third_party/butano.
 #
-# ⚠ SUPPLY-CHAIN CAVEAT: the leseratte10 mirror is UNSIGNED community
-#   infrastructure (packages are not devkitPro-signed). Acceptable for this
-#   sandboxed lab lane; re-verify against official artifacts before anything
-#   built through it is ever distributed by the owner.
+# ⚠ SUPPLY-CHAIN POSTURE: the leseratte10 mirror is UNSIGNED community
+#   infrastructure (packages are not devkitPro-signed). Every mirror package
+#   is therefore PINNED BY SHA-256 below (hashes recorded 2026-07-10 from the
+#   artifacts verified working in sessions 1–4) and the install FAILS on any
+#   mismatch — trust-on-first-use, so a mirror compromise or silent re-upload
+#   cannot reach the build path unnoticed. Still re-verify against official
+#   artifacts before anything built through it is ever distributed by the
+#   owner. (CI cache keys hash this script, so changing a pin correctly
+#   invalidates the cached toolchain.)
 #
 # Works both in the fleet container (agent proxy; curl honours the
 # preconfigured HTTPS_PROXY/CURL_CA_BUNDLE env) and on GitHub-hosted runners
@@ -46,8 +51,22 @@ PKG_URLS=(
     "$MIRROR/other-stuff/grit/grit-0.9.2-1-linux_x86_64.pkg.tar.xz"
     "$MIRROR/other-stuff/mmutil/mmutil-1.9.2-1-linux_x86_64.pkg.tar.xz"
 )
+# SHA-256 pins for the unsigned mirror packages (basename -> hash), recorded
+# 2026-07-10 from a known-good install (sessions 1-4 built & proven on them).
+declare -A PKG_SHA256=(
+    ["devkitARM-r68-1-any.pkg.tar.zst"]="7c5dd0864f7dab505fbe9cf7699100a90f15bb8563b858740064f9842db48370"
+    ["devkitarm-binutils-2.46.0-1-linux_x86_64.pkg.tar.zst"]="fbca692c5b30008bef6b54c6b6cb48b6a03a656d7cc07beafa4dc7fdaa5838cf"
+    ["devkitarm-gcc-16.1.0-1-linux_x86_64.pkg.tar.zst"]="289be1a7a42321e02d8dad037acfdfbbe73cfe283b685b4d3860a2e946ea92d0"
+    ["devkitarm-newlib-4.6.0.20260123-5-any.pkg.tar.zst"]="d314c644c143bd5b104bd82cdc27602f6449cf907cb9c37ccfb8c0707182f89d"
+    ["devkitarm-rules-1.6.0-4-any.pkg.tar.zst"]="35023b2b5f07a2dcfb600063854c712206341fb5df3ffbaf8ff825d3cbc15fcc"
+    ["general-tools-1.4.4-1-linux_x86_64.pkg.tar.zst"]="b6b59bd3d22d4f83a7f0668f749df7cf97b1f05083031e629d43ca4f4377c7b5"
+    ["gba-tools-1.2.0-1-linux_x86_64.pkg.tar.xz"]="9f3bb4feaa5c4d04b294531df9404ed4acea4f73461a45001e5dff598e800de8"
+    ["grit-0.9.2-1-linux_x86_64.pkg.tar.xz"]="abb767d1eec9fb67d5182fd7ef892a31d8578f3bcf1c639a803350a6f729bc15"
+    ["mmutil-1.9.2-1-linux_x86_64.pkg.tar.xz"]="609fa0cfc24a6cb5b234eebc36010b5a36386881d2c31ae8cc4970b14279255c"
+)
 CRTLS_REPO="https://github.com/devkitPro/devkitarm-crtls.git"
 CRTLS_TAG="v1.2.7"
+CRTLS_SHA="1c0c10257c44bbb5a433453bb6bba91582825492"
 BUTANO_REPO="https://github.com/GValiente/butano.git"
 BUTANO_TAG="21.7.1"
 BUTANO_SHA="112a1827c9c6d9e6041a7e93e66f04c4561a6415"
@@ -86,9 +105,25 @@ else
     trap 'rm -rf "$WORK"' EXIT
     mkdir -p "$WORK/stage"
     for url in "${PKG_URLS[@]}"; do
-        pkg="$WORK/$(basename "$url")"
-        log "fetching $(basename "$url")"
+        name="$(basename "$url")"
+        pkg="$WORK/$name"
+        log "fetching $name"
         fetch "$url" "$pkg"
+        want="${PKG_SHA256[$name]:-}"
+        if [ -z "$want" ]; then
+            echo "FATAL: no SHA-256 pin recorded for $name — refusing unsigned artifact" >&2
+            exit 1
+        fi
+        got="$(sha256sum "$pkg" | cut -d' ' -f1)"
+        if [ "$got" != "$want" ]; then
+            echo "FATAL: SHA-256 mismatch for $name" >&2
+            echo "  want $want" >&2
+            echo "  got  $got" >&2
+            echo "  The unsigned mirror served a different artifact than the pinned" >&2
+            echo "  known-good one — do NOT bypass; investigate before rebuilding." >&2
+            exit 1
+        fi
+        log "sha256 OK: $name"
         tar -C "$WORK/stage" -xf "$pkg" \
             --exclude=.PKGINFO --exclude=.BUILDINFO --exclude=.MTREE \
             --warning=no-unknown-keyword
@@ -99,6 +134,11 @@ else
 
     log "building devkitarm-crtls $CRTLS_TAG from source (no mirror package)"
     git clone --quiet --depth 1 --branch "$CRTLS_TAG" "$CRTLS_REPO" "$WORK/crtls"
+    crtls_sha="$(git -C "$WORK/crtls" rev-parse HEAD)"
+    if [ "$crtls_sha" != "$CRTLS_SHA" ]; then
+        echo "FATAL: devkitarm-crtls SHA mismatch: want $CRTLS_SHA got $crtls_sha" >&2
+        exit 1
+    fi
     make -C "$WORK/crtls" --no-print-directory -s \
         DEVKITPRO="$DKP" DEVKITARM="$DKP/devkitARM" \
         PATH="$DKP/devkitARM/bin:$PATH" >/dev/null

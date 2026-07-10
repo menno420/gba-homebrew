@@ -30,6 +30,18 @@ arcade loop.
   input makes scripted regression tests trivial (a recorded input sequence
   must reach a known depth — deterministic on mGBA). Deepest unknown is
   making the light-decay feel good, which is tuning, not tech.
+- **Measured (post-increment 2, 2026-07-10 — estimate CONFIRMED):** built
+  under the standing default while the pick is pending. Increment 1 (PR #6,
+  ~1 session) landed physics + tilemap collision + light-decay + depth HUD;
+  increment 2 (PR #9, ~1 session) landed hazards (crystal spikes + the
+  descending surge, replacing the planned "gravity wells" with a stronger
+  stall-punisher) + death/restart + best-depth — i.e. **first-playable in
+  the estimated 2 sessions**, and every scripted-input regression bet held
+  (all proofs deterministic on mGBA). Not yet built from the original S2
+  list: spark shards and extra cave sections — a natural increment 3 with
+  SRAM best-score persistence. The generic half (input/kinematics/
+  collision/run-state headers, harness input scripting) is committed in
+  `games/common/` and transfers to either other concept.
 
 ## 2. Clockwork Courier — rewind-ghost puzzle platformer
 

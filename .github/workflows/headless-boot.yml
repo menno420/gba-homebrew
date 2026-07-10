@@ -85,39 +85,71 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq mgba-sdl
           pip install mgba==0.10.2
-      # Session-5 title screen shifted the whole timeline by a constant +4:
-      # the game boots to a title card and physics only starts on START
-      # (pressed at frame 20 — Butano's first keypad poll lands ~frame 17-20
-      # and debounces buttons already held at boot, so earlier presses are
-      # ignored). Every span/assert below = the session-4 canonical script
-      # +4, plus the START press. Offset verified by bisection: +4 passes
-      # all five original assertions, +5/+6 drop the shard grabs.
-      - name: replay committed proof script + assert title/HUD/card text
+      # Session-5 title screen shifted the whole timeline by a constant +4;
+      # session-6 audio+light-window init grew the run-start map-rebake stall
+      # by one more frame, so the timeline is the session-4 canonical script
+      # at a constant +5 total (START press unchanged at frame 20). Offset
+      # re-verified by bisection against the script's own assertions: +5
+      # passes everything, +4 and +6 drop the shard grabs. Loop-tick watch
+      # (gl_audio_hook[7]) confirms zero further overruns: the lag is
+      # constant from frame 25 to the end of the run.
+      #
+      # Audio evidence (session 6 — screenshots cannot hear): the same replay
+      # also watches the in-ROM gl_audio_hook trigger counters and the
+      # maxmod mixing buffer (nonzero-word count = a voice is actually being
+      # mixed), asserting must-play vs must-be-silent frames. Method:
+      # docs/capabilities.md; committed evidence log:
+      # docs/proof/session-6-audio-watch-log.csv.
+      - name: replay committed proof script + assert text and audio evidence
         run: |
           python3 tools/headless-screenshot.py \
-            games/lumen-drift/lumen-drift.gba proof-final.png --frames 1784 \
+            games/lumen-drift/lumen-drift.gba proof-final.png --frames 1785 \
             --keys 20-24:START \
-            --keys 4-224:RIGHT --keys-pattern 24-184:6:2:A \
-            --keys 264-564:LEFT --keys-pattern 394-474:4:1:A \
-            --keys 624-694:RIGHT --keys 624-651:A --keys 694-722:LEFT \
-            --keys 814-859:RIGHT \
+            --keys 5-225:RIGHT --keys-pattern 25-185:6:2:A \
+            --keys 265-565:LEFT --keys-pattern 395-475:4:1:A \
+            --keys 625-695:RIGHT --keys 625-652:A --keys 695-723:LEFT \
+            --keys 815-860:RIGHT \
             --shot 18:proof-title.png \
-            --shot 244:proof-shard.png \
-            --shot 564:proof-gallery.png \
-            --shot 964:proof-deep.png \
+            --shot 245:proof-shard.png \
+            --shot 501:proof-light-high.png \
+            --shot 965:proof-deep.png \
+            --shot 1600:proof-light-low.png \
             --require-distinct \
             --assert-text '18:LUMEN DRIFT' \
             --assert-text '18:PRESS START' \
-            --assert-text '244:SPARKS 1' \
-            --assert-text '564:THE GALLERY' \
-            --assert-text '964:THE DEEP' \
-            --assert-text '1783:DEPTH 45 - BEST 45' \
-            --assert-text '1783:SPARKS 2'
+            --assert-text '245:SPARKS 1' \
+            --assert-text '565:THE GALLERY' \
+            --assert-text '965:THE DEEP' \
+            --assert-text '1784:DEPTH 45 - BEST 45' \
+            --assert-text '1784:SPARKS 2' \
+            --elf games/lumen-drift/lumen-drift.elf \
+            --watch hook:gl_audio_hook:4 \
+            --watch snd:0x04000084:1 \
+            --watch-nonzero mix:maxmod_mixing_buffer:0x420 \
+            --assert-watch 15:hook:0:eq:0 \
+            --assert-watch 15:mix:0:eq:0 \
+            --assert-watch 15:snd:0:eq:128 \
+            --assert-watch 30:hook:0:eq:1 \
+            --assert-watch 30:mix:0:gt:0 \
+            --assert-watch 250:hook:2:eq:1 \
+            --assert-watch 250:mix:0:eq:0 \
+            --assert-watch 480:hook:2:eq:2 \
+            --assert-watch 480:mix:0:gt:0 \
+            --assert-watch 640:hook:1:eq:48 \
+            --assert-watch 640:mix:0:gt:0 \
+            --assert-watch 1710:hook:3:eq:1 \
+            --assert-watch 1710:mix:0:gt:0 \
+            --assert-watch 1784:hook:1:eq:49 \
+            --assert-watch 1784:mix:0:eq:0
       # SRAM persistence (session 5): run 1 boots a factory-fresh savefile
       # (title shows BEST 0), dies at DEPTH 3 (no-input surge death) which
       # writes BEST to SRAM; run 2 is a SEPARATE emulator boot on the same
       # savefile and must show BEST 3 on the title — the best depth survived
-      # the power cycle.
+      # the power cycle. Session 6 adds isolated audio evidence to run 1:
+      # the start confirm is the ONLY sound before the surge death, so the
+      # mixer must be voiced at 30, silent again at 100, and voiced by the
+      # death sweep at 360 (steady-state text asserts at 399 are unchanged
+      # by the +1 timing shift).
       - name: SRAM best-persistence proof (two separate emulator boots)
         run: |
           python3 tools/headless-screenshot.py \
@@ -125,7 +157,16 @@ jobs:
             --frames 400 --savefile proof.sav --keys 20-24:START \
             --assert-text '18:BEST 0' \
             --assert-text '399:THE LIGHT IS TAKEN' \
-            --assert-text '399:DEPTH 3 - BEST 3'
+            --assert-text '399:DEPTH 3 - BEST 3' \
+            --elf games/lumen-drift/lumen-drift.elf \
+            --watch hook:gl_audio_hook:4 \
+            --watch-nonzero mix:maxmod_mixing_buffer:0x420 \
+            --assert-watch 30:hook:0:eq:1 \
+            --assert-watch 30:mix:0:gt:0 \
+            --assert-watch 100:mix:0:eq:0 \
+            --assert-watch 360:hook:3:eq:1 \
+            --assert-watch 360:mix:0:gt:0 \
+            --assert-watch 399:mix:0:eq:0
           python3 tools/headless-screenshot.py \
             games/lumen-drift/lumen-drift.gba proof-sram-run2.png \
             --frames 60 --savefile proof.sav \

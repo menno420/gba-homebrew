@@ -70,6 +70,23 @@ arcade loop.
   separate emulator boots on one savefile — `docs/proof/session-5-sram-*`).
   Still unbuilt from the list: audio, light-radius mechanic, tuning, cave
   beyond row 62.
+- **POLISH PASS 2 (session 6, coordinator-directed):** three more list items
+  BUILT: **audio** (four original synthesized sounds — run-start confirm,
+  thrust rumble, shard glitter, death sweep — generated deterministically by
+  the stdlib-only `games/lumen-drift/audio/generate_audio.py` and built via
+  Butano's maxmod pipeline; headlessly PROVEN by asserting in-ROM trigger
+  counters + maxmod mixing-buffer activity at must-play vs must-be-silent
+  frames, method in `docs/capabilities.md`), the **light radius as a
+  mechanic** (the concept's original line at last: the cave is only visible
+  inside a circle of light around the mote — `games/common/gl_light_window.h`
+  over the hardware window; full view at run start, shrinking with the light
+  level, growing back on shard pickup; rendering-only, physics untouched),
+  and **tuning** of the doc's named unknown, the light-decay feel (decay
+  horizon 3600→2700 frames, fade cap 0.45→0.40, shard refund 1500→1200 —
+  the pressure now reads through the shrinking radius). Replays shifted by
+  one more constant frame (+5 total vs the session-4 script — the run-start
+  stall grew with audio+window init; re-bisected, headless-boot.yml updated).
+  **The only list item still unbuilt: more cave beyond row 62.**
 
 ## 2. Clockwork Courier — rewind-ghost puzzle platformer
 

@@ -25,6 +25,31 @@
  *     narrow fast-swaying passage, denser crystals). A banner names each
  *     new section as you reach it.
  *
+ * Polish pass 2 (from the concept doc's polish list — audio, light radius,
+ * tuning):
+ *   - AUDIO: four original synthesized sounds (audio/generate_audio.py,
+ *     deterministic stdlib-only generator; built via Butano's maxmod
+ *     pipeline) — run start confirm, soft thrust rumble (retriggered while
+ *     A is held), shard glitter, and a falling "light is taken" sweep.
+ *     Every trigger also bumps a counter in gl_audio_hook (games/common/
+ *     gl_audio_hook.h) so the headless harness can prove the sounds fired
+ *     (screenshots cannot hear; see docs/capabilities.md).
+ *   - LIGHT RADIUS AS A MECHANIC: the concept's original text imagined a
+ *     visible light radius ("collect spark shards that extend your light
+ *     radius before it decays"). The cave is now only visible inside a
+ *     circle of light around the mote (gl_light_window.h over the GBA's
+ *     hardware window): full view at run start, shrinking with the same
+ *     light level that drives the palette fade, growing back when a shard
+ *     rewinds the decay, puffing slightly on thrust flares. Sprites (HUD,
+ *     banners, the mote itself) are never masked. Rendering-only — physics
+ *     and every committed input-script replay are unchanged.
+ *   - TUNING (the doc's named unknown: "making the light-decay feel good"):
+ *     decay horizon 3600 -> 2700 frames (the darkness closes in ~25%
+ *     sooner), fade cap 0.45 -> 0.40 (the lit circle stays readable now
+ *     that the radius carries the pressure), shard refund 1500 -> 1200
+ *     frames (per-shard relief keeps the same ~44% share of the shorter
+ *     horizon). No physics constant changed.
+ *
  * Polish pass 1 (post-first-complete, from the concept doc's polish list):
  *   - TITLE SCREEN: the game boots to a "LUMEN DRIFT" card over the cave
  *     mouth showing the BEST depth and PRESS START; START begins the run.
@@ -67,14 +92,19 @@
 #include "bn_sprite_text_generator.h"
 #include "bn_regular_bg_map_cell_info.h"
 
+#include "gl_audio_hook.h"
 #include "gl_input.h"
 #include "gl_kinematics.h"
+#include "gl_light_window.h"
 #include "gl_run_state.h"
 #include "gl_save.h"
 #include "gl_stage.h"
 #include "gl_tile_grid.h"
 
 #include "common_variable_8x8_sprite_font.h"
+
+#include "bn_window.h"
+#include "bn_sound_items.h"
 
 #include "bn_sprite_items_ld_mote.h"
 #include "bn_bg_palette_items_ld_palette.h"
@@ -124,7 +154,34 @@ namespace
     constexpr bn::fixed hazard_half(2);  // forgiving hazard hitbox (< mote_half)
     constexpr bn::fixed pickup_half(4);  // generous shard pickup box (> mote_half)
 
-    constexpr int shard_light_refund = 1500;  // decay frames one shard rewinds (25s)
+    // Light tuning (polish pass 2 — the doc's named unknown is "making the
+    // light-decay feel good"; pass-2 values on the left, pass-1 on the
+    // right): the decay horizon closes in ~25% sooner, the fade cap eases
+    // slightly because the shrinking radius now carries the pressure, and
+    // the per-shard refund keeps the same ~44% share of the horizon.
+    constexpr int light_horizon = 2700;       // was 3600 frames
+    constexpr bn::fixed fade_cap(0.40);       // was 0.45
+    constexpr int shard_light_refund = 1200;  // was 1500 decay frames/shard
+
+    // Light radius as a mechanic: the cave is only visible inside a circle
+    // of light around the mote — full view at run start, shrinking to a
+    // tight pool over the same light_horizon that drives the palette fade.
+    // Thrust flares puff it back out a little; shards rewind run_frames and
+    // visibly grow it back. Rendering-only (physics untouched).
+    constexpr int radius_full = 160;  // run start: corners just lit (>144)
+    constexpr int radius_min = 30;    // horizon end: a tight pool of light
+    constexpr int radius_flare_bonus = 10;
+
+    // Audio (polish pass 2): four original synthesized sounds, generated
+    // deterministically by audio/generate_audio.py. Every play() bumps a
+    // gl_audio_hook counter so headless proofs can assert the triggers.
+    constexpr int audio_slot_start = 0;
+    constexpr int audio_slot_thrust = 1;
+    constexpr int audio_slot_shard = 2;
+    constexpr int audio_slot_death = 3;
+    constexpr int hook_slot_tick = 7;  // game-loop iterations (headless
+                                       // overrun evidence: ticks ~= frames)
+    constexpr int thrust_retrigger_frames = 20;  // rumble cadence while A held
 
     // The surge: a wall of consuming ember light that descends from the cave
     // mouth at a fixed speed — stalling is now a losing strategy. It starts
@@ -480,6 +537,11 @@ int main()
     bn::camera_ptr camera = bn::camera_ptr::create(0, 0);
     bg.set_camera(camera);
 
+    // Light radius: the cave bg is hidden outside the light circle (the
+    // hardware window). Sprites — HUD, banners, the mote — never mask.
+    gl::light_window light;
+    bn::window::outside().set_show_bg(bg, false);
+
     bn::sprite_ptr mote = bn::sprite_items::ld_mote.create_sprite(0, 0);
     mote.set_camera(camera);
 
@@ -512,6 +574,7 @@ int main()
     int sparks_drawn = -1;  // force first HUD draw
     int banner_frames = 0;  // section banner time left
     int flare = 0;       // frames of thrust-flare left
+    int thrust_frames = 0;  // consecutive A-held frames (sound retrigger)
     int run_frames = 0;
     bn::fixed surge_y = surge_start;
     int surge_row = -1000;  // last drawn front row (forces first draw)
@@ -548,6 +611,7 @@ int main()
         sparks_drawn = -1;
         banner_frames = 0;
         flare = 0;
+        thrust_frames = 0;
         run_frames = 0;
         surge_y = surge_start;
         surge_row = -1000;
@@ -558,6 +622,9 @@ int main()
         section_track.reset();
         mote.set_visible(true);
         run.restart();
+        light.set(to_world(spawn) - camera.position(), radius_full);
+        bn::sound_items::ld_start.play(bn::fixed(0.7));
+        gl::count_audio(audio_slot_start);
 
         if(hint_sprites.empty())
         {
@@ -578,6 +645,8 @@ int main()
         mote.set_visible(false);
         section_sprites.clear();
         banner_frames = 0;
+        bn::sound_items::ld_death.play(bn::fixed(0.9));
+        gl::count_audio(audio_slot_death);
         bn::bg_palettes::set_fade_intensity(bn::fixed(0.7));  // light is taken
 
         bn::string<24> score_line("DEPTH ");
@@ -616,6 +685,8 @@ int main()
 
     while(true)
     {
+        gl::count_audio(hook_slot_tick);
+
         if(on_title)
         {
             // Title: nothing moves until START — physics starts on the
@@ -659,6 +730,21 @@ int main()
         {
             mote_body.accelerate(bn::fixed_point(0, -thrust));
             flare = 12;
+
+            if(thrust_frames % thrust_retrigger_frames == 0)
+            {
+                // Soft rumble, retriggered on a cadence while held (the
+                // sample is longer than the cadence, so it overlaps into a
+                // continuous burn instead of stuttering).
+                bn::sound_items::ld_thrust.play(bn::fixed(0.4));
+                gl::count_audio(audio_slot_thrust);
+            }
+
+            ++thrust_frames;
+        }
+        else
+        {
+            thrust_frames = 0;
         }
 
         mote_body.accelerate(gl::dpad_vector() * lateral);
@@ -697,6 +783,8 @@ int main()
             run_frames = bn::max(run_frames - collected * shard_light_refund, 0);
             flare = 30;
             bg_map.reload_cells_ref();
+            bn::sound_items::ld_shard.play(bn::fixed(0.8));
+            gl::count_audio(audio_slot_shard);
         }
 
         if(sparks != sparks_drawn)
@@ -759,7 +847,7 @@ int main()
             --flare;
         }
 
-        bn::fixed decay = bn::min(bn::fixed(run_frames) / 3600, bn::fixed(0.45));
+        bn::fixed decay = bn::min(bn::fixed(run_frames) / light_horizon, fade_cap);
 
         if(flare > 0)
         {
@@ -772,6 +860,21 @@ int main()
         bn::fixed_point world_pos = to_world(mote_body.pos);
         mote.set_position(world_pos);
         place_camera(world_pos);
+
+        // Light radius (the mechanic): visibility itself shrinks with the
+        // light level — full view at run start, a tight pool at horizon end;
+        // shards rewind run_frames so the circle visibly grows back, and a
+        // thrust flare puffs it slightly. On game over the circle simply
+        // freezes with the rest of the world (the fail card is sprites).
+        int radius = radius_full - bn::min(run_frames, light_horizon)
+                * (radius_full - radius_min) / light_horizon;
+
+        if(flare > 0)
+        {
+            radius += radius_flare_bonus;
+        }
+
+        light.set(world_pos - camera.position(), radius);
 
         // Hazards end the run: crystal spikes (forgiving sub-box via the
         // generic grid sensor) or the surge front catching up.

@@ -47,6 +47,34 @@ isn't — all three routes proven; full evidence record mirrored at
   persistence headlessly. ⚠ do NOT use the binding's native
   `core.load_save()` + VFile instead — it segfaults after the game's first
   SRAM write (verbatim error in [`PLATFORM-LIMITS.md`](PLATFORM-LIMITS.md)).
+- **Headless AUDIO evidence (session 6):** screenshots cannot hear, but the
+  binding's `core.memory.u32[bus_address]` reads the WHOLE emulated bus
+  (the `GBAMemory` object spans 4GB from base 0 via `busRead32` — the same
+  reads work on IWRAM/EWRAM/IO, not just the named regions). Two memory
+  facts make sound assertable, both resolved from the game ELF's symbol
+  table (`--elf`, a stdlib ELF32 parser in the harness):
+  1. an **in-ROM trigger-counter hook** (`games/common/gl_audio_hook.h`, a
+     volatile `unsigned[8]` at the unmangled symbol `gl_audio_hook`): the
+     game bumps one cumulative counter per sound it plays — counters prove
+     WHICH sound fired and how many times, robust to replay offsets;
+  2. **Butano/maxmod's mixing buffer** (mangled local symbol
+     `…maxmod_mixing_buffer…`, matched by unique substring; 0x420 bytes in
+     IWRAM for this ROM): maxmod zero-fills it when no voice is active, so
+     the **count of nonzero u32 words is 0 exactly when the mixer is
+     silent** and >0 while any effect is actually being voiced (empirically
+     verified: silent title = 0, one effect ≈ 264 nonzero words, back to 0
+     the frame after the last voice ends). Register-level sanity on top:
+     `busRead32(0x04000084)` (SOUNDCNT_X) reads 128 = master enable on.
+  Harness flags: `--watch NAME:ADDR:NWORDS` (u32 dump), `--watch-nonzero
+  NAME:ADDR:NBYTES` (mixer activity), `--watch-log CSV` (committable
+  per-frame evidence artifact), `--assert-watch FRAME:NAME:IDX:OP:VALUE`.
+  Asserting hook counters AND mixer activity at must-play vs must-be-silent
+  frames = the audio proof (live in `.github/workflows/headless-boot.yml`;
+  evidence log `docs/proof/session-6-audio-watch-log.csv`). A spare hook
+  slot doubles as a game-loop tick counter — comparing it against hardware
+  frames measures vblank overruns (how the session-6 constant +1 replay
+  shift was diagnosed: the run-start rebake stall grew one frame, zero
+  overruns elsewhere).
 
 ### View video / audio files (.mp4, .webm, .mov, .mp3, …)
 Sessions claim they can't view an .mp4. They CAN:

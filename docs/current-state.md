@@ -8,24 +8,45 @@
 
 ## Stability baseline
 
-(Describe the accepted-stable baseline once established — what is known-good and
-should not be re-audited without a reported regression.)
+- **Toolchain** (sessions 1–3, re-verified each session): pinned devkitARM
+  r68 + Butano 21.7.1 via `tools/setup-toolchain.sh` (idempotent; honors
+  `$DEVKITPRO`); both ROMs rebuild warm in ~1.4s locally; "ROM builds" CI
+  builds all `games/*/Makefile` ROMs in ~40s warm. Known caveat: unsigned
+  leseratte10 mirror ([checksum-pin idea routed](ideas/toolchain-checksum-pin-2026-07-10.md)).
+- **Headless proof loop**: `tools/headless-screenshot.py` (scripted button
+  spans, multi-shot, non-blank + `--require-distinct` assertions) —
+  deterministic on mGBA across sessions 1–3.
 
 ## In flight
 
-- **Session 1 — walking skeleton** (2026-07-10): phase 1 = heartbeat +
-  substrate-kit adoption (merged, PR #2); phase 2 = pinned toolchain
-  (`tools/setup-toolchain.sh`), original Butano skeleton ROM
-  (`games/skeleton/`), headless boot proof (`tools/headless-screenshot.py` →
-  [`proof/session-1-skeleton-boot.png`](proof/session-1-skeleton-boot.png)),
-  "ROM builds" CI gate, and the
-  [3 original game concepts](concepts/session-1-concepts.md) awaiting owner
-  pick (ORDER 001). Standing self-review questions live in
-  [`retro/QUESTIONS.md`](retro/QUESTIONS.md).
+(Nothing — lane idle pending owner concept pick / next order; see
+`control/status.md` ⚑ needs-owner.)
 
 ## Recently shipped (newest first)
 
-(Merged work only, newest first.)
+- **Session 3 — Lumen Drift increment 2: hazards + fail state** (2026-07-10,
+  PRs #8–#9): crystal spike clusters + the descending surge end the run on
+  touch; game-over card with final DEPTH + BEST (persists across restarts in
+  RAM); START restarts. Generic `games/common/include/gl_run_state.h`;
+  hazard sensing reuses `gl_tile_grid` via a second predicate. Proof:
+  [`proof/session-3-crystal-death.png`](proof/session-3-crystal-death.png),
+  [`proof/session-3-game-over-best.png`](proof/session-3-game-over-best.png)
+  (+2 more) — one deterministic scripted run covering crystal death, restart,
+  surge death, best persistence.
+- **Session 2 — Lumen Drift increment 1** (2026-07-10, PRs #5–#7):
+  first-playable gravity cave drifter (A thrust, D-pad steer, depth HUD,
+  light-decay palette trick); `games/common/` build glue +
+  input/kinematics/collision headers; harness gained input scripting;
+  substrate-gate born-red-card fix. Proof:
+  [`proof/session-2-lumen-drift-input.png`](proof/session-2-lumen-drift-input.png).
+- **Session 1 — walking skeleton** (2026-07-10, PRs #2–#4): substrate-kit
+  adoption; pinned toolchain (`tools/setup-toolchain.sh`); original Butano
+  skeleton ROM (`games/skeleton/`); headless boot proof
+  ([`proof/session-1-skeleton-boot.png`](proof/session-1-skeleton-boot.png));
+  "ROM builds" CI gate; the
+  [3 original game concepts](concepts/session-1-concepts.md) awaiting owner
+  pick (ORDER 001; estimates refreshed post-increment 2). Standing
+  self-review questions live in [`retro/QUESTIONS.md`](retro/QUESTIONS.md).
 
 ## Review rhythm
 

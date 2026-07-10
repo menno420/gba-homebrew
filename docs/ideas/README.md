@@ -42,4 +42,7 @@ frontmatter keeps the score.
 
 ## Backlog
 
-(Captured ideas, each with a state and a next destination — none left at `raw`.)
+| Idea | State | Next destination |
+|---|---|---|
+| [HUD depth-pixel CI assertion](hud-depth-ci-assert-2026-07-10.md) | routed | quick-win — semantic regression check for the committed proof scripts (pairs with the session-3 SRAM-best idea) |
+| [Checksum-pin the devkitARM mirror packages](toolchain-checksum-pin-2026-07-10.md) | routed | quick-win — closes the unsigned-mirror supply-chain caveat carried in status since session 1 |

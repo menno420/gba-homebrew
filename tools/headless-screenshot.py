@@ -24,11 +24,23 @@ Input scripting (generic — works for any ROM):
     --shot 238:mid.png      also dump (and non-blank-verify) frame 238
     --require-distinct      assert consecutive shots differ (proves the
                             scripted input changed what is on screen)
+    --assert-text 1779:DEPTH 45
+                            OCR-free semantic assertion: at frame 1779 the
+                            exact string must be rendered somewhere on screen
+                            in the Butano common variable_8x8 sprite font
+                            (glyph patterns are read from the pinned
+                            third_party/butano checkout, so this needs
+                            tools/setup-toolchain.sh to have run). Turns a
+                            "screenshots differ" proof into a regression
+                            test: "this input script still reaches DEPTH 45".
 """
 
 import argparse
+import os
+import re
 import struct
 import sys
+import tempfile
 import zlib
 
 import mgba.core
@@ -48,6 +60,11 @@ def png_pixels(path):
     """Minimal RGBA PNG reader (no Pillow dependency in the container)."""
     with open(path, 'rb') as handle:
         data = handle.read()
+    return png_pixels_data(data)
+
+
+def png_pixels_data(data):
+    """Decode PNG bytes -> (width, height, [(r, g, b), ...] row-major)."""
     assert data[:8] == b'\x89PNG\r\n\x1a\n', 'not a PNG'
     pos, width, height, idat = 8, None, None, b''
     while pos < len(data):
@@ -135,6 +152,103 @@ def parse_shot(spec):
     return int(frame), path
 
 
+def parse_assert_text(spec):
+    """'FRAME:STRING' -> (frame, string)."""
+    frame, _, text = spec.partition(':')
+    if not text:
+        sys.exit(f'FAIL: bad --assert-text {spec!r} (want FRAME:STRING)')
+    return int(frame), text
+
+
+# --- OCR-free text assertion against the Butano common 8x8 variable font ----
+#
+# The font's glyph strip + per-character advance widths live in the pinned
+# third_party/butano checkout (glyphs are 8x8, ASCII '!'.. '~' top to bottom;
+# ' ' has an advance but no glyph). Text sprites render glyph pixels with two
+# palette colors (white core, black shading) that background palette fades
+# never touch, so an exact-color template match is deterministic on mGBA.
+
+FONT_BMP = 'third_party/butano/common/graphics/common_variable_8x8_font.bmp'
+FONT_HEADER = 'third_party/butano/common/include/common_variable_8x8_sprite_font.h'
+GLYPH_INK = {12: (0, 0, 0), 14: (255, 255, 255)}  # palette idx -> mGBA RGB
+INK_COLORS = frozenset(GLYPH_INK.values())
+
+
+def load_font():
+    """-> ({char: (advance, {(x, y): rgb})}) for ASCII 32..126."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    bmp_path = os.path.join(root, FONT_BMP)
+    header_path = os.path.join(root, FONT_HEADER)
+    if not (os.path.isfile(bmp_path) and os.path.isfile(header_path)):
+        sys.exit('FAIL: --assert-text needs the pinned Butano checkout '
+                 f'({FONT_BMP}) — run tools/setup-toolchain.sh first')
+    with open(header_path, encoding='utf-8') as handle:
+        widths = {int(code): int(width) for width, code in
+                  re.findall(r'(\d+),\s*//\s*(\d+)', handle.read())}
+    with open(bmp_path, 'rb') as handle:
+        data = handle.read()
+    offset, = struct.unpack('<I', data[10:14])
+    width, height = struct.unpack('<ii', data[18:26])
+    assert width == 8, 'unexpected font strip width'
+    stride = ((width + 1) // 2 + 3) & ~3
+
+    def pixel(x, y):  # 4bpp indexed, rows stored bottom-up
+        byte = data[offset + (height - 1 - y) * stride + x // 2]
+        return (byte >> 4) & 0xF if x % 2 == 0 else byte & 0xF
+
+    font = {' ': (widths[32], {})}
+    for code in range(33, 127):
+        glyph_top = (code - 33) * 8
+        ink = {}
+        for y in range(8):
+            for x in range(8):
+                index = pixel(x, glyph_top + y)
+                if index:
+                    ink[(x, y)] = GLYPH_INK.get(index)
+                    if ink[(x, y)] is None:
+                        sys.exit(f'FAIL: font glyph {code} uses unexpected '
+                                 f'palette index {index}')
+        font[chr(code)] = (widths[code], ink)
+    return font
+
+
+def text_template(font, text):
+    """-> (width, {(x, y): rgb}) — the string as one expected pixel patch."""
+    ink = {}
+    pen = 0
+    for char in text:
+        if char not in font:
+            sys.exit(f'FAIL: --assert-text char {char!r} not in the 8x8 font')
+        advance, glyph = font[char]
+        for (gx, gy), rgb in glyph.items():
+            ink[(pen + gx, gy)] = rgb
+        pen += advance
+    return pen, ink
+
+
+def find_text(pixels, width, height, template_width, template_ink):
+    """Exact template search: ink pixels must match their color, non-ink
+    pixels inside the patch must not be ANY ink color (so 'DEPTH 4' cannot
+    pass in front of a rendered 'DEPTH 45'... except at patch edges).
+    Returns (x, y) of the first match or None."""
+    ink_items = sorted(template_ink.items())
+    if not ink_items:
+        return None
+    (ax, ay), anchor_rgb = ink_items[0]
+    non_ink = [(x, y) for y in range(8) for x in range(template_width)
+               if (x, y) not in template_ink]
+    for py in range(height - 7):
+        for px in range(width - template_width + 1):
+            if pixels[(py + ay) * width + px + ax] != anchor_rgb:
+                continue
+            if all(pixels[(py + y) * width + px + x] == rgb
+                   for (x, y), rgb in ink_items) and \
+               all(pixels[(py + y) * width + px + x] not in INK_COLORS
+                   for (x, y) in non_ink):
+                return px, py
+    return None
+
+
 def verify_non_blank(path, width, height):
     """Exit non-zero unless the PNG at `path` looks like a rendered scene."""
     png_width, png_height, pixels = png_pixels(path)
@@ -169,6 +283,11 @@ def main():
     parser.add_argument('--require-distinct', action='store_true',
                         help='assert consecutive screenshots differ '
                              f'(>= {MIN_DIFF_PIXELS} pixels) — proves interactivity')
+    parser.add_argument('--assert-text', action='append', default=[],
+                        metavar='FRAME:STRING',
+                        help='assert STRING is rendered on screen at FRAME '
+                             '(Butano common variable_8x8 font, exact pixels); '
+                             'repeatable')
     args = parser.parse_args()
 
     key_spans = [parse_keys(spec) for spec in args.keys]
@@ -176,6 +295,10 @@ def main():
     shots = sorted(parse_shot(spec) for spec in args.shot)
     if any(frame >= args.frames for frame, _ in shots):
         sys.exit('FAIL: --shot frame beyond --frames')
+    asserts = sorted(parse_assert_text(spec) for spec in args.assert_text)
+    if any(frame >= args.frames for frame, _ in asserts):
+        sys.exit('FAIL: --assert-text frame beyond --frames')
+    font = load_font() if asserts else None
 
     core = mgba.core.load_path(args.rom)
     if core is None:
@@ -187,6 +310,8 @@ def main():
 
     saved = []  # (path, frame_number) in capture order
     shot_index = 0
+    assert_index = 0
+    assert_failures = 0
     for frame_number in range(args.frames):
         active = [key for start, end, period, duty, key in key_spans
                   if start <= frame_number < end
@@ -199,12 +324,31 @@ def main():
                 frame.save_png(handle)
             saved.append((path, frame_number))
             shot_index += 1
+        while assert_index < len(asserts) and \
+                asserts[assert_index][0] == frame_number:
+            text = asserts[assert_index][1]
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                frame.save_png(tmp)
+                tmp_path = tmp.name
+            _, _, pixels = png_pixels(tmp_path)
+            os.unlink(tmp_path)
+            template_width, template_ink = text_template(font, text)
+            hit = find_text(pixels, width, height, template_width, template_ink)
+            if hit is None:
+                print(f'ASSERT FAIL: {text!r} not rendered at frame {frame_number}')
+                assert_failures += 1
+            else:
+                print(f'assert-text: {text!r} found at {hit} (frame {frame_number})')
+            assert_index += 1
     with open(args.out_png, 'wb') as handle:
         frame.save_png(handle)
     saved.append((args.out_png, args.frames - 1))
     held = ', '.join(args.keys + args.keys_pattern) or 'none'
     print(f'ran {args.frames} frames (keys: {held}), '
           f'saved {len(saved)} {width}x{height} PNG(s)')
+
+    if assert_failures:
+        sys.exit(f'FAIL: {assert_failures} --assert-text assertion(s) failed')
 
     previous = None
     for path, frame_number in saved:

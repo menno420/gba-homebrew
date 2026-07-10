@@ -44,5 +44,5 @@ frontmatter keeps the score.
 
 | Idea | State | Next destination |
 |---|---|---|
-| [HUD depth-pixel CI assertion](hud-depth-ci-assert-2026-07-10.md) | routed | quick-win — semantic regression check for the committed proof scripts (pairs with the session-3 SRAM-best idea) |
-| [Checksum-pin the devkitARM mirror packages](toolchain-checksum-pin-2026-07-10.md) | routed | quick-win — closes the unsigned-mirror supply-chain caveat carried in status since session 1 |
+| [HUD depth-pixel CI assertion](hud-depth-ci-assert-2026-07-10.md) | promoted | **shipped** PR #13 (session 4) — `--assert-text` glyph matching in the harness + `lumen-drift-proof` dispatch-tier CI job |
+| [Checksum-pin the devkitARM mirror packages](toolchain-checksum-pin-2026-07-10.md) | promoted | **shipped** PR #13 (session 4) — SHA-256 pins on all 9 mirror packages + crtls commit pin; unsigned-mirror caveat now trust-on-first-use |

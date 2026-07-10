@@ -75,23 +75,53 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq mgba-sdl
           pip install mgba==0.10.2
-      - name: replay committed proof script + assert HUD/card text
+      # Session-5 title screen shifted the whole timeline by a constant +4:
+      # the game boots to a title card and physics only starts on START
+      # (pressed at frame 20 — Butano's first keypad poll lands ~frame 17-20
+      # and debounces buttons already held at boot, so earlier presses are
+      # ignored). Every span/assert below = the session-4 canonical script
+      # +4, plus the START press. Offset verified by bisection: +4 passes
+      # all five original assertions, +5/+6 drop the shard grabs.
+      - name: replay committed proof script + assert title/HUD/card text
         run: |
           python3 tools/headless-screenshot.py \
-            games/lumen-drift/lumen-drift.gba proof-final.png --frames 1780 \
-            --keys 0-220:RIGHT --keys-pattern 20-180:6:2:A \
-            --keys 260-560:LEFT --keys-pattern 390-470:4:1:A \
-            --keys 620-690:RIGHT --keys 620-647:A --keys 690-718:LEFT \
-            --keys 810-855:RIGHT \
-            --shot 240:proof-shard.png \
-            --shot 560:proof-gallery.png \
-            --shot 960:proof-deep.png \
+            games/lumen-drift/lumen-drift.gba proof-final.png --frames 1784 \
+            --keys 20-24:START \
+            --keys 4-224:RIGHT --keys-pattern 24-184:6:2:A \
+            --keys 264-564:LEFT --keys-pattern 394-474:4:1:A \
+            --keys 624-694:RIGHT --keys 624-651:A --keys 694-722:LEFT \
+            --keys 814-859:RIGHT \
+            --shot 18:proof-title.png \
+            --shot 244:proof-shard.png \
+            --shot 564:proof-gallery.png \
+            --shot 964:proof-deep.png \
             --require-distinct \
-            --assert-text '240:SPARKS 1' \
-            --assert-text '560:THE GALLERY' \
-            --assert-text '960:THE DEEP' \
-            --assert-text '1779:DEPTH 45 - BEST 45' \
-            --assert-text '1779:SPARKS 2'
+            --assert-text '18:LUMEN DRIFT' \
+            --assert-text '18:PRESS START' \
+            --assert-text '244:SPARKS 1' \
+            --assert-text '564:THE GALLERY' \
+            --assert-text '964:THE DEEP' \
+            --assert-text '1783:DEPTH 45 - BEST 45' \
+            --assert-text '1783:SPARKS 2'
+      # SRAM persistence (session 5): run 1 boots a factory-fresh savefile
+      # (title shows BEST 0), dies at DEPTH 3 (no-input surge death) which
+      # writes BEST to SRAM; run 2 is a SEPARATE emulator boot on the same
+      # savefile and must show BEST 3 on the title — the best depth survived
+      # the power cycle.
+      - name: SRAM best-persistence proof (two separate emulator boots)
+        run: |
+          python3 tools/headless-screenshot.py \
+            games/lumen-drift/lumen-drift.gba proof-sram-run1.png \
+            --frames 400 --savefile proof.sav --keys 20-24:START \
+            --assert-text '18:BEST 0' \
+            --assert-text '399:THE LIGHT IS TAKEN' \
+            --assert-text '399:DEPTH 3 - BEST 3'
+          python3 tools/headless-screenshot.py \
+            games/lumen-drift/lumen-drift.gba proof-sram-run2.png \
+            --frames 60 --savefile proof.sav \
+            --assert-text '59:LUMEN DRIFT' \
+            --assert-text '59:BEST 3' \
+            --assert-text '59:PRESS START'
       - uses: actions/upload-artifact@v4
         with:
           name: lumen-drift-proof

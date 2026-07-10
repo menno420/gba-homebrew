@@ -11,7 +11,7 @@ Deps (pinned recipe — docs/capabilities.md):
 Usage:
     python3 tools/headless-screenshot.py ROM.gba OUT.png [--frames N]
         [--keys START-END:NAME ...] [--keys-pattern START-END:PERIOD:DUTY:NAME ...]
-        [--shot FRAME:PATH ...] [--require-distinct]
+        [--shot FRAME:PATH ...] [--require-distinct] [--savefile PATH]
 
 Input scripting (generic — works for any ROM):
     --keys 240-420:A        hold the A button during frames [240, 420)
@@ -33,6 +33,25 @@ Input scripting (generic — works for any ROM):
                             tools/setup-toolchain.sh to have run). Turns a
                             "screenshots differ" proof into a regression
                             test: "this input script still reaches DEPTH 45".
+    --savefile game.sav     persistent battery save. The file maps 1:1 onto
+                            the cartridge save memory (Butano SRAM ROMs carry
+                            the SRAM_V marker, so mGBA exposes 32KB of SRAM
+                            at GBA bus address 0xE000000): the file contents
+                            are loaded into that region right after reset
+                            (power-on with this battery), and the region is
+                            snapshotted back to the file after the last frame
+                            (battery keeps the game's SRAM writes). Missing
+                            file = 32KB of 0xFF, exactly what factory-erased
+                            SRAM reads as. Boot the same savefile in two
+                            separate runs to prove power-cycle persistence
+                            headlessly; without the flag, save memory
+                            vanishes at exit.
+                            (Implementation note: the file is copied through
+                            the emulated bus, NOT attached as an mGBA native
+                            savefile — core.load_save() + a mapped VFile
+                            segfaults this binding pin ~64 frames after the
+                            game's first SRAM write, when mGBA's deferred
+                            savedata flush fires. See PLATFORM-LIMITS.md.)
 """
 
 import argparse
@@ -116,6 +135,9 @@ KEY_NAMES = {
 
 MIN_DIFF_PIXELS = 100       # --require-distinct: consecutive shots must
                             # differ in at least this many pixels
+
+SRAM_SIZE = 32 * 1024       # --savefile: cartridge SRAM size (Butano SRAM
+                            # ROMs; mGBA maps it at GBA bus 0xE000000)
 
 
 def parse_keys(spec):
@@ -288,6 +310,11 @@ def main():
                         help='assert STRING is rendered on screen at FRAME '
                              '(Butano common variable_8x8 font, exact pixels); '
                              'repeatable')
+    parser.add_argument('--savefile', metavar='PATH',
+                        help='attach a persistent battery-save file (created '
+                             'as 32KB of 0xFF if missing); in-game SRAM '
+                             'writes persist to it across runs — reuse the '
+                             'file to prove power-cycle persistence')
     args = parser.parse_args()
 
     key_spans = [parse_keys(spec) for spec in args.keys]
@@ -300,6 +327,17 @@ def main():
         sys.exit('FAIL: --assert-text frame beyond --frames')
     font = load_font() if asserts else None
 
+    save_data = None
+    if args.savefile:
+        if os.path.exists(args.savefile):
+            with open(args.savefile, 'rb') as handle:
+                save_data = handle.read()
+            if len(save_data) != SRAM_SIZE:
+                sys.exit(f'FAIL: savefile {args.savefile} is '
+                         f'{len(save_data)} bytes, want {SRAM_SIZE}')
+        else:
+            save_data = b'\xff' * SRAM_SIZE  # factory-erased SRAM
+
     core = mgba.core.load_path(args.rom)
     if core is None:
         sys.exit(f'FAIL: mGBA could not load {args.rom}')
@@ -307,6 +345,14 @@ def main():
     frame = mgba.image.Image(width, height)
     core.set_video_buffer(frame)
     core.reset()
+
+    if save_data is not None:
+        # Persistent battery save, copied through the emulated bus: restore
+        # the file into cartridge SRAM before frame 0 (= power-on with this
+        # battery). Deliberately NOT core.load_save() — see the docstring.
+        sram = core.memory.sram.u8
+        for address, byte in enumerate(save_data):
+            sram[address] = byte
 
     saved = []  # (path, frame_number) in capture order
     shot_index = 0
@@ -343,6 +389,12 @@ def main():
     with open(args.out_png, 'wb') as handle:
         frame.save_png(handle)
     saved.append((args.out_png, args.frames - 1))
+    if save_data is not None:
+        # Snapshot cartridge SRAM back to the battery file (the game's
+        # bn::sram writes survive this process).
+        with open(args.savefile, 'wb') as handle:
+            handle.write(bytes(core.memory.sram.u8[0:SRAM_SIZE:1]))
+        print(f'savefile: SRAM snapshot written to {args.savefile}')
     held = ', '.join(args.keys + args.keys_pattern) or 'none'
     print(f'ran {args.frames} frames (keys: {held}), '
           f'saved {len(saved)} {width}x{height} PNG(s)')

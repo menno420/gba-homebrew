@@ -1,5 +1,5 @@
 /*
- * LUMEN DRIFT — increment 3 (spark shards + cave sections).
+ * LUMEN DRIFT — polish pass 1 (title screen + SRAM best persistence).
  *
  * You are a mote of light falling through a dark cave. Hold A to thrust
  * against gravity, steer laterally with the D-pad, drift through the
@@ -25,6 +25,17 @@
  *     narrow fast-swaying passage, denser crystals). A banner names each
  *     new section as you reach it.
  *
+ * Polish pass 1 (post-first-complete, from the concept doc's polish list):
+ *   - TITLE SCREEN: the game boots to a "LUMEN DRIFT" card over the cave
+ *     mouth showing the BEST depth and PRESS START; START begins the run.
+ *     Physics only starts on that press, so scripted proof replays stay
+ *     deterministic — every pre-title input script is reproduced by holding
+ *     START at boot and shifting all frame spans by a constant offset.
+ *   - SRAM BEST PERSISTENCE: the best depth survives power cycles via
+ *     bn::sram behind a magic tag (gl_save.h) — fresh/foreign SRAM reads as
+ *     BEST 0, an improved best is written once per game over. In-RAM run
+ *     behavior is unchanged.
+ *
  * All code and assets original (graphics/generate_assets.py). The cave,
  * shard/crystal placement and surge speed are fixed — every run is the
  * same, which keeps the headless input-script proof deterministic.
@@ -33,9 +44,10 @@
  * (fixed-point body), gl_tile_grid.h (tile collision — reused verbatim as
  * hazard AND pickup sensors via extra predicates; visit_overlaps reports
  * which shard cells were touched), gl_run_state.h (run lifecycle + best
- * score), gl_stage.h (threshold-based section progression). Game-specific
- * here: cave shape, hazard/shard placement/tuning, light-decay palette
- * trick, HUD, game-over screen.
+ * score), gl_stage.h (threshold-based section progression), gl_save.h
+ * (magic-checked SRAM slot). Game-specific here: cave shape, hazard/shard
+ * placement/tuning, light-decay palette trick, HUD, title and game-over
+ * screens.
  */
 
 #include "bn_core.h"
@@ -58,6 +70,7 @@
 #include "gl_input.h"
 #include "gl_kinematics.h"
 #include "gl_run_state.h"
+#include "gl_save.h"
 #include "gl_stage.h"
 #include "gl_tile_grid.h"
 
@@ -476,7 +489,7 @@ int main()
     bn::vector<bn::sprite_ptr, 16> hint_sprites;
     bn::vector<bn::sprite_ptr, 24> over_sprites;
     bn::vector<bn::sprite_ptr, 8> section_sprites;
-    text_generator.generate(-110, -72, "LUMEN DRIFT - A THRUST", hint_sprites);
+    bn::vector<bn::sprite_ptr, 24> title_sprites;
 
     // The SAME generic grid template drives wall collision, hazard sensing
     // AND shard pickup — only the predicate differs.
@@ -502,6 +515,29 @@ int main()
     int run_frames = 0;
     bn::fixed surge_y = surge_start;
     int surge_row = -1000;  // last drawn front row (forces first draw)
+    bool on_title = true;
+
+    // SRAM persistence (gl_save.h): BEST depth survives power cycles behind
+    // a magic tag — fresh/foreign/erased SRAM loads as no save (BEST 0).
+    gl::save_slot<int> best_slot("LDRIFT1");
+    int saved_best = 0;
+
+    if(best_slot.load(saved_best))
+    {
+        run.restore_best(saved_best);
+    }
+
+    // Camera chases a world position, clamped so the view never leaves the
+    // map (shared by the title's frozen view and the gameplay chase).
+    auto place_camera = [&](const bn::fixed_point& world_pos) {
+        bn::fixed cam_x = bn::clamp(world_pos.x(),
+                                    bn::fixed(-(map_width_px - bn::display::width()) / 2),
+                                    bn::fixed((map_width_px - bn::display::width()) / 2));
+        bn::fixed cam_y = bn::clamp(world_pos.y(),
+                                    bn::fixed(-(map_height_px - bn::display::height()) / 2),
+                                    bn::fixed((map_height_px - bn::display::height()) / 2));
+        camera.set_position(cam_x, cam_y);
+    };
 
     auto restart = [&] {
         mote_body.pos = spawn;
@@ -522,10 +558,23 @@ int main()
         section_track.reset();
         mote.set_visible(true);
         run.restart();
+
+        if(hint_sprites.empty())
+        {
+            text_generator.generate(-110, -72, "LUMEN DRIFT - A THRUST",
+                                    hint_sprites);
+        }
     };
 
     auto game_over = [&] {
         run.fail(max_depth_cells);
+
+        if(run.best() > saved_best)
+        {
+            // New all-time best: persist it right away (power-off safe).
+            saved_best = run.best();
+            best_slot.save(saved_best);
+        }
         mote.set_visible(false);
         section_sprites.clear();
         banner_frames = 0;
@@ -547,10 +596,42 @@ int main()
         text_generator.set_left_alignment();
     };
 
-    restart();
+    // Boot to the title card: world frozen at the cave mouth, mote resting
+    // at the spawn, BEST restored from SRAM. START begins the first run.
+    {
+        mote_body.pos = spawn;
+        bn::fixed_point world_pos = to_world(spawn);
+        mote.set_position(world_pos);
+        place_camera(world_pos);
+
+        bn::string<16> best_line("BEST ");
+        best_line += bn::to_string<6>(run.best());
+
+        text_generator.set_center_alignment();
+        text_generator.generate(0, -40, "LUMEN DRIFT", title_sprites);
+        text_generator.generate(0, -8, best_line, title_sprites);
+        text_generator.generate(0, 24, "PRESS START", title_sprites);
+        text_generator.set_left_alignment();
+    }
 
     while(true)
     {
+        if(on_title)
+        {
+            // Title: nothing moves until START — physics starts on the
+            // press, so scripted proof replays stay deterministic (press
+            // START at a fixed frame = constant offset for every span).
+            if(bn::keypad::start_pressed())
+            {
+                on_title = false;
+                title_sprites.clear();
+                restart();
+            }
+
+            bn::core::update();
+            continue;
+        }
+
         if(run.over())
         {
             // Fail state: world frozen, game-over card up. START restarts
@@ -690,14 +771,7 @@ int main()
         // Camera chases the mote, clamped so the view never leaves the map.
         bn::fixed_point world_pos = to_world(mote_body.pos);
         mote.set_position(world_pos);
-
-        bn::fixed cam_x = bn::clamp(world_pos.x(),
-                                    bn::fixed(-(map_width_px - bn::display::width()) / 2),
-                                    bn::fixed((map_width_px - bn::display::width()) / 2));
-        bn::fixed cam_y = bn::clamp(world_pos.y(),
-                                    bn::fixed(-(map_height_px - bn::display::height()) / 2),
-                                    bn::fixed((map_height_px - bn::display::height()) / 2));
-        camera.set_position(cam_x, cam_y);
+        place_camera(world_pos);
 
         // Hazards end the run: crystal spikes (forgiving sub-box via the
         // generic grid sensor) or the surge front catching up.

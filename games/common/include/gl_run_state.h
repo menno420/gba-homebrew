@@ -2,7 +2,8 @@
  * games/common — GENERIC arcade run lifecycle (game-agnostic, header-only).
  *
  * Minimal playing -> over -> restart state machine with an in-RAM
- * best-score high-water mark that survives restarts (not power cycles).
+ * best-score high-water mark that survives restarts (pair with gl_save.h
+ * restore_best()/save() to survive power cycles too).
  * Original code for the game-lab Track B lane; transfers unchanged to any
  * run-based concept (Lumen Drift depth runs, Clockwork Courier level
  * attempts, Shoal rescue rounds).
@@ -33,10 +34,19 @@ public:
         return _over;
     }
 
-    /// Best final score across all runs this power-on (in-RAM only).
+    /// Best final score across all runs this power-on (in-RAM only —
+    /// persist it yourself, e.g. gl::save_slot, and restore_best() at boot).
     [[nodiscard]] int best() const
     {
         return _best;
+    }
+
+    /// Seed the best score from persistent storage (e.g. SRAM at boot).
+    /// High-water semantics: never lowers a best already earned this
+    /// power-on.
+    void restore_best(int best)
+    {
+        _best = bn::max(_best, best);
     }
 
     /// Frames elapsed since fail() — gate restart input on this so a button

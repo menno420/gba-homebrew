@@ -5,7 +5,7 @@ description: "End the session correctly — write the log, groom + add an idea, 
 
 # session-close
 
-Close gba-homebrew's current session correctly.
+Close gba-homebrew — game-lab Track B: original GBA homebrew on Butano's current session correctly.
 
 1. Session log — write `.sessions/<date>-<slug>.md`: what changed, one new idea
    you genuinely believe in, and a one-line review of the previous session.
@@ -18,7 +18,7 @@ Close gba-homebrew's current session correctly.
    `control/README.md`). Withdraw stale asks; fewer, clearer asks beat
    complete lists.
 4. Idea backlog — groom one idea forward (the ideas-README lifecycle).
-5. Verify — run the project's checks: `${verify_command}` and `bootstrap check`.
+5. Verify — run the project's checks: `python3 bootstrap.py check --strict (repo gate); ROM verify = the 'ROM builds' <60s compile check once the walking skeleton lands (conventions rule 16)` and `bootstrap check`.
 6. Commit + push on the session branch; open the PR ready (not draft).
 7. Drive the PR to a terminal state — merge on green CI, or close with a reason.
 

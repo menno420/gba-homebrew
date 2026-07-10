@@ -5,7 +5,7 @@ description: "Review the branch diff against the binding contracts; comment with
 
 # review
 
-Review the current branch's diff against gba-homebrew's binding contracts.
+Review the current branch's diff against gba-homebrew — game-lab Track B: original GBA homebrew on Butano's binding contracts.
 
 1. Read the contracts first (architecture / ownership / runtime), then the diff.
 2. For each change check layer boundaries, mutation ownership, and the project's

@@ -1,10 +1,4 @@
-> ⚠️ **UNRENDERED SLOTS BELOW — run `python3 bootstrap.py ask`.**
-> Every `${...}` token in this file is an unfilled interview slot, not
-> project truth. Fill: `bootstrap answer <slot> <value...>`, then
-> `bootstrap render --live` (fills in place and removes this banner).
-> Prose without `${...}` tokens is live guidance already.
-
-# gba-homebrew — agent working agreement
+# gba-homebrew — game-lab Track B: original GBA homebrew on Butano — agent working agreement
 
 > **Status:** `binding`
 >
@@ -14,7 +8,7 @@
 
 ## What this project is
 
-gba-homebrew is built in ${primary_language}.
+gba-homebrew — game-lab Track B: original GBA homebrew on Butano is built in C++ (Butano/devkitARM) for the ROM; Python 3 for tooling.
 
 ## Orientation — read first, in order
 
@@ -28,20 +22,20 @@ gba-homebrew is built in ${primary_language}.
 
 ## Architecture — layers & import rules
 
-${architecture_layers}
+Single-ROM homebrew repo: Butano engine (vendored/toolchain layer, arrives at walking skeleton) -> game code under src/ -> control plane (control/, claims/, .sessions/, docs/) governing how the lane works
 
 ## Verifying a change
 
 Run before every push:
 
 ```
-${verify_command}
+python3 bootstrap.py check --strict (repo gate); ROM verify = the 'ROM builds' <60s compile check once the walking skeleton lands (conventions rule 16)
 ```
 
 ## How the maintainer works
 
-${owner_profile}
+Hands-off human owner (Menno); agent-run lane with a written self-merge grant; owner touchpoints are post-merge review-queue rows and needs-owner flags only — no spend, no account creation, no external publishing without an owner action
 
 ## Workflow adoption
 
-Current adoption pace for the substrate workflow: **guided**.
+Current adoption pace for the substrate workflow: **active**.

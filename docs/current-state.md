@@ -48,12 +48,42 @@
 
 ## In flight
 
-(Nothing — the owner concept pick stays ⚑ carried in `control/status.md`;
-the coordinator's announced default pending that pick is DEEPEN LUMEN
-DRIFT, which session 8 slices 4–6 executed — v1.0 scope stays
-complete; v1.1/v1.2 work is additive deepening, v1.3 is micro-polish.)
+(Nothing — the **Gloamline arc** (owner-picked original NDS zombie
+horde-defense) is the active track: concept (PR #50) → toolchain
+feasibility (PR #51) → **walking skeleton (session 17, this ledger
+entry) SHIPPED**. Next slices per the concept doc: shove verb +
+multi-zombie waves, night ramp, barricades, scavenge interlude,
+lantern-oil light pressure, synthesized audio, best-nights saves.)
 
 ## Recently shipped (newest first)
+
+- **Session 17 — Gloamline walking skeleton: first playable NDS build**
+  (2026-07-11): the concept doc's skeleton cut end-to-end. Top screen =
+  the yard (fence ring, HUD with night / dawn countdown / seed / nights
+  survived, two code-authored original 16x16 sprites); bottom screen =
+  watch-map v0 (live P/Z dots + dawn bar). 8-way D-pad move (1.5 px/f),
+  ONE Shambler chasing at 0.75 px/f with a deterministic per-frame hash
+  stagger, contact = death → cold-hands card → START instant-restarts,
+  survive the 60 s night → dawn card → next night. All rules live in a
+  pure fixed-point layer (`games/gloamline-nds/source/gl_sim.c` —
+  spawn/step/contact are pure functions of `(seed, night, index)` /
+  `(state, player, frame)`; seed = frame counter latched at START,
+  printed on HUD + cards). **Host proof** `tools/check-gloam.py` (mirror
+  of gl_sim.c, lockstep rule): 2048 spawns pure/on-fence/safe-radius,
+  256 idle-player chases converge monotonically ≤258 frames, 20k-frame
+  containment. **Telemetry mailbox** `gl_telemetry[16]` + the NDS harness
+  gained the GBA harness's ELF-symbol watches
+  (`--elf/--watch/--watch-log/--assert-watch` ported into
+  `tools/nds-headless-check.py`) — closing the session-16 "memory-watch
+  unproven on NDS" gap. **Four pinned headless proofs in CI**
+  (`nds-rom-build`): boot+mailbox, 8-way move, chase→death→instant
+  restart, and a FULL 60 s night survived to dawn via a mirror-sim-derived
+  kiting route (`proof/dawn-route-keys.txt`, ≥22 px margin at ±6-frame
+  alignments) — 36 numeric asserts total. Proof screenshots:
+  `games/gloamline-nds/proof/skeleton-{title,yard,death,dawn}.png`.
+  Ships committed as **`dist/gloamline.nds`** (107,008 B,
+  byte-deterministic build) + [`PLAYING-GLOAMLINE.md`](PLAYING-GLOAMLINE.md).
+  Touch input stays out of scope (concept: buttons-only playable).
 
 - **Session 8 slice 6 — Lumen Drift v1.3 micro-polish + tooling
   consolidation** (2026-07-11): the slice-5 polish debt paid. (1)

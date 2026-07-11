@@ -67,17 +67,26 @@ jobs:
             rom-sha256.txt
           if-no-files-found: error
           retention-days: 14
-  # Parallel NDS job (Gloamline arc slice 2 — feasibility gate). Deliberately
-  # a SEPARATE job so the required "ROM builds" GBA gate is untouched: BlocksDS
-  # 1.21.1 + Wonderful GCC (sha256-pinned by tools/setup-nds-toolchain.sh,
-  # which the cache key hashes), then a headless dual-screen boot proof in
-  # py-desmume before the artifact upload. The .nds is CI-artifact-only, like
-  # the GBA skeleton.
+  # Parallel NDS job (Gloamline arc — slice 2 laid the toolchain, slice 3 is
+  # the walking skeleton). Deliberately a SEPARATE job so the required "ROM
+  # builds" GBA gate is untouched: BlocksDS 1.21.1 + Wonderful GCC
+  # (sha256-pinned by tools/setup-nds-toolchain.sh, which the cache key
+  # hashes), then the host-mirror proof + four headless py-desmume proofs
+  # against the ROM's gl_telemetry mailbox (ELF-symbol-resolved watches;
+  # every numeric value below was pinned from a deterministic in-container
+  # run — the ROM build is byte-deterministic, so drift = regression).
   nds-rom-build:
     name: NDS ROM build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Host-side proof first (stdlib-only, <1s): the check-gloam.py mirror
+      # of games/gloamline-nds/source/gl_sim.c proves spawn determinism /
+      # fence-perimeter / safe-radius, monotone-bounded chase convergence,
+      # and arena containment for every reachable input. Mirror rule:
+      # check-gloam.py moves in lockstep with gl_sim.c, same PR.
+      - name: Gloamline host proof (gl_sim mirror)
+        run: python3 tools/check-gloam.py
       # The Wonderful packages are prefix-bound to /opt/wonderful (loader
       # paths are patched at install), so make it runner-writable BEFORE the
       # cache step: actions/cache restores without sudo.
@@ -97,15 +106,98 @@ jobs:
           make -C games/gloamline-nds -j"$(nproc)"
           test -f games/gloamline-nds/gloamline-nds.nds
           ls -la games/gloamline-nds/gloamline-nds.nds
-      - name: log ROM sha256 (build provenance)
-        run: sha256sum games/gloamline-nds/gloamline-nds.nds | tee nds-sha256.txt
-      - name: headless dual-screen boot proof (py-desmume)
+      - name: log ROM sha256 (build provenance; cross-check vs committed dist/)
+        run: |
+          sha256sum games/gloamline-nds/gloamline-nds.nds dist/gloamline.nds | tee nds-sha256.txt
+      - name: install headless DeSmuME (py-desmume)
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libgl1
           pip install py-desmume==0.0.9
+      # Proof 1 — boot: dual-screen title renders, telemetry mailbox is
+      # live (magic words present, frame counter running, full-length
+      # 3600-frame nights — i.e. the shipped ROM, not a test build).
+      - name: 'proof 1/4 — boot + telemetry mailbox'
+        run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-boot-300.png \
-            --frames 300 --shot 150:nds-boot-150.png --require-distinct
+            --frames 300 --shot 150:nds-boot-150.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:16 \
+            --assert-watch 250:t:0:eq:0x474C4F41 \
+            --assert-watch 250:t:1:eq:0x4D4C4E45 \
+            --assert-watch 250:t:3:eq:0 \
+            --assert-watch 250:t:2:ge:200 \
+            --assert-watch 250:t:15:eq:3600
+      # Proof 2 — move: START begins a run (seed = latch frame, pinned 118),
+      # then RIGHT / DOWN / UP+LEFT each move the player by the exact
+      # pure-function distances (1.5 px/f straight, 271/256 px/f per axis
+      # diagonal). Positions are 8.8 fixed (32768 = x128).
+      - name: 'proof 2/4 — 8-way move (position telemetry tracks input)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-move.png \
+            --frames 320 --keys 120-125:START --keys 140-200:RIGHT \
+            --keys 210-250:DOWN --keys 260-300:UP --keys 260-300:LEFT \
+            --shot 205:nds-yard.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:16 \
+            --assert-watch 130:t:3:eq:1 \
+            --assert-watch 130:t:4:eq:32768 \
+            --assert-watch 130:t:5:eq:26624 \
+            --assert-watch 130:t:12:eq:118 \
+            --assert-watch 205:t:4:eq:55808 \
+            --assert-watch 205:t:5:eq:26624 \
+            --assert-watch 255:t:4:eq:55808 \
+            --assert-watch 255:t:5:eq:41984 \
+            --assert-watch 305:t:4:eq:44968 \
+            --assert-watch 305:t:5:eq:31144
+      # Proof 3 — chase + death + instant restart: an idle player is run
+      # down (Chebyshev distance t[13] closes 17501 -> 15077 -> contact
+      # 2405 < 2560), state flips to DEAD with deaths=1, the card holds,
+      # and START restarts instantly (fresh seed 348, player re-centered,
+      # the new night's Shambler closing again).
+      - name: 'proof 3/4 — chase closes, contact = death, START restarts'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-death.png \
+            --frames 420 --keys 120-125:START --keys 350-355:START \
+            --shot 300:nds-deathcard.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:16 \
+            --assert-watch 130:t:13:eq:17501 \
+            --assert-watch 150:t:13:eq:15077 \
+            --assert-watch 150:t:3:eq:1 \
+            --assert-watch 150:t:11:eq:0 \
+            --assert-watch 250:t:3:eq:2 \
+            --assert-watch 250:t:11:eq:1 \
+            --assert-watch 250:t:13:eq:2405 \
+            --assert-watch 349:t:3:eq:2 \
+            --assert-watch 360:t:3:eq:1 \
+            --assert-watch 360:t:11:eq:1 \
+            --assert-watch 360:t:12:eq:348 \
+            --assert-watch 360:t:4:eq:32768 \
+            --assert-watch 360:t:5:eq:26624 \
+            --assert-watch 419:t:13:eq:11696
+      # Proof 4 — survive to dawn: a mirror-sim-derived kiting route
+      # (games/gloamline-nds/proof/dawn-route-keys.txt, survives with
+      # >= 22 px of margin at every alignment +-6 frames) replays a FULL
+      # 60-second night headlessly (~5 s wall): dawn breaks (state 3),
+      # nights survived = 1, deaths = 0.
+      - name: 'proof 4/4 — survive night 1 to dawn (full-length night)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-dawn.png \
+            --frames 3900 $(cat games/gloamline-nds/proof/dawn-route-keys.txt) \
+            --shot 3800:nds-dawncard.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:16 \
+            --assert-watch 2000:t:3:eq:1 \
+            --assert-watch 2000:t:11:eq:0 \
+            --assert-watch 3750:t:3:eq:3 \
+            --assert-watch 3750:t:8:eq:0 \
+            --assert-watch 3750:t:9:eq:1 \
+            --assert-watch 3750:t:10:eq:1 \
+            --assert-watch 3750:t:11:eq:0
       - name: upload NDS ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -115,5 +207,11 @@ jobs:
             nds-sha256.txt
             nds-boot-300.png
             nds-boot-150.png
+            nds-move.png
+            nds-yard.png
+            nds-death.png
+            nds-deathcard.png
+            nds-dawn.png
+            nds-dawncard.png
           if-no-files-found: error
           retention-days: 14

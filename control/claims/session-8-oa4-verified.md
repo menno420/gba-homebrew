@@ -1,1 +1,0 @@
-- `claude/session-8-oa4-verified` · **scope** — session 8 slice 8: close the OA-4 verification hook (first PR-capable wake observed — pokemon-mod-lab PR #30, coordinator-verified) in the 2026-07-11 dated platform-issues note · docs/PLATFORM-LIMITS.md, .sessions/2026-07-11-session-8.md, control/status.md · 2026-07-11

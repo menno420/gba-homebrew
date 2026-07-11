@@ -1,46 +1,69 @@
 # gba-homebrew (game-lab Track B) · status
 
-updated: 2026-07-11T12:06:40Z
-phase: session 9 (bare hourly wake) — executed **ORDER 003** (model-attribution ground truth) and **ORDER 004** (fleet-wide self-review), both left `status: new`/unexecuted by session 8 slice 7 (a coordinator-directed documentation slice, explicitly out of that slice's scope). No build/gameplay work this slice; `dist/lumen-drift.gba` stays at v1.3, world generation/physics/kill rules untouched.
-health: green (no build-affecting change; this session did not run `bootstrap.py check --strict` locally — docs/control only, no kit-owned or build-graph files touched, consistent with session 8 slice 7's same-shaped slice; CI is the enforcement backstop on the PR)
-kit: v1.10.1 · check: presumed green (unchanged since #40) · engaged: yes
-boot: synced to origin/main `0ceb827b` (post-#40; `list_branches` at session start showed only `main` — no stranded sibling branches this cycle, unlike the pokemon-mod-lab lane's same-hour backlog).
-last-shipped: this slice's PR (branch `claude/gracious-feynman-4xi0o4`) — ORDER 003 + ORDER 004 execution, docs/control only. See dated self-review section below.
+updated: 2026-07-11T12:20:29Z
+phase: session 8 slice 8 (coordinator-relayed DOCUMENTATION slice) — closed the OA-4 verification hook that slice 7's dated platform-issues note left open in `docs/PLATFORM-LIMITS.md`: **OA-4 fix path CONFIRMED WORKING** (evidence below). No build/gameplay work this slice; `dist/lumen-drift.gba` stays at v1.3, world generation/physics/kill rules untouched.
+health: green (`python3 bootstrap.py check --strict` exit 0 at close-out; docs/control only, no kit-owned or build-graph files touched)
+kit: v1.10.1 · check: green (run locally this slice) · engaged: yes
+boot: synced to origin/main `e985e38` (session 9's ORDER 003+004 merge — the first bare-hourly-wake PR in this repo's ledger — landed after #40 while this seat was idle).
+last-shipped: this slice's PR (branch `claude/session-8-oa4-verified`) — OA-4 verification append in `docs/PLATFORM-LIMITS.md` + this status flip, docs/control only, READY with auto-merge armed at creation, merge-on-green.
 blockers: none
-orders: acked=001,002,003,004 done=001 (this repo's half), 002 (trigger `trig_0137SkvhXEJvwepX8aVNkcSn` armed, cron `0 * * * *`; first-fire PR-open confirmation below), **003 EXECUTED this session** (model-attribution self-report + a third data point on the cross-surface mismatch, see below), **004 EXECUTED this session** (self-review section below). Final inbox re-read at HEAD before this write: no new orders beyond 003/004.
+orders: acked=001,002,003,004 done=001 (this repo's half), 002 (trigger `trig_0137SkvhXEJvwepX8aVNkcSn` armed, cron `0 * * * *`; first-fire PR confirmed — session 9), 003+004 (executed session 9; condensed record below, full text in the session-9 status revision `git show 0b13f5b:control/status.md`). Inbox re-read at HEAD before this write: no new orders.
 review-queue: EMPTY (since slice 3).
-lane position (honest): the local backlog is empty or owner-gated (unchanged since slice 6/session 8). What remains: (a) the ⚑ owner items below (concept pick, release click, branch cleanup, graze hand-feel), (b) the low-priority kit follow-ups. No undone game work known: v1.0 scope complete, v1.1–v1.3 deepening/polish shipped and proven. **Lane idle pending owner input; the hourly wake trigger continues the ritual.**
+lane position (honest): the local backlog is empty or owner-gated (unchanged since slice 6). What remains: (a) the ⚑ owner items below (concept pick, release click, branch cleanup, graze hand-feel), (b) the low-priority kit follow-ups. No undone game work known: v1.0 scope complete, v1.1–v1.3 deepening/polish shipped and proven. **Lane idle pending owner input; the hourly wake trigger continues the ritual.**
 polish-debt: items 1–3 PAID (slice 6). Item 4 carried as ⚑ (owner hands-on graze tuning below). Kit follow-ups still carried (next line).
 kit-follow-ups carried (still unclaimed, low priority): `upgrade --apply-docs` (14 template-improved docs), migrate/retire legacy root `claims/` (only its README remains), auto-merge enabler wiring decision (`adopt --wire-enforcement`), upstream the PR #5 born-red-card gate rule to substrate-kit
 
-## Model-attribution finding (ORDER 003) — third data point on the routine's configured-vs-actual mismatch
+## OA-4 verification: CONFIRMED (2026-07-11, this slice — was PENDING since slice 7)
 
-This session's own family-level self-report, ground truth per its own harness/system-prompt: **sonnet-5**. Session 8's 2026-07-11 dated note in `docs/PLATFORM-LIMITS.md` records the `gba-homebrew hourly wake` routine's *configured* model as owner-reported **Opus 4.8**, and *prior* wake sessions' self-reports as owner-reported **Fable-family**. This session, fired by the same routine, self-reports **sonnet-5** instead — a third distinct value observed across firings of the identical routine (configured: Opus 4.8; self-reported across different firings: Fable-family, then sonnet-5). This doesn't resolve the mismatch — if anything it shows the actual-model side is itself inconsistent firing-to-firing, not just actual-vs-configured — but it's exactly the kind of per-session ground-truth data point ORDER 003 / fm `docs/findings/model-matrix-2026-07.md` is collecting. Cross-reference: pokemon-mod-lab `control/status.md` carries a parallel finding (its own routine, Opus 4.8 configured vs sonnet-5 self-reported, sessions 024 and 026). Suggested next step for the fleet-manager coordinator: fold both lanes' data points into the model-matrix finding together.
+The owner's OA-4 fix path (both repos added to the hourly-wake routine's repo
+scope; `docs/PLATFORM-LIMITS.md` dated 2026-07-11 note, item 1) is **CONFIRMED
+WORKING — first verified PR-capable wake observed**. Evidence, attributed as
+**coordinator-verified via GitHub API** (this seat made no writes to the
+pokemon lane and did not re-verify its PR contents; a read-only `git
+ls-remote` confirmed repo reachability, wake branch ref already absent —
+consistent with post-merge deletion):
 
-`add_repo` ground truth: this session never called `add_repo` for either repo — both `menno420/pokemon-mod-lab` and `menno420/gba-homebrew` were already present in this session's tool scope at start (visible in the session's own pre-tool-call system context, not inferred from side effects). This is a direct confirmation that the owner's routine repo-attachment fix (session 8's dated PLATFORM-LIMITS note, item 1) is holding for at least this firing — folds into OWNER-ACTION 4/5's cross-referenced pokemon-mod-lab tracking as a second lane's data point.
+- pokemon-mod-lab **PR #30** — "session 025: hourly wake heartbeat + shepherd
+  session-024", head branch `claude/eloquent-newton-4ihg8r`, **merged
+  2026-07-11T12:06:21Z**; its body self-identifies as an hourly wake and
+  states it has **working GitHub MCP write tooling** — updating ⚑
+  OWNER-ACTION 4's premise (wake sessions are no longer PR-less).
+- The wake even **shepherded a stranded sibling branch itself** (opened
+  pokemon-mod-lab #29; that content landed via **#31** after a CI marker
+  fix) — OA-4's failure mode now being cleaned up BY a wake, not caused by
+  one.
+- Second lane's corroboration (already on record, session 9 below): this
+  repo's first bare-wake PR needed no `add_repo` call — both repos were
+  pre-attached in the wake session's tool scope.
+- **Branch-name quirk (new, carried):** wake branches come out
+  harness-assigned as `claude/...` instead of the lane's `track-a/...`
+  convention — cosmetic, but relevant when auditing branch lists for
+  stranded wake work.
 
-## Self-review 2026-07-11 (ORDER 004, covering 2026-07-10 ~20:00Z → 2026-07-11 ~12:xxZ)
+The full verification text lives in `docs/PLATFORM-LIMITS.md` (2026-07-11
+dated note, item 1 — pending line struck through, dated verification
+appended). OA-5 (add_repo classifier denials ~1-in-2) remains open/carried in
+that note — distinct from OA-4 and NOT retired by this confirmation.
 
-**1. What went wrong (each with a citation):**
+## Condensed ORDER 003/004 record (executed session 9, merged as `e985e38`)
 
-- **No wake-fired session (as opposed to coordinator-directed or interactive sessions) produced a PR in this repo for the entire tracked window**, despite the hourly trigger being armed since ORDER 002. All of PRs #31–#40 were coordinator-worker slices, kit-upgrade traffic, or fleet-manager order relays (session 8 slice 7's own boot note, PR #40 body: "no wake-session PRs exist yet"). This session (9) is the first bare-hourly-wake-attributable PR in this repo's ledger — consistent with the owner's OA-4 fix (repos attached directly to the routine config) only having landed ~11:08Z on 2026-07-11, i.e. very recently relative to this window.
-- **ORDERS 003 and 004 sat unexecuted for roughly 9 and 2 hours respectively** (003 relayed via PR #34 at 03:32Z, 004 via PR #39 at 10:04Z) before this session picked them up — not a lane failure exactly (session 8 slice 7, the one session that fired in that gap, was coordinator-directed and explicitly out of scope for them), but it does mean orders addressed to "the next fired wake session" can sit for hours if no bare wake fires in between. Worth the fleet-manager coordinator knowing: order latency for this lane is bounded by wake cadence (hourly) AND by whether the firing session is a bare wake vs. a directed slice.
-- **The routine's configured-vs-actual model mismatch is now a 3-data-point pattern, not resolved**, per the Model-attribution finding above — flagged, not a stall.
-- Nothing else went wrong this window: no CI red on `main`, no guard/classifier denials hit by this session, no build regressions. The game-code side of the lane (session 8's four slices, v1.0→v1.3) shipped clean throughout, all replay tiers green by construction each time (see PR #31–#35 bodies).
-
-**2. Requiring owner attention (click-level, plain language):**
-
-- ⚑ **Concept pick** — pick 1 of the 3 committed Track B concepts (Lumen Drift-deepening / Clockwork Courier / Shoal; `docs/concepts/session-1-concepts.md`). Coordinator default (deepen Lumen Drift) has been running since slice 4; an explicit pick still gates what comes after v1.3.
-- ⚑ **Create the Lumen Drift GitHub Release** — worker seat gets 403 on tags/releases (verified wall, `docs/PLATFORM-LIMITS.md`). Tag `lumen-drift-v1.3`, attach `dist/lumen-drift.gba` (167,996 B, sha256 `195a86795e57e2fa0059a96782f1ac7a147cbcebc0cb28a96f353e5d9babae94`) — exact click sequence unchanged from prior status writes.
-- ⚑ **Merged-branch cleanup** — worker seat gets 403 on branch-delete; merged `claude/*` branches (through PR #40 + kit-upgrade branches) can be swept from the branches page in one pass.
-- ⚑ **Graze tuning wants owner hands-on validation** — the 400-frames-per-graze refund and 6px shell are machine-proven (CI asserts them), but whether grazing FEELS right needs real hands on a real run.
-- ⚑ (**awareness, no click needed**) — the routine model-attribution mismatch (Model-attribution finding above) is worth including in whatever the fleet-manager coordinator compiles for a report to Anthropic, alongside pokemon-mod-lab's parallel finding and the `websites` PR #59 precedent.
-
-**3. Health, one line:** v1.0–v1.3 shipped clean across 4 gameplay slices with zero replay-tier regressions ever hitting `main`, the review queue and non-gated backlog are both honestly empty, the OA-4 wake-tooling gap looks fixed as of this session (first bare-wake PR in the repo's history, no `add_repo` call needed), and the lane is correctly idling on owner input (concept pick, release click, branch cleanup, graze feel) rather than manufacturing busywork.
+- **ORDER 003 (model attribution):** session 9's ground-truth self-report was
+  a **Sonnet-family** model vs the routine's owner-reported configured
+  **Opus-family** setting — a third distinct data point on the
+  configured-vs-actual mismatch (prior wake self-reports: Fable-family). The
+  actual-model side is itself inconsistent firing-to-firing. Cross-ref:
+  pokemon-mod-lab status carries a parallel finding; fleet-manager
+  coordinator should fold both into `docs/findings/model-matrix-2026-07.md`.
+- **ORDER 004 (self-review):** key findings — no wake-fired PR existed in
+  this repo before session 9 (consistent with OA-4, now CONFIRMED above);
+  order latency for this lane is bounded by wake cadence AND by whether the
+  firing session is a bare wake vs a directed slice; no CI red on `main`, no
+  build regressions, lane correctly idling on owner input.
 
 ⚑ needs-owner (all carried):
 - **Concept pick** — pick 1 of the 3 committed Track B concepts (Lumen Drift-deepening / Clockwork Courier / Shoal; `docs/concepts/session-1-concepts.md`). The menu is WITH THE OWNER; slices 4–6 executed the coordinator's announced default (deepen Lumen Drift). An explicit pick still gates the remaining sessions.
 - **⚑ owner-click: create the Lumen Drift GitHub Release** (worker seat gets 403 on tags/releases). Suggested tag **`lumen-drift-v1.3`**. Exact clicks: repo → Releases → "Draft a new release" → "Choose a tag" → type `lumen-drift-v1.3` (create on publish, target `main`) → title `Lumen Drift v1.3` → attach `dist/lumen-drift.gba` from the merged tree (167,996 B; sha256 `195a86795e57e2fa0059a96782f1ac7a147cbcebc0cb28a96f353e5d9babae94` — paste it in the notes) → point the notes at `docs/PLAYING.md` and the v1.3 entry in `docs/current-state.md` → Publish.
-- **⚑ owner-click: merged-branch cleanup** — worker seat gets 403 on branch-delete; merged `claude/*` branches (through PR #40 + the kit-upgrade branches + this slice's) can be deleted in one sweep from the branches page.
+- **⚑ owner-click: merged-branch cleanup** — worker seat gets 403 on branch-delete; merged `claude/*` branches (through PR #40, the kit-upgrade branches, session 9's `claude/gracious-feynman-4xi0o4`, and this slice's `claude/session-8-oa4-verified` once merged) can be deleted in one sweep from the branches page.
 - **⚑ graze tuning wants owner hands-on validation** — the 400-frames-per-graze refund and the 6px shell are reasoned and machine-proven (CI asserts the refund and the lane geometry), but whether grazing FEELS right — risk-priced, readable, not exploitable — needs real hands on a real run. Was slice-5 polish-debt item 4; the only non-kit work item left, and it is owner-gated by nature.
-notes: worker seat (no tag/release/branch-delete perms — queued above). Platform-issues ledger: `docs/PLATFORM-LIMITS.md` carries the dated owner-reported notes section (2026-07-11 hourly-wake entry) alongside the verified walls; this session added no new dated note there (its findings live in `control/status.md` per ORDER 003/004's own instructions to write to status). Walls carried unchanged: api.github.com curl proxy-walled (GitHub MCP is the merge path); mGBA python core.load_save() segfault (--savefile bus-copy is the working path); devkitPro official infra Cloudflare-403 (leseratte10 mirror + SHA-256 pins). dist/ convention: player-facing games ship committed in `dist/` with provenance (v1.3 row live); skeleton stays CI-artifact-only; CI sha256-logs every from-source build for cross-checking.
+- ⚑ (**awareness, no click needed**) — the routine model-attribution mismatch (ORDER 003 record above) belongs in whatever the fleet-manager coordinator compiles for a report to Anthropic, alongside pokemon-mod-lab's parallel finding and the `websites` PR #59 precedent.
+notes: worker seat (no tag/release/branch-delete perms — queued above). Platform-issues ledger: `docs/PLATFORM-LIMITS.md` carries the dated owner-reported notes section (2026-07-11 hourly-wake entry — OA-4 item now verification-CLOSED, model-mismatch and OA-5 items still open) alongside the verified walls. Walls carried unchanged: api.github.com curl proxy-walled (GitHub MCP is the merge path); mGBA python core.load_save() segfault (--savefile bus-copy is the working path); devkitPro official infra Cloudflare-403 (leseratte10 mirror + SHA-256 pins). dist/ convention: player-facing games ship committed in `dist/` with provenance (v1.3 row live); skeleton stays CI-artifact-only; CI sha256-logs every from-source build for cross-checking.

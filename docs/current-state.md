@@ -36,12 +36,31 @@
 
 ## In flight
 
-(Nothing — lane idle pending owner concept pick / next order; see
-`control/status.md` ⚑ needs-owner. **Lumen Drift is SCOPE-COMPLETE: the
-committed scope AND the entire concept-doc polish list are built and
-proven** — no further Lumen Drift work is queued without the pick.)
+(Nothing — the owner concept pick stays ⚑ carried in `control/status.md`;
+the coordinator's announced default pending that pick is DEEPEN LUMEN
+DRIFT, which session 8 slice 4 started executing — v1.0 scope stays
+complete; v1.1 work is additive deepening.)
 
 ## Recently shipped (newest first)
+
+- **Session 8 slice 4 — Lumen Drift v1.1: the echoes deepen (depth
+  difficulty curve)** (2026-07-11): the endless echoes were
+  difficulty-flat — every 60-row cycle repeated at the same crystal
+  density and width forever. Now each full echo cycle past the first
+  raises a depth tier (crystals come one row-step sooner per tier, the
+  gallery echoes tighten from tier 2), plateauing at tier 3 from row 244
+  so generation stays periodic; echo banners carry the tier numeral
+  ("ECHOES OF THE BLUFFS II"). Rows 0-123 are cell-identical to v1.0, so
+  every pinned replay passed unchanged; `tools/check-cave.py` re-anchors
+  its periodicity proof at the plateau row, scans the ramp explicitly
+  (still 0 gates/breaks over every generatable row) and gains a
+  difficulty-curve tripwire (crystal cells per cycle 20→22→27→33 must
+  keep strictly increasing). A new autopilot-recorded script survives
+  through both new tiers to DEPTH 186 (dispatch-tier CI step). Proof:
+  [`proof/session-8-echo-bluffs-ii-banner.png`](proof/session-8-echo-bluffs-ii-banner.png),
+  [`proof/session-8-echo-bluffs-iii-banner.png`](proof/session-8-echo-bluffs-iii-banner.png)
+  (script: `proof/session-8-tier-run-keys.txt`). `dist/lumen-drift.gba`
+  refreshed to v1.1.
 
 - **Session 7 — Lumen Drift polish pass 3: more cave beyond row 62**
   (2026-07-10, PRs #22–#23): the cave is now ENDLESS — every row is a pure

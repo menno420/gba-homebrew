@@ -79,6 +79,19 @@
  *     echo banners announce the tier ("ECHOES OF THE BLUFFS II"). Rows
  *     0-123 are cell-identical to v1.0, so every pinned replay is intact.
  *
+ * v1.2 — GRAZE THE LIGHT (near-miss risk/reward):
+ *   - Shaving a crystal spike WITHOUT dying now pays light back: a thin
+ *     graze shell just outside the kill box senses each crystal cell the
+ *     mote slips past, and every first touch of a cell (once per cell per
+ *     run) rewinds part of the light decay, flares the lamp, whispers a
+ *     new synthesized "tss" (ld_graze) and counts on a GRAZE HUD line +
+ *     the game-over card. The crystals stop being pure keep-away: they are
+ *     where the light lives, and v1.1's depth tiers now double as a richer
+ *     fuel field for whoever dares to fly close. World generation, physics
+ *     and every kill rule are UNTOUCHED — graze is read-only sensing over
+ *     the same pure layout, so the cave proof (tools/check-cave.py) and
+ *     every committed replay key script stay valid.
+ *
  * Polish pass 1 (post-first-complete, from the concept doc's polish list):
  *   - TITLE SCREEN: the game boots to a "LUMEN DRIFT" card over the cave
  *     mouth showing the BEST depth and PRESS START; START begins the run.
@@ -245,6 +258,18 @@ namespace
     constexpr bn::fixed hazard_half(2);  // forgiving hazard hitbox (< mote_half)
     constexpr bn::fixed pickup_half(4);  // generous shard pickup box (> mote_half)
 
+    // v1.2 GRAZE: the near-miss shell. A crystal cell KILLS while the
+    // hazard box overlaps it (mote center closer than hazard_half + 4px =
+    // 6px to the cell center); it GRAZES while only this bigger box does
+    // (center within graze_half + 4px = 10px) — i.e. the open column right
+    // next to a crystal is the graze lane, one more column out pays
+    // nothing. Each crystal cell grazes once per run; the reward is a
+    // light-decay rewind (a third of a shard), so flying close to death is
+    // the light economy's risk premium. Sensing only — no physics, no
+    // world-generation change.
+    constexpr bn::fixed graze_half(6);
+    constexpr int graze_light_refund = 400;  // decay frames per grazed cell
+
     // Light tuning (polish pass 2 — the doc's named unknown is "making the
     // light-decay feel good"; pass-2 values on the left, pass-1 on the
     // right): the decay horizon closes in ~25% sooner, the fade cap eases
@@ -275,6 +300,12 @@ namespace
     constexpr int hook_slot_depth = 6;  // depth high-water mark (cells)
     constexpr int hook_slot_tick = 7;  // game-loop iterations (headless
                                        // overrun evidence: ticks ~= frames)
+    constexpr int audio_slot_graze = 8;  // v1.2: cumulative grazed crystal
+                                         // cells (the ld_graze whisper
+                                         // fires on every frame this grows)
+    constexpr int hook_slot_light = 9;   // v1.2: run_frames after refunds —
+                                         // light-decay telemetry, so a graze
+                                         // refund is asserted numerically
     constexpr int thrust_retrigger_frames = 20;  // rumble cadence while A held
 
     // The surge: a wall of consuming ember light that descends from the cave
@@ -838,6 +869,7 @@ int main()
     bn::sprite_text_generator text_generator(common::variable_8x8_sprite_font);
     bn::vector<bn::sprite_ptr, 8> depth_sprites;
     bn::vector<bn::sprite_ptr, 8> spark_sprites;
+    bn::vector<bn::sprite_ptr, 8> graze_sprites;
     bn::vector<bn::sprite_ptr, 16> hint_sprites;
     bn::vector<bn::sprite_ptr, 24> over_sprites;
     bn::vector<bn::sprite_ptr, 8> section_sprites;
@@ -854,6 +886,11 @@ int main()
     gl::tile_grid shard_sensor(cell_px, [](int cx, int cy) {
         return cave.shard(cx, cy);
     });
+    // v1.2 graze: the SAME crystal predicate swept with the bigger shell
+    // box — cells it reports that the kill box does not are near-misses.
+    gl::tile_grid graze_sensor(cell_px, [](int cx, int cy) {
+        return cave.crystal(cx, cy);
+    });
 
     gl::body mote_body;
     gl::run_state run;
@@ -862,6 +899,10 @@ int main()
     int max_depth_cells = 0;
     int sparks = 0;
     int sparks_drawn = -1;  // force first HUD draw
+    int grazes = 0;         // v1.2: crystal cells grazed this run
+    int grazes_drawn = -1;  // force first HUD draw
+    bn::vector<bn::point, 16> grazed;  // cells already grazed this run (a
+                                       // cell pays once — no hover farming)
     int banner_frames = 0;  // section banner time left
     int flare = 0;       // frames of thrust-flare left
     int thrust_frames = 0;  // consecutive A-held frames (sound retrigger)
@@ -900,6 +941,9 @@ int main()
         depth = -1;
         sparks = 0;
         sparks_drawn = -1;
+        grazes = 0;
+        grazes_drawn = -1;
+        grazed.clear();
         banner_frames = 0;
         flare = 0;
         thrust_frames = 0;
@@ -948,11 +992,15 @@ int main()
         bn::string<24> spark_line("SPARKS ");
         spark_line += bn::to_string<6>(sparks);
 
+        bn::string<24> graze_line("GRAZE ");
+        graze_line += bn::to_string<6>(grazes);
+
         text_generator.set_center_alignment();
         text_generator.generate(0, -24, "THE LIGHT IS TAKEN", over_sprites);
         text_generator.generate(0, -10, score_line, over_sprites);
         text_generator.generate(0, 4, spark_line, over_sprites);
-        text_generator.generate(0, 20, "PRESS START", over_sprites);
+        text_generator.generate(0, 18, graze_line, over_sprites);
+        text_generator.generate(0, 32, "PRESS START", over_sprites);
         text_generator.set_left_alignment();
     };
 
@@ -1094,6 +1142,20 @@ int main()
             text_generator.generate(-110, -52, label, spark_sprites);
         }
 
+        // v1.2 graze HUD (counter updates at the end of the loop, so the
+        // line redraws on the frame after a graze). y = -30, NOT -42: the
+        // centered section banners render at y = -40 and a line there
+        // overlaps their leading glyphs (found by the deep-run replay's
+        // banner text asserts failing on the first draft).
+        if(grazes != grazes_drawn)
+        {
+            grazes_drawn = grazes;
+            graze_sprites.clear();
+            bn::string<16> label("GRAZE ");
+            label += bn::to_string<6>(grazes);
+            text_generator.generate(-110, -30, label, graze_sprites);
+        }
+
         // Cave sections: crossing a section's first row raises a banner
         // (depth is a high-water mark, so a section never announces twice
         // per run) — now unbounded: past the old row-62 floor, every
@@ -1209,6 +1271,58 @@ int main()
         {
             game_over();
         }
+        else
+        {
+            // v1.2 GRAZE — alive next to death: every crystal cell inside
+            // the graze shell (and this frame provably NOT inside the kill
+            // box, or we would be in the branch above) pays a light-decay
+            // rewind the first time this run touches it. The refund lands
+            // after this frame's fade/radius were computed — the lamp
+            // visibly swells on the NEXT frame, like the shard flare.
+            int new_grazes = 0;
+
+            graze_sensor.visit_overlaps(mote_body.pos.x(), mote_body.pos.y(),
+                                        graze_half, graze_half,
+                                        [&](int cx, int cy) {
+                                            for(const bn::point& cell : grazed)
+                                            {
+                                                if(cell.x() == cx && cell.y() == cy)
+                                                {
+                                                    return;
+                                                }
+                                            }
+
+                                            if(grazed.full())
+                                            {
+                                                // Forget the oldest graze —
+                                                // re-earning a 16-cells-ago
+                                                // near-miss is play, not
+                                                // farming.
+                                                grazed.erase(grazed.begin());
+                                            }
+
+                                            grazed.push_back(bn::point(cx, cy));
+                                            ++new_grazes;
+                                        });
+
+            if(new_grazes > 0)
+            {
+                grazes += new_grazes;
+                run_frames = bn::max(run_frames - new_grazes * graze_light_refund, 0);
+                flare = 20;
+                bn::sound_items::ld_graze.play(bn::fixed(0.5));
+
+                for(int i = 0; i < new_grazes; ++i)
+                {
+                    gl::count_audio(audio_slot_graze);
+                }
+            }
+        }
+
+        // v1.2 light telemetry: run_frames AFTER any graze refund, so a
+        // graze is asserted numerically (the word drops by the refund on
+        // the graze frame).
+        gl_audio_hook[hook_slot_light] = unsigned(run_frames);
 
         bn::core::update();
     }

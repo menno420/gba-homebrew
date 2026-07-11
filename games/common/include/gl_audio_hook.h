@@ -21,8 +21,11 @@
 
 extern "C"
 {
-    // One cumulative trigger counter per game-defined sound slot.
-    inline volatile unsigned gl_audio_hook[8] = {};
+    // One cumulative trigger counter per game-defined sound slot (games
+    // also publish per-frame telemetry words here — slot meanings are
+    // game-defined; grown 8 -> 12 for Lumen Drift v1.2's graze counter +
+    // light telemetry, existing slots 0-7 unchanged).
+    inline volatile unsigned gl_audio_hook[12] = {};
 }
 
 namespace gl

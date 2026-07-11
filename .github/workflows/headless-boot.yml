@@ -194,6 +194,42 @@ jobs:
             --assert-watch 2732:hook:6:eq:181 \
             --assert-watch 2847:hook:6:eq:186 \
             --assert-watch 2847:hook:3:eq:0
+      # Graze proof (session 8, v1.2 "graze the light"): a hand-tuned
+      # open-loop route falls past the plate, shaves the row-23 crystal
+      # from the safe lane (graze counter hook[8] 0->1 at f180 with the
+      # kill counter hook[3] still 0), and the light-decay telemetry
+      # hook[9] drops from >100 to 0 on the SAME frame — the refund fired.
+      # Audio is isolated by construction: no thrust and no shard on this
+      # route, so the mixer is silent at 170, voiced at 183 (the ld_graze
+      # whisper), and silent again at 200 before the deliberate row-30
+      # crystal death at f218 puts GRAZE 2 on the game-over card. Committed
+      # evidence: docs/proof/session-8-graze-hud.png / -game-over.png.
+      - name: graze proof — near-miss pays light back, once per crystal
+        run: |
+          python3 tools/headless-screenshot.py \
+            games/lumen-drift/lumen-drift.gba proof-graze.png --frames 300 \
+            --keys 20-24:START --keys 24-70:RIGHT \
+            --keys 70-151:LEFT --keys 188-215:LEFT \
+            --shot 186:proof-graze-hud.png \
+            --require-distinct \
+            --assert-text '186:GRAZE 1' \
+            --assert-text '299:GRAZE 2' \
+            --assert-text '299:THE LIGHT IS TAKEN' \
+            --elf games/lumen-drift/lumen-drift.elf \
+            --watch hook:gl_audio_hook:12 \
+            --watch-nonzero mix:maxmod_mixing_buffer:0x420 \
+            --assert-watch 170:hook:8:eq:0 \
+            --assert-watch 170:mix:0:eq:0 \
+            --assert-watch 179:hook:8:eq:0 \
+            --assert-watch 179:hook:9:gt:100 \
+            --assert-watch 180:hook:8:eq:1 \
+            --assert-watch 180:hook:9:eq:0 \
+            --assert-watch 183:mix:0:gt:0 \
+            --assert-watch 200:mix:0:eq:0 \
+            --assert-watch 205:hook:3:eq:0 \
+            --assert-watch 212:hook:8:eq:2 \
+            --assert-watch 218:hook:3:eq:1 \
+            --assert-watch 299:hook:8:eq:2
       # SRAM persistence (session 5): run 1 boots a factory-fresh savefile
       # (title shows BEST 0), dies at DEPTH 3 (no-input surge death) which
       # writes BEST to SRAM; run 2 is a SEPARATE emulator boot on the same

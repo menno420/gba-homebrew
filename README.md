@@ -41,6 +41,7 @@ never extend that trust to anything the owner distributes without flagging it.
 |---|---|
 | [`control/`](control/) | Manager↔lane coordination — `inbox.md` (manager-written orders), `status.md` (lane-written state). Protocol: [`control/README.md`](control/README.md). |
 | [`docs/conventions.md`](docs/conventions.md) | Repo conventions — **override harness defaults**. Read before any PR. |
+| [`docs/BUILDING.md`](docs/BUILDING.md) | One-command build recipe (`tools/setup-toolchain.sh` then `tools/build.sh`) + running the ROM in mGBA, desktop and headless. |
 | [`docs/capabilities.md`](docs/capabilities.md) | What sessions CAN do (recipes, incl. the full GBA toolchain + headless mGBA loop) — read before declaring anything impossible. |
 | [`docs/PLATFORM-LIMITS.md`](docs/PLATFORM-LIMITS.md) | Verified walls with exact error text — probing a documented wall twice is a bug. |
 | [`docs/findings/`](docs/findings/) | Ground-truth findings mirrored from fleet-manager (the toolchain proof). |

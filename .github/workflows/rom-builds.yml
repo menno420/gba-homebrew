@@ -43,3 +43,14 @@ jobs:
             built=$((built + 1))
           done
           test "$built" -ge 2 && echo "$built ROMs built"
+      - name: log ROM sha256 (build provenance)
+        run: sha256sum games/*/*.gba | tee rom-sha256.txt
+      - name: upload ROMs as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gba-roms-${{ github.sha }}
+          path: |
+            games/*/*.gba
+            rom-sha256.txt
+          if-no-files-found: error
+          retention-days: 14

@@ -70,6 +70,15 @@
  *     proofs assert depth numerically (--assert-watch) instead of only
  *     reading HUD text.
  *
+ * v1.1 — THE ECHOES DEEPEN (depth difficulty curve):
+ *   - The endless echoes were difficulty-flat: every 60-row cycle repeated
+ *     at the same crystal density and width forever. Now each full echo
+ *     cycle past the first raises a depth tier — crystals come more often,
+ *     the gallery echoes tighten from tier 2 — plateauing at tier 3 (row
+ *     244) so generation stays periodic and check-cave.py-provable. The
+ *     echo banners announce the tier ("ECHOES OF THE BLUFFS II"). Rows
+ *     0-123 are cell-identical to v1.0, so every pinned replay is intact.
+ *
  * Polish pass 1 (post-first-complete, from the concept doc's polish list):
  *   - TITLE SCREEN: the game boots to a "LUMEN DRIFT" card over the cave
  *     mouth showing the BEST depth and PRESS START; START begins the run.
@@ -198,6 +207,32 @@ namespace
         return index < 3 ? section_names[index] : echo_names[(index - 3) % 3];
     }
 
+    // v1.1 — THE ECHOES DEEPEN (depth difficulty curve). The endless echo
+    // bands used to repeat at one fixed difficulty forever: once a player
+    // survived one 60-row cycle they could survive them all, and long runs
+    // went flat. Now every full echo cycle (bluffs+gallery+deep, 60 rows)
+    // past the first raises a DEPTH TIER: crystal clusters come more often
+    // (the crystal step shrinks by the tier) and the gallery echoes tighten
+    // by one cell from tier 2 — plateauing at tier 3 (rows 244+) so the
+    // generation stays periodic and tools/check-cave.py can still prove
+    // every junction of the endless cave passable (its periodicity proof
+    // re-anchors at the plateau row; KEEP THE MIRROR IN LOCKSTEP). Banners
+    // announce each tier with a numeral ("ECHOES OF THE DEEP III"). Rows
+    // 0-123 are cell-for-cell identical to v1.0 — tier 1 starts at row 124,
+    // beyond both CI replays' reach, so the pinned replays stay valid.
+    constexpr int echo_cycle_bands = 3;  // bands per cycle (one of each look)
+    constexpr int echo_tier_cap = 3;     // plateau: "IV" from row 244 down
+    constexpr const char* tier_suffixes[] = {"", " II", " III", " IV"};
+
+    /// Depth tier of a section index: 0 for the committed sections and the
+    /// first echo cycle, +1 per full echo cycle after that, capped.
+    [[nodiscard]] constexpr int echo_tier(int index)
+    {
+        return index < 3 ? 0
+                         : bn::min((index - 3) / echo_cycle_bands,
+                                   echo_tier_cap);
+    }
+
     // Physics tuning (pixels/frame): floaty mote.
     constexpr bn::fixed gravity(0.045);
     constexpr bn::fixed thrust(0.11);
@@ -308,15 +343,23 @@ namespace
             // most 3 columns and every band is at least 2 wide) — while
             // each 20-row band wears one section's look: bluffs blobs, a
             // hair-narrower gallery with its pillars, or the deep's tight
-            // corridor with denser crystals.
+            // corridor with denser crystals. v1.1: the gallery echoes
+            // tighten by one more cell from depth tier 2 (cycle boundaries
+            // are band boundaries, so the width never changes mid-band).
             row.center = 16 + wave_a[(cy / 2) % 16] + wave_b[(cy / 3) % 8];
-            row.half_width = row.look == 1 ? 4 : 2;
+            row.half_width = row.look == 1 ? (echo_tier(index) >= 2 ? 3 : 4)
+                                           : 2;
         }
 
         row.center = bn::clamp(row.center, 4, map_cols - 5);
         row.blobs = row.look == 0 && cy > 10 && cy % 9 == 4;
         row.pillar = row.look == 1 && cy >= 26 && cy % 6 == 1;
-        row.crystal_step = row.look == 2 ? 5 : 7;
+
+        // v1.1 depth tiers: crystal clusters come one row-step sooner per
+        // tier (tier is 0 everywhere the committed replays reach), floored
+        // so even the deep echoes keep a survivable rhythm.
+        row.crystal_step = bn::max((row.look == 2 ? 5 : 7) - echo_tier(index),
+                                   3);
         return row;
     }
 
@@ -1061,9 +1104,15 @@ int main()
         {
             section_index = reached_index;
             section_sprites.clear();
+
+            // v1.1: echo banners carry the depth tier's numeral, so the
+            // player is told the cave is done being polite ("ECHOES OF
+            // THE DEEP III").
+            bn::string<32> banner(section_name(section_index));
+            banner += tier_suffixes[echo_tier(section_index)];
+
             text_generator.set_center_alignment();
-            text_generator.generate(0, -40, section_name(section_index),
-                                    section_sprites);
+            text_generator.generate(0, -40, banner, section_sprites);
             text_generator.set_left_alignment();
             banner_frames = 150;
         }

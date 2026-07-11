@@ -83,8 +83,31 @@ seat (owner-reported facts, not claims verified by this seat):
    hourly-wake routine's config. This is the fix path for **OWNER-ACTION 4**
    (on record in the pokemon lane's `control/status.md` as OA-4: wake
    sessions stranding PR-less branches for lack of GitHub write access).
-   **Verification pending:** the first wake session that successfully opens
-   a PR should be recorded here (and in `control/status.md`) when observed.
+   ~~**Verification pending:** the first wake session that successfully opens
+   a PR should be recorded here (and in `control/status.md`) when observed.~~
+   **Verified 2026-07-11 (hook closed): the OA-4 fix path is CONFIRMED
+   WORKING — the first verified PR-capable wake has been observed.**
+   Evidence, coordinator-verified via GitHub API (this seat did not
+   re-verify pokemon-lane PR contents itself and made no writes there; a
+   read-only `git ls-remote` from this seat confirmed the repo is reachable,
+   with the wake branch ref already absent — consistent with post-merge
+   deletion):
+   - pokemon-mod-lab **PR #30** — "session 025: hourly wake heartbeat +
+     shepherd session-024", head branch `claude/eloquent-newton-4ihg8r`,
+     **merged 2026-07-11T12:06:21Z**. Its body self-identifies as an hourly
+     wake and states it has **working GitHub MCP write tooling** — updating
+     ⚑ OWNER-ACTION 4's premise (wake sessions are no longer PR-less).
+   - The wake even **shepherded a stranded sibling branch itself** (it
+     opened pokemon-mod-lab #29; that content landed via **#31** after a CI
+     marker fix) — the exact failure mode OA-4 described, now being cleaned
+     up BY a wake session rather than caused by one.
+   - This repo's own corroborating data point is already on record: session
+     9 (the first bare-wake PR in gba-homebrew's ledger) needed no
+     `add_repo` call — see `control/status.md`'s ORDER 003 finding.
+   - **Branch-name quirk (new, carried):** wake branches come out with
+     harness-assigned names of the form `claude/...` instead of the lane's
+     `track-a/...` convention — cosmetic, but worth knowing when auditing
+     branch lists for stranded wake work.
 2. **Model mismatch (configured vs actual):** the owner reports the routine
    is configured to run **Opus 4.8**, but wake sessions report actually
    running a **Fable-family model**. Recorded as an observed

@@ -2,7 +2,8 @@
 
 > **Status:** `owner-guidance` — download-and-play guide for the committed
 > ROM in [`dist/`](../dist/); refreshed in the same PR whenever the game or
-> the shipped ROM changes (written 2026-07-11, session 8 slice 3).
+> the shipped ROM changes (written 2026-07-11, session 8 slice 3; updated
+> for v1.1 "the echoes deepen", session 8 slice 4).
 
 **Download → open in an emulator → play.** No build step needed.
 
@@ -53,6 +54,12 @@ power-off. **SPARKS** counts the shards you've collected this run.
 - The cave has three handcrafted sections — THE BLUFFS, THE GALLERY,
   THE DEEP — then continues forever through echoing variations of them.
   A banner announces each one as you reach it.
+- **The echoes deepen** (v1.1): past the handcrafted sections, the cave
+  raises the stakes with every full echo cycle — crystals come more often
+  and the galleries tighten. The banner tells you the tier ("ECHOES OF THE
+  BLUFFS II", "… III", "… IV"); IV is as mean as the cave gets, and it
+  starts around depth 240. Surviving your first "II" banner is the new
+  badge of honor.
 
 One more run: the cave is identical every time — every death is a lesson
 you can spend on the next descent.

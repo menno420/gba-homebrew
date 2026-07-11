@@ -169,6 +169,31 @@ jobs:
             --assert-watch 2261:hook:6:eq:95 \
             --assert-watch 2263:hook:6:ge:95 \
             --assert-watch 2263:hook:3:eq:0
+      # Difficulty-curve proof (session 8, v1.1 "the echoes deepen"): the
+      # committed autopilot-recorded script must descend through BOTH new
+      # depth tiers alive — "ECHOES OF THE BLUFFS II" fires at depth 121
+      # (row 124, tier 1: crystal step 6) and "ECHOES OF THE BLUFFS III" at
+      # depth 181 (row 184, tier 2: step 5 + tighter gallery echoes),
+      # parking at DEPTH 186 with 0 deaths. Depth is asserted numerically
+      # from the telemetry (HUD text lands counter-frame + 1). Generation-
+      # side density/passability is pinned per-PR by tools/check-cave.py;
+      # this step proves the ramp IN THE ROM. Like the deep-run script,
+      # the keys are per-frame closed-loop output — never offset-shift
+      # them, re-record instead.
+      - name: difficulty-curve proof — the echoes deepen with depth
+        run: |
+          python3 tools/headless-screenshot.py \
+            games/lumen-drift/lumen-drift.gba proof-tier-run.png --frames 2848 \
+            $(tail -1 docs/proof/session-8-tier-run-keys.txt) \
+            --assert-text '655:DEPTH 58' \
+            --assert-text '1760:ECHOES OF THE BLUFFS II' \
+            --assert-text '2740:ECHOES OF THE BLUFFS III' \
+            --elf games/lumen-drift/lumen-drift.elf \
+            --watch hook:gl_audio_hook:8 \
+            --assert-watch 1751:hook:6:eq:121 \
+            --assert-watch 2732:hook:6:eq:181 \
+            --assert-watch 2847:hook:6:eq:186 \
+            --assert-watch 2847:hook:3:eq:0
       # SRAM persistence (session 5): run 1 boots a factory-fresh savefile
       # (title shows BEST 0), dies at DEPTH 3 (no-input surge death) which
       # writes BEST to SRAM; run 2 is a SEPARATE emulator boot on the same

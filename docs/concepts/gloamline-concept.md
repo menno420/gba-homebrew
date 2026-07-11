@@ -1,6 +1,6 @@
 # Gloamline — concept slice (new arc, owner-picked: original zombie-survival, Nintendo DS)
 
-> **Status:** `decision-ready` — arc slice 1 of the owner-picked
+> **Status:** `plan` — decision-ready; arc slice 1 of the owner-picked
 > zombie-survival arc (supersedes the deepen-LD / Clockwork Courier / Shoal
 > menu). **Target: Nintendo DS** (owner correction, relayed 2026-07-11
 > mid-slice — not GBA). 100% original IP: title, art, audio, code.

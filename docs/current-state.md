@@ -14,7 +14,10 @@
   CI builds all `games/*/Makefile` ROMs in ~45–50s warm. Since PR #13 every
   unsigned mirror package is **SHA-256-pinned** (install fails on mismatch;
   trust-on-first-use posture —
-  [idea shipped](ideas/toolchain-checksum-pin-2026-07-10.md)).
+  [idea shipped](ideas/toolchain-checksum-pin-2026-07-10.md)). One-command
+  build recipe: [`BUILDING.md`](BUILDING.md) (session 8, PR #29 — which
+  also made "ROM builds" CI upload every `.gba` as a sha256-logged
+  workflow artifact).
 - **Headless proof loop**: `tools/headless-screenshot.py` (scripted button
   spans, `--keys-pattern` duty cycles, multi-shot, non-blank +
   `--require-distinct` + `--assert-text` glyph-exact HUD/card assertions,

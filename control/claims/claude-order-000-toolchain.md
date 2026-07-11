@@ -1,1 +1,0 @@
-- `claude/order-000-toolchain` · **ORDER 000 toolchain + build reproducibility** — local toolchain verify + Lumen Drift build, rom-builds.yml artifact upload + sha256 log, docs/BUILDING.md · expected files: .github/workflows/rom-builds.yml, docs/BUILDING.md, .sessions/, control/status.md, docs/review-queue.md · 2026-07-11

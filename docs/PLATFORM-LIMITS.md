@@ -62,6 +62,25 @@
   frame) — recipe in [`capabilities.md`](capabilities.md); SRAM power-cycle
   persistence is fully proven headlessly.
 
+- **py-desmume binding: KEYINPUT reads all-pressed at reset → BlocksDS ROMs
+  "power off" at frame 1** — NOT a wall, a one-line-fix quirk (recipe below),
+  recorded 2026-07-11 (NDS feasibility slice) so nobody re-derives it. The
+  py-desmume==0.0.9 core reads `REG_KEYINPUT` as active-low ZERO (= every
+  button held) until the frontend's first keypad latch; the BlocksDS default
+  ARM7 core treats SELECT+START+L+R as its exit combo, so its main loop
+  exits on frame 1 and libnds powers the console off. Observed verbatim
+  (every BlocksDS .nds, including a bare `while(1) swiWaitForVBlank();`):
+  `SYSTEM POWERED OFF VIA ARM7 SPI POWER DEVICE` / `Did your main()
+  return?` — with a blank framebuffer ever after. **Fix:** call
+  `emu.input.keypad_update(0)` BEFORE the first `emu.cycle()` (done in
+  `tools/nds-headless-check.py` — keep it). Also needed headlessly:
+  `SDL_VIDEODRIVER=dummy` + `SDL_AUDIODRIVER=dummy`, or DeSmuME init fails
+  with `Error trying to initialize SDL: No available video device`.
+- **Wonderful/BlocksDS package infra is NOT walled** (recorded 2026-07-11 so
+  nobody assumes the devkitPro 403 generalizes): `wonderful.asie.pl` and
+  `blocksds.skylyrac.net` both serve 200 through the fleet proxy — direct
+  fetch + SHA-256 pin in `tools/setup-nds-toolchain.sh`, no mirror needed.
+
 ## Dated platform-issue notes (owner-reported, not verbatim-error walls)
 
 > Unlike the walls above, entries here are **owner-reported findings** from

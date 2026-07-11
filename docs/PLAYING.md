@@ -3,7 +3,7 @@
 > **Status:** `owner-guidance` — download-and-play guide for the committed
 > ROM in [`dist/`](../dist/); refreshed in the same PR whenever the game or
 > the shipped ROM changes (written 2026-07-11, session 8 slice 3; updated
-> for v1.1 "the echoes deepen", session 8 slice 4).
+> for v1.2 "graze the light", session 8 slice 5).
 
 **Download → open in an emulator → play.** No build step needed.
 
@@ -42,13 +42,20 @@ only visible inside your glow, and the glow is slowly failing.
 
 **Goal:** descend as deep as you can. **DEPTH** on the HUD is your score
 (in cave rows below the spawn); **BEST** is your record, and it survives
-power-off. **SPARKS** counts the shards you've collected this run.
+power-off. **SPARKS** counts the shards you've collected this run, and
+**GRAZE** counts the crystals you've shaved and lived.
 
 **What's happening:**
 
 - Your **light shrinks** over time. Grab the glittering **spark shards**
   hugging the tunnel walls to rewind the decay and brighten back up.
 - **Crystals** (the spiky clusters in the passage) kill on touch.
+- **Graze the light** (v1.2): slip PAST a crystal close enough to hear the
+  whisper and part of your light comes back — less than a shard, but
+  crystals are everywhere and shards are rare. Each crystal pays once per
+  run. The safe middle of the tunnel is a slow fade to black; the bold
+  line hugs the spikes. The deeper tiers pack more crystals, so the danger
+  and the fuel rise together.
 - A **surge** of consuming ember light descends from the cave mouth at a
   fixed pace — stall too long and it swallows you. Keep moving down.
 - The cave has three handcrafted sections — THE BLUFFS, THE GALLERY,

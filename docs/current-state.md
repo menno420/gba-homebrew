@@ -38,10 +38,34 @@
 
 (Nothing — the owner concept pick stays ⚑ carried in `control/status.md`;
 the coordinator's announced default pending that pick is DEEPEN LUMEN
-DRIFT, which session 8 slice 4 started executing — v1.0 scope stays
-complete; v1.1 work is additive deepening.)
+DRIFT, which session 8 slices 4–5 executed — v1.0 scope stays
+complete; v1.1/v1.2 work is additive deepening.)
 
 ## Recently shipped (newest first)
+
+- **Session 8 slice 5 — Lumen Drift v1.2: graze the light (near-miss
+  risk/reward)** (2026-07-11): shaving a crystal spike WITHOUT dying now
+  pays light back — a 4px graze shell just outside the kill box senses
+  each crystal cell the mote slips past (once per cell per run, so no
+  hover farming) and rewinds a third of a shard's worth of light decay,
+  with a new original synthesized whisper (`ld_graze`), a thrust-style
+  flare, a GRAZE HUD line and a GRAZE game-over-card line. The crystals
+  stop being pure keep-away: the safe tunnel center is a slow fade to
+  black, the bold line hugs the spikes — and v1.1's depth tiers now
+  double as a richer fuel field the deeper you dare. World generation,
+  physics and kill rules UNTOUCHED (graze is read-only sensing over the
+  same pure layout): `check-cave.py` scope unchanged and green, and all
+  four replay tiers passed with ZERO expectation edits (the canonical
+  route never grazes — lag constant 19, no overruns; the deep run grazes
+  8 times but its depth/death asserts are physics-only). New dispatch-tier
+  CI graze proof: a hand-tuned route grazes row 23 from the safe lane
+  (hook[8] 0→1 with deaths 0, light telemetry hook[9] >100→0 on the same
+  frame, mixer silent→voiced→silent isolating the whisper), then dies on
+  a row-30 crystal for the card. Proof:
+  [`proof/session-8-graze-hud.png`](proof/session-8-graze-hud.png),
+  [`proof/session-8-graze-game-over.png`](proof/session-8-graze-game-over.png).
+  Telemetry hooks grew 8→12 words (slots 0-7 unchanged; 8 = grazed cells,
+  9 = run_frames). `dist/lumen-drift.gba` refreshed to v1.2 (166,828 B).
 
 - **Session 8 slice 4 — Lumen Drift v1.1: the echoes deepen (depth
   difficulty curve)** (2026-07-11): the endless echoes were

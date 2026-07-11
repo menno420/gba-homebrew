@@ -1,12 +1,12 @@
-# substrate-kit upgrade report — v1.11.0 → v1.12.0
+# substrate-kit upgrade report — v1.12.0 → v1.12.1
 
 > Generated 2026-07-11 by `bootstrap.py upgrade`. Rollback: `python3 bootstrap.py upgrade --rollback`.
 
-**Docs:** consumer-edited: 5 · template-improved: 2 · unchanged: 14
+**Docs:** consumer-edited: 5 · unchanged: 16
 
 | planted doc | class | note |
 |---|---|---|
-| CONSTITUTION.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
+| CONSTITUTION.md | unchanged | template identical across versions |
 | docs/decisions.md | unchanged | template identical across versions |
 | docs/architecture.md | unchanged | template identical across versions |
 | docs/ownership.md | unchanged | template identical across versions |
@@ -16,7 +16,7 @@
 | docs/collaboration-model.md | unchanged | template identical across versions |
 | docs/ai-project-workflow.md | unchanged | template identical across versions |
 | docs/owner-profile.md | unchanged | template identical across versions |
-| docs/AGENT_ORIENTATION.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
+| docs/AGENT_ORIENTATION.md | unchanged | template identical across versions |
 | docs/current-state.md | consumer-edited | template unchanged — consumer-owned, nothing to apply |
 | docs/question-router.md | unchanged | template identical across versions |
 | docs/CAPABILITIES.md | unchanged | template identical across versions |
@@ -30,9 +30,4 @@
 
 ## Carve-out scan
 
-- carve-out scan: .github/workflows/substrate-gate.yml — ran, 0 found
-
-## Applied (--apply-docs)
-
-- applied: CONSTITUTION.md (template@new, hash re-recorded)
-- applied: docs/AGENT_ORIENTATION.md (template@new, hash re-recorded)
+- carve-out scan: .github/workflows/substrate-gate.yml — ran, 0 found (live matched the previous kit template byte-for-byte; the delta is kit-side template evolution)

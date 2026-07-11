@@ -6,7 +6,8 @@ Prebuilt, committed copies of the lane's original ROMs so the owner can
 GBA, BlocksDS/libnds for NDS), so committing the binary is publish-safe by
 construction. How to play: [`docs/PLAYING.md`](../docs/PLAYING.md) (Lumen
 Drift, GBA) · [`docs/PLAYING-GLOAMLINE.md`](../docs/PLAYING-GLOAMLINE.md)
-(Gloamline, NDS).
+(Gloamline, NDS) · [`docs/PLAYING-BRINEWARD.md`](../docs/PLAYING-BRINEWARD.md)
+(Brineward, NDS).
 
 Only player-facing games ship here (the engine-test `skeleton.gba` stays
 CI-artifact-only). Each entry below is refreshed in the same PR that
@@ -16,6 +17,7 @@ changes its game, with provenance:
 |---|---|---|---|---|
 | [`lumen-drift.gba`](lumen-drift.gba) | **v1.3** · session 8 slice 6 · 2026-07-11 | 167,996 bytes | source tree of the v1.3 pause/mute + graze-flash micro-polish commit (`games/lumen-drift/` at the same tree as this file) | `195a86795e57e2fa0059a96782f1ac7a147cbcebc0cb28a96f353e5d9babae94` |
 | [`gloamline.nds`](gloamline.nds) | **barricades** (arc slice 5) · session 21 · 2026-07-11 | 110,080 bytes | source tree of the slice-5 barricades commit (`games/gloamline-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `25ae4f81b665e60cdfa6498cb26933cfced11a5bf3f71302b389af9b17b43cdc` |
+| [`brineward.nds`](brineward.nds) | **walking skeleton** (arc slice 2) · session 20 · 2026-07-11 | 108,032 bytes | source tree of the slice-2 skeleton commit (`games/brineward-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `89e68dc2dd926050fdd6202a6d3b9bd8f2d82e10047453de7b41ac7b462dc475` |
 
 **How they were built:** GBA — `tools/setup-toolchain.sh` (pinned
 devkitARM r68 + Butano) then `tools/build.sh`; NDS —

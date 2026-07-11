@@ -89,6 +89,24 @@
   nobody assumes the devkitPro 403 generalizes): `wonderful.asie.pl` and
   `blocksds.skylyrac.net` both serve 200 through the fleet proxy — direct
   fetch + SHA-256 pin in `tools/setup-nds-toolchain.sh`, no mirror needed.
+- **py-desmume screenshot buffer is BGRX, not RGBX** — NOT a wall, a
+  display-only quirk (recorded 2026-07-11, Brineward slice 2, so nobody
+  chases "wrong" palette colors). `display_buffer_as_rgbx()` returns
+  blue-first pixels, so PNGs from `tools/nds-headless-check.py` swap
+  red<->blue (verified: a backdrop set to RGB15(31,0,0) pure red renders
+  pure blue in the dump; the same ROM's palette is correct on the real
+  screen). Harmless to every existing proof (they assert non-blankness and
+  telemetry, never hue) — fixing the byte order in the shared tool would
+  only re-tint committed proof PNGs; do it deliberately, both arcs at once,
+  or not at all.
+- **NDS OAM rotate/scale sprites have NO hide bit** — hardware fact worth
+  one line (burned Brineward slice 2 for an hour: both ships ghosted over
+  the title screen). Attr0 bit 9 means "double-size" when rotation is on,
+  "hidden" when it's off, so libnds `oamSet(..., affineIndex, ..., hide)`
+  silently ignores `hide=true` for affine sprites. To hide an affine
+  sprite, set it as a REGULAR sprite that frame (`affineIndex -1`,
+  `hide=true`) — see `games/brineward-nds/source/main.c`
+  `draw_ships_and_balls()`.
 
 ## Dated platform-issue notes (owner-reported, not verbatim-error walls)
 

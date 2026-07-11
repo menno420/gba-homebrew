@@ -1,1 +1,0 @@
-- `claude/session-8-review-queue` · **scope** — session 8 slice 2: ORDER 002 (self-arm wake routine) + review-queue burn-down (rows #3–#29): docs/review-queue.md, .sessions/2026-07-11-session-8.md, control/status.md, tools/build.sh · 2026-07-11

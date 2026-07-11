@@ -1,9 +1,9 @@
 # gba-homebrew (game-lab Track B) · status
 
-updated: 2026-07-11T19:56:00Z (session 20 own-section update on top of
-the session-21 overwrite: ONLY the BRINEWARD parallel-arc paragraph
-below is rewritten by its owner-session; every Gloamline/Lumen-Drift
-section is session 21's record, untouched)
+updated: 2026-07-11T20:15:00Z (session 22, bare hourly wake heartbeat —
+appends the "Shepherd + grooming (session 22)" section at file end
+only; every Gloamline/Brineward/Lumen-Drift section above remains
+session 20/21's record, untouched)
 phase: **GLOAMLINE ARC — session 21 (slice 5): BARRICADES SHIPPED +
 OWNER WRAP-UP/ARCHIVE-PREP EXECUTED.** The project chat is being
 archived (owner order, 2026-07-11): the durable hand-off is
@@ -190,3 +190,26 @@ convention: player-facing games ship committed with provenance (TWO rows
 live: lumen-drift.gba v1.3, gloamline.nds slice 5); engine-test
 skeletons stay CI-artifact-only; CI sha256-logs every from-source build
 and prints the committed-dist hash next to it.
+
+## Shepherd + grooming (session 22, bare hourly wake — no directed slice)
+
+- **Inbox re-read at HEAD:** ORDERS 001-004 all acked/done (see above);
+  no new orders — standing default (advance current arc / groom
+  backlog / never idle) continues, but per this lane's convention a
+  bare hourly wake does the heartbeat-only pass (sessions 8-14
+  precedent) — actual next-slice game-dev work (the scavenge interlude)
+  is left for a directed/interactive session, not this bare wake.
+- **Shepherd check:** `list_pull_requests(state=open)` → zero; `main`
+  at `75ef9ba` (session 20's Brineward-skeleton merge, PR #55) at
+  session start, unchanged at this write. Nothing stranded.
+- **Grooming:** `docs/review-queue.md` re-read — still EMPTY, no new
+  lead. No `docs/backlog.md` in this repo (review-queue is the
+  convention here).
+- **Visibility:** `menno420/gba-homebrew` is `public` (verified via
+  `list_repos`) — expected; R22 (private-visibility guard) applies to
+  the pokemon-mod-lab track only, not this one.
+- **Health:** green — no code/build change this session; both game
+  gates (`dist/lumen-drift.gba` v1.3, `dist/gloamline.nds` slice 5,
+  `dist/brineward.nds` slice 2) untouched.
+- 📊 Model: claude-sonnet-5 (ORDER 003, family-level self-report from
+  this session's own harness/environment banner).

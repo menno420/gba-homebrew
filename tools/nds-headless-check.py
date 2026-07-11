@@ -17,12 +17,28 @@ Usage:
     python3 tools/nds-headless-check.py ROM.nds OUT.png [--frames N]
         [--keys START-END:NAME ...] [--shot FRAME:PATH ...]
         [--require-distinct]
+        [--elf ELF] [--watch NAME:ADDR:NWORDS ...] [--watch-log PATH]
+        [--assert-watch FRAME:NAME:IDX:OP:VALUE ...]
 
 Input scripting (subset of headless-screenshot.py's interface):
     --keys 240-420:A        hold the A button during frames [240, 420)
     --shot 120:mid.png      also dump (and non-blank-verify) frame 120
     --require-distinct      assert consecutive shots differ (proves the
                             main loop runs / input changed the scene)
+
+Memory watches (ported from headless-screenshot.py — the Gloamline
+telemetry-mailbox evidence path; slice 3 closed the "ELF-symbol
+memory-watch tooling not yet proven on NDS" gap):
+    --elf game.elf          resolve watch addresses from the ELF's symbol
+                            table (minimal stdlib ELF32 parser). A watch
+                            ADDR may then be a symbol name (exact match,
+                            or a unique substring).
+    --watch t:gl_telemetry:16
+                            sample NWORDS u32 words at ADDR every frame
+    --watch-log t.csv       write every watch, every frame, as CSV
+    --assert-watch 300:t:3:eq:1
+                            at frame 300, watch `t` word [3] must == 1
+                            (OPs: eq ne lt le gt ge; VALUE may be 0x-hex)
 
 KNOWN QUIRK (docs/PLATFORM-LIMITS.md, 2026-07-11): the py-desmume core
 reads REG_KEYINPUT as active-low ZERO (= every button held) until the
@@ -77,6 +93,82 @@ def parse_shot(spec):
     """'FRAME:PATH' -> (frame, path)."""
     frame, _, path = spec.partition(':')
     return int(frame), path
+
+
+# --- ELF-resolved memory watches (ported from tools/headless-screenshot.py) --
+
+def elf_symbols(path):
+    """Minimal ELF32 symbol table reader -> {name: (address, size)}."""
+    with open(path, 'rb') as handle:
+        data = handle.read()
+    if data[:4] != b'\x7fELF' or data[4] != 1:
+        sys.exit(f'FAIL: {path} is not a 32-bit ELF')
+    endian = '<' if data[5] == 1 else '>'
+    shoff, = struct.unpack_from(endian + 'I', data, 32)
+    shentsize, shnum = struct.unpack_from(endian + 'HH', data, 46)
+    sections = []
+    for index in range(shnum):
+        fields = struct.unpack_from(endian + '10I', data,
+                                    shoff + index * shentsize)
+        # (name, type, flags, addr, offset, size, link, info, align, entsize)
+        sections.append(fields)
+    symbols = {}
+    for section in sections:
+        if section[1] != 2:  # SHT_SYMTAB
+            continue
+        strtab_offset = sections[section[6]][4]
+        for index in range(section[5] // section[9]):
+            name_offset, value, size, _info, _other, shndx = struct.unpack_from(
+                endian + 'IIIBBH', data, section[4] + index * section[9])
+            if name_offset and shndx:  # skip unnamed + SHN_UNDEF
+                end = data.index(b'\0', strtab_offset + name_offset)
+                name = data[strtab_offset + name_offset:end].decode('ascii',
+                                                                    'replace')
+                symbols[name] = (value, size)
+    return symbols
+
+
+def resolve_address(token, symbols):
+    """'0x...'/decimal literal, or an ELF symbol name (unique substring)."""
+    try:
+        return int(token, 0)
+    except ValueError:
+        pass
+    if symbols is None:
+        sys.exit(f'FAIL: watch address {token!r} is a symbol — pass --elf')
+    if token in symbols:
+        return symbols[token][0]
+    matches = [name for name in symbols if token in name]
+    if len(matches) != 1:
+        sys.exit(f'FAIL: symbol {token!r} matches {len(matches)} ELF symbols'
+                 + (f' ({", ".join(sorted(matches)[:5])} ...)'
+                    if matches else ''))
+    return symbols[matches[0]][0]
+
+
+def parse_watch(spec):
+    """'NAME:ADDR:NWORDS' -> (name, addr_token, nwords)."""
+    parts = spec.split(':')
+    if len(parts) != 3:
+        sys.exit(f'FAIL: bad watch {spec!r} (want NAME:ADDR:NWORDS)')
+    name, addr_token, count = parts
+    if int(count, 0) < 1:
+        sys.exit(f'FAIL: bad watch {spec!r} (NWORDS must be >= 1)')
+    return name, addr_token, int(count, 0)
+
+
+WATCH_OPS = {'eq': lambda a, b: a == b, 'ne': lambda a, b: a != b,
+             'lt': lambda a, b: a < b, 'le': lambda a, b: a <= b,
+             'gt': lambda a, b: a > b, 'ge': lambda a, b: a >= b}
+
+
+def parse_assert_watch(spec):
+    """'FRAME:NAME:IDX:OP:VALUE' -> (frame, name, idx, op, value)."""
+    parts = spec.split(':')
+    if len(parts) != 5 or parts[3] not in WATCH_OPS:
+        sys.exit(f'FAIL: bad --assert-watch {spec!r} '
+                 f'(want FRAME:NAME:IDX:OP:VALUE, OP in {sorted(WATCH_OPS)})')
+    return int(parts[0]), parts[1], int(parts[2]), parts[3], int(parts[4], 0)
 
 
 def write_png(path, width, height, rgbx):
@@ -146,12 +238,41 @@ def main():
                         help='assert consecutive screenshots differ '
                              f'(>= {MIN_DIFF_PIXELS} pixels) — proves the '
                              'main loop runs')
+    parser.add_argument('--elf', metavar='PATH',
+                        help='ELF matching the ROM: resolve --watch symbol '
+                             'addresses from its symbol table')
+    parser.add_argument('--watch', action='append', default=[],
+                        metavar='NAME:ADDR:NWORDS',
+                        help='sample NWORDS u32 words at ADDR (literal or '
+                             'ELF symbol) every frame; repeatable')
+    parser.add_argument('--watch-log', metavar='PATH',
+                        help='write every watch sample, every frame, as CSV')
+    parser.add_argument('--assert-watch', action='append', default=[],
+                        metavar='FRAME:NAME:IDX:OP:VALUE',
+                        help='assert watch NAME word [IDX] against VALUE at '
+                             f'FRAME (OPs: {", ".join(sorted(WATCH_OPS))}); '
+                             'repeatable')
     args = parser.parse_args()
 
     key_spans = [parse_keys(spec) for spec in args.keys]
     shots = sorted(parse_shot(spec) for spec in args.shot)
     if any(frame >= args.frames for frame, _ in shots):
         sys.exit('FAIL: --shot frame beyond --frames')
+
+    symbols = elf_symbols(args.elf) if args.elf else None
+    watches = []                     # (name, address, nwords)
+    for spec in args.watch:
+        name, addr_token, nwords = parse_watch(spec)
+        address = resolve_address(addr_token, symbols)
+        watches.append((name, address, nwords))
+        print(f'watch {name}: 0x{address:08X} x{nwords} words')
+    watch_names = {name for name, _, _ in watches}
+    asserts = [parse_assert_watch(spec) for spec in args.assert_watch]
+    for frame, name, idx, _op, _value in asserts:
+        if name not in watch_names:
+            sys.exit(f'FAIL: --assert-watch names unknown watch {name!r}')
+        if frame >= args.frames:
+            sys.exit('FAIL: --assert-watch frame beyond --frames')
 
     emu = DeSmuME()
     emu.open(args.rom)
@@ -160,6 +281,16 @@ def main():
     # first frame (see module docstring / docs/PLATFORM-LIMITS.md).
     emu.input.keypad_update(0)
 
+    log_handle = None
+    if args.watch_log:
+        log_handle = open(args.watch_log, 'w', encoding='ascii')
+        header = ['frame']
+        for name, _address, nwords in watches:
+            header += [f'{name}[{idx}]' for idx in range(nwords)]
+        log_handle.write(','.join(header) + '\n')
+
+    assert_failures = []
+    asserts_checked = 0
     saved = []  # (path, frame_number, rgbx-bytes) in capture order
     shot_index = 0
     for frame_number in range(args.frames):
@@ -169,12 +300,42 @@ def main():
                 mask |= key
         emu.input.keypad_update(mask)
         emu.cycle()
+
+        if watches:
+            samples = {}
+            for name, address, nwords in watches:
+                samples[name] = [emu.memory.unsigned.read_long(address
+                                                               + 4 * idx)
+                                 for idx in range(nwords)]
+            if log_handle:
+                row = [str(frame_number)]
+                for name, _address, _nwords in watches:
+                    row += [str(value) for value in samples[name]]
+                log_handle.write(','.join(row) + '\n')
+            for frame, name, idx, op, value in asserts:
+                if frame != frame_number:
+                    continue
+                actual = samples[name][idx]
+                asserts_checked += 1
+                verdict = 'ok' if WATCH_OPS[op](actual, value) else 'FAIL'
+                print(f'assert-watch {verdict}: frame {frame} {name}[{idx}] '
+                      f'= {actual} {op} {value}')
+                if verdict == 'FAIL':
+                    assert_failures.append((frame, name, idx, op, value,
+                                            actual))
+
         if shot_index < len(shots) and shots[shot_index][0] == frame_number:
             path = shots[shot_index][1]
             rgbx = bytes(emu.display_buffer_as_rgbx())
             write_png(path, SCREEN_WIDTH, SCREEN_HEIGHT * 2, rgbx)
             saved.append((path, frame_number, rgbx))
             shot_index += 1
+
+    if log_handle:
+        log_handle.close()
+    if assert_failures:
+        sys.exit(f'FAIL: {len(assert_failures)} of {asserts_checked} '
+                 'watch asserts failed')
 
     rgbx = bytes(emu.display_buffer_as_rgbx())
     write_png(args.out_png, SCREEN_WIDTH, SCREEN_HEIGHT * 2, rgbx)
@@ -200,7 +361,9 @@ def main():
     print('PASS: both screens non-blank on every shot — ROM booted and '
           'rendered dual-screen'
           + (' · consecutive shots distinct — the main loop is running'
-             if args.require_distinct and len(saved) > 1 else ''))
+             if args.require_distinct and len(saved) > 1 else '')
+          + (f' · {asserts_checked} watch asserts ok'
+             if asserts_checked else ''))
 
 
 if __name__ == '__main__':

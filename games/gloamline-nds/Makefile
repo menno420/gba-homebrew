@@ -1,4 +1,4 @@
-# Gloamline (NDS) — slice-2 feasibility probe build.
+# Gloamline (NDS) — walking-skeleton build (arc slice 3).
 #
 # Thin wrapper over the BlocksDS default ARM9 ROM makefile: BlocksDS
 # ships a maintained default_makefiles/rom_arm9 rule set (default ARM7
@@ -14,7 +14,7 @@ export WONDERFUL_TOOLCHAIN	?= /opt/wonderful
 NAME		:= gloamline-nds
 
 GAME_TITLE	:= Gloamline
-GAME_SUBTITLE	:= slice-2 feasibility probe
+GAME_SUBTITLE	:= hold the fence line
 GAME_AUTHOR	:= gba-homebrew Track B
 
 SOURCEDIRS	:= source

@@ -1,4 +1,4 @@
-# gba-homebrew — maintainer question router
+# gba-homebrew — game-lab Track B: original GBA homebrew on Butano — maintainer question router
 
 > **Status:** `owner-guidance`
 >

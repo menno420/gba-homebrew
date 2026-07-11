@@ -1,4 +1,4 @@
-# gba-homebrew — session capabilities & walls
+# gba-homebrew — game-lab Track B: original GBA homebrew on Butano — session capabilities & walls
 
 > **Status:** `living-ledger`
 >

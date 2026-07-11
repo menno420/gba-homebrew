@@ -1,4 +1,4 @@
-# gba-homebrew — constitution
+# gba-homebrew — game-lab Track B: original GBA homebrew on Butano — constitution
 
 > **Status:** `binding`
 >
@@ -70,7 +70,7 @@ the one home; a local copy is drift by construction. Repo-local rulings stay
 in `docs/decisions.md` / `docs/question-router.md`; a local ruling promoted
 program-wide becomes a PL-block there and a pointer here.
 
-## Rails specific to gba-homebrew
+## Rails specific to gba-homebrew — game-lab Track B: original GBA homebrew on Butano
 
 (Hand-filled: the project's own hard rules, one bullet each, each citing its
 [D-NNNN]. Keep the whole hand-filled file under 150 lines.)

@@ -1,4 +1,4 @@
-# gba-homebrew — architecture
+# gba-homebrew — game-lab Track B: original GBA homebrew on Butano — architecture
 
 > **Status:** `binding`
 >

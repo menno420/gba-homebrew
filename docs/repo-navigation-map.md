@@ -1,4 +1,4 @@
-# gba-homebrew — repo navigation map
+# gba-homebrew — game-lab Track B: original GBA homebrew on Butano — repo navigation map
 
 > **Status:** `reference`
 >
@@ -13,7 +13,7 @@
 
 ## Documentation roots
 
-docs
+docs/, control/, claims/, .sessions/
 
 ## Placement rule of thumb
 

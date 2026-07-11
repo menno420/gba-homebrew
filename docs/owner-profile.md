@@ -1,4 +1,4 @@
-# gba-homebrew — owner working profile
+# gba-homebrew — game-lab Track B: original GBA homebrew on Butano — owner working profile
 
 > **Status:** `owner-guidance`
 >
@@ -19,4 +19,4 @@ Review is post-merge (conventions rule 3): merge on green, add a row to docs/rev
 This doc records working style only: communication preferences, review
 cadence, decision boundaries, autonomy expectations. No contact details, no
 personal history, nothing that identifies the person beyond their role on
-gba-homebrew. When in doubt, leave it out.
+gba-homebrew — game-lab Track B: original GBA homebrew on Butano. When in doubt, leave it out.

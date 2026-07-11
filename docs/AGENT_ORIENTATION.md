@@ -1,4 +1,4 @@
-# gba-homebrew — agent orientation & reading order
+# gba-homebrew — game-lab Track B: original GBA homebrew on Butano — agent orientation & reading order
 
 > **Status:** `reference`
 >
@@ -21,7 +21,7 @@
 
 ## Where things live
 
-Documentation root(s): docs
+Documentation root(s): docs/, control/, claims/, .sessions/
 
 The planted doc set (this router reaches every live doc — keep it that way):
 `docs/architecture.md` · `docs/ownership.md` · `docs/runtime_contracts.md` ·

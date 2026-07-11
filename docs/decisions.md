@@ -1,4 +1,4 @@
-# gba-homebrew — decisions
+# gba-homebrew — game-lab Track B: original GBA homebrew on Butano — decisions
 
 > **Status:** `living-ledger`
 >
@@ -11,9 +11,9 @@
 ## [D-0001] Adopt the substrate-kit workflow
 
 - status: decided
-- date: 2026-07-10
-- verdict: gba-homebrew runs on the substrate-kit agent workflow.
+- date: 2026-07-11
+- verdict: gba-homebrew — game-lab Track B: original GBA homebrew on Butano runs on the substrate-kit agent workflow.
 - why: A repo-resident working agreement, decision ledger, and session
   discipline let agents work correctly with little steering; adopting the
-  kit starts gba-homebrew governed instead of accreting rules ad hoc.
+  kit starts gba-homebrew — game-lab Track B: original GBA homebrew on Butano governed instead of accreting rules ad hoc.
 - provenance: substrate-kit adoption interview

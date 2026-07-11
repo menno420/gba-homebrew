@@ -40,6 +40,15 @@
   the fallback; ready-flips (draft→ready) are GraphQL-only, so wait for quota
   reset for those. (Fleet playbook R8.) Moot here if you never draft — see
   [`conventions.md`](conventions.md): READY, never draft.
+- **Auto-merge can fire BEFORE the `nds-rom-build` job completes** — this
+  repo's required-check set is the GBA **"ROM builds"** job only, so an armed
+  auto-merge merges the moment that job goes green (surfaced during the
+  slice-4/5 sessions, 2026-07-11: the NDS proofs can still be running at
+  merge time, finishing on the post-merge `main` push run). Not a wall but a
+  footgun. Discipline until the owner adds `NDS ROM build` to the required
+  checks (⚑ queued in `control/status.md`): after any merge, **verify the
+  post-merge `main` workflow run is green and say so** in the session
+  record — a merge is not "on green" until that run is.
 - **Force-push / amending pushed history** — never. Forward-only commits.
 - **`api.github.com` REST calls to repos OUTSIDE the session** — proxy-blocked
   in-container (session 1, 2026-07-10). Observed verbatim (GETting

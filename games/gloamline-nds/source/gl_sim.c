@@ -133,3 +133,16 @@ int gl_shove(int32_t px, int32_t py, int32_t *zx, int32_t *zy)
     *zy = clamp32(*zy + sy * GL_SHOVE_PUSH, GL_ARENA_Y_MIN, GL_ARENA_Y_MAX);
     return 1;
 }
+
+int gl_barricade_blocks(int32_t bx, int32_t by,
+                        int32_t ox, int32_t oy, int32_t nx, int32_t ny)
+{
+    return gl_chebyshev(nx, ny, bx, by) < GL_BARRICADE_RANGE
+        && gl_chebyshev(ox, oy, bx, by) >= GL_BARRICADE_RANGE;
+}
+
+uint32_t gl_planks_at_dawn(uint32_t planks)
+{
+    uint32_t p = planks + GL_PLANK_DAWN;
+    return p > GL_PLANK_MAX ? GL_PLANK_MAX : p;
+}

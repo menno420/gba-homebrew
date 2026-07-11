@@ -7,8 +7,10 @@ tool. It carries a FULL-GAME mirror: the pure functions from
 tools/check-gloam.py (import, not copy — the lockstep rule stays one file)
 plus a line-faithful Python mirror of the main.c state machine (title /
 playing / dead / dawn, seed latch = frame counter at START, wave spawns,
-shove + stun + cooldown, contact, dawn countdown), driven by the same
-`--keys START-END:NAME` spans tools/nds-headless-check.py replays.
+shove + stun + cooldown, barricades — B place/repair, blocked steps chew
+1 hp, breach, plank stock + dawn grant, persistence across nights —
+contact, dawn countdown), driven by the same `--keys START-END:NAME`
+spans tools/nds-headless-check.py replays.
 
 Emulator/ROM alignment (session-17 guard): the py-desmume frontend's frame
 N sets input that the ROM's loop iteration sees ~2 frames later (ROM frame
@@ -93,6 +95,15 @@ class GloamSim:
         self.zx, self.zy, self.zstun = [], [], []
         self.wave_total = 0
         self.shove_cd = 0
+        # barricades (slice 5): fixed slots, hp 0 = free/breached;
+        # persist across nights within a run
+        self.bx = [0] * cg.GL_BARRICADE_CAP
+        self.by = [0] * cg.GL_BARRICADE_CAP
+        self.bhp = [0] * cg.GL_BARRICADE_CAP
+        self.planks = 0
+        self.places = 0
+        self.repairs = 0
+        self.breaches = 0
         # evidence
         self.min_dist = None                 # over all PLAYING frames
         self.dawn_emu_frames = []            # emu frame of each dawn flip
@@ -126,6 +137,8 @@ class GloamSim:
     def start_run(self, seed):
         self.seed = seed
         self.night = 1
+        self.planks = cg.GL_PLANK_STOCK
+        self.bhp = [0] * cg.GL_BARRICADE_CAP     # fresh run: bare yard
         self.start_night()
 
     def nearest(self):
@@ -165,13 +178,48 @@ class GloamSim:
                     if hit:
                         self.zstun[i] = cg.GL_SHOVE_STUN
                         self.shoves += 1
+            if 'B' in down and self.planks > 0:
+                best_b, near_b = None, -1
+                for i in range(cg.GL_BARRICADE_CAP):
+                    if self.bhp[i] == 0:
+                        continue
+                    d = cg.gl_chebyshev(self.px, self.py,
+                                        self.bx[i], self.by[i])
+                    if best_b is None or d < best_b:
+                        best_b, near_b = d, i
+                if near_b >= 0 and best_b <= cg.GL_BARRICADE_RANGE:
+                    if self.bhp[near_b] < cg.GL_BARRICADE_HP:
+                        self.bhp[near_b] = cg.GL_BARRICADE_HP
+                        self.planks -= 1
+                        self.repairs += 1
+                else:
+                    for i in range(cg.GL_BARRICADE_CAP):
+                        if self.bhp[i] == 0:
+                            self.bx[i] = self.px
+                            self.by[i] = self.py
+                            self.bhp[i] = cg.GL_BARRICADE_HP
+                            self.planks -= 1
+                            self.places += 1
+                            break
             for i in range(len(self.zx)):
                 if self.zstun[i] > 0:
                     self.zstun[i] -= 1
+                    continue
+                nx, ny = cg.gl_shambler_step(
+                    self.zx[i], self.zy[i], self.px, self.py, i,
+                    self.run_frame)
+                blocker = next(
+                    (j for j in range(cg.GL_BARRICADE_CAP)
+                     if self.bhp[j] > 0
+                     and cg.gl_barricade_blocks(self.bx[j], self.by[j],
+                                                self.zx[i], self.zy[i],
+                                                nx, ny)), -1)
+                if blocker >= 0:
+                    self.bhp[blocker] -= 1
+                    if self.bhp[blocker] == 0:
+                        self.breaches += 1
                 else:
-                    self.zx[i], self.zy[i] = cg.gl_shambler_step(
-                        self.zx[i], self.zy[i], self.px, self.py, i,
-                        self.run_frame)
+                    self.zx[i], self.zy[i] = nx, ny
             self.run_frame += 1
             touched = any(
                 cg.gl_contact(self.px, self.py, self.zx[i], self.zy[i])
@@ -195,6 +243,7 @@ class GloamSim:
         elif self.state == STATE_DAWN:
             if start:
                 self.night += 1
+                self.planks = cg.gl_planks_at_dawn(self.planks)
                 self.start_night()
                 self.state = STATE_PLAYING
 
@@ -212,12 +261,21 @@ class GloamSim:
 
     def probe(self, emu):
         _i, dist = self.nearest()
+        intact = [i for i in range(cg.GL_BARRICADE_CAP) if self.bhp[i] > 0]
+        nearb = min(intact, key=lambda i: cg.gl_chebyshev(
+            self.px, self.py, self.bx[i], self.by[i]), default=-1)
         print(f'  probe emu {emu}: state {self.state} night {self.night} '
               f'seed {self.seed} run_frame {self.run_frame} '
               f'z {len(self.zx)}/{self.wave_total} dist {dist} '
               f'({dist / cg.GL_ONE:.1f} px) shove_cd {self.shove_cd} '
               f'shoves {self.shoves} nights {self.nights_survived} '
-              f'deaths {self.deaths} px {self.px} py {self.py}')
+              f'deaths {self.deaths} px {self.px} py {self.py} '
+              f'planks {self.planks} barr {len(intact)} '
+              f'bhp {self.bhp[nearb] if nearb >= 0 else 0} '
+              f'breaches {self.breaches} places {self.places} '
+              f'repairs {self.repairs} '
+              f'bx {self.bx[nearb] if nearb >= 0 else 0} '
+              f'by {self.by[nearb] if nearb >= 0 else 0}')
 
 
 def skewed(spans, delta):
@@ -265,10 +323,16 @@ HYSTERESIS = 64                 # score bonus for keeping the heading
 
 
 def rollout_score(sim, held, horizon):
-    """Worst zombie distance over a rollout of `held`, + wall/zombie terms."""
+    """Worst zombie distance over a rollout of `held`, + wall/zombie terms.
+
+    Mirrors main.c's PLAYING step order (spawn -> player -> zombie steps
+    with barricade blocking -> contact); the autopilot presses no B, but
+    any barricades already up in `sim` block (and get chewed) here too.
+    """
     px, py = sim.px, sim.py
     zx, zy = list(sim.zx), list(sim.zy)
     zstun = list(sim.zstun)
+    bhp = list(sim.bhp)
     rf = sim.run_frame
     up, down = 'UP' in held, 'DOWN' in held
     left, right = 'LEFT' in held, 'RIGHT' in held
@@ -284,9 +348,17 @@ def rollout_score(sim, held, horizon):
         for i in range(len(zx)):
             if zstun[i] > 0:
                 zstun[i] -= 1
+                continue
+            nx, ny = cg.gl_shambler_step(zx[i], zy[i], px, py, i, rf)
+            blocker = next(
+                (j for j in range(cg.GL_BARRICADE_CAP)
+                 if bhp[j] > 0
+                 and cg.gl_barricade_blocks(sim.bx[j], sim.by[j],
+                                            zx[i], zy[i], nx, ny)), -1)
+            if blocker >= 0:
+                bhp[blocker] -= 1
             else:
-                zx[i], zy[i] = cg.gl_shambler_step(zx[i], zy[i], px, py, i,
-                                                   rf)
+                zx[i], zy[i] = nx, ny
         rf += 1
         dist = min(cg.gl_chebyshev(px, py, zx[i], zy[i])
                    for i in range(len(zx)))

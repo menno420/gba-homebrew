@@ -22,7 +22,10 @@ for dir in "$REPO_ROOT"/games/*/; do
     test -f "$rom"
     built=$((built + 1))
 done
-test "$built" -ge 1
+# Same floor as .github/workflows/rom-builds.yml (-ge 2): the repo ships two
+# games, and the local tool should fail exactly where CI would if one of
+# them silently vanished from the build (review-queue row #29).
+test "$built" -ge 2
 
 echo
 echo "== ROMs built =="

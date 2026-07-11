@@ -145,7 +145,16 @@ private:
 
     [[nodiscard]] int _cell(bn::fixed map_px) const
     {
-        return (map_px / _cell_size).floor_integer();
+        // floor(map_px / cell) via floor-to-int-pixels then FLOORED integer
+        // division. The obvious `(map_px / _cell_size).floor_integer()` is
+        // wrong for negative coordinates: bn::fixed's division(int) truncates
+        // its raw data toward zero, so a (cell_size-1)/4096-px sliver below
+        // every negative cell boundary lands in the cell ABOVE it (proven
+        // host-side, session 8 slice 2: 35 mispredictions in +/-40px at
+        // 1/4096 step; this form has zero). Positive coordinates are
+        // bit-identical either way (truncation == floor for them).
+        int px = map_px.floor_integer();
+        return px >= 0 ? px / _cell_size : -((-px + _cell_size - 1) / _cell_size);
     }
 };
 

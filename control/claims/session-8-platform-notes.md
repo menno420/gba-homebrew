@@ -1,0 +1,1 @@
+- `claude/session-8-platform-notes` · **scope** — session 8 slice 7: dated platform-issues note on the hourly-wake routine (owner-debugged 2026-07-11: OA-4 routine-scope fix path, configured-vs-actual model mismatch, OA-5 add_repo classifier denials) · docs/PLATFORM-LIMITS.md, .sessions/2026-07-11-session-8.md, control/status.md · 2026-07-11

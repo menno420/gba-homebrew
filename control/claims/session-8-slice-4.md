@@ -1,0 +1,1 @@
+- `claude/session-8-slice-4` · **scope** — session 8 slice 4: Lumen Drift v1.1 deepening — depth difficulty curve in the endless echoes (tiered crystal density/width ramp + tier banners): games/lumen-drift/src/main.cpp, tools/check-cave.py, docs/proof/, docs/PLAYING.md, dist/, control/status.md · 2026-07-11

@@ -101,6 +101,16 @@ jobs:
           key: nds-toolchain-${{ runner.os }}-${{ hashFiles('tools/setup-nds-toolchain.sh') }}
       - name: setup NDS toolchain (idempotent; skips on warm cache)
         run: tools/setup-nds-toolchain.sh
+      # Stress build FIRST (then a clean shipped build, so the shipped .nds
+      # is what's on disk for the sha256 log + artifacts): GL_STRESS=1
+      # spawns the full 24-Shambler cap at frame 0 with death disarmed —
+      # identical sim/render code paths — for the frame-budget proof 7/7.
+      - name: build gloamline-nds PERF-STRESS ROM (GL_STRESS=1, CI-only)
+        run: |
+          make -C games/gloamline-nds GL_STRESS=1 -j"$(nproc)"
+          cp games/gloamline-nds/gloamline-nds.nds gloamline-stress.nds
+          cp games/gloamline-nds/build/gloamline-nds.elf gloamline-stress.elf
+          make -C games/gloamline-nds clean
       - name: build gloamline-nds ROM
         run: |
           make -C games/gloamline-nds -j"$(nproc)"
@@ -116,7 +126,7 @@ jobs:
       # Proof 1 — boot: dual-screen title renders, telemetry mailbox is
       # live (magic words present, frame counter running, full-length
       # 3600-frame nights — i.e. the shipped ROM, not a test build).
-      - name: 'proof 1/4 — boot + telemetry mailbox'
+      - name: 'proof 1/7 — boot + telemetry mailbox'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-boot-300.png \
@@ -132,7 +142,7 @@ jobs:
       # then RIGHT / DOWN / UP+LEFT each move the player by the exact
       # pure-function distances (1.5 px/f straight, 271/256 px/f per axis
       # diagonal). Positions are 8.8 fixed (32768 = x128).
-      - name: 'proof 2/4 — 8-way move (position telemetry tracks input)'
+      - name: 'proof 2/7 — 8-way move (position telemetry tracks input)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-move.png \
@@ -156,7 +166,7 @@ jobs:
       # 2405 < 2560), state flips to DEAD with deaths=1, the card holds,
       # and START restarts instantly (fresh seed 348, player re-centered,
       # the new night's Shambler closing again).
-      - name: 'proof 3/4 — chase closes, contact = death, START restarts'
+      - name: 'proof 3/7 — chase closes, contact = death, START restarts'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-death.png \
@@ -183,7 +193,7 @@ jobs:
       # >= 22 px of margin at every alignment +-6 frames) replays a FULL
       # 60-second night headlessly (~5 s wall): dawn breaks (state 3),
       # nights survived = 1, deaths = 0.
-      - name: 'proof 4/4 — survive night 1 to dawn (full-length night)'
+      - name: 'proof 4/7 — survive night 1 to dawn (full-length night)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-dawn.png \
@@ -198,6 +208,96 @@ jobs:
             --assert-watch 3750:t:9:eq:1 \
             --assert-watch 3750:t:10:eq:1 \
             --assert-watch 3750:t:11:eq:0
+      # Proof 5 — the SHOVE (slice 4): with the Shambler closing (dist
+      # 4517 < the 6144 shove range), A knocks it back exactly +40 px
+      # (14757 = 4517 + 10240), stuns it (t[20]) and arms the 90-frame
+      # cooldown (t[18]); mashing A during the cooldown does nothing
+      # (shoves-connected t[19] stays 1); once the cooldown clears and it
+      # closes again, a second shove connects (5541 -> 15781); the valve
+      # only DELAYS — the idle player still dies by frame 490. Every
+      # value below was predicted by the tools/gloam-route.py mirror sim
+      # and matched by the emulator run exactly.
+      - name: 'proof 5/7 — shove: knockback + stun + cooldown (pressure valve)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-shove.png \
+            --frames 500 --keys 120-125:START --keys 232-237:A \
+            --keys 260-265:A --keys 345-350:A \
+            --shot 233:nds-shove-moment.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:24 \
+            --assert-watch 225:t:18:eq:0 \
+            --assert-watch 225:t:19:eq:0 \
+            --assert-watch 231:t:13:eq:4517 \
+            --assert-watch 233:t:13:eq:14757 \
+            --assert-watch 233:t:19:eq:1 \
+            --assert-watch 233:t:18:ge:85 \
+            --assert-watch 233:t:20:ge:40 \
+            --assert-watch 262:t:19:eq:1 \
+            --assert-watch 262:t:18:gt:0 \
+            --assert-watch 330:t:20:eq:0 \
+            --assert-watch 330:t:18:eq:0 \
+            --assert-watch 344:t:13:eq:5541 \
+            --assert-watch 346:t:19:eq:2 \
+            --assert-watch 346:t:13:eq:15781 \
+            --assert-watch 490:t:3:eq:2 \
+            --assert-watch 490:t:11:eq:1 \
+            --assert-watch 490:t:19:eq:2
+      # Proof 6 — WAVES + multi-zombie survive: the gloam-route.py-derived
+      # route (proof/night2-route-keys.txt — survives every +-6-frame
+      # movement skew with >= 21.8 px margin on the mirror) survives night
+      # 1 (wave of 1), then night 2's wave of 3 spawns on the pure
+      # schedule (alive t[16]: 1 at rf 100, 2 past rf 800, 3 past rf
+      # 1600), and dawn breaks on night 2 with 3 Shamblers up and 0
+      # deaths. ~10 s wall headless for the two full nights.
+      - name: 'proof 6/7 — night-2 wave (3 zombies) spawns on schedule + survive to dawn'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-night2.png \
+            --frames 7600 $(cat games/gloamline-nds/proof/night2-route-keys.txt) \
+            --shot 5600:nds-waves-yard.png --shot 7500:nds-dawn2.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:24 \
+            --assert-watch 2000:t:3:eq:1 \
+            --assert-watch 2000:t:16:eq:1 \
+            --assert-watch 2000:t:17:eq:1 \
+            --assert-watch 3750:t:3:eq:3 \
+            --assert-watch 3750:t:9:eq:1 \
+            --assert-watch 3750:t:10:eq:1 \
+            --assert-watch 3900:t:3:eq:1 \
+            --assert-watch 3900:t:9:eq:2 \
+            --assert-watch 3900:t:16:eq:1 \
+            --assert-watch 3900:t:17:eq:3 \
+            --assert-watch 4750:t:16:eq:2 \
+            --assert-watch 5500:t:16:eq:3 \
+            --assert-watch 5500:t:3:eq:1 \
+            --assert-watch 7450:t:3:eq:3 \
+            --assert-watch 7450:t:10:eq:2 \
+            --assert-watch 7450:t:11:eq:0
+      # Proof 7 — frame budget with the FULL 24-Shambler cap (stress
+      # build): all 24 up at frame 200, nobody dies (death disarmed), and
+      # the scanline probe says the worst frame since power-on (t[22],
+      # REG_VCOUNT-derived) stays under the 71-line vblank in steady state
+      # (t[21]; measured max 53) and under the 263-line whole-frame budget
+      # even on the one night-start console-redraw spike (measured 133) —
+      # i.e. 60 fps with the maximum crowd. Honest-method note: this is
+      # DeSmuME's scanline timing model (py-desmume 0.0.9), not hardware.
+      - name: 'proof 7/7 — 24-Shambler frame budget (stress build, vcount probe)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            gloamline-stress.nds nds-stress.png \
+            --frames 1000 --keys 120-125:START \
+            --shot 400:nds-stress-400.png \
+            --elf gloamline-stress.elf \
+            --watch t:gl_telemetry:24 \
+            --assert-watch 200:t:3:eq:1 \
+            --assert-watch 200:t:16:eq:24 \
+            --assert-watch 200:t:17:eq:24 \
+            --assert-watch 900:t:3:eq:1 \
+            --assert-watch 900:t:11:eq:0 \
+            --assert-watch 990:t:21:gt:0 \
+            --assert-watch 990:t:21:le:71 \
+            --assert-watch 990:t:22:lt:263
       - name: upload NDS ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -213,5 +313,12 @@ jobs:
             nds-deathcard.png
             nds-dawn.png
             nds-dawncard.png
+            nds-shove.png
+            nds-shove-moment.png
+            nds-night2.png
+            nds-waves-yard.png
+            nds-dawn2.png
+            nds-stress.png
+            nds-stress-400.png
           if-no-files-found: error
           retention-days: 14

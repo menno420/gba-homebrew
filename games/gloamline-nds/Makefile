@@ -19,4 +19,12 @@ GAME_AUTHOR	:= gba-homebrew Track B
 
 SOURCEDIRS	:= source
 
+# Perf-stress build (CI-only, NEVER shipped): `make GL_STRESS=1` spawns the
+# full 24-Shambler cap at frame 0 with death disarmed, so a headless run
+# measures the honest worst-case frame cost via the GL_T_VLINES/GL_T_VLMAX
+# telemetry. Always `make clean` between shipped and stress builds.
+ifeq ($(GL_STRESS),1)
+DEFINES		:= -DGL_STRESS
+endif
+
 include $(BLOCKSDS)/sys/default_makefiles/rom_arm9/Makefile

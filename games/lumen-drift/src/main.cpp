@@ -401,6 +401,19 @@ namespace
     /// spike clusters + spark shards (the committed placement rules
     /// verbatim — only open cells turn deadly, so the passage keeps >= 2
     /// clear cells; shards hug the tunnel edge, scanning inward).
+    ///
+    /// Junction guard (review-queue row #23): a crystal cluster must never
+    /// cover EVERY column this row shares open with the row above or below
+    /// — at echo-band width changes the shared span can shrink to exactly
+    /// the 2 cluster cells, turning the junction into an unavoidable death
+    /// gate. Each crystal cell is therefore only kept if at least one
+    /// crystal-free shared-open column survives toward BOTH neighbours.
+    /// Neighbour solidity is itself pure, so this stays a pure function of
+    /// the world row; on every already-clean row (including all committed
+    /// rows 0-63 and both CI replay tiers' reach) the guard is a no-op,
+    /// because any subset of a placement that ends clean is clean too.
+    /// Host-side mirror + full-period proof: tools/check-cave.py (CI runs
+    /// it per PR — keep the two in lockstep).
     void row_features(int cy, const bool (&solid)[map_cols],
                       bool (&crystal)[map_cols], bool (&shard)[map_cols])
     {
@@ -419,6 +432,23 @@ namespace
 
         if(cy > 12 && cy % row.crystal_step == 2)
         {
+            bool above[map_cols];
+            bool below[map_cols];
+            row_solid(cy - 1, above);
+            row_solid(cy + 1, below);
+
+            auto junction_open = [&](const bool (&neighbour)[map_cols]) {
+                for(int jx = 1; jx < map_cols - 1; ++jx)
+                {
+                    if(! solid[jx] && ! neighbour[jx] && ! crystal[jx])
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            };
+
             bool left = ((cy / row.crystal_step) % 2) == 0;
 
             for(int i = 0; i < 2; ++i)
@@ -429,6 +459,11 @@ namespace
                 if(cx > 0 && cx < map_cols - 1 && ! solid[cx])
                 {
                     crystal[cx] = true;
+
+                    if(! junction_open(above) || ! junction_open(below))
+                    {
+                        crystal[cx] = false;  // spare the junction column
+                    }
                 }
             }
         }

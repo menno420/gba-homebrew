@@ -1,6 +1,7 @@
 # gba-homebrew (game-lab Track B) · status
 
-updated: 2026-07-11T18:25:00Z
+updated: 2026-07-11T18:56:16Z (session 19 own-section update; Gloamline
+sections below are session 17/18's record, untouched)
 phase: **GLOAMLINE ARC — session 17 (slice 3): WALKING SKELETON SHIPPED.**
 Gloamline is PLAYABLE: download **`dist/gloamline.nds`** (107,008 B, sha256
 `6d1ff00ad7a4c5631046d6c944328beba5d0bc102b279c512762a0f999aee2dc`,
@@ -39,6 +40,23 @@ waves** (spawn schedule f(seed,night,index) already in gl_sim), night
 ramp/plateau, barricades, between-nights scavenge interlude, lantern-oil
 light pressure, synthesized audio set, best-nights saves, watch-map
 polish.
+parallel arc — BRINEWARD (session 19, coordinator-assigned, this
+section's writer): a SECOND original NDS game enters the repo at
+concept stage — **Brineward**, single-player pirate naval-action
+(broadside-duel core, out-and-back run economy, port upgrades, sea
+monsters; genre-inspired reframe of browser naval-MMO loops, 100%
+original IP). Shipped this slice: `docs/concepts/brineward-concept.md`
+(title web-collision-checked clean 2026-07-11: no game/brand named
+Brineward; Keelfire + Squallmark also swept clean as runners-up) +
+session-19 card. Concept ONLY — no game dir, no toolchain/CI changes,
+zero Gloamline or Lumen Drift files touched; session 18
+(gloamline-shove-waves) ran live in parallel, session number 19 and
+branch `claude/brineward-concept` chosen against its claim. Next
+Brineward slice per the concept doc: v0 walking-skeleton scaffold
+(sail + one enemy sloop broadside duel) in `games/brineward-nds/` with
+its own `nds-brineward-build` CI job. Inbox re-read at HEAD before
+this write (main `bc92ad1`): no new orders (001/002 done, 003/004
+executed — record in git history).
 honest gaps for the next slice: one zombie only (crowd cap 24 planned);
 no shove verb yet (pure kiting); no audio; no saves; no game-feel pass on
 Shambler speed/stagger (numbers chosen for provability, owner taste

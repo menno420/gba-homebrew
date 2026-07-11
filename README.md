@@ -37,10 +37,16 @@ never extend that trust to anything the owner distributes without flagging it.
 
 ## ▶ Play it
 
-**[Lumen Drift](docs/PLAYING.md)** is playable NOW: download
+**[Lumen Drift](docs/PLAYING.md)** (GBA) is playable NOW: download
 [`dist/lumen-drift.gba`](dist/lumen-drift.gba) and open it in mGBA (or any
 GBA emulator) — controls, goal and setup in one page:
 [`docs/PLAYING.md`](docs/PLAYING.md).
+
+**[Gloamline](docs/PLAYING-GLOAMLINE.md)** (Nintendo DS — the owner-picked
+zombie horde-defense arc, walking skeleton) is playable NOW: download
+[`dist/gloamline.nds`](dist/gloamline.nds) and open it in melonDS or
+DeSmuME — setup, controls and goal:
+[`docs/PLAYING-GLOAMLINE.md`](docs/PLAYING-GLOAMLINE.md).
 
 ## Where things live
 

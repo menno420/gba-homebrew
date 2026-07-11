@@ -79,8 +79,10 @@ tools/setup-nds-toolchain.sh      # one-time: pinned BlocksDS 1.21.1 + Wonderful
 make -C games/gloamline-nds -j"$(nproc)"
 ```
 
-Output is `games/gloamline-nds/gloamline-nds.nds` (gitignored, CI-artifact-
-only — same convention as the GBA skeleton). The setup script installs into
+Output is `games/gloamline-nds/gloamline-nds.nds` (gitignored; the
+player-facing copy ships committed as `dist/gloamline.nds` since arc
+slice 3 — provenance row in [`../dist/README.md`](../dist/README.md)).
+The setup script installs into
 `/opt/wonderful` (the packages are prefix-bound — loader paths are patched
 at install time, so the root is NOT relocatable, unlike devkitARM). Every
 artifact is **pinned by SHA-256** and the install fails closed on any
@@ -104,14 +106,21 @@ directly reachable from the fleet container — no mirror needed.
 
   Dumps both screens stacked (256x384), exits non-zero if EITHER screen is
   blank; `--require-distinct` additionally proves the main loop is running.
+  Since arc slice 3 the checker also reads the ROM's telemetry mailbox the
+  GBA way: `--elf build/gloamline-nds.elf --watch t:gl_telemetry:16
+  --assert-watch FRAME:t:IDX:OP:VALUE` (+ `--watch-log` CSV) — numeric
+  game-state asserts against ELF-resolved symbols, interface ported from
+  `headless-screenshot.py`.
   ⚠ The checker latches "no keys pressed" before frame 0 — without that,
   the py-desmume core's reset-state KEYINPUT (active-low zero = everything
   held) matches the BlocksDS default ARM7 exit combo (SELECT+START+L+R) and
   every BlocksDS ROM powers off at frame 1 (documented in
   [`PLATFORM-LIMITS.md`](PLATFORM-LIMITS.md)).
 
-CI: the `nds-rom-build` job in `rom-builds.yml` builds the .nds with the
-cached pinned toolchain, runs the headless boot proof, and uploads
-`.nds` + sha256 + screenshots alongside the GBA artifacts. The required
-GBA `ROM builds` gate is a separate untouched job (its `games/*/` loop
-skips BlocksDS Makefiles).
+CI: the `nds-rom-build` job in `rom-builds.yml` runs the host-mirror
+proof (`tools/check-gloam.py`), builds the .nds with the cached pinned
+toolchain, replays four headless proofs (boot+telemetry, 8-way move,
+chase+death+restart, survive-a-full-night-to-dawn — all pinned
+`--assert-watch` numerics), and uploads `.nds` + sha256 + screenshots
+alongside the GBA artifacts. The required GBA `ROM builds` gate is a
+separate untouched job (its `games/*/` loop skips BlocksDS Makefiles).

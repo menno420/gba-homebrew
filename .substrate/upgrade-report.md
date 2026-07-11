@@ -1,27 +1,27 @@
-# substrate-kit upgrade report — v1.9.0 → v1.10.0
+# substrate-kit upgrade report — v1.10.0 → v1.10.1
 
 > Generated 2026-07-11 by `bootstrap.py upgrade`. Rollback: `python3 bootstrap.py upgrade --rollback`.
 
-**Docs:** consumer-edited: 5 · template-improved: 14 · unchanged: 2
+**Docs:** consumer-edited: 5 · unchanged: 16
 
 | planted doc | class | note |
 |---|---|---|
-| CONSTITUTION.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
-| docs/decisions.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
-| docs/architecture.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
-| docs/ownership.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
-| docs/runtime_contracts.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
-| docs/repo-navigation-map.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
-| docs/helper-policy.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
-| docs/collaboration-model.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
-| docs/ai-project-workflow.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
-| docs/owner-profile.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
-| docs/AGENT_ORIENTATION.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
+| CONSTITUTION.md | unchanged | template identical across versions |
+| docs/decisions.md | unchanged | template identical across versions |
+| docs/architecture.md | unchanged | template identical across versions |
+| docs/ownership.md | unchanged | template identical across versions |
+| docs/runtime_contracts.md | unchanged | template identical across versions |
+| docs/repo-navigation-map.md | unchanged | template identical across versions |
+| docs/helper-policy.md | unchanged | template identical across versions |
+| docs/collaboration-model.md | unchanged | template identical across versions |
+| docs/ai-project-workflow.md | unchanged | template identical across versions |
+| docs/owner-profile.md | unchanged | template identical across versions |
+| docs/AGENT_ORIENTATION.md | unchanged | template identical across versions |
 | docs/current-state.md | consumer-edited | template unchanged — consumer-owned, nothing to apply |
-| docs/question-router.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
-| docs/CAPABILITIES.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
+| docs/question-router.md | unchanged | template identical across versions |
+| docs/CAPABILITIES.md | unchanged | template identical across versions |
 | docs/ideas/README.md | consumer-edited | template unchanged — consumer-owned, nothing to apply |
-| .session-journal.md | template-improved | consumer-untouched + template improved — safe to apply with `upgrade --apply-docs` |
+| .session-journal.md | unchanged | template identical across versions |
 | control/README.md | consumer-edited | template unchanged — consumer-owned, nothing to apply |
 | control/inbox.md | consumer-edited | template unchanged — consumer-owned, nothing to apply |
 | control/status.md | consumer-edited | template unchanged — consumer-owned, nothing to apply |
@@ -31,20 +31,3 @@
 ## Carve-out scan
 
 - carve-out scan: .github/workflows/substrate-gate.yml — ran, 0 found
-
-## Applied (--apply-docs)
-
-- applied: CONSTITUTION.md (template@new, hash re-recorded)
-- applied: docs/decisions.md (template@new, hash re-recorded)
-- applied: docs/architecture.md (template@new, hash re-recorded)
-- applied: docs/ownership.md (template@new, hash re-recorded)
-- applied: docs/runtime_contracts.md (template@new, hash re-recorded)
-- applied: docs/repo-navigation-map.md (template@new, hash re-recorded)
-- applied: docs/helper-policy.md (template@new, hash re-recorded)
-- applied: docs/collaboration-model.md (template@new, hash re-recorded)
-- applied: docs/ai-project-workflow.md (template@new, hash re-recorded)
-- applied: docs/owner-profile.md (template@new, hash re-recorded)
-- applied: docs/AGENT_ORIENTATION.md (template@new, hash re-recorded)
-- applied: docs/question-router.md (template@new, hash re-recorded)
-- applied: docs/CAPABILITIES.md (template@new, hash re-recorded)
-- applied: .session-journal.md (template@new, hash re-recorded)

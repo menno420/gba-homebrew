@@ -44,6 +44,11 @@ jobs:
           built=0
           for dir in games/*/; do
             [ -f "$dir/Makefile" ] || continue
+            # NDS games (BlocksDS Makefiles) build in the nds-rom-build job,
+            # not with devkitARM/Butano — skip them here. (if-form: a bare
+            # `grep && continue` returns 1 on non-NDS Makefiles and trips
+            # the runner's errexit.)
+            if grep -q 'BLOCKSDS' "$dir/Makefile"; then continue; fi
             make -C "$dir" -j"$(nproc)"
             rom="$dir$(basename "$dir").gba"
             test -f "$rom"
@@ -60,5 +65,55 @@ jobs:
           path: |
             games/*/*.gba
             rom-sha256.txt
+          if-no-files-found: error
+          retention-days: 14
+  # Parallel NDS job (Gloamline arc slice 2 — feasibility gate). Deliberately
+  # a SEPARATE job so the required "ROM builds" GBA gate is untouched: BlocksDS
+  # 1.21.1 + Wonderful GCC (sha256-pinned by tools/setup-nds-toolchain.sh,
+  # which the cache key hashes), then a headless dual-screen boot proof in
+  # py-desmume before the artifact upload. The .nds is CI-artifact-only, like
+  # the GBA skeleton.
+  nds-rom-build:
+    name: NDS ROM build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The Wonderful packages are prefix-bound to /opt/wonderful (loader
+      # paths are patched at install), so make it runner-writable BEFORE the
+      # cache step: actions/cache restores without sudo.
+      - name: make /opt/wonderful runner-writable
+        run: sudo mkdir -p /opt/wonderful && sudo chown "$(id -u):$(id -g)" /opt/wonderful
+      - name: cache NDS toolchain (BlocksDS 1.21.1 + Wonderful GCC pins)
+        uses: actions/cache@v4
+        with:
+          path: /opt/wonderful
+          # The setup script IS the pin manifest — hashing it invalidates the
+          # cache exactly when a pin changes.
+          key: nds-toolchain-${{ runner.os }}-${{ hashFiles('tools/setup-nds-toolchain.sh') }}
+      - name: setup NDS toolchain (idempotent; skips on warm cache)
+        run: tools/setup-nds-toolchain.sh
+      - name: build gloamline-nds ROM
+        run: |
+          make -C games/gloamline-nds -j"$(nproc)"
+          test -f games/gloamline-nds/gloamline-nds.nds
+          ls -la games/gloamline-nds/gloamline-nds.nds
+      - name: log ROM sha256 (build provenance)
+        run: sha256sum games/gloamline-nds/gloamline-nds.nds | tee nds-sha256.txt
+      - name: headless dual-screen boot proof (py-desmume)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libgl1
+          pip install py-desmume==0.0.9
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-boot-300.png \
+            --frames 300 --shot 150:nds-boot-150.png --require-distinct
+      - name: upload NDS ROM as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nds-rom-${{ github.sha }}
+          path: |
+            games/gloamline-nds/gloamline-nds.nds
+            nds-sha256.txt
+            nds-boot-300.png
+            nds-boot-150.png
           if-no-files-found: error
           retention-days: 14

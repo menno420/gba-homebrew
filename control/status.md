@@ -1,7 +1,7 @@
 # gba-homebrew (game-lab Track B) · status
 
-updated: 2026-07-11T20:15:00Z (session 22, bare hourly wake heartbeat —
-appends the "Shepherd + grooming (session 22)" section at file end
+updated: 2026-07-11T21:03:45Z (session 23, bare hourly wake heartbeat —
+appends the "Shepherd + grooming (session 23)" section at file end
 only; every Gloamline/Brineward/Lumen-Drift section above remains
 session 20/21's record, untouched)
 phase: **GLOAMLINE ARC — session 21 (slice 5): BARRICADES SHIPPED +
@@ -213,3 +213,24 @@ and prints the committed-dist hash next to it.
   `dist/brineward.nds` slice 2) untouched.
 - 📊 Model: claude-sonnet-5 (ORDER 003, family-level self-report from
   this session's own harness/environment banner).
+
+## Shepherd + grooming (session 23, bare hourly wake — no directed slice)
+
+- **Inbox re-read at HEAD:** ORDERS 001-004 all acked/done; no new
+  orders — standing default continues, bare hourly wake stays
+  heartbeat-only (sessions 8-14, 22 precedent); next-slice game-dev
+  work (the scavenge interlude) is left for a directed/interactive
+  session.
+- **Shepherd check:** `list_pull_requests(state=open)` → zero; `main`
+  at `dcfa865` (session 22's merge, PR #57) at session start, unchanged
+  at this write. Nothing stranded.
+- **Grooming:** `docs/review-queue.md` re-read — still EMPTY, no new
+  lead.
+- **Visibility:** `menno420/gba-homebrew` is `public` (verified via
+  `list_repos`) — expected; R22 applies to the pokemon-mod-lab track
+  only.
+- **Health:** green — no code/build change this session; all three
+  game gates (`dist/lumen-drift.gba` v1.3, `dist/gloamline.nds` slice 5,
+  `dist/brineward.nds` slice 2) untouched.
+- 📊 Model: sonnet-5 (ORDER 003, family-level self-report from this
+  session's own harness/environment banner).

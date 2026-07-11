@@ -1,20 +1,24 @@
 # gba-homebrew (game-lab Track B) · status
 
-updated: 2026-07-11T14:20:00Z
-phase: session 11 (bare hourly wake, no directed slice). No new orders at
+updated: 2026-07-11T15:05:01Z
+phase: session 12 (bare hourly wake, no directed slice). No new orders at
 the inbox-at-HEAD re-read; standing default continues. No build/gameplay
 work this session; `dist/lumen-drift.gba` stays at v1.3, world
 generation/physics/kill rules untouched.
 health: green (`python3 bootstrap.py check --strict` not run — docs/control
 only, no kit-owned or build-graph files touched, matching session 9's,
-session 10's, and slice 7's precedent)
+session 10's, session 11's, and slice 7's precedent; a local clone+run
+attempt this session was in fact denied by the environment's own
+auto-mode classifier ("[Code from External]" — executing a freshly-cloned
+external repo's script with no user message authorizing it), consistent
+with not running it, see pokemon-mod-lab's session 032 status for the
+same new capability-wall finding)
 kit: v1.11.0 · check: green (last verified kit-upgrade-v1.11.0 slice,
 PR #44) · engaged: yes
-boot: synced to origin/main `a3104ae` (PR #44's kit-upgrade merge) — moved
-since session 10's `188e3acb`; two kit-upgrade slices (v1.10.1, v1.11.0)
-landed between session 10 and this wake.
-last-shipped: PR #44 (`a3104ae`, kit upgrade v1.10.1 → v1.11.0). This
-session's own PR (heartbeat + grooming + kit-line bump, docs-only) pending.
+boot: synced to origin/main `e00612c` (PR #45's session-11 heartbeat
+merge) — moved since session 10's `188e3acb` via session 11's `a3104ae`.
+last-shipped: PR #45 (`e00612c`, session 11 heartbeat + kit-line bump).
+This session's own PR (heartbeat + grooming, docs-only) pending.
 blockers: none
 orders: acked=001,002,003,004 done=001 (this repo's half), 002 (trigger
 `trig_0137SkvhXEJvwepX8aVNkcSn` armed, cron `0 * * * *`), 003+004 (executed
@@ -35,23 +39,17 @@ kit-follow-ups carried (still unclaimed, low priority): `upgrade
 (`adopt --wire-enforcement`), upstream the PR #5 born-red-card gate rule to
 substrate-kit
 
-## Shepherd check (session 11)
+## Shepherd check (session 12)
 
 `list_pull_requests(state=open)` returned zero — no open PRs, nothing
 stranded to land.
 
-## Kit heartbeat debt paid (session 11)
-
-PR #44's own session card (`kit-upgrade-v1.11.0.md`) explicitly flagged
-"Heartbeat `kit:` line bump is lane-owed — not in this PR." This session
-pays it: `kit:` bumped v1.10.1 → v1.11.0, `boot:` sync bumped to `a3104ae`.
-
-## OA-4 / add_repo (session 11 corroboration)
+## OA-4 / add_repo (session 12 corroboration)
 
 This session needed zero `add_repo` calls — both repos were already
-present in the session's tool scope at start, consistent with session 9's
-and session 10's direct confirmation. Treating OA-4 as the stable, closed
-state (per pokemon-mod-lab's parallel status write) — no further
+present in the session's tool scope at start, consistent with sessions
+9-11's direct confirmation. Treating OA-4 as the stable, closed state
+(per pokemon-mod-lab's parallel status write) — no further
 re-confirmation needed each wake unless it regresses.
 
 ## Condensed ORDER 003/004 record (executed session 9, merged as `e985e38`)

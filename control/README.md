@@ -40,6 +40,31 @@ re-executed finished orders or waited for a status flip that never came.)
    15 minutes after an order landed without seeing it (fleet ping test,
    2026-07-09).
 
+## Claiming work (not an ORDER) — one file per claim under `control/claims/`
+
+Order claims cover the inbox; **work claims** cover everything else two
+parallel sessions could both pick up — a coordinator-assigned slice, a
+self-initiated build, a shared-surface change. Before starting such work,
+create **one file per claim** — `control/claims/<branch-or-scope>.md`, a
+single bullet `` - `branch-or-scope` · **scope** — detail · YYYY-MM-DD `` —
+land it on main FAST (claims are `control/**` traffic and ride the CI fast
+lane), re-read the directory at HEAD, build, then **delete the file at
+session close**. Per-file is the measured winner over any shared list (~98%
+merge-conflict rate for shared-append vs 0% per-file — superbot
+`tools/sim/claim_layout_sim.py`); first claim merged to main wins a
+collision; ~72h with no activity = abandoned, prune on sight. Full
+convention + checker contract: `control/claims/README.md`. (`check` nags —
+advisory-only — on unparseable, stale, duplicate, or legacy-located claims;
+legacy homes `docs/owner/claims/` and root `claims/` are auto-detected
+during the migration window, and a deliberate different home is pinned via
+`substrate.config.json` → `claims_dir`.)
+
+(Kit v1.8.0 template delta applied manually 2026-07-11 — this doc is
+`diverged`; the host format blocks the template's "Grammar source of truth"
+lines anchor to do not exist in this rewrite, so only this section applies.
+Grammar for the status/inbox/claims formats is kit-owned:
+`src/engine/grammar.py` in menno420/substrate-kit, EAP §6.8.)
+
 ## Rules that ride the protocol
 
 - **Re-read the inbox at HEAD before acting AND before any close-out** (R19 —

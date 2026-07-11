@@ -20,6 +20,14 @@ gba-homebrew — game-lab Track B: original GBA homebrew on Butano is built in C
    append the finding same session.
 4. `docs/AGENT_ORIENTATION.md` — the task-specific reading router.
 
+## Kit machinery — search hygiene
+
+`bootstrap.py` (~12k generated lines) and `.substrate/` (kit state + a byte
+backup of the previous dist) are substrate-kit machinery, not project code.
+Exclude them from repo-wide searches: `grep -r --exclude=bootstrap.py
+--exclude-dir=.substrate …`, or ripgrep `rg -g '!bootstrap.py' -g
+'!.substrate' …`.
+
 ## Architecture — layers & import rules
 
 Single-ROM homebrew repo: Butano engine (vendored/toolchain layer, arrives at walking skeleton) -> game code under src/ -> control plane (control/, claims/, .sessions/, docs/) governing how the lane works

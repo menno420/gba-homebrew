@@ -1,9 +1,9 @@
 # gba-homebrew (game-lab Track B) · status
 
-updated: 2026-07-11T19:38:51Z (session 21 overwrite; the BRINEWARD
-parallel-arc section below is the sibling lane's record, preserved
-verbatim from session 19 — a Brineward skeleton session was live on its
-own branch when this was written and will overwrite its own section)
+updated: 2026-07-11T19:56:00Z (session 20 own-section update on top of
+the session-21 overwrite: ONLY the BRINEWARD parallel-arc paragraph
+below is rewritten by its owner-session; every Gloamline/Lumen-Drift
+section is session 21's record, untouched)
 phase: **GLOAMLINE ARC — session 21 (slice 5): BARRICADES SHIPPED +
 OWNER WRAP-UP/ARCHIVE-PREP EXECUTED.** The project chat is being
 archived (owner order, 2026-07-11): the durable hand-off is
@@ -60,23 +60,45 @@ toolchain (PR #51) → skeleton (PR #52) → shove + waves (PR #54) →
 INTERLUDE** (the real plank source), then lantern-oil light pressure,
 synthesized audio set, best-nights saves, difficulty-curve/watch-map
 polish (order per `docs/concepts/gloamline-concept.md`).
-parallel arc — BRINEWARD (session 19, coordinator-assigned, this
-section's writer): a SECOND original NDS game enters the repo at
-concept stage — **Brineward**, single-player pirate naval-action
-(broadside-duel core, out-and-back run economy, port upgrades, sea
-monsters; genre-inspired reframe of browser naval-MMO loops, 100%
-original IP). Shipped this slice: `docs/concepts/brineward-concept.md`
-(title web-collision-checked clean 2026-07-11: no game/brand named
-Brineward; Keelfire + Squallmark also swept clean as runners-up) +
-session-19 card. Concept ONLY — no game dir, no toolchain/CI changes,
-zero Gloamline or Lumen Drift files touched; session 18
-(gloamline-shove-waves) ran live in parallel, session number 19 and
-branch `claude/brineward-concept` chosen against its claim. Next
-Brineward slice per the concept doc: v0 walking-skeleton scaffold
-(sail + one enemy sloop broadside duel) in `games/brineward-nds/` with
-its own `nds-brineward-build` CI job. Inbox re-read at HEAD before
-this write (main `bc92ad1`): no new orders (001/002 done, 003/004
-executed — record in git history).
+parallel arc — BRINEWARD (session 20, coordinator-assigned, this
+section's writer): **WALKING SKELETON SHIPPED — Brineward is
+PLAYABLE.** Download **`dist/brineward.nds`** (108,032 B, sha256
+`89e68dc2dd926050fdd6202a6d3b9bd8f2d82e10047453de7b41ac7b462dc475`,
+byte-deterministic) — **`docs/PLAYING-BRINEWARD.md`** is the guide.
+The concept doc's v0 cut, whole: momentum sailing (heading + 3-state
+sail trim, the ship always makes way), ONE rum-runner sloop on an
+intercept-and-circle AI, L/R broadside batteries (3-ball rakes, per-
+battery reload, range falloff) on BOTH ships, sink-or-be-sunk → card →
+START instant restart, bottom screen = ship-status ledger v0. Rails:
+pure sim `games/brineward-nds/source/bw_sim.c` mirrored line-for-line
+by `tools/check-brine.py` (sine identities; 4096 spawns deterministic/
+safe; idle player ALWAYS sunk ≤1177 f over 64 seeds; the beam-holding
+policy ALWAYS wins over 16 seeds; 20k-frame containment);
+`bw_telemetry[16]` mailbox; NEW CI job **`nds-brineward-build`**
+(Gloamline's job + the GBA gate untouched, verified append-only)
+running the host proof, a route-drift diff, the deterministic build +
+sha256 cross-log, and 4 pinned headless proofs (55 numeric asserts,
+green in-container AND on the PR's CI run): boot; exact sail
+kinematics (positions/heading/trim matched to the unit); duel-LOSS
+idle (hull 100→71→42→0, enemy unscratched, instant restart, fresh
+seed); duel-WIN via a recorded route
+(`games/brineward-nds/tools/record-duel-win.py`, closed-loop policy →
+open-loop replay, wins at every ±6-frame alignment shift, player hull
+UNTOUCHED, victory card, next duel starts). Archive-prep (owner
+wrap-up order 2026-07-11) honored for THIS arc: chat-only context in
+`docs/retro/archive-ready-2026-07-11-brineward.md` (inspiration/owner
+ruling, "expand the games" directive, roadmap state, exact resume
+recipe) — the Gloamline lane's repo-level retro is separate and its
+own. Two py-desmume quirks recorded in PLATFORM-LIMITS (BGRX
+screenshots; affine OAM has no hide bit). Sessions 18 and 21
+(Gloamline slices 4+5) merged mid-slice; rebases conflicted only on
+dist/README.md's table (both-rows resolution) and this file (own
+sections re-applied) — the claims convention held, zero game-file
+collisions. Brineward roadmap next (per concept doc, NOT started):
+loot/gold → port+upgrades → the Maw → wind feel → danger bands →
+audio → saves. Inbox re-read at HEAD before this write (main
+`ba9ec91`): no new orders (001-004 executed — record in git history
+and session cards).
 honest gaps for the next slice: plank economy is a placeholder stock
 (scavenging is the designed source — next slice); barricade numbers
 (16 px radius, 240 hp, 6+2/9 planks, repair-over-place) are
@@ -87,8 +109,7 @@ feel-check); wave plateau nights (13+) still have no headless survive
 proof; perf evidence is emulator-model, not hardware (steady 68/71 = 3
 modeled scanlines of margin at absolute worst case); committed
 screenshots carry a py-desmume BGR channel swap (colors correct on
-hardware; see self-review); no audio; no saves.
-health: green (`python3 bootstrap.py check --strict` exit 0 at
+hardware; see self-review); no audio; no saves.health: green (`python3 bootstrap.py check --strict` exit 0 at
 close-out; host proof + all 9 headless proofs green in-container; GBA
 loop untouched; ORDER 001-004 all executed — 004 as
 `docs/retro/self-review-2026-07-11.md` this session).

@@ -1,6 +1,6 @@
 # Playing Brineward (Nintendo DS) — walking skeleton
 
-> **Status:** `living` — arc slice 2 (v0, first playable). One broadside
+> **Status:** `owner-guidance` — arc slice 2 (v0, first playable). One broadside
 > duel off the Graywake breakwater: sail, out-turn the rum-runner, sink
 > or be sunk, press START, go again. Concept + roadmap:
 > [`concepts/brineward-concept.md`](concepts/brineward-concept.md).

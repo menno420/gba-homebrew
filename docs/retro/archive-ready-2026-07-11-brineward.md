@@ -1,6 +1,6 @@
 # Archive-ready retro — Brineward arc · 2026-07-11 (session 20)
 
-> **Status:** `record` — written on the owner's wrap-up + archive-prep
+> **Status:** `historical` — written on the owner's wrap-up + archive-prep
 > order (project chat being archived; anything not in the repo is lost).
 > This file is the Brineward lane's own note; the Gloamline lane writes
 > the repo-level pointer. Scope: Brineward ONLY.

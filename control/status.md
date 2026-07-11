@@ -1,45 +1,50 @@
 # gba-homebrew (game-lab Track B) · status
 
-updated: 2026-07-11T18:56:16Z (session 19 own-section update; Gloamline
-sections below are session 17/18's record, untouched)
-phase: **GLOAMLINE ARC — session 17 (slice 3): WALKING SKELETON SHIPPED.**
-Gloamline is PLAYABLE: download **`dist/gloamline.nds`** (107,008 B, sha256
-`6d1ff00ad7a4c5631046d6c944328beba5d0bc102b279c512762a0f999aee2dc`,
-byte-deterministic build) and open it in melonDS/DeSmuME —
-**`docs/PLAYING-GLOAMLINE.md`** is the one-page guide. The skeleton cut per
-the concept doc: top screen = the yard (fence ring, HUD: night / dawn
-countdown / seed / nights survived, two original code-authored sprites),
-bottom screen = watch-map v0 (live P/Z dots + dawn bar), 8-way move, ONE
-Shambler chasing with deterministic hash stagger, contact = death →
-cold-hands card → START instant restart, survive the 60 s night → dawn →
-next night. Seed = frame latched at START, printed on HUD/cards (any run
-reproducible; CI scripts a fixed press frame).
-evidence: (1) all rules are pure fixed-point functions
-(`games/gloamline-nds/source/gl_sim.c`) mirrored line-for-line by
-**`tools/check-gloam.py`** (lockstep rule; green: 2048 spawns
-pure/on-fence/safe-radius, 256 idle-player chases converge monotonically
-≤258 frames, 20k-frame containment). (2) **telemetry mailbox**
-`gl_telemetry[16]` + `tools/nds-headless-check.py` gained the GBA
-harness's ELF-symbol watches (`--elf/--watch/--watch-log/--assert-watch`)
-— the session-16 "memory-watch unproven on NDS" gap is CLOSED. (3) four
-headless proofs pinned in CI (`nds-rom-build`, all run green in-container
-this session, 36 numeric asserts): boot+mailbox; 8-way move (exact
-positions per input span); chase→contact(dist 17501→2405)→death→instant
-restart (fresh seed, deaths persists); **a FULL 60 s night survived to
-dawn** (mirror-sim-derived kiting route
-`games/gloamline-nds/proof/dawn-route-keys.txt`, ≥22 px margin at ±6-frame
-alignments, ~5 s wall headless — no shortened test build needed). Proof
-screenshots committed: `games/gloamline-nds/proof/skeleton-{title,yard,
-death,dawn}.png`. Touch input deliberately out of scope (concept:
-buttons-only playable). GBA gates untouched (Lumen Drift v1.3 +
+updated: 2026-07-11T19:01:38Z (session 18 overwrite, rebased onto the
+session-19 merge: the BRINEWARD parallel-arc section below is session
+19's record, preserved verbatim)
+phase: **GLOAMLINE ARC — session 18 (slice 4): SHOVE + WAVES SHIPPED.**
+Gloamline now fights back: download **`dist/gloamline.nds`** (108,032 B,
+sha256
+`aaa09bb6cfcd3d1941391963ddf2cee8cbee10eeee91bd56971dff12e14be3a6`,
+byte-deterministic build) — **`docs/PLAYING-GLOAMLINE.md`** is the guide.
+Night N spawns a deterministic WAVE (1, 3, 5, ... +2/night, plateau at
+the concept's 24-sprite cap from night 13), trickling in over the
+night's first 40 s — spawn timing AND placement are pure functions of
+`(seed, night, index)`. The player gets the **SHOVE** (A): the nearest
+Shambler within 24 px is knocked 40 px back with a 45-frame stun; any
+attempt arms a 90-frame cooldown (HUD `SHV` light) — a pressure valve,
+not a weapon. Watch-map shows EVERY zombie; HUD counts the crowd.
+evidence (all run green in-container this session): (1) host mirror
+`tools/check-gloam.py` (lockstep with `gl_sim.c`, same commit): 23,552
+spawns pure/on-fence/safe-radius incl. every scheduled wave index to the
+cap; 24-crowd + hash-driven-shove containment over 20k frames; wave
+ramp/cap/plateau + spawn-window shape nights 1–64; 3,837 shove cases
+deterministic/never-closer/contained (224 wall-free cases push exactly
++40 px). (2) **`tools/gloam-route.py` NEW** (slice-3 scratch promoted per
+its guard recipe): full-game mirror sim + lookahead kiting autopilot;
+derives survive routes and proves them at every ±6-frame movement skew —
+it reproduced slice 3's evidence exactly (22.6 px nominal) and every
+emulator value it predicted for the new proofs matched exactly.
+(3) **7 pinned headless proofs in CI** (`nds-rom-build`, 77 asserts):
+the 4 slice-3 proofs stayed green UNCHANGED (night-1 bit-equivalence —
+zero re-pins) + shove (dist 4517→14757 = exactly +40 px, stun, cooldown,
+mash blocked, second shove, death still comes), night-2 waves (schedule
+3, alive 1→2→3, BOTH nights survived to dawn via
+`proof/night2-route-keys.txt`, ≥21.8 px margin at all 13 skews), and the
+**24-Shambler frame budget** on a CI-only `make GL_STRESS=1` build:
+steady state ≤53 scanlines (mean 51.9) vs the 71-line vblank budget,
+lone night-start redraw spike 133 < the 263-line 60 fps ceiling —
+honest-method note: DeSmuME scanline model (py-desmume 0.0.9), not
+hardware. Telemetry mailbox grew 16→24 words (slots 0-15 untouched).
+Screenshots: `games/gloamline-nds/proof/slice4-{shove,waves-yard,
+stress-crowd}.png`. GBA gates untouched (Lumen Drift v1.3 +
 `dist/lumen-drift.gba` unchanged).
-arc plan: slice 1 concept (PR #50) → slice 2 toolchain feasibility
-(PR #51) → slice 3 **THIS PR (skeleton SHIPPED)** → next feature slices
-per `docs/concepts/gloamline-concept.md`: **shove verb + multi-zombie
-waves** (spawn schedule f(seed,night,index) already in gl_sim), night
-ramp/plateau, barricades, between-nights scavenge interlude, lantern-oil
-light pressure, synthesized audio set, best-nights saves, watch-map
-polish.
+arc plan (owner has green-lit continuous expansion): concept (PR #50) →
+toolchain (PR #51) → skeleton (PR #52) → **shove + waves (THIS PR)** →
+next slice = **BARRICADES**, then the between-nights scavenge interlude,
+lantern-oil light pressure, synthesized audio set, best-nights saves,
+watch-map polish (order per `docs/concepts/gloamline-concept.md`).
 parallel arc — BRINEWARD (session 19, coordinator-assigned, this
 section's writer): a SECOND original NDS game enters the repo at
 concept stage — **Brineward**, single-player pirate naval-action
@@ -57,29 +62,37 @@ Brineward slice per the concept doc: v0 walking-skeleton scaffold
 its own `nds-brineward-build` CI job. Inbox re-read at HEAD before
 this write (main `bc92ad1`): no new orders (001/002 done, 003/004
 executed — record in git history).
-honest gaps for the next slice: one zombie only (crowd cap 24 planned);
-no shove verb yet (pure kiting); no audio; no saves; no game-feel pass on
-Shambler speed/stagger (numbers chosen for provability, owner taste
-pending); the dawn-route derivation is a scratch script — promote a
-route-recorder sibling if slice 4 needs richer routes.
-health: green (`python3 bootstrap.py check --strict` exit 0 at close-out;
-all four NDS proofs + host proof green in-container; GBA loop untouched)
+honest gaps for the next slice: shove whiffs cost the full cooldown
+(documented design choice — owner-taste check welcome); wave plateau
+nights (13+) have no headless survive proof (routes proven through
+night 2; the autopilot can derive deeper routes but crowd-13 survival
+may need the shove in-route — the sim supports it, unexplored); perf
+evidence is emulator-model, not hardware; no audio; no saves; night
+ramp beyond +2/night unexplored for feel.
+health: green (`python3 bootstrap.py check --strict` exit 0 at
+close-out; host proof + all 7 headless proofs green in-container; GBA
+loop untouched).
 kit: v1.12.0 · engaged: yes
-boot: synced to origin/main `d45b156` (PR #51). No wake landed mid-slice;
-session number 17 held. Inbox re-read at HEAD before this write: no new
-orders (003/004 executed previously, record in git history).
-last-shipped: this session's PR (walking skeleton — see phase/evidence).
+boot: synced to origin/main `bc92ad1` (PR #52). Coordinator mid-slice
+update acknowledged: a sibling session runs a separate PIRATE arc in
+this repo (own dirs) — this lane touched only Gloamline/Lumen
+Drift/control files and kept the claims convention so the sibling sees
+the lane. Inbox re-read at branch time: no new orders.
+last-shipped: this session's PR (slice 4 shove + waves — see
+phase/evidence).
 blockers: none
 📊 Model: fable-5 (ORDER 003, family-level self-report from this
 session's own harness/environment banner).
 review-queue: EMPTY.
-lane position (honest): **the arc has a playable game.** Two shipped
-playables in dist/ (Lumen Drift GBA scope-complete v1.3; Gloamline NDS
-skeleton). Rails for every future Gloamline slice exist and are proven:
-pure-sim mirror proof, telemetry watches, pinned replay proofs, dist
+lane position (honest): **the arc's game is now a horde game.** Two
+shipped playables in dist/ (Lumen Drift GBA scope-complete v1.3;
+Gloamline NDS slice 4). Every future slice inherits proven rails:
+pure-sim mirror proof, 24-word telemetry watches, gloam-route.py route
+derivation, pinned replay proofs, stress-build perf probe, dist
 convention. The hourly wake trigger continues between directed slices.
 repo-name note (cosmetic, owner's call, carried): repo named
-`gba-homebrew`, now also hosts the NDS game; nothing depends on a rename.
+`gba-homebrew`, now also hosts NDS (and a sibling's pirate arc);
+nothing depends on a rename.
 kit-follow-ups carried (still unclaimed, low priority): `upgrade
 --apply-docs` (14 template-improved docs), migrate/retire legacy root
 `claims/` (only its README remains), auto-merge enabler wiring decision
@@ -96,10 +109,10 @@ to substrate-kit.
   `195a86795e57e2fa0059a96782f1ac7a147cbcebc0cb28a96f353e5d9babae94` —
   paste it in the notes) → point the notes at `docs/PLAYING.md` and the
   v1.3 entry in `docs/current-state.md` → Publish. (No Gloamline release
-  ask yet: the skeleton is pre-v1 and this repo's release convention has
-  only shipped at scope-complete — revisit when the arc matures.)
+  ask yet: pre-v1; this repo's release convention has only shipped at
+  scope-complete — revisit when the arc matures.)
 - **⚑ owner-click: merged-branch cleanup** — worker seat gets 403 on
-  branch-delete; merged `claude/*` branches (through PR #51 and this PR
+  branch-delete; merged `claude/*` branches (through PR #52 and this PR
   once merged, plus earlier kit-upgrade and wake branches) can be deleted
   in one sweep from the branches page.
 - **⚑ graze tuning wants owner hands-on validation** — the
@@ -107,8 +120,9 @@ to substrate-kit.
   machine-proven (CI asserts the refund and the lane geometry), but
   whether grazing FEELS right — risk-priced, readable, not exploitable —
   needs real hands on a real run. Owner-gated polish on a complete,
-  shipped game. (Same invitation now applies to Gloamline skeleton
-  hand-feel: Shambler speed/stagger numbers await owner taste.)
+  shipped game. (Same invitation applies to Gloamline hand-feel:
+  Shambler speed/stagger AND now shove push/stun/cooldown numbers await
+  owner taste.)
 - ⚑ (**awareness, no click needed**) — the routine model-attribution
   mismatch (ORDER 003 record, session 9) belongs in whatever the
   fleet-manager coordinator compiles for a report to Anthropic, alongside
@@ -119,8 +133,8 @@ the merge path); mGBA python core.load_save() segfault (--savefile
 bus-copy); devkitPro official infra Cloudflare-403 (mirror+pins for GBA;
 N/A for NDS — Wonderful/BlocksDS hosts direct); py-desmume
 KEYINPUT-at-reset quirk (keypad_update(0) before first cycle — respected
-by every new proof this session). dist/ convention: player-facing games
-ship committed with provenance (TWO rows live: lumen-drift.gba v1.3,
-gloamline.nds skeleton); engine-test skeletons stay CI-artifact-only; CI
+by every proof this session). dist/ convention: player-facing games ship
+committed with provenance (TWO rows live: lumen-drift.gba v1.3,
+gloamline.nds slice 4); engine-test skeletons stay CI-artifact-only; CI
 sha256-logs every from-source build and prints the committed-dist hash
 next to it.

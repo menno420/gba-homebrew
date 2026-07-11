@@ -1,29 +1,32 @@
 # gba-homebrew (game-lab Track B) · status
 
-updated: 2026-07-11T15:05:01Z
-phase: session 12 (bare hourly wake, no directed slice). No new orders at
+updated: 2026-07-11T16:03:47Z
+phase: session 13 (bare hourly wake, no directed slice). No new orders at
 the inbox-at-HEAD re-read; standing default continues. No build/gameplay
 work this session; `dist/lumen-drift.gba` stays at v1.3, world
 generation/physics/kill rules untouched.
 health: green (`python3 bootstrap.py check --strict` not run — docs/control
 only, no kit-owned or build-graph files touched, matching session 9's,
-session 10's, session 11's, and slice 7's precedent; a local clone+run
-attempt this session was in fact denied by the environment's own
-auto-mode classifier ("[Code from External]" — executing a freshly-cloned
-external repo's script with no user message authorizing it), consistent
-with not running it, see pokemon-mod-lab's session 032 status for the
-same new capability-wall finding)
+session 10's, session 11's, session 12's, and slice 7's precedent; not
+re-attempting the local clone+run this session, session 12 documented the
+environment's auto-mode classifier denial for that path and nothing
+changed since)
 kit: v1.11.0 · check: green (last verified kit-upgrade-v1.11.0 slice,
 PR #44) · engaged: yes
-boot: synced to origin/main `e00612c` (PR #45's session-11 heartbeat
-merge) — moved since session 10's `188e3acb` via session 11's `a3104ae`.
-last-shipped: PR #45 (`e00612c`, session 11 heartbeat + kit-line bump).
+boot: synced to origin/main `83d3875` (PR #46's session-12 heartbeat
+merge) — moved since session 11's `e00612c` via session 12's `83d3875`.
+last-shipped: PR #46 (`83d3875`, session 12 heartbeat + grooming).
 This session's own PR (heartbeat + grooming, docs-only) pending.
 blockers: none
 orders: acked=001,002,003,004 done=001 (this repo's half), 002 (trigger
 `trig_0137SkvhXEJvwepX8aVNkcSn` armed, cron `0 * * * *`), 003+004 (executed
 session 9, condensed record below). Inbox re-read at HEAD before this write:
 no new orders.
+📊 Model: claude-sonnet-5 (ORDER 003, family-level self-report from this
+session's own harness/environment banner; adding the live per-card line
+this session — prior sessions 10-12 carried the finding only in the
+condensed ORDER 003 record below, not as a live per-session line. This
+closes the template gap ORDER 003 done-when actually asked for.)
 review-queue: EMPTY (since slice 3).
 lane position (honest): the local backlog is empty or owner-gated
 (unchanged since slice 6). What remains: (a) the ⚑ owner items below
@@ -39,16 +42,24 @@ kit-follow-ups carried (still unclaimed, low priority): `upgrade
 (`adopt --wire-enforcement`), upstream the PR #5 born-red-card gate rule to
 substrate-kit
 
-## Shepherd check (session 12)
+## Shepherd check (session 13)
 
 `list_pull_requests(state=open)` returned zero — no open PRs, nothing
 stranded to land.
 
-## OA-4 / add_repo (session 12 corroboration)
+## Grooming pass (session 13)
+
+`docs/backlog.md` / `docs/review-queue.md` last touched at slice 3 —
+no commits to either since then, no new lead surfaced. Not re-walked
+from scratch this session, per the established precedent (matches
+pokemon-mod-lab's session 019/020 search convention). Lane position
+unchanged: local backlog empty or owner-gated.
+
+## OA-4 / add_repo (session 13 corroboration)
 
 This session needed zero `add_repo` calls — both repos were already
 present in the session's tool scope at start, consistent with sessions
-9-11's direct confirmation. Treating OA-4 as the stable, closed state
+9-12's direct confirmation. Treating OA-4 as the stable, closed state
 (per pokemon-mod-lab's parallel status write) — no further
 re-confirmation needed each wake unless it regresses.
 

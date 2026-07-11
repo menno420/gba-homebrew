@@ -1,0 +1,1 @@
+- `claude/session-8-slice-3` · **scope** — session 8 slice 3: fix review-queue row #23 (echo-band crystal gates) + host checker tools/check-cave.py + dist/ ROM + docs/PLAYING.md: games/lumen-drift/src/main.cpp, tools/, .github/workflows/rom-builds.yml, dist/, docs/, control/status.md · 2026-07-11

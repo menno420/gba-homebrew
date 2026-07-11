@@ -2,12 +2,13 @@
 
 > **Status:** `owner-guidance` — download-and-play guide for the committed
 > ROM in [`dist/`](../dist/); refreshed in the same PR whenever the game or
-> the shipped ROM changes (written 2026-07-11, arc slice 3 — the walking
-> skeleton, first playable).
+> the shipped ROM changes (written 2026-07-11, arc slice 3; refreshed same
+> date for arc slice 4 — shove + waves).
 
-**Download → open in a DS emulator → play.** No build step needed. This is
-the *walking skeleton*: the full night-survival loop with ONE zombie —
-shove, waves, barricades and the rest arrive in later slices.
+**Download → open in a DS emulator → play.** No build step needed. Slice 4
+is the first cut that *fights back properly*: every night sends a bigger
+wave of the dead (up to a 24-strong crowd), and you get the SHOVE —
+barricades and the rest arrive in later slices.
 
 ## 1. Get the ROM
 
@@ -32,14 +33,17 @@ like: the sha256 is pinned in [`dist/README.md`](../dist/README.md).
 
 ## 3. How to play
 
-You are the **last lamplighter** of a fenced hamlet on the moor. Tonight
-the gloam sends ONE of the walking dead over the fence line — the Shambler
-— and it never stops walking toward you. Don't let it touch you until
-dawn.
+You are the **last lamplighter** of a fenced hamlet on the moor. Each
+night the gloam sends the walking dead over the fence line — night 1 sends
+one Shambler, night 2 sends three, night 3 five... two more every night
+until the moor maxes out at a 24-strong crowd (night 13). They trickle in
+over the first 40 seconds of the night and never stop walking toward you.
+Don't let a single one touch you until dawn.
 
-**Screens:** the TOP screen is the yard — all the action. The BOTTOM
-screen is the watch-map: your position (`P`), the Shambler (`Z`), and the
-dawn bar filling left to right. Buttons only — no touch needed.
+**Screens:** the TOP screen is the yard — all the action, plus a `Z`
+counter for how many are up and a `SHV` light for your shove. The BOTTOM
+screen is the watch-map: your position (`P`), every Shambler (`Z`), and
+the dawn bar filling left to right. Buttons only — no touch needed.
 
 **Controls**
 
@@ -47,6 +51,7 @@ dawn bar filling left to right. Buttons only — no touch needed.
 |---|---|
 | START (title / after death / at dawn) | Start — retry — next night |
 | D-pad | Move, 8 directions |
+| A | **Shove** the nearest Shambler in reach |
 
 **Goal:** stay out of reach for the 60 seconds of the night. The HUD
 counts down to dawn (`DAWN 0:58`); the moment it hits zero, dawn breaks
@@ -55,17 +60,23 @@ fence-line spawn. **NIGHTS** on the HUD is your score.
 
 **What's happening:**
 
-- The Shambler walks straight at you, always, with a dead man's stagger.
-  You are twice its speed — but the yard is closed and the night is long,
-  so the game is *kiting*: circle wide, never corner yourself.
+- Every Shambler walks straight at you, always, with a dead man's
+  stagger. You are twice their speed — but the yard is closed, the night
+  is long and the crowd only grows, so the game is *kiting*: circle wide,
+  never corner yourself, and watch the map for where the next one climbed
+  the fence.
+- **The shove is spacing, not a gun.** Press A with a Shambler within
+  arm's reach (about a body-and-a-half): the nearest one is knocked five
+  tiles back and stands reeling for most of a second. Then the `SHV`
+  light goes dark for a second and a half — hit or whiff — so shove to
+  open a corridor, not to win. Shoved dead come back; they always come
+  back.
 - **One touch kills.** A cold-hands card shows your night, your seed and
   your death count; START restarts instantly.
-- Every run is **reproducible**: the SEED on the HUD fully determines the
-  Shambler's spawn (and everything after it, given your inputs). Same
-  seed + same moves = same night, every time.
+- Every run is **reproducible**: the SEED on the HUD fully determines
+  every spawn of every night (and everything after it, given your
+  inputs). Same seed + same moves = same night, every time.
 
-That's deliberately all there is tonight. Next slices per the
-[concept](concepts/gloamline-concept.md): the **shove** (spacing, not a
-gun), multi-zombie waves with a per-night ramp, barricades, the
-between-nights scavenge interlude, lantern-oil light pressure, original
-synthesized audio, and best-nights saves.
+Next slices per the [concept](concepts/gloamline-concept.md): barricades,
+the between-nights scavenge interlude, lantern-oil light pressure,
+original synthesized audio, and best-nights saves.

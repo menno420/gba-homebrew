@@ -15,7 +15,7 @@ changes its game, with provenance:
 | File | Version / date | Size | Built from | sha256 |
 |---|---|---|---|---|
 | [`lumen-drift.gba`](lumen-drift.gba) | **v1.3** · session 8 slice 6 · 2026-07-11 | 167,996 bytes | source tree of the v1.3 pause/mute + graze-flash micro-polish commit (`games/lumen-drift/` at the same tree as this file) | `195a86795e57e2fa0059a96782f1ac7a147cbcebc0cb28a96f353e5d9babae94` |
-| [`gloamline.nds`](gloamline.nds) | **walking skeleton** (arc slice 3) · session 17 · 2026-07-11 | 107,008 bytes | source tree of the slice-3 skeleton commit (`games/gloamline-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `6d1ff00ad7a4c5631046d6c944328beba5d0bc102b279c512762a0f999aee2dc` |
+| [`gloamline.nds`](gloamline.nds) | **shove + waves** (arc slice 4) · session 18 · 2026-07-11 | 108,032 bytes | source tree of the slice-4 shove+waves commit (`games/gloamline-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `aaa09bb6cfcd3d1941391963ddf2cee8cbee10eeee91bd56971dff12e14be3a6` |
 
 **How they were built:** GBA — `tools/setup-toolchain.sh` (pinned
 devkitARM r68 + Butano) then `tools/build.sh`; NDS —

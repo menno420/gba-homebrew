@@ -50,12 +50,51 @@
 
 (Nothing — the **Gloamline arc** (owner-picked original NDS zombie
 horde-defense) is the active track: concept (PR #50) → toolchain
-feasibility (PR #51) → **walking skeleton (session 17, this ledger
-entry) SHIPPED**. Next slices per the concept doc: shove verb +
-multi-zombie waves, night ramp, barricades, scavenge interlude,
-lantern-oil light pressure, synthesized audio, best-nights saves.)
+feasibility (PR #51) → walking skeleton (PR #52) → **shove + waves
+(session 18, this ledger entry) SHIPPED**. Next slices per the concept
+doc: barricades, scavenge interlude, lantern-oil light pressure,
+synthesized audio, best-nights saves.)
 
 ## Recently shipped (newest first)
+
+- **Session 18 — Gloamline slice 4: SHOVE + WAVES** (2026-07-11): the
+  concept's next feature cut on the slice-3 skeleton. **Waves:** night N
+  spawns `gl_wave_count(N)` Shamblers (1, 3, 5, ... +2/night, plateau at
+  the 24-sprite cap from night 13), each at the pure schedule
+  `gl_spawn_frame(night, index)` (index 0 at frame 0, rest spread over
+  the night's first 2400 frames) × `gl_spawn_of_night(seed, night,
+  index)` — spawn timing AND placement are pure functions of
+  `(seed, night, index)` per the concept's determinism plan. **Shove
+  (A):** `gl_shove` knocks the nearest Shambler within 24 px back 40 px
+  (per-axis away, arena-clamped) with a 45-frame stun; any attempt arms a
+  90-frame cooldown (pressure valve, not a weapon — HUD `SHV` light).
+  Watch-map now draws EVERY zombie; HUD gained the `Z` crowd counter.
+  **Host proof extended** (`tools/check-gloam.py`, lockstep mirror):
+  23,552 spawns pure/on-fence/safe-radius incl. every scheduled wave
+  index to the night-13 cap, containment now runs the full 24-crowd +
+  hash-driven shove attempts, wave ramp/cap/plateau + spawn-window shape
+  proven for nights 1–64, 3,837 shove cases
+  deterministic/never-closer/contained (224 wall-free cases push exactly
+  +40 px). **`tools/gloam-route.py` NEW** (slice-3 scratch promoted): a
+  full-game mirror sim + lookahead kiting autopilot that derives survive
+  routes and proves them against every ±6-frame movement skew — it
+  re-derived slice 3's evidence (22.6 px nominal, ≥22 px envelope)
+  exactly, then derived `proof/night2-route-keys.txt` (nights 1+2,
+  ≥21.8 px margin at all 13 skews). **Three new pinned headless proofs
+  in CI** (41 new asserts; 7 proofs / 77 asserts total): shove (knockback +40 px exact, stun,
+  cooldown, mash-blocked, second shove, still-dies — every value
+  predicted by the mirror and matched by the emulator run exactly),
+  night-2 waves (3 zombies spawn on schedule 1→2→3, survive BOTH nights
+  to dawn, deaths 0), and the 24-Shambler frame budget on a CI-only
+  `GL_STRESS=1` build (death disarmed, identical sim/render paths):
+  REG_VCOUNT probe (`gl_telemetry` grew 16→24 words) measured steady
+  state ≤53 scanlines vs the 71-line vblank budget (mean 51.9; single
+  night-start console-redraw spike 133 < the 263-line 60 fps ceiling) —
+  DeSmuME timing model, not hardware. All 36 slice-3 asserts stayed
+  green UNCHANGED (night-1 equivalence held; zero re-pins). Screenshots:
+  `proof/slice4-{shove,waves-yard,stress-crowd}.png`. Ships as
+  **`dist/gloamline.nds`** (108,032 B, byte-deterministic) +
+  [`PLAYING-GLOAMLINE.md`](PLAYING-GLOAMLINE.md) refresh.
 
 - **Session 17 — Gloamline walking skeleton: first playable NDS build**
   (2026-07-11): the concept doc's skeleton cut end-to-end. Top screen =

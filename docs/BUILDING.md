@@ -126,9 +126,11 @@ directly reachable from the fleet container — no mirror needed.
 
 CI: the `nds-rom-build` job in `rom-builds.yml` runs the host-mirror
 proof (`tools/check-gloam.py`), builds the .nds with the cached pinned
-toolchain, replays seven headless proofs (boot+telemetry, 8-way move,
+toolchain, replays nine headless proofs (boot+telemetry, 8-way move,
 chase+death+restart, survive-night-1-to-dawn, shove, night-2 waves +
-multi-zombie survive, 24-Shambler frame-budget on the stress build — all
-pinned `--assert-watch` numerics), and uploads `.nds` + sha256 +
+multi-zombie survive, 24-Shambler + 8-barricade frame-budget on the
+stress build, barricade hold/breach lifecycle, barricade repair
+economy — all pinned `--assert-watch` numerics), and uploads `.nds` +
+sha256 +
 screenshots alongside the GBA artifacts. The required GBA `ROM builds` gate is a
 separate untouched job (its `games/*/` loop skips BlocksDS Makefiles).

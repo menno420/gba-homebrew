@@ -50,12 +50,55 @@
 
 (Nothing — the **Gloamline arc** (owner-picked original NDS zombie
 horde-defense) is the active track: concept (PR #50) → toolchain
-feasibility (PR #51) → walking skeleton (PR #52) → **shove + waves
-(session 18, this ledger entry) SHIPPED**. Next slices per the concept
-doc: barricades, scavenge interlude, lantern-oil light pressure,
-synthesized audio, best-nights saves.)
+feasibility (PR #51) → walking skeleton (PR #52) → shove + waves
+(PR #54) → **barricades (session 21, this ledger entry) SHIPPED**. Next
+slices per the concept doc: between-nights scavenge interlude (the real
+plank source), lantern-oil light pressure, synthesized audio,
+best-nights saves. A parallel sibling session runs the Brineward pirate
+arc in its own dirs.)
 
 ## Recently shipped (newest first)
+
+- **Session 21 — Gloamline slice 5: BARRICADES** (2026-07-11): the
+  concept's next feature cut. **B verb:** place a barricade at the
+  lamplighter's feet (1 plank; 6-plank run stock, +2/dawn via pure
+  `gl_planks_at_dawn`, pocket cap 9 — the scavenge interlude NEXT slice
+  becomes the real source) or repair the intact one in reach to full
+  (1 plank; a full one is never repaired — no waste). **Block rule
+  (pure `gl_barricade_blocks`):** a Shambler step may not ENTER an
+  intact barricade's 16 px radius — the blocked attempt chews exactly
+  1 hp (240 hp ≈ 4 s of one Shambler; hp 0 = breach, slot free); a body
+  already inside may always leave; a stagger frame never chews. No-trap
+  invariants BY CONSTRUCTION and host-proven: the player is never a
+  block-predicate argument (can't seal themselves in — trajectory
+  bit-identical with/without barricades), and 128 full-cap walled-in
+  runs all breached to contact (worst frame 1152 vs bound 4240 — a wall
+  is a timer, never a softlock). Barricades persist across nights;
+  third code-authored sprite (crossed moor-planks, vflip = splintered
+  at half hp); watch-map `#` marks; HUD `PK` plank counter; telemetry
+  24→32 words (slots 0-23 untouched). **Host proof extended**
+  (`tools/check-gloam.py`, lockstep): containment now drives
+  hash-driven B verbs; 8192 block-predicate cases
+  deterministic/enter-only/never-pinning; plank economy proven. 1.5 s.
+  **`tools/gloam-route.py`** mirror + rollout track the new step order
+  (slice-3/4 routes reproduce exactly — zero drift). **Two new pinned
+  headless proofs + stress re-measure** (9 proofs / 112 asserts total;
+  all 77 slice-3/4 asserts UNCHANGED, zero re-pins — barricade state is
+  inert until B is pressed and old proofs never press B): proof 8
+  barricade lifecycle against proof 3 as control (same seed 118 — the
+  control dies at frame 250; the barricaded player is still alive at
+  400 with the Shambler pinned at 16.1 px; chew math exact 228@250 /
+  122@400; breach → death by 690, planks intact — no free lunch),
+  proof 9 repair economy (no waste on full, 1 plank → full hp, block
+  keeps holding), proof 7 frame budget re-measured WITH the 8-ring +
+  24 crowd: steady ≤68 scanlines (mean 56.3) vs the 71-line vblank
+  budget, night-start spike 140 < 263 (DeSmuME timing model, not
+  hardware; margin tightened from slice 4's 53 — barricades cost
+  ~4-15 lines). Every pinned value mirror-predicted and
+  emulator-matched exactly. Screenshots:
+  `proof/slice5-{barricade-hold,breach-death,stress-ring}.png`. Ships
+  as **`dist/gloamline.nds`** (110,080 B, byte-deterministic) +
+  [`PLAYING-GLOAMLINE.md`](PLAYING-GLOAMLINE.md) refresh.
 
 - **Session 18 — Gloamline slice 4: SHOVE + WAVES** (2026-07-11): the
   concept's next feature cut on the slice-3 skeleton. **Waves:** night N

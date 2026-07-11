@@ -1,5 +1,9 @@
 # Playing Lumen Drift
 
+> **Status:** `owner-guidance` — download-and-play guide for the committed
+> ROM in [`dist/`](../dist/); refreshed in the same PR whenever the game or
+> the shipped ROM changes (written 2026-07-11, session 8 slice 3).
+
 **Download → open in an emulator → play.** No build step needed.
 
 ## 1. Get the ROM

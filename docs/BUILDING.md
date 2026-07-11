@@ -107,10 +107,17 @@ directly reachable from the fleet container — no mirror needed.
   Dumps both screens stacked (256x384), exits non-zero if EITHER screen is
   blank; `--require-distinct` additionally proves the main loop is running.
   Since arc slice 3 the checker also reads the ROM's telemetry mailbox the
-  GBA way: `--elf build/gloamline-nds.elf --watch t:gl_telemetry:16
+  GBA way: `--elf build/gloamline-nds.elf --watch t:gl_telemetry:24
   --assert-watch FRAME:t:IDX:OP:VALUE` (+ `--watch-log` CSV) — numeric
   game-state asserts against ELF-resolved symbols, interface ported from
-  `headless-screenshot.py`.
+  `headless-screenshot.py` (slice 4 grew the mailbox 16 -> 24 words:
+  wave/shove/stun counters + the GL_T_VLINES/GL_T_VLMAX frame-cost probe).
+  Survive routes are derived and skew-verified on the host mirror with
+  `tools/gloam-route.py` (`derive --nights N --out FILE`, `verify
+  --keys-file FILE --nights N`). `make GL_STRESS=1` builds the CI-only
+  perf-stress ROM (full 24-Shambler crowd at frame 0, death disarmed) for
+  the frame-budget proof — always `make clean` between shipped and stress
+  builds.
   ⚠ The checker latches "no keys pressed" before frame 0 — without that,
   the py-desmume core's reset-state KEYINPUT (active-low zero = everything
   held) matches the BlocksDS default ARM7 exit combo (SELECT+START+L+R) and
@@ -119,8 +126,9 @@ directly reachable from the fleet container — no mirror needed.
 
 CI: the `nds-rom-build` job in `rom-builds.yml` runs the host-mirror
 proof (`tools/check-gloam.py`), builds the .nds with the cached pinned
-toolchain, replays four headless proofs (boot+telemetry, 8-way move,
-chase+death+restart, survive-a-full-night-to-dawn — all pinned
-`--assert-watch` numerics), and uploads `.nds` + sha256 + screenshots
-alongside the GBA artifacts. The required GBA `ROM builds` gate is a
+toolchain, replays seven headless proofs (boot+telemetry, 8-way move,
+chase+death+restart, survive-night-1-to-dawn, shove, night-2 waves +
+multi-zombie survive, 24-Shambler frame-budget on the stress build — all
+pinned `--assert-watch` numerics), and uploads `.nds` + sha256 +
+screenshots alongside the GBA artifacts. The required GBA `ROM builds` gate is a
 separate untouched job (its `games/*/` loop skips BlocksDS Makefiles).

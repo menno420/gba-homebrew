@@ -107,3 +107,29 @@ int gl_contact(int32_t px, int32_t py, int32_t zx, int32_t zy)
 {
     return gl_chebyshev(px, py, zx, zy) < GL_CONTACT_RANGE;
 }
+
+uint32_t gl_wave_count(uint32_t night)
+{
+    uint32_t count = 2u * night - 1u;        // 1, 3, 5, ... ramp
+    return count > GL_ZOMBIE_CAP ? GL_ZOMBIE_CAP : count;
+}
+
+uint32_t gl_spawn_frame(uint32_t night, uint32_t index)
+{
+    return index * GL_WAVE_SPAWN_SPAN / gl_wave_count(night);
+}
+
+int gl_shove(int32_t px, int32_t py, int32_t *zx, int32_t *zy)
+{
+    if (gl_chebyshev(px, py, *zx, *zy) > GL_SHOVE_RANGE)
+        return 0;
+
+    int32_t dx = *zx - px;
+    int32_t dy = *zy - py;
+    int32_t sx = (dx > GL_AXIS_DEADZONE) - (dx < -GL_AXIS_DEADZONE);
+    int32_t sy = (dy > GL_AXIS_DEADZONE) - (dy < -GL_AXIS_DEADZONE);
+
+    *zx = clamp32(*zx + sx * GL_SHOVE_PUSH, GL_ARENA_X_MIN, GL_ARENA_X_MAX);
+    *zy = clamp32(*zy + sy * GL_SHOVE_PUSH, GL_ARENA_Y_MIN, GL_ARENA_Y_MAX);
+    return 1;
+}

@@ -1,6 +1,6 @@
 # Self-review 2026-07-11 — game-lab Track B (ORDER 004, ~last 24h)
 
-> **Status:** `complete` — answers by ID per
+> **Status:** `archive` — completed self-review; answers by ID per
 > [`QUESTIONS.md`](QUESTIONS.md); window 2026-07-10 ~20:00Z →
 > 2026-07-11 ~19:40Z. Written by session 21 during the owner-ordered
 > wrap-up (ORDER 004 asked for this within two wakes; the archive order

@@ -1,6 +1,6 @@
 # Archive-ready note — 2026-07-11 (project chat being archived)
 
-> **Status:** `binding-snapshot` — written on the owner's wrap-up order
+> **Status:** `binding` — archive snapshot; written on the owner's wrap-up order
 > (2026-07-11, relayed by the coordinator mid-slice-5): the project chat
 > is being archived and anything not in the repo is lost. This note is
 > the durable hand-off. Written by session 21 (Gloamline slice 5).

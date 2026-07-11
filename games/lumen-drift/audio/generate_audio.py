@@ -109,11 +109,33 @@ def ld_death():
     return out
 
 
+def ld_graze():
+    """Graze (v1.2): a near-miss whisper — one very short metallic 'tss',
+    a high sine falling about a fifth with a breath of filtered noise.
+    Kept to 0.10s on purpose: distinct from the shard's ascending glitter,
+    and short enough that a stray graze decays fast instead of smearing
+    across whole seconds of the replay tiers' mixer-activity timeline."""
+    n = int(RATE * 0.10)
+    noise = lcg(0x6E4A5)
+    out = []
+    phase = 0.0
+    filt = 0.0
+    for i in range(n):
+        t = i / n
+        freq = 2793.83 * math.exp(-0.405 * t)  # F7 falling ~a fifth
+        phase += 2 * math.pi * freq / RATE
+        filt += 0.35 * (next(noise) - filt)  # bright one-pole noise breath
+        s = math.sin(phase) + 0.8 * filt
+        out.append(0.5 * s * env(i, n, attack=0.005, curve=7.0))
+    return out
+
+
 def main():
     write_wav('ld_start.wav', ld_start())
     write_wav('ld_thrust.wav', ld_thrust())
     write_wav('ld_shard.wav', ld_shard())
     write_wav('ld_death.wav', ld_death())
+    write_wav('ld_graze.wav', ld_graze())
 
 
 if __name__ == '__main__':

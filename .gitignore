@@ -9,3 +9,7 @@ games/*/*.map
 games/*/*.sav
 
 __pycache__/
+
+# BlocksDS build output (games/gloamline-nds)
+games/*/*.nds
+games/*/*.dump

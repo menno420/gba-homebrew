@@ -1,4 +1,4 @@
-# gba-homebrew — collaboration model
+# gba-homebrew — game-lab Track B: original GBA homebrew on Butano — collaboration model
 
 > **Status:** `binding`
 >

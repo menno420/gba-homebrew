@@ -7,7 +7,7 @@
     "soft_target_sessions": 50
   },
   "graduation_proposed": false,
-  "kit_version": "1.8.0",
+  "kit_version": "1.9.0",
   "last_compaction_session": 0,
   "mode": "active",
   "mode_history": [
@@ -47,10 +47,10 @@
   },
   "review_log": [],
   "session_anchor": {
-    "branch": "skeleton/track-b-walking-skeleton",
-    "epoch": 1783649461.010147,
-    "head": "9812054c7abb62b98d1fe4bf8a3798f9caa3be5e",
-    "ts": "2026-07-10T02:11:01+00:00"
+    "branch": "claude/kit-upgrade-v1.9.0",
+    "epoch": 1783746640.907709,
+    "head": "493e77607bc5b2b7cb4df968dc9d6fac9e90773d",
+    "ts": "2026-07-11T05:10:40+00:00"
   },
   "session_count": 0,
   "slot_values": {

@@ -1,4 +1,4 @@
-# gba-homebrew — ownership
+# gba-homebrew — game-lab Track B: original GBA homebrew on Butano — ownership
 
 > **Status:** `binding`
 >

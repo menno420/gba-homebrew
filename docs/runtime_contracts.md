@@ -1,4 +1,4 @@
-# gba-homebrew — runtime contracts
+# gba-homebrew — game-lab Track B: original GBA homebrew on Butano — runtime contracts
 
 > **Status:** `binding`
 >

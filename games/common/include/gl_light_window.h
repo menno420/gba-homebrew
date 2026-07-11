@@ -83,7 +83,16 @@ public:
         for(int line = 0; line < bn::display::height(); ++line)
         {
             int dy = bn::abs(line - cy);
-            int hw = dy <= _radius ? _half_widths[dy] : 0;
+
+            // Guard BOTH bounds: _half_widths is filled only up to
+            // min(radius, height), but with an off-screen center dy can
+            // exceed the display height while still being <= a large
+            // radius — indexing past the table is an out-of-bounds read
+            // (session 8 slice 2 review, queue row #20). Unreachable from
+            // an on-screen center; the clamp makes the generic header safe
+            // for any caller.
+            int hw = dy <= _radius && dy <= bn::display::height()
+                    ? _half_widths[dy] : 0;
             _deltas[line] = bn::pair<bn::fixed, bn::fixed>(cx - hw, cx + hw);
         }
 

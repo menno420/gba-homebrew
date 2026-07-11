@@ -1,0 +1,1 @@
+- `claude/kit-upgrade-v1.8.0` · **kit upgrade v1.7.1 → v1.8.0** — vendored bootstrap.py + kit-owned regen + v1.8.0 plants · expected files: bootstrap.py, substrate.config.json, .substrate/**, .github/workflows/substrate-gate.yml, control/claims/, scripts/env-setup.sh, control/README.md, .sessions/ · 2026-07-11

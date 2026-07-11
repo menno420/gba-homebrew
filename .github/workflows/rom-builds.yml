@@ -27,6 +27,14 @@ jobs:
           # The setup script IS the pin manifest — hashing it invalidates the
           # cache exactly when a pin changes.
           key: gba-toolchain-${{ runner.os }}-${{ hashFiles('tools/setup-toolchain.sh') }}
+      # Host-side passability proof (review-queue row #23): stdlib-only,
+      # <1s — proves every consecutive row pair of the endless cave keeps
+      # one crystal-free shared open column (periodicity-verified full
+      # coverage). Runs BEFORE the build so a generator regression fails
+      # fast. Mirror rule: tools/check-cave.py must move in lockstep with
+      # the pure row functions in games/lumen-drift/src/main.cpp.
+      - name: cave passability proof (host mirror, review row #23)
+        run: python3 tools/check-cave.py
       - name: setup toolchain (idempotent; skips on warm cache)
         run: tools/setup-toolchain.sh
       - name: build ALL game ROMs (games/*/Makefile)

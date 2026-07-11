@@ -35,10 +35,18 @@ The toolchain install is **ORDER 001 work** ([`control/inbox.md`](control/inbox.
 ⚠ Supply-chain caveat: the devkitARM mirror is unsigned community infra —
 never extend that trust to anything the owner distributes without flagging it.
 
+## ▶ Play it
+
+**[Lumen Drift](docs/PLAYING.md)** is playable NOW: download
+[`dist/lumen-drift.gba`](dist/lumen-drift.gba) and open it in mGBA (or any
+GBA emulator) — controls, goal and setup in one page:
+[`docs/PLAYING.md`](docs/PLAYING.md).
+
 ## Where things live
 
 | Path | What it is |
 |---|---|
+| [`dist/`](dist/) | **Download-and-play ROM builds** (sha256 + provenance in [`dist/README.md`](dist/README.md)); how to play: [`docs/PLAYING.md`](docs/PLAYING.md). |
 | [`control/`](control/) | Manager↔lane coordination — `inbox.md` (manager-written orders), `status.md` (lane-written state). Protocol: [`control/README.md`](control/README.md). |
 | [`docs/conventions.md`](docs/conventions.md) | Repo conventions — **override harness defaults**. Read before any PR. |
 | [`docs/BUILDING.md`](docs/BUILDING.md) | One-command build recipe (`tools/setup-toolchain.sh` then `tools/build.sh`) + running the ROM in mGBA, desktop and headless. |

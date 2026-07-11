@@ -71,7 +71,7 @@ jobs:
   # the walking skeleton). Deliberately a SEPARATE job so the required "ROM
   # builds" GBA gate is untouched: BlocksDS 1.21.1 + Wonderful GCC
   # (sha256-pinned by tools/setup-nds-toolchain.sh, which the cache key
-  # hashes), then the host-mirror proof + four headless py-desmume proofs
+  # hashes), then the host-mirror proof + nine headless py-desmume proofs
   # against the ROM's gl_telemetry mailbox (ELF-symbol-resolved watches;
   # every numeric value below was pinned from a deterministic in-container
   # run — the ROM build is byte-deterministic, so drift = regression).
@@ -103,8 +103,9 @@ jobs:
         run: tools/setup-nds-toolchain.sh
       # Stress build FIRST (then a clean shipped build, so the shipped .nds
       # is what's on disk for the sha256 log + artifacts): GL_STRESS=1
-      # spawns the full 24-Shambler cap at frame 0 with death disarmed —
-      # identical sim/render code paths — for the frame-budget proof 7/7.
+      # spawns the full 24-Shambler cap at frame 0 with death disarmed and
+      # pre-places the full 8-barricade ring (slice 5) — identical
+      # sim/render code paths — for the frame-budget proof 7/9.
       - name: build gloamline-nds PERF-STRESS ROM (GL_STRESS=1, CI-only)
         run: |
           make -C games/gloamline-nds GL_STRESS=1 -j"$(nproc)"
@@ -126,7 +127,7 @@ jobs:
       # Proof 1 — boot: dual-screen title renders, telemetry mailbox is
       # live (magic words present, frame counter running, full-length
       # 3600-frame nights — i.e. the shipped ROM, not a test build).
-      - name: 'proof 1/7 — boot + telemetry mailbox'
+      - name: 'proof 1/9 — boot + telemetry mailbox'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-boot-300.png \
@@ -142,7 +143,7 @@ jobs:
       # then RIGHT / DOWN / UP+LEFT each move the player by the exact
       # pure-function distances (1.5 px/f straight, 271/256 px/f per axis
       # diagonal). Positions are 8.8 fixed (32768 = x128).
-      - name: 'proof 2/7 — 8-way move (position telemetry tracks input)'
+      - name: 'proof 2/9 — 8-way move (position telemetry tracks input)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-move.png \
@@ -166,7 +167,7 @@ jobs:
       # 2405 < 2560), state flips to DEAD with deaths=1, the card holds,
       # and START restarts instantly (fresh seed 348, player re-centered,
       # the new night's Shambler closing again).
-      - name: 'proof 3/7 — chase closes, contact = death, START restarts'
+      - name: 'proof 3/9 — chase closes, contact = death, START restarts'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-death.png \
@@ -193,7 +194,7 @@ jobs:
       # >= 22 px of margin at every alignment +-6 frames) replays a FULL
       # 60-second night headlessly (~5 s wall): dawn breaks (state 3),
       # nights survived = 1, deaths = 0.
-      - name: 'proof 4/7 — survive night 1 to dawn (full-length night)'
+      - name: 'proof 4/9 — survive night 1 to dawn (full-length night)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-dawn.png \
@@ -217,7 +218,7 @@ jobs:
       # only DELAYS — the idle player still dies by frame 490. Every
       # value below was predicted by the tools/gloam-route.py mirror sim
       # and matched by the emulator run exactly.
-      - name: 'proof 5/7 — shove: knockback + stun + cooldown (pressure valve)'
+      - name: 'proof 5/9 — shove: knockback + stun + cooldown (pressure valve)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-shove.png \
@@ -250,7 +251,7 @@ jobs:
       # schedule (alive t[16]: 1 at rf 100, 2 past rf 800, 3 past rf
       # 1600), and dawn breaks on night 2 with 3 Shamblers up and 0
       # deaths. ~10 s wall headless for the two full nights.
-      - name: 'proof 6/7 — night-2 wave (3 zombies) spawns on schedule + survive to dawn'
+      - name: 'proof 6/9 — night-2 wave (3 zombies) spawns on schedule + survive to dawn'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-night2.png \
@@ -274,30 +275,106 @@ jobs:
             --assert-watch 7450:t:3:eq:3 \
             --assert-watch 7450:t:10:eq:2 \
             --assert-watch 7450:t:11:eq:0
-      # Proof 7 — frame budget with the FULL 24-Shambler cap (stress
-      # build): all 24 up at frame 200, nobody dies (death disarmed), and
-      # the scanline probe says the worst frame since power-on (t[22],
-      # REG_VCOUNT-derived) stays under the 71-line vblank in steady state
-      # (t[21]; measured max 53) and under the 263-line whole-frame budget
-      # even on the one night-start console-redraw spike (measured 133) —
-      # i.e. 60 fps with the maximum crowd. Honest-method note: this is
-      # DeSmuME's scanline timing model (py-desmume 0.0.9), not hardware.
-      - name: 'proof 7/7 — 24-Shambler frame budget (stress build, vcount probe)'
+      # Proof 7 — frame budget with the FULL 24-Shambler cap AND the full
+      # 8-barricade ring (stress build): all 24 up at frame 200, the ring
+      # pre-placed at night start (all 8 intact at 200, the crowd chews
+      # through every one by 990 — barricade block/draw paths are ON the
+      # measured frames), nobody dies (death disarmed), and the scanline
+      # probe says the worst frame since power-on (t[22], REG_VCOUNT-
+      # derived) stays under the 71-line vblank in steady state (t[21];
+      # slice-5 measured max 68, mean 56.3 — barricades cost ~4-15 lines
+      # over slice 4's 53) and under the 263-line whole-frame budget even
+      # on the one night-start console-redraw spike (measured 140) —
+      # i.e. 60 fps with the maximum crowd + full ring. Honest-method
+      # note: this is DeSmuME's scanline timing model (py-desmume 0.0.9),
+      # not hardware.
+      - name: 'proof 7/9 — 24-Shambler + 8-barricade frame budget (stress build, vcount probe)'
         run: |
           python3 tools/nds-headless-check.py \
             gloamline-stress.nds nds-stress.png \
             --frames 1000 --keys 120-125:START \
             --shot 400:nds-stress-400.png \
             --elf gloamline-stress.elf \
-            --watch t:gl_telemetry:24 \
+            --watch t:gl_telemetry:32 \
             --assert-watch 200:t:3:eq:1 \
             --assert-watch 200:t:16:eq:24 \
             --assert-watch 200:t:17:eq:24 \
+            --assert-watch 200:t:25:eq:8 \
             --assert-watch 900:t:3:eq:1 \
             --assert-watch 900:t:11:eq:0 \
+            --assert-watch 990:t:25:eq:0 \
+            --assert-watch 990:t:27:eq:8 \
             --assert-watch 990:t:21:gt:0 \
             --assert-watch 990:t:21:le:71 \
             --assert-watch 990:t:22:lt:263
+      # Proof 8 — BARRICADE lifecycle (slice 5), against proof 3 as the
+      # control: identical START timing = identical seed 118 and spawn.
+      # The idle player places a barricade at their feet (B at 128); the
+      # same Shambler that killed the control player by frame 250
+      # (proof 3: t[3]=2 at 250) is HELD at the barricade's 16 px ring
+      # (dist t[13] pinned 4133 = 16.1 px at 250 AND 400 — still alive),
+      # chewing exactly 1 hp per blocked attempt (t[26] pinned 228 at
+      # 250, 122 at 400); the barricade breaches (t[25]=0, breach counter
+      # t[27]=1 by 600) and the dead get through after all — death by
+      # 690 with the unspent planks intact (t[24]=5). Every value was
+      # predicted by the tools/gloam-route.py mirror sim and matched by
+      # the emulator exactly.
+      - name: 'proof 8/9 — barricade: place blocks the dead, chew-through breaches, still no free lunch'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-barricade.png \
+            --frames 700 --keys 120-125:START --keys 128-133:B \
+            --shot 250:nds-barricade-hold.png \
+            --shot 600:nds-barricade-breach.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:32 \
+            --assert-watch 140:t:24:eq:5 \
+            --assert-watch 140:t:25:eq:1 \
+            --assert-watch 140:t:26:eq:240 \
+            --assert-watch 140:t:28:eq:1 \
+            --assert-watch 140:t:30:eq:32768 \
+            --assert-watch 140:t:31:eq:26624 \
+            --assert-watch 250:t:3:eq:1 \
+            --assert-watch 250:t:13:eq:4133 \
+            --assert-watch 250:t:26:eq:228 \
+            --assert-watch 400:t:3:eq:1 \
+            --assert-watch 400:t:13:eq:4133 \
+            --assert-watch 400:t:26:eq:122 \
+            --assert-watch 600:t:25:eq:0 \
+            --assert-watch 600:t:27:eq:1 \
+            --assert-watch 690:t:3:eq:2 \
+            --assert-watch 690:t:11:eq:1 \
+            --assert-watch 690:t:24:eq:5
+      # Proof 9 — plank economy: B on a FULL barricade in reach wastes
+      # nothing (planks t[24] stay 5, repairs t[29] stay 0 after the B at
+      # 150); once chewed to 195 (t[26] at 305), B repairs it to full for
+      # exactly 1 plank (t[26] back to 236 = 240 minus the chews since,
+      # t[24] 5->4, t[29]=1) and the block keeps holding (alive at 420,
+      # chewing resumed: t[26]=155). Mirror-predicted, emulator-matched.
+      - name: 'proof 9/9 — barricade repair: 1 plank, full hp, no waste on a full one'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-repair.png \
+            --frames 430 --keys 120-125:START --keys 128-133:B \
+            --keys 150-155:B --keys 310-315:B \
+            --shot 340:nds-repair-340.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:32 \
+            --assert-watch 145:t:24:eq:5 \
+            --assert-watch 145:t:28:eq:1 \
+            --assert-watch 145:t:29:eq:0 \
+            --assert-watch 145:t:26:eq:240 \
+            --assert-watch 160:t:24:eq:5 \
+            --assert-watch 160:t:29:eq:0 \
+            --assert-watch 305:t:26:eq:195 \
+            --assert-watch 305:t:24:eq:5 \
+            --assert-watch 315:t:26:eq:236 \
+            --assert-watch 315:t:24:eq:4 \
+            --assert-watch 315:t:29:eq:1 \
+            --assert-watch 340:t:26:eq:217 \
+            --assert-watch 420:t:3:eq:1 \
+            --assert-watch 420:t:26:eq:155 \
+            --assert-watch 420:t:24:eq:4
       - name: upload NDS ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -320,5 +397,10 @@ jobs:
             nds-dawn2.png
             nds-stress.png
             nds-stress-400.png
+            nds-barricade.png
+            nds-barricade-hold.png
+            nds-barricade-breach.png
+            nds-repair.png
+            nds-repair-340.png
           if-no-files-found: error
           retention-days: 14

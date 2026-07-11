@@ -1,4 +1,4 @@
-// Gloamline — pure simulation layer (arc slice 4: shove + waves).
+// Gloamline — pure simulation layer (arc slice 5: barricades).
 //
 // EVERYTHING in this header + gl_sim.c is a pure function of its arguments:
 // fixed-point integers only, no wall clock, no runtime RNG, no globals, no
@@ -64,6 +64,28 @@
 #define GL_SHOVE_STUN 45                     // 0.75 s frozen
 #define GL_SHOVE_COOLDOWN 90                 // 1.5 s between attempts
 
+// --- barricades (slice 5) ------------------------------------------------------
+// B places a barricade at the lamplighter's feet (1 plank), or — if an
+// intact one is within GL_BARRICADE_RANGE — repairs it to full instead
+// (1 plank; a full barricade is never "repaired", no plank is wasted).
+// The dead cannot ENTER a barricade's radius: a Shambler step that would
+// end inside an intact barricade's GL_BARRICADE_RANGE (from outside it)
+// is blocked, and the blocked attempt chews the barricade for exactly
+// 1 hp instead. hp 0 = breached (slot free again). NO-TRAP INVARIANTS BY
+// CONSTRUCTION: the player is never an argument to the block predicate
+// (can't be sealed in), a body already inside the radius may always
+// leave (no pinning), and every blocked attempt costs 1 hp (a wall is a
+// timer — the dead always get through eventually).
+// Resource: a starting stock of planks per run + a small dawn grant
+// (capped). The concept doc's scavenge interlude (NEXT slice) becomes
+// the real plank source; this slice's stock is the placeholder economy.
+#define GL_BARRICADE_CAP 8
+#define GL_BARRICADE_HP 240                  // 4 s of one Shambler chewing
+#define GL_BARRICADE_RANGE (16 * GL_ONE)     // block/repair radius
+#define GL_PLANK_STOCK 6                     // planks at run start
+#define GL_PLANK_DAWN 2                      // planks granted at each dawn
+#define GL_PLANK_MAX 9                       // pocket cap
+
 // --- night clock -------------------------------------------------------------
 // One night = 60 s at 60 fps. Headless DeSmuME runs ~800 fps in CI, so the
 // survive-to-dawn proof replays a FULL night on the shipped ROM — no
@@ -114,5 +136,17 @@ uint32_t gl_spawn_frame(uint32_t night, uint32_t index);
 // return 1. Out of range: no movement, returns 0. Stun/cooldown state
 // lives in the caller (main loop) using GL_SHOVE_STUN / GL_SHOVE_COOLDOWN.
 int gl_shove(int32_t px, int32_t py, int32_t *zx, int32_t *zy);
+
+// Barricade block predicate: 1 if a move from (ox,oy) to (nx,ny) is
+// blocked by an intact barricade at (bx,by) — i.e. the new position is
+// inside GL_BARRICADE_RANGE while the old one was not. Entering is
+// blocked; standing inside (spawn/placement overlap) may always walk
+// out. A no-move "step" (stagger frame) is never blocked. Pure.
+int gl_barricade_blocks(int32_t bx, int32_t by,
+                        int32_t ox, int32_t oy, int32_t nx, int32_t ny);
+
+// Plank grant at dawn: current pocket + GL_PLANK_DAWN, capped at
+// GL_PLANK_MAX. Pure f(planks).
+uint32_t gl_planks_at_dawn(uint32_t planks);
 
 #endif // GL_SIM_H

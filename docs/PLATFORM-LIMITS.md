@@ -62,6 +62,40 @@
   frame) — recipe in [`capabilities.md`](capabilities.md); SRAM power-cycle
   persistence is fully proven headlessly.
 
+## Dated platform-issue notes (owner-reported, not verbatim-error walls)
+
+> Unlike the walls above, entries here are **owner-reported findings** from
+> live debug sessions — attributed as such and NOT independently re-verified
+> by the recording seat. Each entry names its verification hook so a later
+> session can confirm or retire it.
+
+### 2026-07-11 — hourly-wake routine (owner debug session ~10:36–11:05Z)
+
+Owner-debugged findings about this lane's hourly-wake routine (ORDER 002,
+`trig_0137SkvhXEJvwepX8aVNkcSn`), reported by the owner from a live debug
+session ~10:36–11:05Z today; recorded 2026-07-11 by the session-8 worker
+seat (owner-reported facts, not claims verified by this seat):
+
+1. **Routine ownership/editing:** routines created from inside project
+   sessions cannot be created by the owner personally, but they DO appear in
+   the owner's Routines screen, and their **repo scope is editable there**.
+   The owner has added BOTH repos (`gba-homebrew`, `pokemon-mod-lab`) to the
+   hourly-wake routine's config. This is the fix path for **OWNER-ACTION 4**
+   (on record in the pokemon lane's `control/status.md` as OA-4: wake
+   sessions stranding PR-less branches for lack of GitHub write access).
+   **Verification pending:** the first wake session that successfully opens
+   a PR should be recorded here (and in `control/status.md`) when observed.
+2. **Model mismatch (configured vs actual):** the owner reports the routine
+   is configured to run **Opus 4.8**, but wake sessions report actually
+   running a **Fable-family model**. Recorded as an observed
+   configured-vs-actual mismatch; no workaround attempted.
+3. **OWNER-ACTION 5** (on record in the pokemon lane's `control/status.md`
+   as OA-5): wake sessions' `add_repo` step is denied by the platform's
+   auto-mode classifier roughly 1-in-2 attempts today ("Unauthorized
+   Persistence"), so some wake hours **silently produce no lane session** —
+   separate from, and compounding, the OA-4 gap (an hour can fail before
+   the repo-access question even arises).
+
 ## Mission-specific rails (not platform walls — owner rails, equally hard)
 
 - **PRIVATE/PUBLIC SPLIT:** this repo is PUBLIC — nothing Nintendo-derived

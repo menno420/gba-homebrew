@@ -4,7 +4,8 @@
  * You are a mote of light falling through a dark cave. Hold A to thrust
  * against gravity, steer laterally with the D-pad, drift through the
  * narrowing tunnel. Depth reached is the score; your light slowly decays
- * (thrust flares it back). START restarts the run.
+ * (thrust flares it back). START pauses a live run (B from the pause card
+ * restarts it); SELECT toggles mute.
  *
  * Increment 2 made depth meaningful against risk:
  *   - CRYSTAL SPIKES (pink) grow from the tunnel walls at fixed depths —
@@ -92,6 +93,25 @@
  *     the same pure layout, so the cave proof (tools/check-cave.py) and
  *     every committed replay key script stay valid.
  *
+ * v1.3 — session-8 slice-6 micro-polish (quality of life, no new mechanic;
+ * world generation, physics and every kill rule untouched):
+ *   - PAUSE: START freezes a live run — physics, surge, light decay, banner
+ *     timer and the position/depth telemetry slots all hold; only the loop
+ *     tick keeps counting (which is exactly what the headless pause proof
+ *     asserts). A second START resumes; B from the pause card restarts.
+ *     (START used to hard-restart mid-run — that job moved behind the pause
+ *     card so a pocket bump can't erase a deep run. No committed replay
+ *     script ever presses START mid-run, so all replays stay valid.)
+ *   - MUTE: SELECT toggles all sound anywhere (a MUTE tag sits top-right
+ *     while active). Muting gates the play() calls ONLY — the gl_audio_hook
+ *     trigger counters keep counting events, so headless proofs can assert
+ *     "the event fired AND the mixer stayed silent".
+ *   - GRAZE VISUAL TELL: the instant a graze pays, the mote itself flashes
+ *     hot for six frames (sprite-palette fade to a reserved color no other
+ *     screen element uses), so the near-miss reads at the point of
+ *     attention without the HUD line; CI asserts the exact reserved color
+ *     appears on the payout frame and is gone before/after.
+ *
  * Polish pass 1 (post-first-complete, from the concept doc's polish list):
  *   - TITLE SCREEN: the game boots to a "LUMEN DRIFT" card over the cave
  *     mouth showing the BEST depth and PRESS START; START begins the run.
@@ -129,6 +149,7 @@
 #include "bn_camera_ptr.h"
 #include "bn_sprite_ptr.h"
 #include "bn_fixed_point.h"
+#include "bn_sprite_palette_ptr.h"
 #include "bn_regular_bg_ptr.h"
 #include "bn_regular_bg_item.h"
 #include "bn_regular_bg_map_ptr.h"
@@ -269,6 +290,15 @@ namespace
     // world-generation change.
     constexpr bn::fixed graze_half(6);
     constexpr int graze_light_refund = 400;  // decay frames per grazed cell
+
+    // v1.3 GRAZE VISUAL TELL: the instant a graze pays, the mote flashes
+    // hot for a few frames — a full sprite-palette fade to a color RESERVED
+    // for this tell (nothing else on screen renders it: cave tiles, font
+    // ink and the mote's own palette all differ), so the near-miss reads on
+    // the mote itself, and the headless harness can count exact-color
+    // pixels to prove the tell fired (--assert-pixels).
+    constexpr int graze_flash_frames = 6;
+    constexpr bn::color graze_flash_color(31, 31, 20);
 
     // Light tuning (polish pass 2 — the doc's named unknown is "making the
     // light-decay feel good"; pass-2 values on the left, pass-1 on the
@@ -874,6 +904,8 @@ int main()
     bn::vector<bn::sprite_ptr, 24> over_sprites;
     bn::vector<bn::sprite_ptr, 8> section_sprites;
     bn::vector<bn::sprite_ptr, 24> title_sprites;
+    bn::vector<bn::sprite_ptr, 16> pause_sprites;  // v1.3 pause card
+    bn::vector<bn::sprite_ptr, 4> mute_sprites;    // v1.3 MUTE tag
 
     // The SAME generic grid template drives wall collision, hazard sensing
     // AND shard pickup — only the predicate differs.
@@ -910,6 +942,10 @@ int main()
     bn::fixed surge_y = surge_start;
     int surge_row = -1000;  // last drawn front row (forces first draw)
     bool on_title = true;
+    bool paused = false;    // v1.3: START freezes a live run
+    bool muted = false;     // v1.3: SELECT gates all sound playback
+    int graze_flash = 0;    // v1.3: frames of the graze tell left
+    bn::sprite_palette_ptr mote_palette = mote.palette();
 
     // SRAM persistence (gl_save.h): BEST depth survives power cycles behind
     // a magic tag — fresh/foreign/erased SRAM loads as no save (BEST 0).
@@ -955,10 +991,22 @@ int main()
         over_sprites.clear();
         section_sprites.clear();
         section_index = 0;
+        paused = false;
+        pause_sprites.clear();
+        graze_flash = 0;
+        mote_palette.set_fade_intensity(0);
         mote.set_visible(true);
         run.restart();
         light.set(to_world(spawn) - camera.position(), radius_full);
-        bn::sound_items::ld_start.play(bn::fixed(0.7));
+
+        // v1.3 mute gates the audible playback ONLY: the trigger counter
+        // below still counts the event, so headless proofs can assert both
+        // "the event fired" (hook) and "nothing was voiced" (mixer watch).
+        if(! muted)
+        {
+            bn::sound_items::ld_start.play(bn::fixed(0.7));
+        }
+
         gl::count_audio(audio_slot_start);
 
         if(hint_sprites.empty())
@@ -980,7 +1028,14 @@ int main()
         mote.set_visible(false);
         section_sprites.clear();
         banner_frames = 0;
-        bn::sound_items::ld_death.play(bn::fixed(0.9));
+        graze_flash = 0;
+        mote_palette.set_fade_intensity(0);
+
+        if(! muted)
+        {
+            bn::sound_items::ld_death.play(bn::fixed(0.9));
+        }
+
         gl::count_audio(audio_slot_death);
         bn::bg_palettes::set_fade_intensity(bn::fixed(0.7));  // light is taken
 
@@ -1026,6 +1081,20 @@ int main()
     {
         gl::count_audio(hook_slot_tick);
 
+        // v1.3 MUTE: SELECT toggles all sound anywhere — title, live run,
+        // pause and game over. A small MUTE tag sits top-right while
+        // active so the state is always visible (and text-assertable).
+        if(bn::keypad::select_pressed())
+        {
+            muted = ! muted;
+            mute_sprites.clear();
+
+            if(muted)
+            {
+                text_generator.generate(88, -72, "MUTE", mute_sprites);
+            }
+        }
+
         if(on_title)
         {
             // Title: nothing moves until START — physics starts on the
@@ -1057,9 +1126,40 @@ int main()
             continue;
         }
 
+        // v1.3 PAUSE: START freezes a live run (it used to hard-restart it
+        // — that job moved behind the pause card so a pocket bump can't
+        // erase a deep run; no committed replay ever pressed START
+        // mid-run, so every pinned script is unaffected). While paused the
+        // world is fully frozen — physics, surge, light decay, banner
+        // timer AND the position/depth telemetry slots hold their values;
+        // only the loop tick above keeps counting. START resumes, B
+        // restarts the run.
+        if(paused)
+        {
+            if(bn::keypad::start_pressed())
+            {
+                paused = false;
+                pause_sprites.clear();
+            }
+            else if(bn::keypad::b_pressed())
+            {
+                restart();  // also clears the pause card + paused flag
+            }
+
+            bn::core::update();
+            continue;
+        }
+
         if(bn::keypad::start_pressed())
         {
-            restart();
+            paused = true;
+            text_generator.set_center_alignment();
+            text_generator.generate(0, -14, "PAUSED", pause_sprites);
+            text_generator.generate(0, 14, "START RESUME - B RESTART",
+                                    pause_sprites);
+            text_generator.set_left_alignment();
+            bn::core::update();
+            continue;
         }
 
         // One core mechanic: gravity vs one-button thrust (+ D-pad drift).
@@ -1075,7 +1175,11 @@ int main()
                 // Soft rumble, retriggered on a cadence while held (the
                 // sample is longer than the cadence, so it overlaps into a
                 // continuous burn instead of stuttering).
-                bn::sound_items::ld_thrust.play(bn::fixed(0.4));
+                if(! muted)
+                {
+                    bn::sound_items::ld_thrust.play(bn::fixed(0.4));
+                }
+
                 gl::count_audio(audio_slot_thrust);
             }
 
@@ -1129,7 +1233,12 @@ int main()
             run_frames = bn::max(run_frames - collected * shard_light_refund, 0);
             flare = 30;
             bg_map.reload_cells_ref();
-            bn::sound_items::ld_shard.play(bn::fixed(0.8));
+
+            if(! muted)
+            {
+                bn::sound_items::ld_shard.play(bn::fixed(0.8));
+            }
+
             gl::count_audio(audio_slot_shard);
         }
 
@@ -1310,13 +1419,33 @@ int main()
                 grazes += new_grazes;
                 run_frames = bn::max(run_frames - new_grazes * graze_light_refund, 0);
                 flare = 20;
-                bn::sound_items::ld_graze.play(bn::fixed(0.5));
+                graze_flash = graze_flash_frames;  // v1.3: the visual tell
+
+                if(! muted)
+                {
+                    bn::sound_items::ld_graze.play(bn::fixed(0.5));
+                }
 
                 for(int i = 0; i < new_grazes; ++i)
                 {
                     gl::count_audio(audio_slot_graze);
                 }
             }
+        }
+
+        // v1.3 graze tell: while the flash runs, the mote's own palette
+        // fades fully to the reserved flash color (sprite-only — the cave,
+        // HUD and banners are untouched); back to normal the frame it
+        // expires. Applied AFTER the sensing above so the flash lands on
+        // the payout frame itself.
+        if(graze_flash > 0)
+        {
+            --graze_flash;
+            mote_palette.set_fade(graze_flash_color, 1);
+        }
+        else
+        {
+            mote_palette.set_fade_intensity(0);
         }
 
         // v1.2 light telemetry: run_frames AFTER any graze refund, so a

@@ -157,7 +157,7 @@ jobs:
         run: |
           python3 tools/headless-screenshot.py \
             games/lumen-drift/lumen-drift.gba proof-deep-run.png --frames 2264 \
-            $(tail -1 docs/proof/session-7-deep-run-keys.txt) \
+            --keys-file docs/proof/session-7-deep-run-keys.txt \
             --assert-text '1380:DEPTH 58' \
             --assert-text '1500:ECHOES OF THE BLUFFS' \
             --assert-text '1960:ECHOES OF THE GALLERY' \
@@ -179,12 +179,15 @@ jobs:
       # side density/passability is pinned per-PR by tools/check-cave.py;
       # this step proves the ramp IN THE ROM. Like the deep-run script,
       # the keys are per-frame closed-loop output — never offset-shift
-      # them, re-record instead.
+      # them, re-record instead with tools/route-recorder.py (the promoted
+      # autopilot: this exact keys file regenerates byte-identically via
+      # `python3 tools/route-recorder.py 185 3200 OUT` — proven at
+      # promotion time, session 8 slice 6).
       - name: difficulty-curve proof — the echoes deepen with depth
         run: |
           python3 tools/headless-screenshot.py \
             games/lumen-drift/lumen-drift.gba proof-tier-run.png --frames 2848 \
-            $(tail -1 docs/proof/session-8-tier-run-keys.txt) \
+            --keys-file docs/proof/session-8-tier-run-keys.txt \
             --assert-text '655:DEPTH 58' \
             --assert-text '1760:ECHOES OF THE BLUFFS II' \
             --assert-text '2740:ECHOES OF THE BLUFFS III' \
@@ -204,6 +207,16 @@ jobs:
       # whisper), and silent again at 200 before the deliberate row-30
       # crystal death at f218 puts GRAZE 2 on the game-over card. Committed
       # evidence: docs/proof/session-8-graze-hud.png / -game-over.png.
+      #
+      # v1.3 GRAZE VISUAL TELL (session 8 slice 6): the payout also flashes
+      # the mote itself for 6 frames — a sprite-palette fade to a color
+      # RESERVED for the tell (mGBA renders bn::color(31,31,20) as exactly
+      # RGB 255,255,165, and no cave tile / font ink / fade state renders
+      # that color — verified against every committed proof screenshot).
+      # The pixel asserts prove the tell: zero reserved-color pixels before
+      # the graze (175), the mote lit in it on the payout window (182,
+      # first graze at 180; 214, second graze at 212), and zero again
+      # between flashes (199) and on the game-over card (299).
       - name: graze proof — near-miss pays light back, once per crystal
         run: |
           python3 tools/headless-screenshot.py \
@@ -215,6 +228,11 @@ jobs:
             --assert-text '186:GRAZE 1' \
             --assert-text '299:GRAZE 2' \
             --assert-text '299:THE LIGHT IS TAKEN' \
+            --assert-pixels '175:255,255,165:eq:0' \
+            --assert-pixels '182:255,255,165:ge:50' \
+            --assert-pixels '199:255,255,165:eq:0' \
+            --assert-pixels '214:255,255,165:ge:50' \
+            --assert-pixels '299:255,255,165:eq:0' \
             --elf games/lumen-drift/lumen-drift.elf \
             --watch hook:gl_audio_hook:12 \
             --watch-nonzero mix:maxmod_mixing_buffer:0x420 \
@@ -230,6 +248,67 @@ jobs:
             --assert-watch 212:hook:8:eq:2 \
             --assert-watch 218:hook:3:eq:1 \
             --assert-watch 299:hook:8:eq:2
+      # Pause/mute proof (session 8 slice 6, v1.3 micro-polish). One
+      # no-input fall onto the rest plate exercises both features:
+      #   MUTE  — SELECT at f60 (MUTE tag on screen at 70). The run start
+      #           was voiced (25-38); the muted surge death at f633 fires
+      #           the death EVENT (hook[3] 0->1) with the mixer staying
+      #           SILENT (unmuted baseline: the SRAM proof shows the death
+      #           sweep voiced at 360) — mute gates playback, counters keep
+      #           counting. SELECT again at f700, restart at f720: the
+      #           start confirm is VOICED again at 730 (hook[0] eq 2) —
+      #           unmute restores audio.
+      #   PAUSE — START at f120 freezes the world for 281 frames: the
+      #           light-decay telemetry hook[9] holds exactly 95 at f130
+      #           AND f395 (frozen), the surge is frozen too (hook[3] still
+      #           0 at f399 — an unpaused no-input run is dead by ~356, the
+      #           SRAM proof pins that), while the loop tick hook[7] keeps
+      #           counting (gt 300 at 395: paused, not hung). START at f400
+      #           resumes: hook[9] is 145 at f450 (moving again), and the
+      #           surge death lands at f633 — shifted by exactly the paused
+      #           frames. A second 200-frame run proves B-from-pause
+      #           restarts: pause at 100, B at 130 -> a fresh run (hook[0]
+      #           eq 2, hook[9] rewound, start confirm voiced at 140).
+      - name: pause and mute proof — START freezes the world, SELECT the sound
+        run: |
+          python3 tools/headless-screenshot.py \
+            games/lumen-drift/lumen-drift.gba proof-pause-mute.png \
+            --frames 800 \
+            --keys 20-24:START --keys 60-64:SELECT --keys 120-124:START \
+            --keys 400-404:START --keys 700-704:SELECT --keys 720-724:START \
+            --assert-text '70:MUTE' \
+            --assert-text '130:PAUSED' \
+            --assert-text '130:START RESUME - B RESTART' \
+            --assert-text '395:PAUSED' \
+            --elf games/lumen-drift/lumen-drift.elf \
+            --watch hook:gl_audio_hook:12 \
+            --watch-nonzero mix:maxmod_mixing_buffer:0x420 \
+            --assert-watch 30:hook:0:eq:1 \
+            --assert-watch 30:mix:0:gt:0 \
+            --assert-watch 130:hook:9:eq:95 \
+            --assert-watch 395:hook:9:eq:95 \
+            --assert-watch 395:hook:7:gt:300 \
+            --assert-watch 399:hook:3:eq:0 \
+            --assert-watch 450:hook:9:eq:145 \
+            --assert-watch 632:hook:3:eq:0 \
+            --assert-watch 633:hook:3:eq:1 \
+            --assert-watch 638:mix:0:eq:0 \
+            --assert-watch 650:mix:0:eq:0 \
+            --assert-watch 724:hook:0:eq:2 \
+            --assert-watch 730:mix:0:gt:0
+          python3 tools/headless-screenshot.py \
+            games/lumen-drift/lumen-drift.gba proof-pause-restart.png \
+            --frames 200 \
+            --keys 20-24:START --keys 100-104:START --keys 130-134:B \
+            --assert-text '110:PAUSED' \
+            --elf games/lumen-drift/lumen-drift.elf \
+            --watch hook:gl_audio_hook:12 \
+            --watch-nonzero mix:maxmod_mixing_buffer:0x420 \
+            --assert-watch 110:hook:9:eq:75 \
+            --assert-watch 133:hook:0:eq:1 \
+            --assert-watch 134:hook:0:eq:2 \
+            --assert-watch 140:hook:9:eq:6 \
+            --assert-watch 140:mix:0:gt:0
       # SRAM persistence (session 5): run 1 boots a factory-fresh savefile
       # (title shows BEST 0), dies at DEPTH 3 (no-input surge death) which
       # writes BEST to SRAM; run 2 is a SEPARATE emulator boot on the same

@@ -24,6 +24,10 @@ Input scripting (generic — works for any ROM):
                             frames (throttled thrust/movement — an open-loop
                             periodic pattern is invariant under a constant
                             input-latency shift, unlike hand-tuned pulses)
+    --keys-file route.txt   load '--keys A-B:NAME [--keys ...]' spans from
+                            the LAST non-empty line of a file — the format
+                            tools/route-recorder.py records (earlier lines
+                            may be a comment header describing the route)
     --shot 238:mid.png      also dump (and non-blank-verify) frame 238
     --require-distinct      assert consecutive shots differ (proves the
                             scripted input changed what is on screen)
@@ -194,6 +198,30 @@ def parse_keys_pattern(spec):
     return int(start), int(end), int(period), int(duty), key
 
 
+def parse_keys_file(path):
+    """Load key spans from the LAST non-empty line of a recorded route file
+    (tools/route-recorder.py format: '--keys A-B:NAME --keys ...', with an
+    optional comment header above). -> list of parse_keys tuples."""
+    with open(path, encoding='utf-8') as handle:
+        lines = [line.strip() for line in handle if line.strip()]
+    if not lines:
+        sys.exit(f'FAIL: --keys-file {path} is empty')
+    tokens = lines[-1].split()
+    spans = []
+    index = 0
+    while index < len(tokens):
+        flag = tokens[index]
+        if flag == '--keys' and index + 1 < len(tokens):
+            spans.append(parse_keys(tokens[index + 1]))
+        elif flag == '--keys-pattern' and index + 1 < len(tokens):
+            spans.append(parse_keys_pattern(tokens[index + 1]))
+        else:
+            sys.exit(f'FAIL: --keys-file {path}: unexpected token {flag!r} '
+                     '(want alternating --keys/--keys-pattern SPEC pairs)')
+        index += 2
+    return spans
+
+
 def parse_shot(spec):
     """'FRAME:PATH' -> (frame, path)."""
     frame, _, path = spec.partition(':')
@@ -279,6 +307,21 @@ def parse_assert_text(spec):
     if not text:
         sys.exit(f'FAIL: bad --assert-text {spec!r} (want FRAME:STRING)')
     return int(frame), text
+
+
+def parse_assert_pixels(spec):
+    """'FRAME:R,G,B:OP:COUNT' -> (frame, (r, g, b), op, count)."""
+    parts = spec.split(':')
+    if len(parts) != 4 or parts[2] not in WATCH_OPS:
+        sys.exit(f'FAIL: bad --assert-pixels {spec!r} (want '
+                 f'FRAME:R,G,B:OP:COUNT, OP in {sorted(WATCH_OPS)})')
+    channels = parts[1].split(',')
+    if len(channels) != 3:
+        sys.exit(f'FAIL: bad --assert-pixels color {parts[1]!r} (want R,G,B)')
+    rgb = tuple(int(value) for value in channels)
+    if any(not 0 <= value <= 255 for value in rgb):
+        sys.exit(f'FAIL: bad --assert-pixels color {parts[1]!r} (0-255 each)')
+    return int(parts[0]), rgb, parts[2], int(parts[3])
 
 
 # --- OCR-free text assertion against the Butano common 8x8 variable font ----
@@ -399,6 +442,10 @@ def main():
                         help='duty-cycle a button during frames [START, END): '
                              'held on the first DUTY frames of every PERIOD '
                              'frames; repeatable')
+    parser.add_argument('--keys-file', metavar='PATH',
+                        help='load extra key spans from the LAST non-empty '
+                             'line of a recorded route file (the format '
+                             'tools/route-recorder.py writes)')
     parser.add_argument('--shot', action='append', default=[], metavar='FRAME:PATH',
                         help='dump an extra verified screenshot at FRAME; repeatable')
     parser.add_argument('--require-distinct', action='store_true',
@@ -409,6 +456,13 @@ def main():
                         help='assert STRING is rendered on screen at FRAME '
                              '(Butano common variable_8x8 font, exact pixels); '
                              'repeatable')
+    parser.add_argument('--assert-pixels', action='append', default=[],
+                        metavar='FRAME:R,G,B:OP:COUNT',
+                        help='assert the number of screen pixels that are '
+                             'EXACTLY color R,G,B at FRAME against COUNT '
+                             '(OP: eq/ne/lt/le/gt/ge) — proves a visual tell '
+                             'that has a reserved color is (or is not) on '
+                             'screen; repeatable')
     parser.add_argument('--elf', metavar='PATH',
                         help='ELF matching the ROM: resolve --watch symbol '
                              'addresses from its symbol table')
@@ -437,6 +491,8 @@ def main():
 
     key_spans = [parse_keys(spec) for spec in args.keys]
     key_spans += [parse_keys_pattern(spec) for spec in args.keys_pattern]
+    if args.keys_file:
+        key_spans += parse_keys_file(args.keys_file)
     shots = sorted(parse_shot(spec) for spec in args.shot)
     if any(frame >= args.frames for frame, _ in shots):
         sys.exit('FAIL: --shot frame beyond --frames')
@@ -444,6 +500,10 @@ def main():
     if any(frame >= args.frames for frame, _ in asserts):
         sys.exit('FAIL: --assert-text frame beyond --frames')
     font = load_font() if asserts else None
+    pixel_asserts = sorted(parse_assert_pixels(spec)
+                           for spec in args.assert_pixels)
+    if any(frame >= args.frames for frame, _, _, _ in pixel_asserts):
+        sys.exit('FAIL: --assert-pixels frame beyond --frames')
 
     watches = [parse_watch(spec, False) for spec in args.watch]
     watches += [parse_watch(spec, True) for spec in args.watch_nonzero]
@@ -509,7 +569,17 @@ def main():
     saved = []  # (path, frame_number) in capture order
     shot_index = 0
     assert_index = 0
+    pixel_index = 0
     assert_failures = 0
+
+    def current_pixels():
+        """Decode the CURRENT frame's pixels via a temporary PNG dump."""
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+            frame.save_png(tmp)
+            tmp_path = tmp.name
+        _, _, pixels = png_pixels(tmp_path)
+        os.unlink(tmp_path)
+        return pixels
     for frame_number in range(args.frames):
         active = [key for start, end, period, duty, key in key_spans
                   if start <= frame_number < end
@@ -541,14 +611,22 @@ def main():
                 frame.save_png(handle)
             saved.append((path, frame_number))
             shot_index += 1
+        while pixel_index < len(pixel_asserts) and \
+                pixel_asserts[pixel_index][0] == frame_number:
+            _, rgb, op, expected = pixel_asserts[pixel_index]
+            count = sum(1 for pixel in current_pixels() if pixel == rgb)
+            if WATCH_OPS[op](count, expected):
+                print(f'assert-pixels: {count} px of {rgb} {op} {expected} '
+                      f'OK (frame {frame_number})')
+            else:
+                print(f'ASSERT FAIL: {count} px of {rgb}, want {op} '
+                      f'{expected} (frame {frame_number})')
+                assert_failures += 1
+            pixel_index += 1
         while assert_index < len(asserts) and \
                 asserts[assert_index][0] == frame_number:
             text = asserts[assert_index][1]
-            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-                frame.save_png(tmp)
-                tmp_path = tmp.name
-            _, _, pixels = png_pixels(tmp_path)
-            os.unlink(tmp_path)
+            pixels = current_pixels()
             template_width, template_ink = text_template(font, text)
             hit = find_text(pixels, width, height, template_width, template_ink)
             if hit is None:
@@ -570,13 +648,15 @@ def main():
         with open(args.savefile, 'wb') as handle:
             handle.write(bytes(core.memory.sram.u8[0:SRAM_SIZE:1]))
         print(f'savefile: SRAM snapshot written to {args.savefile}')
-    held = ', '.join(args.keys + args.keys_pattern) or 'none'
+    held = ', '.join(args.keys + args.keys_pattern
+                     + ([f'file:{args.keys_file}'] if args.keys_file else [])) \
+        or 'none'
     print(f'ran {args.frames} frames (keys: {held}), '
           f'saved {len(saved)} {width}x{height} PNG(s)')
 
     if assert_failures:
-        sys.exit(f'FAIL: {assert_failures} --assert-text/--assert-watch '
-                 'assertion(s) failed')
+        sys.exit(f'FAIL: {assert_failures} --assert-text/--assert-watch/'
+                 '--assert-pixels assertion(s) failed')
 
     previous = None
     for path, frame_number in saved:

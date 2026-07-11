@@ -12,7 +12,7 @@ changes its game, with provenance:
 
 | File | Version / date | Size | Built from | sha256 |
 |---|---|---|---|---|
-| [`lumen-drift.gba`](lumen-drift.gba) | **v1.2** · session 8 slice 5 · 2026-07-11 | 166,828 bytes | source tree of the v1.2 "graze the light" near-miss commit (this PR — `games/lumen-drift/` at the same tree as this file) | `e2af7daa332df3d89ff4adc35773325c35381c66b1e69a93adff0fdae4ce33b9` |
+| [`lumen-drift.gba`](lumen-drift.gba) | **v1.3** · session 8 slice 6 · 2026-07-11 | 167,996 bytes | source tree of the v1.3 pause/mute + graze-flash micro-polish commit (this PR — `games/lumen-drift/` at the same tree as this file) | `195a86795e57e2fa0059a96782f1ac7a147cbcebc0cb28a96f353e5d9babae94` |
 
 **How it was built:** `tools/setup-toolchain.sh` (pinned devkitARM r68 +
 Butano) then `tools/build.sh` — the exact recipe in

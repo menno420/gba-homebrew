@@ -24,8 +24,10 @@
   `--savefile` battery persistence across emulator processes, and since
   session 6 ELF-resolved memory watches — `--elf`/`--watch`/
   `--watch-nonzero`/`--watch-log`/`--assert-watch` — the audio evidence
-  path) — deterministic on mGBA across sessions 1–7; the committed Lumen
-  Drift proof script replays with 21 text/audio assertions in the
+  path; since session 8 slice 6 also `--keys-file` replay of recorded
+  route files and `--assert-pixels` exact-color counting for reserved-color
+  visual tells) — deterministic on mGBA across sessions 1–8; the committed
+  Lumen Drift proof script replays with 21 text/audio assertions in the
   `lumen-drift-proof` dispatch-tier CI job (`headless-boot.yml`), plus a
   session-7 deep-run replay (2264 frames to DEPTH 95) asserted numerically
   from the in-ROM position/depth telemetry (gl_audio_hook slots 4-6).
@@ -33,15 +35,49 @@
   constant **+4** (title +4, session-6 init +1, session-7's faster rebake
   −2 — all bisected; the deep-run script is per-frame with no settles and
   must be re-recorded, never shifted).
+- **Route recorder** (session 8 slice 6 — the scratchpad autopilot
+  sessions 7/8 kept rebuilding, promoted): `tools/route-recorder.py`
+  drives the ROM closed-loop off the gl_audio_hook position telemetry,
+  plans crystal-free corridors from the pure-layout mirror in
+  `tools/check-cave.py` (braking-distance fall governor, corridor
+  hysteresis), and emits a deterministic open-loop `--keys` line for
+  `--keys-file` replay. Deterministic end to end: at promotion time
+  `route-recorder.py 185 3200 OUT` regenerated the committed
+  `docs/proof/session-8-tier-run-keys.txt` line **byte-identically**.
+  Future feature proofs record a route instead of rebuilding the pilot.
 
 ## In flight
 
 (Nothing — the owner concept pick stays ⚑ carried in `control/status.md`;
 the coordinator's announced default pending that pick is DEEPEN LUMEN
-DRIFT, which session 8 slices 4–5 executed — v1.0 scope stays
-complete; v1.1/v1.2 work is additive deepening.)
+DRIFT, which session 8 slices 4–6 executed — v1.0 scope stays
+complete; v1.1/v1.2 work is additive deepening, v1.3 is micro-polish.)
 
 ## Recently shipped (newest first)
+
+- **Session 8 slice 6 — Lumen Drift v1.3 micro-polish + tooling
+  consolidation** (2026-07-11): the slice-5 polish debt paid. (1)
+  **Route-recorder promoted** — see "Route recorder" under the stability
+  baseline; the harness gained `--keys-file` (both recorded-route CI steps
+  now use it) and `--assert-pixels`. (2) **Graze visual tell** — the mote
+  itself flashes hot for 6 frames the instant a graze pays (sprite-palette
+  fade to a reserved color nothing else on screen renders; mGBA shows it
+  as exactly RGB 255,255,165), so the near-miss reads at the point of
+  attention; the CI graze step pixel-asserts the tell on both payout
+  frames and its absence before/between/after. (3) **Pause + mute** —
+  START now pauses/resumes a live run (world, surge, light decay and
+  telemetry all provably frozen; B from the pause card restarts — START's
+  old mid-run hard-restart moved behind the card so a pocket bump can't
+  erase a deep run; no committed replay pressed START mid-run), SELECT
+  toggles mute anywhere (gates playback only — trigger counters keep
+  counting, so CI asserts "death event fired AND mixer stayed silent",
+  then "start confirm voiced again after unmute"). World generation,
+  physics and kill rules UNTOUCHED; `check-cave.py` unchanged and green;
+  all replay tiers green with ZERO expectation edits. New dispatch-tier
+  pause/mute CI step; proof:
+  [`proof/session-8-graze-flash.png`](proof/session-8-graze-flash.png),
+  [`proof/session-8-pause-card.png`](proof/session-8-pause-card.png).
+  `dist/lumen-drift.gba` refreshed to v1.3 (167,996 B).
 
 - **Session 8 slice 5 — Lumen Drift v1.2: graze the light (near-miss
   risk/reward)** (2026-07-11): shaving a crystal spike WITHOUT dying now

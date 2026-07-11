@@ -3,7 +3,7 @@
 > **Status:** `owner-guidance` — download-and-play guide for the committed
 > ROM in [`dist/`](../dist/); refreshed in the same PR whenever the game or
 > the shipped ROM changes (written 2026-07-11, session 8 slice 3; updated
-> for v1.2 "graze the light", session 8 slice 5).
+> for v1.3 pause/mute + graze flash, session 8 slice 6).
 
 **Download → open in an emulator → play.** No build step needed.
 
@@ -37,6 +37,9 @@ only visible inside your glow, and the glow is slowly failing.
 | Button | Action |
 |---|---|
 | START | Start a run (and restart after game over) |
+| START (during a run) | Pause / resume — the whole cave freezes, surge included |
+| B (while paused) | Restart the run |
+| SELECT | Mute / unmute all sound (a MUTE tag shows top-right) |
 | A (hold) | Thrust upward against gravity |
 | D-pad ← → | Steer sideways |
 
@@ -55,7 +58,9 @@ power-off. **SPARKS** counts the shards you've collected this run, and
   crystals are everywhere and shards are rare. Each crystal pays once per
   run. The safe middle of the tunnel is a slow fade to black; the bold
   line hugs the spikes. The deeper tiers pack more crystals, so the danger
-  and the fuel rise together.
+  and the fuel rise together. Since v1.3 the mote itself **flashes hot**
+  the instant a graze pays, so you'll see the payoff right where you're
+  looking.
 - A **surge** of consuming ember light descends from the cave mouth at a
   fixed pace — stall too long and it swallows you. Keep moving down.
 - The cave has three handcrafted sections — THE BLUFFS, THE GALLERY,

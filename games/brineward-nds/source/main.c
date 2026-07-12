@@ -1,5 +1,5 @@
-// Brineward — arc slice 4: PORT + UPGRADES (roadmap item 2 on the
-// slice-3 loot/gold economy).
+// Brineward — arc slice 5: THE MAW (roadmap item 3 — the first sea
+// monster, on the slice-4 port/upgrades economy).
 //
 // The concept doc's skeleton cut (docs/concepts/brineward-concept.md):
 // one open-water screen off the Graywake breakwater (top screen), momentum
@@ -9,15 +9,16 @@
 // hull bars, sink-or-be-sunk -> card -> START instant restart. Bottom
 // screen = the Graywake ledger (ship status + gold). Slice 3 added the
 // loot loop (flotsam scoop, hold cap, pier banking, sink-forfeits-hold).
-// Slice 4 gives banked gold its purpose: press A alongside the same pier
-// (from the salvage water — no shopping under fire) and the GRAYWAKE
-// PORT menu opens: three persistent upgrade tracks (hull / cannons /
-// sails, tiers I/II/III) plus paid repairs. Upgrades are NEVER lost;
-// hull damage now CARRIES when you put out again from salvage (repair is
-// the fix — coming home hurt beats sinking, which still refits the sloop
-// free but forfeits the hold). All game rules live in the pure layer
-// (bw_sim.h/.c, mirrored by tools/check-brine.py); this file is input,
-// state machine, rendering, and the telemetry mailbox.
+// Slice 4 gave banked gold its purpose: the GRAYWAKE PORT off the same
+// pier berth — three persistent upgrade tracks plus paid repairs.
+// Slice 5 puts teeth in the salvage water: linger too long over the
+// wreck's blood and THE MAW stirs — a shadow rises and homes under the
+// keel (the telegraph), surfaces, and lunges; a bite costs real hull.
+// The batteries wake while it is up: rake it (it breaks up richer than
+// any rum-runner), dodge it, run for the pier sanctuary, or put out.
+// All game rules live in the pure layer (bw_sim.h/.c, mirrored by
+// tools/check-brine.py); this file is input, state machine, rendering,
+// and the telemetry mailbox.
 //
 // Determinism: seed = frame counter latched at the START press that
 // begins a duel (printed on the HUD and cards, so any human run is
@@ -26,11 +27,11 @@
 // RNG. The port menu freezes the water (pure state machine, no sim
 // steps), so port shopping adds no determinism surface.
 //
-// Telemetry mailbox (Gloamline's pattern): 26 u32 words at the exported
+// Telemetry mailbox (Gloamline's pattern): 31 u32 words at the exported
 // symbol `bw_telemetry`, rewritten every frame, so headless proofs
 // (tools/nds-headless-check.py --elf/--watch) can assert game state
-// numerically. Layout below at BW_T_* — slice 4 EXTENDED the mailbox
-// 20 -> 26 (session-20 guard recipe: words 0-19 are pinned by the
+// numerically. Layout below at BW_T_* — slice 5 EXTENDED the mailbox
+// 26 -> 31 (session-20 guard recipe: words 0-25 are pinned by the
 // existing proofs; extend, never re-map).
 //
 // 100% original content: code, text, and the code-authored sprites.
@@ -70,8 +71,14 @@
 #define BW_T_PORTROW 23 // port menu cursor row (meaningful in state 4)
 #define BW_T_HULLMAX 24 // player max hull at the current hull tier
 #define BW_T_RELOADL 25 // player PORT battery frames-to-ready
+// slice 5 (extension; words 0-25 stay pinned)
+#define BW_T_MAWSTATE 26 // Maw state, BW_MAW_* (0 down / 1 shadow / 2 up / 3 lunge)
+#define BW_T_MAWX 27    // Maw x, 8.8 fixed (meaningful while not down)
+#define BW_T_MAWY 28    // Maw y
+#define BW_T_MAWHULL 29 // Maw hull, 0..BW_MAW_HULL (0 = slain)
+#define BW_T_MAWS 30    // Maws slain this power-on
 
-volatile uint32_t bw_telemetry[26];
+volatile uint32_t bw_telemetry[31];
 
 enum
 {
@@ -137,6 +144,80 @@ static const char BALL_ART[8][9] = {
     "........",
 };
 
+// The Maw, 32x32 (slice 5) — two frames, both REGULAR sprites (the
+// affine no-hide-bit trap does not apply): the SHADOW (a = deep-water
+// dark, dithered rim: the telegraph under the swell) and the RISEN maw
+// (b = abyssal flesh, c = bone teeth ringing an a-dark gullet).
+static const char MAW_SHADOW_ART[32][33] = {
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "...........a.a.a.a.a.a..........",
+    "........a.a.aaaaaaa.a.a.........",
+    ".......a.aaaaaaaaaaaaa.a.a......",
+    "......a.aaaaaaaaaaaaaaaaa.a.....",
+    ".....a.aaaaaaaaaaaaaaaaaaa.a....",
+    "....a.aaaaaaaaaaaaaaaaaaaaa.a...",
+    "...a.aaaaaaaaaaaaaaaaaaaaaaa....",
+    "..a.aaaaaaaaaaaaaaaaaaaaaaa.a...",
+    "...aaaaaaaaaaaaaaaaaaaaaaaaa.a..",
+    "..a.aaaaaaaaaaaaaaaaaaaaaaaaa...",
+    "...aaaaaaaaaaaaaaaaaaaaaaaaa.a..",
+    "..a.aaaaaaaaaaaaaaaaaaaaaaaaa...",
+    "...aaaaaaaaaaaaaaaaaaaaaaaaa.a..",
+    "..a.aaaaaaaaaaaaaaaaaaaaaaaaa...",
+    "...a.aaaaaaaaaaaaaaaaaaaaaaa.a..",
+    "....aaaaaaaaaaaaaaaaaaaaaaa.a...",
+    "...a.aaaaaaaaaaaaaaaaaaaaa.a....",
+    "....a.aaaaaaaaaaaaaaaaaaa.a.....",
+    ".....a.aaaaaaaaaaaaaaaaa.a......",
+    "......a.a.aaaaaaaaaaaaa.a.......",
+    ".........a.a.aaaaaaa.a.a........",
+    "..........a.a.a.a.a.a...........",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+};
+
+static const char MAW_RISEN_ART[32][33] = {
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "..........bbbbbbbbbbbb..........",
+    "........bbbbbbbbbbbbbbbb........",
+    "......bbbbbbbbccbbccbbbbbb......",
+    ".....bbbbbbccbbccbbccbbbbbb.....",
+    "....bbbbccbbaaaaaaaaccbbbbbb....",
+    "...bbbbbbcaaaaaaaaaaaacbbbbbb...",
+    "...bbbccbaaaaaaaaaaaaaacbbbbb...",
+    "..bbbbbcaaaaaaaaaaaaaaaacbbbbb..",
+    "..bbbcbaaaaaaaaaaaaaaaaaacbbbb..",
+    "..bbbccaaaaaaaaaaaaaaaaaaccbbb..",
+    "..bbbbcaaaaaaaaaaaaaaaaaabcbbb..",
+    "..bbbbbaaaaaaaaaaaaaaaaaabbbbb..",
+    "..bbbcbaaaaaaaaaaaaaaaaaacbbbb..",
+    "..bbbccaaaaaaaaaaaaaaaaaaccbbb..",
+    "..bbbbccaaaaaaaaaaaaaaaabbcbbb..",
+    "...bbbbccaaaaaaaaaaaaaaccbbbb...",
+    "...bbbbbccaaaaaaaaaaaabbcbbbb...",
+    "....bbbbbccbaaaaaaaabccbbbbb....",
+    ".....bbbbbccbbccbbccbbbbbbb.....",
+    "......bbbbbbcbbccbbcbbbbbb......",
+    "........bbbbbbbbbbbbbbbb........",
+    "..........bbbbbbbbbbbb..........",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+};
+
 // Flotsam crate, 8x8: 9 wet planking, 4 gold glint (shared accent).
 static const char CRATE_ART[8][9] = {
     "........",
@@ -164,7 +245,12 @@ static void load_sprite_gfx(u16 *gfx, const char *art, int w, int h,
                     {
                         char c = art[(ty * 8 + y) * stride
                                      + tx * 8 + half * 4 + i];
-                        u16 nib = (c == '.') ? 0 : (u16)(c - '0');
+                        // digits 0-9 as themselves; 'a'.. for 10..
+                        // (the shared 16-color palette outgrew 0-9
+                        // when the Maw's three colors landed)
+                        u16 nib = (c == '.') ? 0
+                                  : (c >= 'a') ? (u16)(c - 'a' + 10)
+                                               : (u16)(c - '0');
                         v |= nib << (4 * i);
                     }
                     gfx[out++] = v;
@@ -182,6 +268,9 @@ static void load_palette(void)
     SPRITE_PALETTE[7] = RGB15(9, 9, 11);     // iron ball
     SPRITE_PALETTE[8] = RGB15(20, 20, 23);   // ball highlight
     SPRITE_PALETTE[9] = RGB15(14, 9, 4);     // wet crate planking
+    SPRITE_PALETTE[10] = RGB15(1, 3, 5);     // the shadow / the gullet
+    SPRITE_PALETTE[11] = RGB15(8, 6, 10);    // abyssal flesh
+    SPRITE_PALETTE[12] = RGB15(28, 29, 26);  // bone teeth
     // slate sea on both backdrops
     BG_PALETTE[0] = RGB15(2, 5, 9);
     BG_PALETTE_SUB[0] = RGB15(2, 4, 7);
@@ -194,6 +283,7 @@ typedef struct
     uint32_t sinks;
     uint32_t wins;
     uint32_t gold;                       // banked at Graywake — safe forever
+    uint32_t maws;                       // Maws slain this power-on (slice 5)
     int32_t up_hull;                     // upgrade tiers — bought with
     int32_t up_cannon;                   //   banked gold, NEVER lost
     int32_t up_sail;                     //   (concept-doc rule)
@@ -247,6 +337,8 @@ static void draw_sunk_card(const Score *sc, const BwDuel *d)
            (int)d->hold, (int)d->hold_gold);
     printf("\x1b[14;7Hbanked gold safe %lug",
            (unsigned long)sc->gold);
+    if (sc->maws > 0)
+        printf("\x1b[15;7Hmaws slain %lu", (unsigned long)sc->maws);
     printf("\x1b[17;4HPRESS START: put out again\n");
 }
 
@@ -284,6 +376,11 @@ static void draw_salvage_hud(const BwDuel *d, const Score *sc)
     if (bank_flash > 0)
         printf("\x1b[1;1HBANKED %lug  GOLD %lu\x1b[K",
                (unsigned long)bank_amount, (unsigned long)sc->gold);
+    else if (d->maw.state == BW_MAW_SHADOW)
+        printf("\x1b[1;1HTHE WATER GOES DARK...\x1b[K");
+    else if (d->maw.state != BW_MAW_DOWN)
+        printf("\x1b[1;1HTHE MAW %3d  FIRE OR FLY\x1b[K",
+               (int)d->maw.hull);
     else
         printf("\x1b[1;1HSALVAGE hold %d/%d %3dg >PIER\x1b[K",
                (int)d->hold, BW_HOLD_CAP, (int)d->hold_gold);
@@ -387,8 +484,9 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
            state == STATE_DUEL ? "at sea " :
            state == STATE_SUNK ? "SUNK   " :
            state == STATE_SALVAGE ? "SALVAGE" : "in port");
-    printf("\x1b[12;1Hsunk %lu   lost %lu\x1b[K",
-           (unsigned long)sc->wins, (unsigned long)sc->sinks);
+    printf("\x1b[12;1Hsunk %lu  lost %lu  maws %lu\x1b[K",
+           (unsigned long)sc->wins, (unsigned long)sc->sinks,
+           (unsigned long)sc->maws);
     printf("\x1b[13;1Hhold %d/%d crates %3dg\x1b[K",
            (int)d->hold, BW_HOLD_CAP, (int)d->hold_gold);
     printf("\x1b[14;1HGOLD BANKED %lug\x1b[K", (unsigned long)sc->gold);
@@ -396,6 +494,17 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
     printf("\x1b[19;1Hrange %3d yd\x1b[K",
            (int)(bw_chebyshev(d->player.x, d->player.y,
                               d->enemy.x, d->enemy.y) / BW_ONE));
+    // slice 5: the chart table reads the water (a pure render of maw
+    // state — the watch-map rule, as ever)
+    if (d->maw.state == BW_MAW_SHADOW)
+        printf("\x1b[21;1Hsomething big is turning\x1b[K");
+    else if (d->maw.state != BW_MAW_DOWN)
+        printf("\x1b[21;1HTHE MAW IS UP  hull %3d\x1b[K",
+               (int)d->maw.hull);
+    else if (d->maw.slain)
+        printf("\x1b[21;1Hthe maw is dead planking\x1b[K");
+    else
+        printf("\x1b[21;1H\x1b[K");
 }
 
 // --- sprites ---------------------------------------------------------------------
@@ -403,10 +512,12 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
 #define OAM_ENEMY 1
 #define OAM_BALL0 2
 #define OAM_LOOT0 (OAM_BALL0 + BW_MAX_BALLS)
+#define OAM_MAW (OAM_LOOT0 + BW_MAX_LOOT)
 
 static void draw_ships_and_balls(const BwDuel *d,
                                  u16 *player_gfx, u16 *enemy_gfx,
                                  u16 *ball_gfx, u16 *crate_gfx,
+                                 u16 *maw_shadow_gfx, u16 *maw_risen_gfx,
                                  int state, uint32_t frame)
 {
     // The survivor sails the salvage water; the sunk ship is gone.
@@ -455,6 +566,16 @@ static void draw_ships_and_balls(const BwDuel *d,
                crate_gfx, -1, false,
                !(c->live && water_live), false, false, false);
     }
+    // The Maw (slice 5): the SHADOW while it homes (the telegraph the
+    // player is meant to watch), the RISEN body while it is up. A
+    // REGULAR sprite on purpose — the affine no-hide-bit trap does not
+    // apply, so plain hide works (session-20 guard recipe).
+    bool maw_shown = water_live && d->maw.state != BW_MAW_DOWN;
+    oamSet(&oamMain, OAM_MAW,
+           d->maw.x / BW_ONE - 16, d->maw.y / BW_ONE - 16,
+           2, 0, SpriteSize_32x32, SpriteColorFormat_16Color,
+           d->maw.state == BW_MAW_SHADOW ? maw_shadow_gfx : maw_risen_gfx,
+           -1, false, !maw_shown, false, false, false);
 }
 
 // Begin a duel: latch the frame-counter seed, reset the sim, and re-inject
@@ -509,16 +630,23 @@ int main(void)
                                    SpriteColorFormat_16Color);
     u16 *crate_gfx = oamAllocateGfx(&oamMain, SpriteSize_8x8,
                                     SpriteColorFormat_16Color);
+    u16 *maw_shadow_gfx = oamAllocateGfx(&oamMain, SpriteSize_32x32,
+                                         SpriteColorFormat_16Color);
+    u16 *maw_risen_gfx = oamAllocateGfx(&oamMain, SpriteSize_32x32,
+                                        SpriteColorFormat_16Color);
     load_sprite_gfx(player_gfx, &PLAYER_SHIP_ART[0][0], 16, 16, 17);
     load_sprite_gfx(enemy_gfx, &ENEMY_SHIP_ART[0][0], 16, 16, 17);
     load_sprite_gfx(ball_gfx, &BALL_ART[0][0], 8, 8, 9);
     load_sprite_gfx(crate_gfx, &CRATE_ART[0][0], 8, 8, 9);
+    load_sprite_gfx(maw_shadow_gfx, &MAW_SHADOW_ART[0][0], 32, 32, 33);
+    load_sprite_gfx(maw_risen_gfx, &MAW_RISEN_ART[0][0], 32, 32, 33);
 
     BwDuel duel = {0};
     bw_duel_init(&duel, 0);              // idle telemetry before first START
     Score score = {0};
     int state = STATE_TITLE;
     int port_row = 0;              // Graywake port menu cursor (slice 4)
+    bool maw_counted = false;      // this water's kill already tallied
     uint32_t frame = 0;
     bool pad_seen_idle = false;    // KEYINPUT boot-trap guard (PLATFORM-LIMITS)
 
@@ -553,6 +681,7 @@ int main(void)
             if (start)                   // fresh sail: no hold carried (a
             {                            // sunk hold was forfeited), free
                 begin_duel(&duel, &score, frame, 0, 0, 0);  // full refit
+                maw_counted = false;     // fresh water, fresh teeth
                 state = STATE_DUEL;
             }
             break;
@@ -603,6 +732,7 @@ int main(void)
             {                            // and the dents (slice 4)
                 begin_duel(&duel, &score, frame,
                            duel.hold, duel.hold_gold, duel.player.hull);
+                maw_counted = false;     // fresh water, fresh teeth
                 state = STATE_DUEL;
                 break;
             }
@@ -625,8 +755,12 @@ int main(void)
                         - ((held & KEY_LEFT) ? 1 : 0),
                 .trim_delta = ((down & KEY_UP) ? 1 : 0)
                               - ((down & KEY_DOWN) ? 1 : 0),
-                .fire_l = 0,             // batteries stay cold: no foe
-                .fire_r = 0,
+                // slice 5: the keys reach the sim, but bw_salvage_step
+                // gates them on the Maw being UP — batteries stay cold
+                // on quiet water (no fire verb without a foe), so the
+                // committed slice-3/4 stories are untouched
+                .fire_l = pad_seen_idle && (down & KEY_L),
+                .fire_r = pad_seen_idle && (down & KEY_R),
             };
             bw_salvage_step(&duel, &in);
             uint32_t banked = (uint32_t)bw_dock_step(&duel);
@@ -637,10 +771,16 @@ int main(void)
                 bank_amount = banked;
             }
 
+            if (duel.maw.slain && !maw_counted)
+            {
+                score.maws++;            // the carcass is already flotsam
+                maw_counted = true;
+            }
+
             if (duel.over == BW_DUEL_PLAYER_SUNK)
             {
                 score.sinks++;           // a lingering rake found its mark
-                state = STATE_SUNK;
+                state = STATE_SUNK;      // (or the brine's own teeth did)
                 draw_sunk_card(&score, &duel);
             }
             else
@@ -688,7 +828,8 @@ int main(void)
         }
 
         draw_ships_and_balls(&duel, player_gfx, enemy_gfx, ball_gfx,
-                             crate_gfx, state, frame);
+                             crate_gfx, maw_shadow_gfx, maw_risen_gfx,
+                             state, frame);
         oamUpdate(&oamMain);
         draw_status(&duel, &score, state);
 
@@ -723,6 +864,11 @@ int main(void)
         bw_telemetry[BW_T_PORTROW] = (uint32_t)port_row;
         bw_telemetry[BW_T_HULLMAX] = (uint32_t)bw_up_hull_max(duel.up_hull);
         bw_telemetry[BW_T_RELOADL] = (uint32_t)duel.player.reload_l;
+        bw_telemetry[BW_T_MAWSTATE] = (uint32_t)duel.maw.state;
+        bw_telemetry[BW_T_MAWX] = (uint32_t)duel.maw.x;
+        bw_telemetry[BW_T_MAWY] = (uint32_t)duel.maw.y;
+        bw_telemetry[BW_T_MAWHULL] = (uint32_t)duel.maw.hull;
+        bw_telemetry[BW_T_MAWS] = score.maws;
     }
 
     return 0;

@@ -17,7 +17,7 @@ changes its game, with provenance:
 |---|---|---|---|---|
 | [`lumen-drift.gba`](lumen-drift.gba) | **v1.3** · session 8 slice 6 · 2026-07-11 | 167,996 bytes | source tree of the v1.3 pause/mute + graze-flash micro-polish commit (`games/lumen-drift/` at the same tree as this file) | `195a86795e57e2fa0059a96782f1ac7a147cbcebc0cb28a96f353e5d9babae94` |
 | [`gloamline.nds`](gloamline.nds) | **synthesized audio** (arc slice 8) · session 30 · 2026-07-12 | 116,224 bytes | source tree of the slice-8 audio commit (`games/gloamline-nds/` at the same tree as this file); build is byte-deterministic (two clean builds + an independent fresh-worktree build, identical hash) | `eab78ae04bcf46786f58dc03ddb05a5ee3bbd93ac5de4e9e1f1f55b2920b215d` |
-| [`brineward.nds`](brineward.nds) | **port + upgrades** (arc slice 4) · session 28 · 2026-07-12 | 112,128 bytes | source tree of the slice-4 port/upgrades commit (`games/brineward-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `9f354a3744377e49a5bd78c532ae411c316e64d9e11e50d95f54e1d484c64322` |
+| [`brineward.nds`](brineward.nds) | **the Maw** (arc slice 5) · session 31 · 2026-07-12 | 116,224 bytes | source tree of the slice-5 Maw commit (`games/brineward-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `6e571941c4d286e76d1a05b18cb1c498b0ccfc20da5c62c95bc2d22a26d2af7c` |
 
 **How they were built:** GBA — `tools/setup-toolchain.sh` (pinned
 devkitARM r68 + Butano) then `tools/build.sh`; NDS —

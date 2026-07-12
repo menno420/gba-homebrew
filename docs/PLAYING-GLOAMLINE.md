@@ -4,16 +4,18 @@
 > ROM in [`dist/`](../dist/); refreshed in the same PR whenever the game or
 > the shipped ROM changes (written 2026-07-11, arc slice 3; refreshed same
 > date for arc slice 4 — shove + waves — and slice 5 — barricades; refreshed
-> 2026-07-12 for arc slice 6 — the scavenge interlude).
+> 2026-07-12 for arc slice 6 — the scavenge interlude — and slice 7 —
+> lantern-oil light pressure).
 
-**Download → open in a DS emulator → play.** No build step needed. Slice 6
-makes daylight worth something: survive to dawn and you can SELECT to
-*scavenge* — loot the yard for planks among the leftover dead before the
-next night falls. Planks are earned now, not granted.
+**Download → open in a DS emulator → play.** No build step needed. Slice 7
+makes the light itself a resource: your lantern burns oil every night
+frame, and when the tank runs low the lamplight gutters and the dead in
+the dark stop hesitating. Scavenge oil flasks at dawn or outrun a faster
+gloam.
 
 ## 1. Get the ROM
 
-Download [`dist/gloamline.nds`](../dist/gloamline.nds) (≈112 KB — on the
+Download [`dist/gloamline.nds`](../dist/gloamline.nds) (≈114 KB — on the
 GitHub file page, use the **Download raw file** button). Verify if you
 like: the sha256 is pinned in [`dist/README.md`](../dist/README.md).
 
@@ -42,12 +44,13 @@ over the first 40 seconds of the night and never stop walking toward you.
 Don't let a single one touch you until dawn.
 
 **Screens:** the TOP screen is the yard — all the action, plus a `Z`
-counter for how many are up, a `SHV` light for your shove and a `PK`
-count for your planks (in the interlude the top line becomes the
-SCAVENGE clock and remaining-cache count). The BOTTOM screen is the
-watch-map: your position (`P`), every Shambler (`Z`), every barricade
-(`#`), every plank cache (`*`), and the dawn bar filling left to right.
-Buttons only — no touch needed.
+counter for how many are up, an `O` percentage for your lantern oil, a
+`SHV` light for your shove and a `PK` count for your planks (in the
+interlude the top line becomes the SCAVENGE clock and remaining-cache
+count). The BOTTOM screen is the watch-map: your position (`P`), every
+Shambler (`Z`), every barricade (`#`), every plank cache (`*`), every
+oil flask (`o`), the dawn bar filling left to right and the OIL gauge
+draining under it. Buttons only — no touch needed.
 
 **Controls**
 
@@ -104,6 +107,23 @@ fence-line spawn. **NTS** (nights survived) on the HUD is your score.
   and barricades work in the interlude, your fortifications stand, and
   one touch still kills — daylight is bought planks, not safety. START
   leaves early; when the light runs out the next night begins on its own.
+- **The lantern burns — keep it fed.** Your lantern holds three nights
+  of oil when a run starts (`O100` on the HUD, the OIL gauge on the
+  map), and it burns all night, every night — daylight costs nothing.
+  While the tank is healthy the lamplight holds the whole yard's
+  respect. When it runs LOW (under about one night's worth left — you
+  will see the yard itself dim), the light circle around you starts to
+  gutter, and the dead **beyond your lamplight stop hesitating**: their
+  dead man's stagger vanishes in the dark, and the gloam presses about
+  a third faster until they step into what light you have left. The
+  lantern never goes fully out — but a night-3-and-later run on a dry
+  tank is a running fight. The ONLY refill is the scavenge interlude:
+  two **oil flasks** (`o` on the map, brass bottles in the yard) lie
+  among the plank caches, each worth one full night of burning. Walk
+  over one to pour it in — a full tank leaves the flask on the ground
+  (nothing is ever wasted), and the START skip grants no oil, ever.
+  Skipping every dawn is now a choice with a price: the light runs out
+  in night 3.
 - **One touch kills.** A cold-hands card shows your night, your seed and
   your death count; START restarts instantly. Dying while scavenging
   counts all the same — greed has a price on the moor.
@@ -112,5 +132,4 @@ fence-line spawn. **NTS** (nights survived) on the HUD is your score.
   inputs). Same seed + same moves = same night, every time.
 
 Next slices per the [concept](concepts/gloamline-concept.md):
-lantern-oil light pressure, original synthesized audio, and best-nights
-saves.
+original synthesized audio, best-nights saves, and watch-map polish.

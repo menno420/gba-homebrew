@@ -107,17 +107,20 @@ directly reachable from the fleet container — no mirror needed.
   Dumps both screens stacked (256x384), exits non-zero if EITHER screen is
   blank; `--require-distinct` additionally proves the main loop is running.
   Since arc slice 3 the checker also reads the ROM's telemetry mailbox the
-  GBA way: `--elf build/gloamline-nds.elf --watch t:gl_telemetry:40
+  GBA way: `--elf build/gloamline-nds.elf --watch t:gl_telemetry:48
   --assert-watch FRAME:t:IDX:OP:VALUE` (+ `--watch-log` CSV) — numeric
   game-state asserts against ELF-resolved symbols, interface ported from
   `headless-screenshot.py` (slice 4 grew the mailbox 16 -> 24 words:
   wave/shove/stun counters + the GL_T_VLINES/GL_T_VLMAX frame-cost probe;
   slice 5 -> 32: planks + barricade state; slice 6 -> 40: scavenge
-  interlude timer/cache/loot state).
+  interlude timer/cache/loot state; slice 7 -> 48: lantern oil, light
+  radius, dark press + flask state).
   Survive routes are derived and skew-verified on the host mirror with
   `tools/gloam-route.py` (`derive --nights N --out FILE`, `verify
   --keys-file FILE --nights N`). `make GL_STRESS=1` builds the CI-only
-  perf-stress ROM (full 24-Shambler crowd at frame 0, death disarmed) for
+  perf-stress ROM (full 24-Shambler crowd at frame 0, death disarmed,
+  and — since slice 7 — the lantern starting at low oil so the
+  dark-press / guttering-light paths are on the measured frames) for
   the frame-budget proof — always `make clean` between shipped and stress
   builds.
   ⚠ The checker latches "no keys pressed" before frame 0 — without that,

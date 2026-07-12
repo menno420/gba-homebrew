@@ -13,9 +13,13 @@ across nights — the slice-6 scavenge interlude — SELECT at the dawn
 card recenters the player, returns the dead to their spawn points,
 scatters the pure cache schedule; grabs pocket planks, never on a full
 pocket; START leaves early; the timer starts the next night; taking
-the interlude replaces the flat dawn grant — contact, dawn countdown),
-driven by the same `--keys START-END:NAME` spans
-tools/nds-headless-check.py replays.
+the interlude replaces the flat dawn grant — contact, dawn countdown —
+and the slice-7 lantern oil: the lantern burns GL_OIL_BURN per NIGHT
+frame, below GL_OIL_LOW the light radius gutters and the dark press
+cancels the stagger of every Shambler beyond the lamplight; oil flasks
+in the interlude top the tank up, never wasted on a full one; daylight
+burns nothing and presses nobody), driven by the same
+`--keys START-END:NAME` spans tools/nds-headless-check.py replays.
 
 Emulator/ROM alignment (session-17 guard): the py-desmume frontend's frame
 N sets input that the ROM's loop iteration sees ~2 frames later (ROM frame
@@ -118,6 +122,12 @@ class GloamSim:
         self.scav_left = 0
         self.scavenged = 0
         self.scavs = 0
+        # lantern oil (slice 7): the tank + the interlude's flasks
+        self.oil = 0
+        self.fx = [0] * cg.GL_FLASK_COUNT
+        self.fy = [0] * cg.GL_FLASK_COUNT
+        self.flask_up = [0] * cg.GL_FLASK_COUNT
+        self.oil_grabs = 0
         # evidence
         self.min_dist = None                 # over PLAYING+SCAVENGE frames
         self.dawn_emu_frames = []            # emu frame of each dawn flip
@@ -139,6 +149,7 @@ class GloamSim:
         self.shove_cd = 0
         # scavenge state is night-inert (mirrors main.c start_night)
         self.cache_up = [0] * cg.GL_CACHE_COUNT
+        self.flask_up = [0] * cg.GL_FLASK_COUNT
         self.scav_left = 0
         self.spawn_due()
 
@@ -153,6 +164,10 @@ class GloamSim:
             self.cx[i], self.cy[i] = cg.gl_cache_of_interlude(self.seed,
                                                               self.night, i)
             self.cache_up[i] = 1
+        for i in range(cg.GL_FLASK_COUNT):
+            self.fx[i], self.fy[i] = cg.gl_flask_of_interlude(self.seed,
+                                                              self.night, i)
+            self.flask_up[i] = 1
         self.scav_left = cg.GL_SCAVENGE_FRAMES
         self.shove_cd = 0
 
@@ -169,6 +184,7 @@ class GloamSim:
         self.seed = seed
         self.night = 1
         self.planks = cg.GL_PLANK_STOCK
+        self.oil = cg.GL_OIL_MAX                 # a fresh lantern
         self.bhp = [0] * cg.GL_BARRICADE_CAP     # fresh run: bare yard
         self.start_night()
 
@@ -220,15 +236,25 @@ class GloamSim:
                         self.places += 1
                         break
 
-    def step_the_dead(self):
-        """Mirror of main.c step_the_dead() (incl. the run_frame tick)."""
+    def step_the_dead(self, oil_for_press):
+        """Mirror of main.c step_the_dead() (incl. the run_frame tick).
+
+        oil_for_press: the oil level the dark press sees — the real
+        tank at night (PLAYING), GL_OIL_MAX in the daylight interlude
+        (the dawn light presses nobody).
+        """
         for i in range(len(self.zx)):
             if self.zstun[i] > 0:
                 self.zstun[i] -= 1
                 continue
-            nx, ny = cg.gl_shambler_step(
-                self.zx[i], self.zy[i], self.px, self.py, i,
-                self.run_frame)
+            nx, ny = self.zx[i], self.zy[i]
+            if (not cg.gl_shambler_staggers(i, self.run_frame)
+                    or cg.gl_dark_press(oil_for_press,
+                                        cg.gl_chebyshev(
+                                            self.px, self.py,
+                                            self.zx[i], self.zy[i]))):
+                nx, ny = cg.gl_shambler_stride(
+                    self.zx[i], self.zy[i], self.px, self.py)
             blocker = next(
                 (j for j in range(cg.GL_BARRICADE_CAP)
                  if self.bhp[j] > 0
@@ -267,13 +293,14 @@ class GloamSim:
                 self.start_run(self.frame)
                 self.state = STATE_PLAYING
         elif self.state == STATE_PLAYING:
+            self.oil = cg.gl_oil_burn(self.oil)   # the lantern burns
             self.spawn_due()
             self.px, self.py = cg.gl_player_step(
                 self.px, self.py, 'UP' in held, 'DOWN' in held,
                 'LEFT' in held, 'RIGHT' in held)
             self.shove_verb(down)
             self.barricade_verb(down)
-            self.step_the_dead()
+            self.step_the_dead(self.oil)
             if self.the_cold_hands():
                 self.deaths += 1
                 self.state = STATE_DEAD
@@ -302,7 +329,16 @@ class GloamSim:
                         self.cache_up[i] = 0
                         self.planks = cg.gl_planks_after_grab(self.planks)
                         self.scavenged += 1
-                self.step_the_dead()
+                for i in range(cg.GL_FLASK_COUNT):
+                    if (self.flask_up[i]
+                            and self.oil < cg.GL_OIL_MAX
+                            and cg.gl_cache_grab(self.px, self.py,
+                                                 self.fx[i], self.fy[i])):
+                        self.flask_up[i] = 0
+                        self.oil = cg.gl_oil_after_flask(self.oil)
+                        self.oil_grabs += 1
+                # daylight burns nothing and presses nobody
+                self.step_the_dead(cg.GL_OIL_MAX)
                 if self.the_cold_hands():
                     self.deaths += 1
                     self.state = STATE_DEAD
@@ -347,6 +383,11 @@ class GloamSim:
         up = [i for i in range(cg.GL_CACHE_COUNT) if self.cache_up[i]]
         nearc = min(up, key=lambda i: cg.gl_chebyshev(
             self.px, self.py, self.cx[i], self.cy[i]), default=-1)
+        fup = [i for i in range(cg.GL_FLASK_COUNT) if self.flask_up[i]]
+        nearf = min(fup, key=lambda i: cg.gl_chebyshev(
+            self.px, self.py, self.fx[i], self.fy[i]), default=-1)
+        press = (1 if (self.state == STATE_PLAYING and self.zx
+                       and cg.gl_dark_press(self.oil, dist)) else 0)
         print(f'  probe emu {emu}: state {self.state} night {self.night} '
               f'seed {self.seed} run_frame {self.run_frame} '
               f'z {len(self.zx)}/{self.wave_total} dist {dist} '
@@ -363,7 +404,13 @@ class GloamSim:
               f'scavenged {self.scavenged} scavs {self.scavs} '
               f'cx {self.cx[nearc] if nearc >= 0 else 0} '
               f'cy {self.cy[nearc] if nearc >= 0 else 0} '
-              f'cdist {cg.gl_chebyshev(self.px, self.py, self.cx[nearc], self.cy[nearc]) if nearc >= 0 else 0}')
+              f'cdist {cg.gl_chebyshev(self.px, self.py, self.cx[nearc], self.cy[nearc]) if nearc >= 0 else 0} '
+              f'oil {self.oil} radius {cg.gl_light_radius(self.oil)} '
+              f'press {press} flasks {len(fup)} '
+              f'oil_grabs {self.oil_grabs} '
+              f'fx {self.fx[nearf] if nearf >= 0 else 0} '
+              f'fy {self.fy[nearf] if nearf >= 0 else 0} '
+              f'fdist {cg.gl_chebyshev(self.px, self.py, self.fx[nearf], self.fy[nearf]) if nearf >= 0 else 0}')
 
 
 def skewed(spans, delta):
@@ -422,10 +469,12 @@ def rollout_score(sim, held, horizon):
     zstun = list(sim.zstun)
     bhp = list(sim.bhp)
     rf = sim.run_frame
-    up, down = 'UP' in held, 'DOWN' in held
+    oil = sim.oil                    # slice 7: the rollout burns too,
+    up, down = 'UP' in held, 'DOWN' in held  # so the planner sees the press
     left, right = 'LEFT' in held, 'RIGHT' in held
     worst = None
     for _ in range(horizon):
+        oil = cg.gl_oil_burn(oil)
         while (len(zx) < sim.wave_total
                and cg.gl_spawn_frame(sim.night, len(zx)) <= rf):
             x, y = cg.gl_spawn_of_night(sim.seed, sim.night, len(zx))
@@ -437,7 +486,11 @@ def rollout_score(sim, held, horizon):
             if zstun[i] > 0:
                 zstun[i] -= 1
                 continue
-            nx, ny = cg.gl_shambler_step(zx[i], zy[i], px, py, i, rf)
+            nx, ny = zx[i], zy[i]
+            if (not cg.gl_shambler_staggers(i, rf)
+                    or cg.gl_dark_press(oil, cg.gl_chebyshev(
+                        px, py, zx[i], zy[i]))):
+                nx, ny = cg.gl_shambler_stride(zx[i], zy[i], px, py)
             blocker = next(
                 (j for j in range(cg.GL_BARRICADE_CAP)
                  if bhp[j] > 0

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Gloamline host proof (stdlib-only, <2s) — arc slice 5: barricades.
+"""Gloamline host proof (stdlib-only, <2s) — arc slice 6: scavenge.
 
 The check-cave.py sibling for Gloamline: a line-for-line Python mirror of
 the pure simulation layer in games/gloamline-nds/source/gl_sim.c
 (gl_hash / gl_spawn_of_night / gl_player_step / gl_shambler_step /
 gl_chebyshev / gl_contact / gl_wave_count / gl_spawn_frame / gl_shove /
-gl_barricade_blocks / gl_planks_at_dawn), proving the meaningful
+gl_barricade_blocks / gl_planks_at_dawn / gl_cache_of_interlude /
+gl_cache_grab / gl_planks_after_grab), proving the meaningful
 invariants for EVERY reachable input instead of the handful a replay
 touches:
 
@@ -46,9 +47,27 @@ touches:
      dead ALWAYS get through — a wall is a timer, never a softlock;
   8. plank economy — gl_planks_at_dawn is deterministic, monotone
      non-decreasing in its argument, grants exactly GL_PLANK_DAWN below
-     the cap, and never exceeds GL_PLANK_MAX.
+     the cap, and never exceeds GL_PLANK_MAX; gl_planks_after_grab the
+     same with GL_CACHE_PLANKS.
      (Proof 3's containment run also drives hash-driven B presses, so
      place/repair state is inside the adversarial containment surface.)
+  9. cache schedule (slice 6) — for seeds 0..255 x nights 1..13 x every
+     cache index: gl_cache_of_interlude is a pure deterministic function
+     (recompute-equal) and lands in the interior box inset
+     GL_CACHE_INSET from the fence — never ON the spawn perimeter,
+     always inside the arena;
+ 10. interlude honesty (slice 6) — the interlude is never a scam: for
+     seeds 0..127 x nights 1..13, a greedy nearest-neighbor walk from
+     the lamppost (where SELECT puts the player) over all caches fits
+     inside GL_SCAVENGE_FRAMES even under the conservative
+     per-frame-progress bound (GL_PLAYER_DIAG Chebyshev units — the
+     player's WORST optimal speed), so every cache is reachable in
+     principle within the dawn light; and the full loot out-earns the
+     flat GL_PLANK_DAWN skip grant it replaces (static). Entry is
+     never instant death by construction: SELECT recenters the player
+     on the lamppost and returns every Shambler to its own night spawn
+     point, and proof 1/1b already show every such spawn is outside
+     GL_SAFE_RADIUS of the lamppost.
 
 MIRROR RULE (keep in lockstep): every function and constant below mirrors
 games/gloamline-nds/source/gl_sim.c. Any change to the C MUST land here in
@@ -86,6 +105,12 @@ GL_BARRICADE_RANGE = 16 * GL_ONE
 GL_PLANK_STOCK = 6
 GL_PLANK_DAWN = 2
 GL_PLANK_MAX = 9
+GL_SCAVENGE_FRAMES = 1200
+GL_CACHE_COUNT = 5
+GL_CACHE_PLANKS = 1
+GL_CACHE_RANGE = 12 * GL_ONE
+GL_CACHE_INSET = 16 * GL_ONE
+GL_CACHE_SALT = 0x5CAF0157
 GL_NIGHT_FRAMES = 3600
 
 U32 = 0xFFFFFFFF
@@ -203,6 +228,29 @@ def gl_barricade_blocks(bx, by, ox, oy, nx, ny):
 def gl_planks_at_dawn(planks):
     """Mirror of gl_planks_at_dawn()."""
     p = planks + GL_PLANK_DAWN
+    return GL_PLANK_MAX if p > GL_PLANK_MAX else p
+
+
+def gl_cache_of_interlude(seed, night, index):
+    """Mirror of gl_cache_of_interlude() -> (x, y)."""
+    w = (GL_ARENA_X_MAX - GL_ARENA_X_MIN - 2 * GL_CACHE_INSET) // GL_ONE
+    h = (GL_ARENA_Y_MAX - GL_ARENA_Y_MIN - 2 * GL_CACHE_INSET) // GL_ONE
+
+    hx = gl_hash(gl_hash(seed ^ GL_CACHE_SALT, night), index)
+    hy = gl_hash(hx, index)
+
+    return (GL_ARENA_X_MIN + GL_CACHE_INSET + (hx % (w + 1)) * GL_ONE,
+            GL_ARENA_Y_MIN + GL_CACHE_INSET + (hy % (h + 1)) * GL_ONE)
+
+
+def gl_cache_grab(px, py, cx, cy):
+    """Mirror of gl_cache_grab()."""
+    return gl_chebyshev(px, py, cx, cy) < GL_CACHE_RANGE
+
+
+def gl_planks_after_grab(planks):
+    """Mirror of gl_planks_after_grab()."""
+    p = planks + GL_CACHE_PLANKS
     return GL_PLANK_MAX if p > GL_PLANK_MAX else p
 
 
@@ -538,24 +586,84 @@ def main():
                       f'no contact within {bound} frames (walled out '
                       'forever)')
 
-    # 8. plank economy: deterministic, monotone, +GL_PLANK_DAWN below the
-    # cap, never above GL_PLANK_MAX.
-    prev = None
-    for p in range(GL_PLANK_MAX + 4):
-        got = gl_planks_at_dawn(p)
-        if got != gl_planks_at_dawn(p):
-            failures += 1
-            print(f'FAIL plank determinism: {p}')
-        if got != min(p + GL_PLANK_DAWN, GL_PLANK_MAX):
-            failures += 1
-            print(f'FAIL plank grant: {p} -> {got}')
-        if prev is not None and got < prev:
-            failures += 1
-            print(f'FAIL plank monotone: {p - 1}:{prev} -> {p}:{got}')
-        if got > GL_PLANK_MAX:
-            failures += 1
-            print(f'FAIL plank cap: {p} -> {got}')
-        prev = got
+    # 8. plank economy: deterministic, monotone, +GL_PLANK_DAWN (dawn
+    # grant) / +GL_CACHE_PLANKS (cache grab) below the cap, never above
+    # GL_PLANK_MAX.
+    for label, fn, grant in (('plank', gl_planks_at_dawn, GL_PLANK_DAWN),
+                             ('grab', gl_planks_after_grab,
+                              GL_CACHE_PLANKS)):
+        prev = None
+        for p in range(GL_PLANK_MAX + 4):
+            got = fn(p)
+            if got != fn(p):
+                failures += 1
+                print(f'FAIL {label} determinism: {p}')
+            if got != min(p + grant, GL_PLANK_MAX):
+                failures += 1
+                print(f'FAIL {label} grant: {p} -> {got}')
+            if prev is not None and got < prev:
+                failures += 1
+                print(f'FAIL {label} monotone: {p - 1}:{prev} -> {p}:{got}')
+            if got > GL_PLANK_MAX:
+                failures += 1
+                print(f'FAIL {label} cap: {p} -> {got}')
+            prev = got
+
+    # 9. cache schedule (slice 6): pure, interior-box, off the fence.
+    caches = 0
+    for seed in range(256):
+        for night in range(1, 14):
+            for index in range(GL_CACHE_COUNT):
+                x, y = gl_cache_of_interlude(seed, night, index)
+                caches += 1
+                if (x, y) != gl_cache_of_interlude(seed, night, index):
+                    failures += 1
+                    print(f'FAIL cache determinism: '
+                          f'({seed},{night},{index}) unstable')
+                if not (GL_ARENA_X_MIN + GL_CACHE_INSET <= x
+                        <= GL_ARENA_X_MAX - GL_CACHE_INSET
+                        and GL_ARENA_Y_MIN + GL_CACHE_INSET <= y
+                        <= GL_ARENA_Y_MAX - GL_CACHE_INSET):
+                    failures += 1
+                    print(f'FAIL cache box: ({seed},{night},{index}) = '
+                          f'({x},{y}) outside the inset interior')
+                if on_perimeter(x, y):
+                    failures += 1
+                    print(f'FAIL cache on fence: ({seed},{night},{index})')
+
+    # 10. interlude honesty (slice 6): every cache reachable within the
+    # dawn light. Greedy nearest-neighbor from the lamppost (SELECT
+    # recenters the player there); conservative per-leg frame cost
+    # ceil(dist / GL_PLAYER_DIAG) — GL_PLAYER_DIAG is the player's
+    # WORST optimal Chebyshev progress per frame (straight legs move
+    # GL_PLAYER_SPEED, faster). No credit taken for the GL_CACHE_RANGE
+    # pickup reach.
+    routes = 0
+    worst_route = 0
+    for seed in range(128):
+        for night in range(1, 14):
+            remaining = [gl_cache_of_interlude(seed, night, i)
+                         for i in range(GL_CACHE_COUNT)]
+            px, py = GL_PLAYER_START_X, GL_PLAYER_START_Y
+            frames = 0
+            while remaining:
+                nxt = min(remaining,
+                          key=lambda c: gl_chebyshev(px, py, c[0], c[1]))
+                dist = gl_chebyshev(px, py, nxt[0], nxt[1])
+                frames += -(-dist // GL_PLAYER_DIAG)     # ceil
+                px, py = nxt
+                remaining.remove(nxt)
+            routes += 1
+            worst_route = max(worst_route, frames)
+            if frames > GL_SCAVENGE_FRAMES:
+                failures += 1
+                print(f'FAIL interlude honesty: seed {seed} night {night}: '
+                      f'greedy route {frames} > {GL_SCAVENGE_FRAMES}')
+    if GL_CACHE_COUNT * GL_CACHE_PLANKS <= GL_PLANK_DAWN:
+        failures += 1
+        print('FAIL interlude economy: full loot '
+              f'{GL_CACHE_COUNT * GL_CACHE_PLANKS} does not out-earn the '
+              f'flat skip grant {GL_PLANK_DAWN} it replaces')
 
     if failures:
         print(f'check-gloam: {failures} failure(s)')
@@ -574,8 +682,12 @@ def main():
           f'({blocked_enters} blocked), player trajectory bit-identical '
           f'with barricades up (no-seal), {pressure_runs} full-cap '
           'walled-in runs all breached to contact (worst frame '
-          f'{worst_contact} vs bound {bound}), plank grant '
-          'deterministic/monotone/capped')
+          f'{worst_contact} vs bound {bound}), plank grant + cache grab '
+          f'deterministic/monotone/capped, {caches} cache positions '
+          f'pure/interior/off-fence, {routes} greedy interlude routes '
+          f'all fit the dawn light (worst {worst_route} vs '
+          f'{GL_SCAVENGE_FRAMES} frames) and the loot out-earns the '
+          'skip grant')
     return 0
 
 

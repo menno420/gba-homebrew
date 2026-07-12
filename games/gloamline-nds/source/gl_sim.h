@@ -1,4 +1,4 @@
-// Gloamline — pure simulation layer (arc slice 5: barricades).
+// Gloamline — pure simulation layer (arc slice 6: scavenge interlude).
 //
 // EVERYTHING in this header + gl_sim.c is a pure function of its arguments:
 // fixed-point integers only, no wall clock, no runtime RNG, no globals, no
@@ -86,6 +86,29 @@
 #define GL_PLANK_DAWN 2                      // planks granted at each dawn
 #define GL_PLANK_MAX 9                       // pocket cap
 
+// --- scavenge interlude (slice 6) ----------------------------------------------
+// The concept doc's between-nights phase, and slice 5's flagged "real
+// plank source": at the dawn card, SELECT (a NEW button — START keeps
+// the old skip-straight-to-night path bit-identical) enters a timed
+// daylight interlude in the same yard. The lamplighter returns to the
+// lamppost (the night-start position — so the spawn safe radius
+// guarantees no instant death), the leftover dead fall back to the
+// fence line (their own night spawn points — pure, already proven
+// outside the safe radius) and keep walking in, and GL_CACHE_COUNT
+// plank caches lie scattered on a pure f(seed, night, index) schedule.
+// Walking within GL_CACHE_RANGE of a cache pockets GL_CACHE_PLANKS
+// plank(s) — but NEVER on a full pocket (no cache is wasted; it stays
+// on the ground). START leaves early; when the GL_SCAVENGE_FRAMES of
+// dawn light run out the next night begins. Taking the interlude
+// REPLACES the flat GL_PLANK_DAWN skip grant: loot what you carry out.
+// Contact still kills — the interlude is bought planks, not safety.
+#define GL_SCAVENGE_FRAMES 1200              // 20 s of dawn light
+#define GL_CACHE_COUNT 5                     // caches per interlude
+#define GL_CACHE_PLANKS 1                    // planks per cache
+#define GL_CACHE_RANGE (12 * GL_ONE)         // pickup reach
+#define GL_CACHE_INSET (16 * GL_ONE)         // caches keep off the fence
+#define GL_CACHE_SALT 0x5CAF0157u            // cache hash stream != spawns
+
 // --- night clock -------------------------------------------------------------
 // One night = 60 s at 60 fps. Headless DeSmuME runs ~800 fps in CI, so the
 // survive-to-dawn proof replays a FULL night on the shipped ROM — no
@@ -148,5 +171,21 @@ int gl_barricade_blocks(int32_t bx, int32_t by,
 // Plank grant at dawn: current pocket + GL_PLANK_DAWN, capped at
 // GL_PLANK_MAX. Pure f(planks).
 uint32_t gl_planks_at_dawn(uint32_t planks);
+
+// Cache schedule: position of plank cache `index` of night `night`'s
+// interlude for `seed`, an interior point at least GL_CACHE_INSET off
+// the fence line (never ON the spawn perimeter). Pure f(seed, night,
+// index), on a salted hash stream disjoint from the spawn schedule.
+void gl_cache_of_interlude(uint32_t seed, uint32_t night, uint32_t index,
+                           int32_t *x, int32_t *y);
+
+// 1 if the lamplighter can pocket the cache (Chebyshev reach, same
+// metric family as contact/shove/barricade).
+int gl_cache_grab(int32_t px, int32_t py, int32_t cx, int32_t cy);
+
+// Pocket after grabbing a cache: + GL_CACHE_PLANKS, capped at
+// GL_PLANK_MAX. Pure f(planks). (The caller must not consume a cache
+// on a full pocket — gl_cache_grab + a planks < GL_PLANK_MAX check.)
+uint32_t gl_planks_after_grab(uint32_t planks);
 
 #endif // GL_SIM_H

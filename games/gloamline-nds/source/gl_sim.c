@@ -146,3 +146,33 @@ uint32_t gl_planks_at_dawn(uint32_t planks)
     uint32_t p = planks + GL_PLANK_DAWN;
     return p > GL_PLANK_MAX ? GL_PLANK_MAX : p;
 }
+
+void gl_cache_of_interlude(uint32_t seed, uint32_t night, uint32_t index,
+                           int32_t *x, int32_t *y)
+{
+    // Interior box in whole pixels, inset GL_CACHE_INSET from the fence
+    // so a cache never lands on the spawn perimeter.
+    const int32_t w = (GL_ARENA_X_MAX - GL_ARENA_X_MIN
+                       - 2 * GL_CACHE_INSET) / GL_ONE;           // 191
+    const int32_t h = (GL_ARENA_Y_MAX - GL_ARENA_Y_MIN
+                       - 2 * GL_CACHE_INSET) / GL_ONE;           // 111
+
+    uint32_t hx = gl_hash(gl_hash(seed ^ GL_CACHE_SALT, night), index);
+    uint32_t hy = gl_hash(hx, index);
+
+    *x = GL_ARENA_X_MIN + GL_CACHE_INSET
+         + (int32_t)(hx % (uint32_t)(w + 1)) * GL_ONE;
+    *y = GL_ARENA_Y_MIN + GL_CACHE_INSET
+         + (int32_t)(hy % (uint32_t)(h + 1)) * GL_ONE;
+}
+
+int gl_cache_grab(int32_t px, int32_t py, int32_t cx, int32_t cy)
+{
+    return gl_chebyshev(px, py, cx, cy) < GL_CACHE_RANGE;
+}
+
+uint32_t gl_planks_after_grab(uint32_t planks)
+{
+    uint32_t p = planks + GL_CACHE_PLANKS;
+    return p > GL_PLANK_MAX ? GL_PLANK_MAX : p;
+}

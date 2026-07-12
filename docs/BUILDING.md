@@ -107,11 +107,13 @@ directly reachable from the fleet container — no mirror needed.
   Dumps both screens stacked (256x384), exits non-zero if EITHER screen is
   blank; `--require-distinct` additionally proves the main loop is running.
   Since arc slice 3 the checker also reads the ROM's telemetry mailbox the
-  GBA way: `--elf build/gloamline-nds.elf --watch t:gl_telemetry:24
+  GBA way: `--elf build/gloamline-nds.elf --watch t:gl_telemetry:40
   --assert-watch FRAME:t:IDX:OP:VALUE` (+ `--watch-log` CSV) — numeric
   game-state asserts against ELF-resolved symbols, interface ported from
   `headless-screenshot.py` (slice 4 grew the mailbox 16 -> 24 words:
-  wave/shove/stun counters + the GL_T_VLINES/GL_T_VLMAX frame-cost probe).
+  wave/shove/stun counters + the GL_T_VLINES/GL_T_VLMAX frame-cost probe;
+  slice 5 -> 32: planks + barricade state; slice 6 -> 40: scavenge
+  interlude timer/cache/loot state).
   Survive routes are derived and skew-verified on the host mirror with
   `tools/gloam-route.py` (`derive --nights N --out FILE`, `verify
   --keys-file FILE --nights N`). `make GL_STRESS=1` builds the CI-only
@@ -126,11 +128,13 @@ directly reachable from the fleet container — no mirror needed.
 
 CI: the `nds-rom-build` job in `rom-builds.yml` runs the host-mirror
 proof (`tools/check-gloam.py`), builds the .nds with the cached pinned
-toolchain, replays nine headless proofs (boot+telemetry, 8-way move,
+toolchain, replays twelve headless proofs (boot+telemetry, 8-way move,
 chase+death+restart, survive-night-1-to-dawn, shove, night-2 waves +
 multi-zombie survive, 24-Shambler + 8-barricade frame-budget on the
 stress build, barricade hold/breach lifecycle, barricade repair
-economy — all pinned `--assert-watch` numerics), and uploads `.nds` +
+economy, scavenge loot + no-waste + early exit, scavenge risk — idling
+in the interlude kills, scavenge timer expiry starting the next night
+by itself — all pinned `--assert-watch` numerics), and uploads `.nds` +
 sha256 +
 screenshots alongside the GBA artifacts. The required GBA `ROM builds` gate is a
 separate untouched job (its `games/*/` loop skips BlocksDS Makefiles).

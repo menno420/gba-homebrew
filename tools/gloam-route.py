@@ -6,11 +6,16 @@ session card told slice 4 to promote the pattern into tools/ — this is that
 tool. It carries a FULL-GAME mirror: the pure functions from
 tools/check-gloam.py (import, not copy — the lockstep rule stays one file)
 plus a line-faithful Python mirror of the main.c state machine (title /
-playing / dead / dawn, seed latch = frame counter at START, wave spawns,
-shove + stun + cooldown, barricades — B place/repair, blocked steps chew
-1 hp, breach, plank stock + dawn grant, persistence across nights —
-contact, dawn countdown), driven by the same `--keys START-END:NAME`
-spans tools/nds-headless-check.py replays.
+playing / dead / dawn / scavenge, seed latch = frame counter at START,
+wave spawns, shove + stun + cooldown, barricades — B place/repair,
+blocked steps chew 1 hp, breach, plank stock + dawn grant, persistence
+across nights — the slice-6 scavenge interlude — SELECT at the dawn
+card recenters the player, returns the dead to their spawn points,
+scatters the pure cache schedule; grabs pocket planks, never on a full
+pocket; START leaves early; the timer starts the next night; taking
+the interlude replaces the flat dawn grant — contact, dawn countdown),
+driven by the same `--keys START-END:NAME` spans
+tools/nds-headless-check.py replays.
 
 Emulator/ROM alignment (session-17 guard): the py-desmume frontend's frame
 N sets input that the ROM's loop iteration sees ~2 frames later (ROM frame
@@ -54,6 +59,7 @@ NOMINAL_OFFSET = 2          # emu frame ~= rom frame + 2 (session-17 pin)
 CONTACT_PX = cg.GL_CONTACT_RANGE // cg.GL_ONE
 
 STATE_TITLE, STATE_PLAYING, STATE_DEAD, STATE_DAWN = 0, 1, 2, 3
+STATE_SCAVENGE = 4
 
 DIR_KEYS = {'UP', 'DOWN', 'LEFT', 'RIGHT'}
 
@@ -104,8 +110,16 @@ class GloamSim:
         self.places = 0
         self.repairs = 0
         self.breaches = 0
+        # scavenge interlude (slice 6): caches on the ground + the
+        # dawn-light clock; live only inside the interlude
+        self.cx = [0] * cg.GL_CACHE_COUNT
+        self.cy = [0] * cg.GL_CACHE_COUNT
+        self.cache_up = [0] * cg.GL_CACHE_COUNT
+        self.scav_left = 0
+        self.scavenged = 0
+        self.scavs = 0
         # evidence
-        self.min_dist = None                 # over all PLAYING frames
+        self.min_dist = None                 # over PLAYING+SCAVENGE frames
         self.dawn_emu_frames = []            # emu frame of each dawn flip
 
     def held_timeline(self, end_emu_frame):
@@ -123,7 +137,24 @@ class GloamSim:
         self.zx, self.zy, self.zstun = [], [], []
         self.wave_total = cg.gl_wave_count(self.night)
         self.shove_cd = 0
+        # scavenge state is night-inert (mirrors main.c start_night)
+        self.cache_up = [0] * cg.GL_CACHE_COUNT
+        self.scav_left = 0
         self.spawn_due()
+
+    def begin_scavenge(self):
+        """Mirror of main.c begin_scavenge()."""
+        self.px, self.py = cg.GL_PLAYER_START_X, cg.GL_PLAYER_START_Y
+        for i in range(len(self.zx)):
+            self.zx[i], self.zy[i] = cg.gl_spawn_of_night(self.seed,
+                                                          self.night, i)
+            self.zstun[i] = 0
+        for i in range(cg.GL_CACHE_COUNT):
+            self.cx[i], self.cy[i] = cg.gl_cache_of_interlude(self.seed,
+                                                              self.night, i)
+            self.cache_up[i] = 1
+        self.scav_left = cg.GL_SCAVENGE_FRAMES
+        self.shove_cd = 0
 
     def spawn_due(self):
         while (len(self.zx) < self.wave_total
@@ -149,6 +180,79 @@ class GloamSim:
                 best, best_i = d, i
         return best_i, (best if best is not None else 0)
 
+    def shove_verb(self, down):
+        """Mirror of main.c do_shove_verb()."""
+        if self.shove_cd > 0:
+            self.shove_cd -= 1
+        if 'A' in down and self.shove_cd == 0:
+            self.shove_cd = cg.GL_SHOVE_COOLDOWN
+            i, _dist = self.nearest()
+            if self.zx:
+                hit, self.zx[i], self.zy[i] = cg.gl_shove(
+                    self.px, self.py, self.zx[i], self.zy[i])
+                if hit:
+                    self.zstun[i] = cg.GL_SHOVE_STUN
+                    self.shoves += 1
+
+    def barricade_verb(self, down):
+        """Mirror of main.c do_barricade_verb()."""
+        if 'B' in down and self.planks > 0:
+            best_b, near_b = None, -1
+            for i in range(cg.GL_BARRICADE_CAP):
+                if self.bhp[i] == 0:
+                    continue
+                d = cg.gl_chebyshev(self.px, self.py,
+                                    self.bx[i], self.by[i])
+                if best_b is None or d < best_b:
+                    best_b, near_b = d, i
+            if near_b >= 0 and best_b <= cg.GL_BARRICADE_RANGE:
+                if self.bhp[near_b] < cg.GL_BARRICADE_HP:
+                    self.bhp[near_b] = cg.GL_BARRICADE_HP
+                    self.planks -= 1
+                    self.repairs += 1
+            else:
+                for i in range(cg.GL_BARRICADE_CAP):
+                    if self.bhp[i] == 0:
+                        self.bx[i] = self.px
+                        self.by[i] = self.py
+                        self.bhp[i] = cg.GL_BARRICADE_HP
+                        self.planks -= 1
+                        self.places += 1
+                        break
+
+    def step_the_dead(self):
+        """Mirror of main.c step_the_dead() (incl. the run_frame tick)."""
+        for i in range(len(self.zx)):
+            if self.zstun[i] > 0:
+                self.zstun[i] -= 1
+                continue
+            nx, ny = cg.gl_shambler_step(
+                self.zx[i], self.zy[i], self.px, self.py, i,
+                self.run_frame)
+            blocker = next(
+                (j for j in range(cg.GL_BARRICADE_CAP)
+                 if self.bhp[j] > 0
+                 and cg.gl_barricade_blocks(self.bx[j], self.by[j],
+                                            self.zx[i], self.zy[i],
+                                            nx, ny)), -1)
+            if blocker >= 0:
+                self.bhp[blocker] -= 1
+                if self.bhp[blocker] == 0:
+                    self.breaches += 1
+            else:
+                self.zx[i], self.zy[i] = nx, ny
+        self.run_frame += 1
+
+    def the_cold_hands(self):
+        """Mirror of main.c the_cold_hands() (+ min-dist evidence)."""
+        touched = any(
+            cg.gl_contact(self.px, self.py, self.zx[i], self.zy[i])
+            for i in range(len(self.zx)))
+        _i, dist = self.nearest()
+        if self.min_dist is None or dist < self.min_dist:
+            self.min_dist = dist
+        return touched
+
     def step(self, emu_frame, held):
         """One main-loop iteration (the ROM iteration run at emu_frame)."""
         self.frame += 1
@@ -167,67 +271,10 @@ class GloamSim:
             self.px, self.py = cg.gl_player_step(
                 self.px, self.py, 'UP' in held, 'DOWN' in held,
                 'LEFT' in held, 'RIGHT' in held)
-            if self.shove_cd > 0:
-                self.shove_cd -= 1
-            if 'A' in down and self.shove_cd == 0:
-                self.shove_cd = cg.GL_SHOVE_COOLDOWN
-                i, _dist = self.nearest()
-                if self.zx:
-                    hit, self.zx[i], self.zy[i] = cg.gl_shove(
-                        self.px, self.py, self.zx[i], self.zy[i])
-                    if hit:
-                        self.zstun[i] = cg.GL_SHOVE_STUN
-                        self.shoves += 1
-            if 'B' in down and self.planks > 0:
-                best_b, near_b = None, -1
-                for i in range(cg.GL_BARRICADE_CAP):
-                    if self.bhp[i] == 0:
-                        continue
-                    d = cg.gl_chebyshev(self.px, self.py,
-                                        self.bx[i], self.by[i])
-                    if best_b is None or d < best_b:
-                        best_b, near_b = d, i
-                if near_b >= 0 and best_b <= cg.GL_BARRICADE_RANGE:
-                    if self.bhp[near_b] < cg.GL_BARRICADE_HP:
-                        self.bhp[near_b] = cg.GL_BARRICADE_HP
-                        self.planks -= 1
-                        self.repairs += 1
-                else:
-                    for i in range(cg.GL_BARRICADE_CAP):
-                        if self.bhp[i] == 0:
-                            self.bx[i] = self.px
-                            self.by[i] = self.py
-                            self.bhp[i] = cg.GL_BARRICADE_HP
-                            self.planks -= 1
-                            self.places += 1
-                            break
-            for i in range(len(self.zx)):
-                if self.zstun[i] > 0:
-                    self.zstun[i] -= 1
-                    continue
-                nx, ny = cg.gl_shambler_step(
-                    self.zx[i], self.zy[i], self.px, self.py, i,
-                    self.run_frame)
-                blocker = next(
-                    (j for j in range(cg.GL_BARRICADE_CAP)
-                     if self.bhp[j] > 0
-                     and cg.gl_barricade_blocks(self.bx[j], self.by[j],
-                                                self.zx[i], self.zy[i],
-                                                nx, ny)), -1)
-                if blocker >= 0:
-                    self.bhp[blocker] -= 1
-                    if self.bhp[blocker] == 0:
-                        self.breaches += 1
-                else:
-                    self.zx[i], self.zy[i] = nx, ny
-            self.run_frame += 1
-            touched = any(
-                cg.gl_contact(self.px, self.py, self.zx[i], self.zy[i])
-                for i in range(len(self.zx)))
-            _i, dist = self.nearest()
-            if self.min_dist is None or dist < self.min_dist:
-                self.min_dist = dist
-            if touched:
+            self.shove_verb(down)
+            self.barricade_verb(down)
+            self.step_the_dead()
+            if self.the_cold_hands():
                 self.deaths += 1
                 self.state = STATE_DEAD
             else:
@@ -236,6 +283,35 @@ class GloamSim:
                     self.nights_survived = self.night
                     self.state = STATE_DAWN
                     self.dawn_emu_frames.append(emu_frame)
+        elif self.state == STATE_SCAVENGE:
+            if start:                        # to the fence — night comes
+                self.night += 1              # loot is the grant: no +2
+                self.start_night()
+                self.state = STATE_PLAYING
+            else:
+                self.px, self.py = cg.gl_player_step(
+                    self.px, self.py, 'UP' in held, 'DOWN' in held,
+                    'LEFT' in held, 'RIGHT' in held)
+                self.shove_verb(down)
+                self.barricade_verb(down)
+                for i in range(cg.GL_CACHE_COUNT):
+                    if (self.cache_up[i]
+                            and self.planks < cg.GL_PLANK_MAX
+                            and cg.gl_cache_grab(self.px, self.py,
+                                                 self.cx[i], self.cy[i])):
+                        self.cache_up[i] = 0
+                        self.planks = cg.gl_planks_after_grab(self.planks)
+                        self.scavenged += 1
+                self.step_the_dead()
+                if self.the_cold_hands():
+                    self.deaths += 1
+                    self.state = STATE_DEAD
+                else:
+                    self.scav_left -= 1
+                    if self.scav_left == 0:  # dawn light spent
+                        self.night += 1      # loot is the grant: no +2
+                        self.start_night()
+                        self.state = STATE_PLAYING
         elif self.state == STATE_DEAD:
             if start:
                 self.start_run(self.frame)
@@ -246,6 +322,10 @@ class GloamSim:
                 self.planks = cg.gl_planks_at_dawn(self.planks)
                 self.start_night()
                 self.state = STATE_PLAYING
+            elif self.pad_seen_idle and 'SELECT' in down:
+                self.scavs += 1
+                self.begin_scavenge()
+                self.state = STATE_SCAVENGE
 
     def run(self, end_emu_frame, probes=(), stop_on_death=True):
         probes = set(probes)
@@ -264,6 +344,9 @@ class GloamSim:
         intact = [i for i in range(cg.GL_BARRICADE_CAP) if self.bhp[i] > 0]
         nearb = min(intact, key=lambda i: cg.gl_chebyshev(
             self.px, self.py, self.bx[i], self.by[i]), default=-1)
+        up = [i for i in range(cg.GL_CACHE_COUNT) if self.cache_up[i]]
+        nearc = min(up, key=lambda i: cg.gl_chebyshev(
+            self.px, self.py, self.cx[i], self.cy[i]), default=-1)
         print(f'  probe emu {emu}: state {self.state} night {self.night} '
               f'seed {self.seed} run_frame {self.run_frame} '
               f'z {len(self.zx)}/{self.wave_total} dist {dist} '
@@ -275,7 +358,12 @@ class GloamSim:
               f'breaches {self.breaches} places {self.places} '
               f'repairs {self.repairs} '
               f'bx {self.bx[nearb] if nearb >= 0 else 0} '
-              f'by {self.by[nearb] if nearb >= 0 else 0}')
+              f'by {self.by[nearb] if nearb >= 0 else 0} '
+              f'scav_left {self.scav_left} caches {len(up)} '
+              f'scavenged {self.scavenged} scavs {self.scavs} '
+              f'cx {self.cx[nearc] if nearc >= 0 else 0} '
+              f'cy {self.cy[nearc] if nearc >= 0 else 0} '
+              f'cdist {cg.gl_chebyshev(self.px, self.py, self.cx[nearc], self.cy[nearc]) if nearc >= 0 else 0}')
 
 
 def skewed(spans, delta):

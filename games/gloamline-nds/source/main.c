@@ -1,22 +1,27 @@
-// Gloamline — arc slice 5: BARRICADES (on the slice-4 shove + waves).
+// Gloamline — arc slice 6: the between-nights SCAVENGE INTERLUDE (on
+// the slice-5 barricades).
 //
 // The concept doc's next feature cut (docs/concepts/gloamline-concept.md
-// slice order): BARRICADES. B plants a barricade at the lamplighter's
-// feet for 1 plank — or, if an intact one is within reach, repairs it to
-// full instead (never wasting a plank on a full one). The dead cannot
-// walk INTO a barricade's radius: a blocked step chews the barricade for
-// exactly 1 hp instead, and at hp 0 it breaches (slot free again). The
-// player is never blocked (can't seal themselves in, by construction)
-// and a blocked Shambler always chews (a wall is a timer, never a
-// permanent wall-out) — both invariants host-proven in check-gloam.py.
-// Resource: GL_PLANK_STOCK planks per run + gl_planks_at_dawn() per
-// dawn; the concept's between-nights scavenge interlude (NEXT slice)
-// becomes the real plank source. Barricades persist across nights
-// within a run. Everything else is slice 4: night N sends a
-// deterministic WAVE (pure schedule), SHOVE (A) is the pressure valve,
-// top screen = the yard, bottom = watch-map (zombie dots + barricade
-// marks + dawn bar), contact = death -> card -> instant restart. All
-// game rules live in the pure layer (gl_sim.h/.c, mirrored by
+// slice order) and slice 5's own flag ("the scavenge interlude NEXT
+// slice becomes the real plank source"): at the dawn card, SELECT
+// enters a timed daylight phase in the same yard. The lamplighter
+// returns to the lamppost, the dawn light drives the leftover dead
+// back to the fence line (each to its own night spawn point — pure,
+// proven outside the safe radius), and GL_CACHE_COUNT plank caches lie
+// scattered on a pure f(seed, night, index) schedule. Walk within
+// reach of a cache to pocket a plank — never on a full pocket (no
+// cache is wasted; it stays on the ground). START leaves early; when
+// the dawn light runs out the next night begins. Taking the interlude
+// REPLACES the flat gl_planks_at_dawn() skip grant: loot what you
+// carry out. The dead keep walking and CONTACT STILL KILLS — the
+// interlude is bought planks, not safety. START at the dawn card keeps
+// the old skip-straight-to-night path (with the flat grant)
+// bit-identical, so every pre-slice-6 proof holds unchanged.
+// Everything else is slice 5: barricades (B place/repair, chew-through
+// + breach, persistence), waves, SHOVE (A), top screen = the yard,
+// bottom = watch-map (zombie dots + barricade marks + cache marks +
+// dawn bar), contact = death -> card -> instant restart. All game
+// rules live in the pure layer (gl_sim.h/.c, mirrored by
 // tools/check-gloam.py); this file is input, state machine, rendering,
 // and the telemetry mailbox.
 //
@@ -36,14 +41,14 @@
 // Telemetry mailbox (the gl_audio_hook concept ported to NDS): 32 u32
 // words at the exported symbol `gl_telemetry`, rewritten every frame, so
 // headless proofs (tools/nds-headless-check.py --elf/--watch) can assert
-// game state numerically. Layout below at GL_T_*. Slots 0-23 keep their
-// slice-3/4 meanings EXACTLY (the pinned CI asserts read them); slice 5
-// appends 24-31 (planks + barricade state). On a multi-zombie night the
+// game state numerically. Layout below at GL_T_*. Slots 0-31 keep their
+// slice-3/4/5 meanings EXACTLY (the pinned CI asserts read them);
+// slice 6 appends 32-39 (scavenge state). On a multi-zombie night the
 // ZX/ZY/DIST/NSTUN slots describe the NEAREST Shambler (identical to
 // slice 3 whenever one zombie is up); BX/BY/BHP likewise describe the
 // intact barricade nearest the player.
 //
-// 100% original content: code, text, and the two code-authored sprites.
+// 100% original content: code, text, and the four code-authored sprites.
 
 #include <nds.h>
 
@@ -55,7 +60,7 @@
 #define GL_T_MAGIC0 0   // 0x474C4F41 'GLOA'
 #define GL_T_MAGIC1 1   // 0x4D4C4E45 'MLNE'
 #define GL_T_FRAME 2    // global frame counter (every vblank)
-#define GL_T_STATE 3    // 0 title / 1 playing / 2 dead / 3 dawn
+#define GL_T_STATE 3    // 0 title / 1 playing / 2 dead / 3 dawn / 4 scavenge
 #define GL_T_PX 4       // player x, 8.8 fixed (sprite center)
 #define GL_T_PY 5       // player y
 #define GL_T_ZX 6       // nearest Shambler x
@@ -85,8 +90,16 @@
 #define GL_T_REPAIRS 29 // barricades REPAIRED this power-on
 #define GL_T_BX 30      // nearest intact barricade x, 8.8 fixed (0 = none)
 #define GL_T_BY 31      // nearest intact barricade y
+#define GL_T_SCAVLEFT 32// scavenge frames left (0 outside the interlude)
+#define GL_T_CACHES 33  // plank caches still on the ground
+#define GL_T_SCAVENGED 34 // planks scavenged (caches pocketed) this power-on
+#define GL_T_SCAVS 35   // interludes entered this power-on
+#define GL_T_CX 36      // nearest remaining cache x, 8.8 fixed (0 = none)
+#define GL_T_CY 37      // nearest remaining cache y
+#define GL_T_CDIST 38   // Chebyshev player<->nearest cache (0 = none)
+#define GL_T_SPARE2 39  // reserved, always 0
 
-volatile uint32_t gl_telemetry[32];
+volatile uint32_t gl_telemetry[40];
 
 enum
 {
@@ -94,6 +107,7 @@ enum
     STATE_PLAYING = 1,
     STATE_DEAD = 2,
     STATE_DAWN = 3,
+    STATE_SCAVENGE = 4,
 };
 
 // --- original sprite art (code-authored, 4bpp, shared 16-color palette) ------
@@ -157,6 +171,28 @@ static const char BARRICADE_ART[16][17] = {
     "..ca........ac..",
     "..ca........ac..",
     "..cc........cc..",
+    "................",
+};
+
+// Plank cache = three loose moor-planks dropped in a crossed stack
+// (reuses the barricade palette indices a-c — same wood, not yet a
+// wall). Fourth code-authored sprite.
+static const char CACHE_ART[16][17] = {
+    "................",
+    "................",
+    "................",
+    "................",
+    "...cccccccccc...",
+    "...cbbbbbbbbc...",
+    "...caaaaaaaac...",
+    "..cccccccccc....",
+    "..cbbbbbbbbc....",
+    "..caaaaaaaac....",
+    "....cccccccccc..",
+    "....cbbbbbbbbc..",
+    "....caaaaaaaac..",
+    "................",
+    "................",
     "................",
 };
 
@@ -251,6 +287,13 @@ typedef struct
     int32_t bx[GL_BARRICADE_CAP], by[GL_BARRICADE_CAP];
     uint32_t bhp[GL_BARRICADE_CAP];
     uint32_t planks;
+    // Scavenge interlude (slice 6): plank caches on the ground (up = 1,
+    // pocketed = 0) + the dawn-light clock. Both live only inside the
+    // interlude — start_night() zeroes them, so this state is inert on
+    // the START skip path (every pre-slice-6 proof is bit-identical).
+    int32_t cx[GL_CACHE_COUNT], cy[GL_CACHE_COUNT];
+    uint32_t cache_up[GL_CACHE_COUNT];
+    uint32_t scav_left;
 } Run;
 
 // Spawn every zombie whose scheduled frame has arrived (index order — the
@@ -276,6 +319,11 @@ static void start_night(Run *run)
     run->z_count = 0;
     run->wave_total = WAVE_TOTAL(run->night);
     run->shove_cd = 0;
+    // Scavenge state is night-inert: caches exist only inside the
+    // interlude, and the dawn-light clock reads 0 outside it.
+    for (int i = 0; i < GL_CACHE_COUNT; i++)
+        run->cache_up[i] = 0;
+    run->scav_left = 0;
     // Barricades deliberately NOT reset: they persist across nights.
 #ifdef GL_STRESS
     // Perf build only: pre-place the full ring so the crowd chews and
@@ -306,6 +354,160 @@ static void start_run(Run *run, uint32_t seed)
     start_night(run);
 }
 
+// SELECT at the dawn card: the scavenge interlude of the night just
+// survived (slice 6). The lamplighter returns to the lamppost (so the
+// spawn safe radius that guarded the night now guards the interlude's
+// first frames), the dawn light drives every leftover Shambler back to
+// its own night spawn point (pure — the host proof already shows those
+// are outside the safe radius), and the night's plank caches appear on
+// their own pure schedule. Barricades stand untouched.
+static void begin_scavenge(Run *run)
+{
+    run->px = GL_PLAYER_START_X;
+    run->py = GL_PLAYER_START_Y;
+    for (uint32_t i = 0; i < run->z_count; i++)
+    {
+        gl_spawn_of_night(run->seed, run->night, i,
+                          &run->zx[i], &run->zy[i]);
+        run->zstun[i] = 0;
+    }
+    for (int i = 0; i < GL_CACHE_COUNT; i++)
+    {
+        gl_cache_of_interlude(run->seed, run->night, (uint32_t)i,
+                              &run->cx[i], &run->cy[i]);
+        run->cache_up[i] = 1;
+    }
+    run->scav_left = GL_SCAVENGE_FRAMES;
+    run->shove_cd = 0;
+}
+
+// --- the shared verbs + the dead's step (PLAYING and SCAVENGE) -----------------
+// Extracted verbatim from the slice-5 PLAYING case so the interlude
+// runs the exact same rules; the emulator re-run of every pre-slice-6
+// pinned proof is the no-drift evidence for this refactor.
+
+// The shove: any A press with a cold cooldown is an ATTEMPT (arming
+// the cooldown, hit or whiff); it CONNECTS only if the nearest
+// Shambler is within GL_SHOVE_RANGE — knockback via the pure gl_shove,
+// plus GL_SHOVE_STUN frames frozen.
+static void do_shove_verb(Run *run, uint32_t down, uint32_t *shoves)
+{
+    if (run->shove_cd > 0)
+        run->shove_cd--;
+    if ((down & KEY_A) && run->shove_cd == 0)
+    {
+        run->shove_cd = GL_SHOVE_COOLDOWN;
+        uint32_t nearest = 0;
+        int32_t best = INT32_MAX;
+        for (uint32_t i = 0; i < run->z_count; i++)
+        {
+            int32_t d = gl_chebyshev(run->px, run->py,
+                                     run->zx[i], run->zy[i]);
+            if (d < best) { best = d; nearest = i; }
+        }
+        if (run->z_count > 0
+            && gl_shove(run->px, run->py,
+                        &run->zx[nearest], &run->zy[nearest]))
+        {
+            run->zstun[nearest] = GL_SHOVE_STUN;
+            (*shoves)++;
+        }
+    }
+}
+
+// The barricade verb (B): repair the intact barricade in reach (if it
+// needs it), else place a new one at the lamplighter's feet — 1 plank
+// either way. No cooldown: the plank pocket is the limiter.
+static void do_barricade_verb(Run *run, uint32_t down,
+                              uint32_t *places, uint32_t *repairs)
+{
+    if ((down & KEY_B) && run->planks > 0)
+    {
+        int32_t best_b = INT32_MAX;
+        int near_b = -1;
+        for (int i = 0; i < GL_BARRICADE_CAP; i++)
+        {
+            if (run->bhp[i] == 0)
+                continue;
+            int32_t d = gl_chebyshev(run->px, run->py,
+                                     run->bx[i], run->by[i]);
+            if (d < best_b) { best_b = d; near_b = i; }
+        }
+        if (near_b >= 0 && best_b <= GL_BARRICADE_RANGE)
+        {
+            if (run->bhp[near_b] < GL_BARRICADE_HP)
+            {                            // repair to full, 1 plank
+                run->bhp[near_b] = GL_BARRICADE_HP;
+                run->planks--;
+                (*repairs)++;
+            }                            // full one in reach: no waste
+        }
+        else
+        {
+            for (int i = 0; i < GL_BARRICADE_CAP; i++)
+                if (run->bhp[i] == 0)
+                {                        // place in the first free slot
+                    run->bx[i] = run->px;
+                    run->by[i] = run->py;
+                    run->bhp[i] = GL_BARRICADE_HP;
+                    run->planks--;
+                    (*places)++;
+                    break;
+                }
+        }
+    }
+}
+
+// The dead's step (plus the frame it costs): propose the pure chase
+// step; an intact barricade blocks any step that would ENTER its
+// radius — the blocked attempt chews it for exactly 1 hp instead
+// (hp 0 = breached, slot free). First blocking slot wins:
+// deterministic. A stagger frame proposes no move, so it neither
+// enters nor chews.
+static void step_the_dead(Run *run, uint32_t *breaches)
+{
+    for (uint32_t i = 0; i < run->z_count; i++)
+    {
+        if (run->zstun[i] > 0)
+        {
+            run->zstun[i]--;             // stunned: no step this frame
+            continue;
+        }
+        int32_t nx = run->zx[i], ny = run->zy[i];
+        gl_shambler_step(&nx, &ny, run->px, run->py,
+                         i /* zombie_id */, run->run_frame);
+        int blocker = -1;
+        for (int j = 0; j < GL_BARRICADE_CAP; j++)
+            if (run->bhp[j] > 0
+                && gl_barricade_blocks(run->bx[j], run->by[j],
+                                       run->zx[i], run->zy[i], nx, ny))
+            {
+                blocker = j;
+                break;
+            }
+        if (blocker >= 0)
+        {
+            if (--run->bhp[blocker] == 0)
+                (*breaches)++;
+        }
+        else
+        {
+            run->zx[i] = nx;
+            run->zy[i] = ny;
+        }
+    }
+    run->run_frame++;
+}
+
+// 1 if the cold hands reach the lamplighter this frame.
+static int the_cold_hands(const Run *run)
+{
+    int touched = 0;
+    for (uint32_t i = 0; i < run->z_count && !touched; i++)
+        touched = gl_contact(run->px, run->py, run->zx[i], run->zy[i]);
+    return touched;
+}
+
 // --- top-screen scenes -----------------------------------------------------------
 static PrintConsole top_console;
 static PrintConsole bottom_console;
@@ -329,9 +531,10 @@ static void draw_title(void)
     printf("\x1b[12;6Hmove: +pad (8-way)\n");
     printf("\x1b[13;6Hshove: A (cooldown)\n");
     printf("\x1b[14;6Hbarricade: B (planks)\n");
-    printf("\x1b[15;6Hdon't get touched\n");
-    printf("\x1b[16;6Hsurvive to dawn\n");
-    printf("\x1b[18;9HPRESS START\n");
+    printf("\x1b[15;6Hscavenge at dawn: SELECT\n");
+    printf("\x1b[16;6Hdon't get touched\n");
+    printf("\x1b[17;6Hsurvive to dawn\n");
+    printf("\x1b[19;9HPRESS START\n");
 }
 
 static void draw_death_card(const Run *run, uint32_t deaths)
@@ -356,6 +559,21 @@ static void draw_dawn_card(const Run *run, uint32_t nights)
     printf("\x1b[12;5Hseed %lu", (unsigned long)run->seed);
     printf("\x1b[15;3HPRESS START: night %lu",
            (unsigned long)(run->night + 1));
+    printf("\x1b[17;3HPRESS SELECT: scavenge");
+}
+
+static void draw_scavenge_hud(const Run *run, uint32_t nights)
+{
+    unsigned int secs = run->scav_left / 60;
+    unsigned long caches = 0;
+    for (int i = 0; i < GL_CACHE_COUNT; i++)
+        caches += run->cache_up[i];
+    consoleSelect(&top_console);
+    printf("\x1b[0;1HSCAVENGE %u:%02u  CACHE %lu\x1b[K",
+           secs / 60, secs % 60, caches);
+    printf("\x1b[1;1HSEED %lu NTS %lu SHV %c PK %lu\x1b[K",
+           (unsigned long)run->seed, (unsigned long)nights,
+           run->shove_cd == 0 ? '+' : '.', (unsigned long)run->planks);
 }
 
 static void draw_hud(const Run *run, uint32_t nights)
@@ -372,10 +590,12 @@ static void draw_hud(const Run *run, uint32_t nights)
 
 // --- bottom-screen watch-map -------------------------------------------------------
 // Erase-then-redraw marks: the player + EVERY zombie + every intact
-// barricade, so the map is the yard radar the concept promises. prev
-// arrays remember last frame's cells.
-static int map_prev_row[1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP];
-static int map_prev_col[1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP];
+// barricade + every remaining plank cache, so the map is the yard
+// radar the concept promises. prev arrays remember last frame's cells.
+static int map_prev_row[1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
+                        + GL_CACHE_COUNT];
+static int map_prev_col[1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
+                        + GL_CACHE_COUNT];
 static int map_prev_n = 0;
 
 static void draw_watch_map_frame(void)
@@ -383,7 +603,7 @@ static void draw_watch_map_frame(void)
     consoleSelect(&bottom_console);
     consoleClear();
     printf("\x1b[0;1HWATCH-MAP");
-    printf("\x1b[2;1HP you  Z the dead  # wall");
+    printf("\x1b[2;1HP you Z dead # wall * plank");
     printf("\x1b[4;1H+----------------------------+");
     for (int row = MAP_ROW0; row < MAP_ROW0 + MAP_ROWS_N; row++)
         printf("\x1b[%d;1H|\x1b[%d;30H|", row, row);
@@ -404,13 +624,22 @@ static void draw_watch_map(const Run *run, int state)
         putchar(i < filled ? '=' : '-');
     printf("] N%lu", (unsigned long)run->night);
 
-    if (state != STATE_PLAYING)
+    if (state != STATE_PLAYING && state != STATE_SCAVENGE)
         return;
 
     for (int i = 0; i < map_prev_n; i++)
         printf("\x1b[%d;%dH ", map_prev_row[i], map_prev_col[i]);
     map_prev_n = 0;
 
+    for (int i = 0; i < GL_CACHE_COUNT; i++)
+    {
+        if (!run->cache_up[i])
+            continue;
+        int c_row = map_row_of(run->cy[i]), c_col = map_col_of(run->cx[i]);
+        printf("\x1b[%d;%dH*", c_row, c_col);
+        map_prev_row[map_prev_n] = c_row;
+        map_prev_col[map_prev_n++] = c_col;
+    }
     for (int i = 0; i < GL_BARRICADE_CAP; i++)
     {
         if (run->bhp[i] == 0)
@@ -455,9 +684,12 @@ int main(void)
                                        SpriteColorFormat_16Color);
     u16 *barricade_gfx = oamAllocateGfx(&oamMain, SpriteSize_16x16,
                                         SpriteColorFormat_16Color);
+    u16 *cache_gfx = oamAllocateGfx(&oamMain, SpriteSize_16x16,
+                                    SpriteColorFormat_16Color);
     load_sprite_gfx(player_gfx, PLAYER_ART);
     load_sprite_gfx(shambler_gfx, SHAMBLER_ART);
     load_sprite_gfx(barricade_gfx, BARRICADE_ART);
+    load_sprite_gfx(cache_gfx, CACHE_ART);
 
     Run run = {0};
     run.dawn_left = GL_NIGHT_FRAMES;         // title-screen dawn bar: empty
@@ -469,6 +701,8 @@ int main(void)
     uint32_t places = 0;           // barricades placed this power-on
     uint32_t repairs = 0;          // barricades repaired this power-on
     uint32_t breaches = 0;         // barricades chewed to 0 this power-on
+    uint32_t scavenged = 0;        // planks scavenged this power-on
+    uint32_t scavs = 0;            // interludes entered this power-on
     uint32_t vlines_max = 0;       // worst frame cost seen, in scanlines
     bool pad_seen_idle = false;    // KEYINPUT boot-trap guard (session 16)
 
@@ -515,114 +749,11 @@ int main(void)
             gl_player_step(&run.px, &run.py,
                            held & KEY_UP, held & KEY_DOWN,
                            held & KEY_LEFT, held & KEY_RIGHT);
+            do_shove_verb(&run, down, &shoves);
+            do_barricade_verb(&run, down, &places, &repairs);
+            step_the_dead(&run, &breaches);
 
-            // The shove: any A press with a cold cooldown is an ATTEMPT
-            // (arming the cooldown, hit or whiff); it CONNECTS only if
-            // the nearest Shambler is within GL_SHOVE_RANGE — knockback
-            // via the pure gl_shove, plus GL_SHOVE_STUN frames frozen.
-            if (run.shove_cd > 0)
-                run.shove_cd--;
-            if ((down & KEY_A) && run.shove_cd == 0)
-            {
-                run.shove_cd = GL_SHOVE_COOLDOWN;
-                uint32_t nearest = 0;
-                int32_t best = INT32_MAX;
-                for (uint32_t i = 0; i < run.z_count; i++)
-                {
-                    int32_t d = gl_chebyshev(run.px, run.py,
-                                             run.zx[i], run.zy[i]);
-                    if (d < best) { best = d; nearest = i; }
-                }
-                if (run.z_count > 0
-                    && gl_shove(run.px, run.py,
-                                &run.zx[nearest], &run.zy[nearest]))
-                {
-                    run.zstun[nearest] = GL_SHOVE_STUN;
-                    shoves++;
-                }
-            }
-
-            // The barricade verb (B): repair the intact barricade in
-            // reach (if it needs it), else place a new one at the
-            // lamplighter's feet — 1 plank either way. No cooldown: the
-            // plank pocket is the limiter.
-            if ((down & KEY_B) && run.planks > 0)
-            {
-                int32_t best_b = INT32_MAX;
-                int near_b = -1;
-                for (int i = 0; i < GL_BARRICADE_CAP; i++)
-                {
-                    if (run.bhp[i] == 0)
-                        continue;
-                    int32_t d = gl_chebyshev(run.px, run.py,
-                                             run.bx[i], run.by[i]);
-                    if (d < best_b) { best_b = d; near_b = i; }
-                }
-                if (near_b >= 0 && best_b <= GL_BARRICADE_RANGE)
-                {
-                    if (run.bhp[near_b] < GL_BARRICADE_HP)
-                    {                        // repair to full, 1 plank
-                        run.bhp[near_b] = GL_BARRICADE_HP;
-                        run.planks--;
-                        repairs++;
-                    }                        // full one in reach: no waste
-                }
-                else
-                {
-                    for (int i = 0; i < GL_BARRICADE_CAP; i++)
-                        if (run.bhp[i] == 0)
-                        {                    // place in the first free slot
-                            run.bx[i] = run.px;
-                            run.by[i] = run.py;
-                            run.bhp[i] = GL_BARRICADE_HP;
-                            run.planks--;
-                            places++;
-                            break;
-                        }
-                }
-            }
-
-            for (uint32_t i = 0; i < run.z_count; i++)
-            {
-                if (run.zstun[i] > 0)
-                {
-                    run.zstun[i]--;          // stunned: no step this frame
-                    continue;
-                }
-                // Propose the pure chase step; an intact barricade blocks
-                // any step that would ENTER its radius — the blocked
-                // attempt chews it for exactly 1 hp instead (hp 0 =
-                // breached, slot free). First blocking slot wins:
-                // deterministic. A stagger frame proposes no move, so it
-                // neither enters nor chews.
-                int32_t nx = run.zx[i], ny = run.zy[i];
-                gl_shambler_step(&nx, &ny, run.px, run.py,
-                                 i /* zombie_id */, run.run_frame);
-                int blocker = -1;
-                for (int j = 0; j < GL_BARRICADE_CAP; j++)
-                    if (run.bhp[j] > 0
-                        && gl_barricade_blocks(run.bx[j], run.by[j],
-                                               run.zx[i], run.zy[i], nx, ny))
-                    {
-                        blocker = j;
-                        break;
-                    }
-                if (blocker >= 0)
-                {
-                    if (--run.bhp[blocker] == 0)
-                        breaches++;
-                }
-                else
-                {
-                    run.zx[i] = nx;
-                    run.zy[i] = ny;
-                }
-            }
-            run.run_frame++;
-
-            int touched = 0;
-            for (uint32_t i = 0; i < run.z_count && !touched; i++)
-                touched = gl_contact(run.px, run.py, run.zx[i], run.zy[i]);
+            int touched = the_cold_hands(&run);
 #ifdef GL_STRESS
             touched = 0;                     // perf build: measure, don't die
 #endif
@@ -630,19 +761,79 @@ int main(void)
             {
                 deaths++;
                 state = STATE_DEAD;
-                oamClear(&oamMain, 0, 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP);
+                oamClear(&oamMain, 0, 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
+                                      + GL_CACHE_COUNT);
                 draw_death_card(&run, deaths);
             }
             else if (--run.dawn_left == 0)
             {
                 nights_survived = run.night;
                 state = STATE_DAWN;
-                oamClear(&oamMain, 0, 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP);
+                oamClear(&oamMain, 0, 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
+                                      + GL_CACHE_COUNT);
                 draw_dawn_card(&run, nights_survived);
             }
             else
             {
                 draw_hud(&run, nights_survived);
+            }
+            break;
+        }
+
+        case STATE_SCAVENGE:
+        {
+            if (start)                       // to the fence — night comes
+            {
+                run.night++;                 // loot is the grant: no +2
+                start_night(&run);
+                state = STATE_PLAYING;
+                consoleSelect(&top_console);
+                consoleClear();
+                draw_fence();
+                draw_watch_map_frame();
+                break;
+            }
+            gl_player_step(&run.px, &run.py,
+                           held & KEY_UP, held & KEY_DOWN,
+                           held & KEY_LEFT, held & KEY_RIGHT);
+            do_shove_verb(&run, down, &shoves);
+            do_barricade_verb(&run, down, &places, &repairs);
+
+            // Pocket a cache the frame you reach it (after the player
+            // moves, before the dead do) — but NEVER waste one: a full
+            // pocket leaves the cache on the ground.
+            for (int i = 0; i < GL_CACHE_COUNT; i++)
+                if (run.cache_up[i] && run.planks < GL_PLANK_MAX
+                    && gl_cache_grab(run.px, run.py, run.cx[i], run.cy[i]))
+                {
+                    run.cache_up[i] = 0;
+                    run.planks = gl_planks_after_grab(run.planks);
+                    scavenged++;
+                }
+
+            step_the_dead(&run, &breaches);  // daylight is not safety
+
+            if (the_cold_hands(&run))
+            {
+                deaths++;
+                state = STATE_DEAD;
+                oamClear(&oamMain, 0, 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
+                                      + GL_CACHE_COUNT);
+                draw_death_card(&run, deaths);
+            }
+            else if (--run.scav_left == 0)   // dawn light spent
+            {
+                run.night++;                 // loot is the grant: no +2
+                start_night(&run);
+                state = STATE_PLAYING;
+                consoleSelect(&top_console);
+                consoleClear();
+                draw_fence();
+                draw_watch_map_frame();
+            }
+            else
+            {
+                draw_scavenge_hud(&run, nights_survived);
             }
             break;
         }
@@ -660,8 +851,8 @@ int main(void)
             break;
 
         case STATE_DAWN:
-            if (start)                       // same run, next night
-            {
+            if (start)                       // same run, next night — the
+            {                                // old skip path, bit-identical
                 run.night++;
                 run.planks = gl_planks_at_dawn(run.planks);
                 start_night(&run);
@@ -671,10 +862,20 @@ int main(void)
                 draw_fence();
                 draw_watch_map_frame();
             }
+            else if (pad_seen_idle && (down & KEY_SELECT))
+            {                                // the scavenge interlude
+                scavs++;
+                begin_scavenge(&run);
+                state = STATE_SCAVENGE;
+                consoleSelect(&top_console);
+                consoleClear();
+                draw_fence();
+                draw_watch_map_frame();
+            }
             break;
         }
 
-        if (state == STATE_PLAYING)
+        if (state == STATE_PLAYING || state == STATE_SCAVENGE)
         {
             oamSet(&oamMain, 0, run.px / GL_ONE - 8, run.py / GL_ONE - 8,
                    0, 0, SpriteSize_16x16, SpriteColorFormat_16Color,
@@ -703,6 +904,20 @@ int main(void)
                        /* vflip = splintered: half hp or less */,
                        false, false);
             }
+            for (int i = 0; i < GL_CACHE_COUNT; i++)
+            {
+                int oam_id = 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP + i;
+                if (state != STATE_SCAVENGE || !run.cache_up[i])
+                {
+                    oamSetHidden(&oamMain, oam_id, true);
+                    continue;
+                }
+                oamSet(&oamMain, oam_id,
+                       run.cx[i] / GL_ONE - 8, run.cy[i] / GL_ONE - 8,
+                       1 /* under player + dead */, 0, SpriteSize_16x16,
+                       SpriteColorFormat_16Color, cache_gfx, -1, false,
+                       false, false, false, false);
+            }
         }
         oamUpdate(&oamMain);
         draw_watch_map(&run, state);
@@ -724,6 +939,19 @@ int main(void)
                 if (d < near_d) { near_d = d; near_i = i; }
             }
             near_stun = run.zstun[near_i];
+        }
+
+        // Remaining plank cache nearest the player (same idiom).
+        uint32_t cache_up_n = 0;
+        int nearc_i = -1;
+        int32_t nearc_d = INT32_MAX;
+        for (int i = 0; i < GL_CACHE_COUNT; i++)
+        {
+            if (!run.cache_up[i])
+                continue;
+            cache_up_n++;
+            int32_t d = gl_chebyshev(run.px, run.py, run.cx[i], run.cy[i]);
+            if (d < nearc_d) { nearc_d = d; nearc_i = i; }
         }
 
         // Intact barricade nearest the player (mirrors the ZX/ZY idiom).
@@ -780,6 +1008,16 @@ int main(void)
                                                         : 0);
         gl_telemetry[GL_T_BY] = (uint32_t)(nearb_i >= 0 ? run.by[nearb_i]
                                                         : 0);
+        gl_telemetry[GL_T_SCAVLEFT] = run.scav_left;
+        gl_telemetry[GL_T_CACHES] = cache_up_n;
+        gl_telemetry[GL_T_SCAVENGED] = scavenged;
+        gl_telemetry[GL_T_SCAVS] = scavs;
+        gl_telemetry[GL_T_CX] = (uint32_t)(nearc_i >= 0 ? run.cx[nearc_i]
+                                                        : 0);
+        gl_telemetry[GL_T_CY] = (uint32_t)(nearc_i >= 0 ? run.cy[nearc_i]
+                                                        : 0);
+        gl_telemetry[GL_T_CDIST] = (uint32_t)(nearc_i >= 0 ? nearc_d : 0);
+        gl_telemetry[GL_T_SPARE2] = 0;
     }
 
     return 0;

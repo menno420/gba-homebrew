@@ -3,16 +3,17 @@
 > **Status:** `owner-guidance` — download-and-play guide for the committed
 > ROM in [`dist/`](../dist/); refreshed in the same PR whenever the game or
 > the shipped ROM changes (written 2026-07-11, arc slice 3; refreshed same
-> date for arc slice 4 — shove + waves — and slice 5 — barricades).
+> date for arc slice 4 — shove + waves — and slice 5 — barricades; refreshed
+> 2026-07-12 for arc slice 6 — the scavenge interlude).
 
-**Download → open in a DS emulator → play.** No build step needed. Slice 5
-lets you *build*: every night sends a bigger wave of the dead (up to a
-24-strong crowd), you get the SHOVE, and now a pocket of planks — barricade
-the lamplight and the dead have to chew their way to you.
+**Download → open in a DS emulator → play.** No build step needed. Slice 6
+makes daylight worth something: survive to dawn and you can SELECT to
+*scavenge* — loot the yard for planks among the leftover dead before the
+next night falls. Planks are earned now, not granted.
 
 ## 1. Get the ROM
 
-Download [`dist/gloamline.nds`](../dist/gloamline.nds) (≈108 KB — on the
+Download [`dist/gloamline.nds`](../dist/gloamline.nds) (≈112 KB — on the
 GitHub file page, use the **Download raw file** button). Verify if you
 like: the sha256 is pinned in [`dist/README.md`](../dist/README.md).
 
@@ -42,15 +43,19 @@ Don't let a single one touch you until dawn.
 
 **Screens:** the TOP screen is the yard — all the action, plus a `Z`
 counter for how many are up, a `SHV` light for your shove and a `PK`
-count for your planks. The BOTTOM screen is the watch-map: your position
-(`P`), every Shambler (`Z`), every barricade (`#`), and the dawn bar
-filling left to right. Buttons only — no touch needed.
+count for your planks (in the interlude the top line becomes the
+SCAVENGE clock and remaining-cache count). The BOTTOM screen is the
+watch-map: your position (`P`), every Shambler (`Z`), every barricade
+(`#`), every plank cache (`*`), and the dawn bar filling left to right.
+Buttons only — no touch needed.
 
 **Controls**
 
 | Button | Action |
 |---|---|
 | START (title / after death / at dawn) | Start — retry — next night |
+| SELECT (at dawn) | **Scavenge** the yard before the next night |
+| START (while scavenging) | Leave early — the night begins |
 | D-pad | Move, 8 directions |
 | A | **Shove** the nearest Shambler in reach |
 | B | **Barricade**: place at your feet — or repair the one in reach |
@@ -86,13 +91,26 @@ fence-line spawn. **NTS** (nights survived) on the HUD is your score.
   freely through your own barricades — you can never seal yourself in,
   and the dead can never be walled out forever. Build corridors, funnel
   the crowd, repair under pressure.
+- **Scavenge at dawn — planks are earned now.** When dawn breaks you have
+  a choice on the dawn card: START skips straight to the next night (the
+  old flat +2-plank grant), or SELECT takes the **scavenge interlude** —
+  20 seconds of dawn light in the same yard. You walk back to the
+  lamppost, the dawn light drives the dead back to the fence line — but
+  they turn right around and keep coming — and five plank caches lie
+  scattered where the night left them. Walk over a cache to pocket a
+  plank (a full pocket leaves it lying — nothing is wasted). Choosing to
+  scavenge means **no flat grant**: what you carry out is what you get,
+  so the interlude out-earns the skip only if you actually loot. Shove
+  and barricades work in the interlude, your fortifications stand, and
+  one touch still kills — daylight is bought planks, not safety. START
+  leaves early; when the light runs out the next night begins on its own.
 - **One touch kills.** A cold-hands card shows your night, your seed and
-  your death count; START restarts instantly.
+  your death count; START restarts instantly. Dying while scavenging
+  counts all the same — greed has a price on the moor.
 - Every run is **reproducible**: the SEED on the HUD fully determines
   every spawn of every night (and everything after it, given your
   inputs). Same seed + same moves = same night, every time.
 
-Next slices per the [concept](concepts/gloamline-concept.md): the
-between-nights scavenge interlude (planks will be scavenged, not
-granted), lantern-oil light pressure, original synthesized audio, and
-best-nights saves.
+Next slices per the [concept](concepts/gloamline-concept.md):
+lantern-oil light pressure, original synthesized audio, and best-nights
+saves.

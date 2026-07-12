@@ -22,7 +22,10 @@ burns nothing and presses nobody — and the slice-8 synthesized-audio
 DECISION mirror: which one-shot cue fires each frame (counter deltas +
 state flips, highest cue id wins) and which ambience tier the drone
 plays, so audio telemetry pins are mirror-predicted like everything
-else), driven by the same `--keys START-END:NAME` spans
+else — and the slice-9 best-nights record: the power-on save state is
+a constructor argument, a strictly-better dawn moves the record and
+counts one backup write, equal/worse dawns and deaths move nothing),
+driven by the same `--keys START-END:NAME` spans
 tools/nds-headless-check.py replays.
 
 Emulator/ROM alignment (session-17 guard): the py-desmume frontend's frame
@@ -88,9 +91,18 @@ def keys_line(spans):
 
 
 class GloamSim:
-    """Line-faithful mirror of games/gloamline-nds/source/main.c."""
+    """Line-faithful mirror of games/gloamline-nds/source/main.c.
 
-    def __init__(self, spans, offset=NOMINAL_OFFSET):
+    Slice 9: the constructor takes the power-on save state (what the
+    boot-time backup read decoded — best_nights/best_seed/save_ok; the
+    fresh table by default), and the dawn edge mirrors main.c's record
+    update: a STRICTLY better dawn moves the record and counts one
+    backup write. The backup I/O itself is hardware glue and mirrors
+    nothing back — the record feeds no night rule.
+    """
+
+    def __init__(self, spans, offset=NOMINAL_OFFSET,
+                 best_nights=0, best_seed=0, save_ok=0):
         self.spans = spans
         self.offset = offset
         self.state = STATE_TITLE
@@ -142,6 +154,12 @@ class GloamSim:
         self.last_cue = 0
         self.cues = 0
         self.cue_frame = 0
+        # best-nights save record (slice 9): power-on state + the
+        # writes-this-power-on counter
+        self.best_nights = best_nights
+        self.best_seed = best_seed
+        self.save_ok = save_ok
+        self.save_writes = 0
         # evidence
         self.min_dist = None                 # over PLAYING+SCAVENGE frames
         self.dawn_emu_frames = []            # emu frame of each dawn flip
@@ -370,6 +388,14 @@ class GloamSim:
                 self.dawn_left -= 1
                 if self.dawn_left == 0:
                     self.nights_survived = self.night
+                    # slice 9: a strictly better dawn moves the record
+                    # (one backup page write; equal/worse dawns and
+                    # deaths write nothing)
+                    if cg.gl_record_improves(self.best_nights,
+                                             self.nights_survived):
+                        self.best_nights = self.nights_survived
+                        self.best_seed = self.seed
+                        self.save_writes += 1
                     self.state = STATE_DAWN
                     self.dawn_emu_frames.append(emu_frame)
         elif self.state == STATE_SCAVENGE:
@@ -478,7 +504,9 @@ class GloamSim:
               f'acue {self.last_cue} acues {self.cues} '
               f'acuefr {self.cue_frame} '
               f'adrone {cg.gl_amb_freq(self.amb_tier) if self.amb_on else 0} '
-              f'aflips {self.amb_flips} asfxl {self.cue_left}')
+              f'aflips {self.amb_flips} asfxl {self.cue_left} '
+              f'best {self.best_nights} bestseed {self.best_seed} '
+              f'saveok {self.save_ok} savewr {self.save_writes}')
 
 
 def skewed(spans, delta):

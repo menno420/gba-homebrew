@@ -300,3 +300,52 @@ uint32_t gl_cue_vol(uint32_t cue)
 {
     return GL_CUE_ROWS[cue < GL_CUE_COUNT ? cue : 0][3];
 }
+
+uint32_t gl_save_checksum(const uint32_t words[GL_SAVE_WORDS])
+{
+    uint32_t h = GL_SAVE_SALT;
+    for (int i = 0; i < GL_SAVE_WORDS - 1; i++)
+        h = gl_hash(h, words[i]);
+    return h;
+}
+
+void gl_save_encode(uint32_t best_nights, uint32_t best_seed,
+                    uint8_t out[GL_SAVE_BYTES])
+{
+    uint32_t w[GL_SAVE_WORDS] = {
+        GL_SAVE_MAGIC, GL_SAVE_VERSION, best_nights, best_seed, 0, 0, 0, 0,
+    };
+    w[GL_SAVE_WORDS - 1] = gl_save_checksum(w);
+    for (int i = 0; i < GL_SAVE_WORDS; i++)          // little-endian words
+    {
+        out[4 * i + 0] = (uint8_t)(w[i] & 0xFFu);
+        out[4 * i + 1] = (uint8_t)((w[i] >> 8) & 0xFFu);
+        out[4 * i + 2] = (uint8_t)((w[i] >> 16) & 0xFFu);
+        out[4 * i + 3] = (uint8_t)((w[i] >> 24) & 0xFFu);
+    }
+}
+
+int gl_save_decode(const uint8_t in[GL_SAVE_BYTES],
+                   uint32_t *best_nights, uint32_t *best_seed)
+{
+    uint32_t w[GL_SAVE_WORDS];
+    for (int i = 0; i < GL_SAVE_WORDS; i++)
+        w[i] = (uint32_t)in[4 * i + 0]
+             | ((uint32_t)in[4 * i + 1] << 8)
+             | ((uint32_t)in[4 * i + 2] << 16)
+             | ((uint32_t)in[4 * i + 3] << 24);
+    if (w[0] != GL_SAVE_MAGIC)
+        return 0;                                    // blank/garbage chip
+    if (w[1] != GL_SAVE_VERSION)
+        return 0;                                    // layout changed: reset
+    if (w[GL_SAVE_WORDS - 1] != gl_save_checksum(w))
+        return 0;                                    // corrupt: reset
+    *best_nights = w[2];
+    *best_seed = w[3];
+    return 1;
+}
+
+int gl_record_improves(uint32_t best_nights, uint32_t nights)
+{
+    return nights > best_nights;                     // strictly better only
+}

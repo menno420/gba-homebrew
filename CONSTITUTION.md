@@ -25,6 +25,9 @@
   a missing credential: check `docs/CAPABILITIES.md` (the verified ledger) →
   check the environment → attempt once and capture the exact error → append
   the finding same session.
+- **Recurring actions run through the skill index.** `docs/SKILLS.md` names
+  every kit-shipped skill and when to reach for it — check it before
+  improvising a procedure or repo-searching "how do we do X here".
 - When a doc and a source file disagree: Docs follow reality: on doc/code drift, fix the doc in the same PR that reveals it; binding conventions change only via a deliberate PR that says so; control-file drift is governed by control/README.md writer-ownership
 
 ## Autonomy rails — act vs. ask

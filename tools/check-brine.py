@@ -34,7 +34,23 @@ instead of the handful a replay touches:
      is exactly BW_LOOT_VALUE per crate, and banking happens strictly
      inside the pier window, emptying the hold exactly once;
   9. salvage containment (slice 3) — adversarial salvage frames keep the
-     ship and every crate inside the sea and the hold bounded.
+     ship and every crate inside the sea and the hold bounded;
+ 10. upgrade tables (slice 4) — tier 0 of every track IS the slice-2
+     sloop (legacy-constant identity, the recorded-route guard), tiers
+     strictly improve, prices at-least-triple per step, hull ladder is
+     the concept doc's 100/150/220, a max player rake + an enemy rake
+     still fit the shared ball pool;
+ 11. port ledger (slice 4) — bw_port_buy exhaustively: spends exactly
+     the price, refuses one gold short / at max tier / on a sound hull /
+     on an unknown row (and a refusal changes NOTHING), repair prices
+     ceil(missing / BW_REPAIR_PER_GOLD) for EVERY reachable hull value
+     at every hull tier and refills to the tier max, tracks never
+     cross-talk, buying is position/enemy/loot-pure;
+ 12. upgraded duels (slice 4) — with each single track maxed and all
+     three maxed, the policy player still wins and the idle player is
+     still sunk (upgrades delay the loss, never annul it);
+ 13. upgraded containment (slice 4) — adversarial input at max tiers
+     keeps ship/balls in the sea with the raised speed bound.
 
 MIRROR RULE (keep in lockstep): every function and constant below mirrors
 games/brineward-nds/source/bw_sim.c. Any change to the C MUST land here
@@ -103,6 +119,22 @@ BW_SCOOP_RANGE = 10 * BW_ONE
 BW_PIER_X = 128 * BW_ONE
 BW_PIER_Y = 172 * BW_ONE
 BW_DOCK_RANGE = 12 * BW_ONE
+
+# port + upgrades (slice 4) — player-only tier tables, tier 0 = the
+# slice-2 sloop exactly (check_upgrade_tables asserts the identities)
+BW_UP_TIERS = 3
+BW_REPAIR_PER_GOLD = 4
+BW_PORT_ROW_HULL = 0
+BW_PORT_ROW_CANNON = 1
+BW_PORT_ROW_SAIL = 2
+BW_PORT_ROW_REPAIR = 3
+BW_PORT_ROWS = 4
+BW_UP_HULL_OF = (BW_HULL_MAX, 150, 220)
+BW_UP_RELOAD_OF = (BW_RELOAD_PLAYER, 70, 55)
+BW_UP_BALLS_OF = (BW_BALLS_PER_SIDE, BW_BALLS_PER_SIDE, 4)
+BW_UP_SPEED_OF = (0, 24, 48)
+BW_UP_TURN_OF = (0, 1, 2)
+BW_UP_COST = (0, 15, 45)
 
 U32 = 0xFFFFFFFF
 
@@ -186,7 +218,7 @@ class Duel:
     """Mirror of BwDuel."""
 
     __slots__ = ('player', 'enemy', 'balls', 'loot', 'hold', 'hold_gold',
-                 'frame', 'over')
+                 'up_hull', 'up_cannon', 'up_sail', 'frame', 'over')
 
     def __init__(self):
         self.player = Ship()
@@ -207,13 +239,15 @@ class Inputs:
         self.fire_r = fire_r
 
 
-def bw_ship_step(s, inputs):
-    """Mirror of bw_ship_step()."""
+def bw_ship_step(s, inputs, sail_tier):
+    """Mirror of bw_ship_step(). sail_tier: SAIL upgrade tier (enemy 0)."""
     s.trim = _clamp(s.trim + inputs.trim_delta, BW_TRIM_BATTLE, BW_TRIM_FULL)
-    s.heading = (s.heading + inputs.turn * BW_TURN_OF[s.trim]) \
+    s.heading = (s.heading
+                 + inputs.turn * (BW_TURN_OF[s.trim]
+                                  + BW_UP_TURN_OF[sail_tier])) \
         & (BW_CIRCLE - 1)
 
-    target = BW_SPEED_OF[s.trim]
+    target = BW_SPEED_OF[s.trim] + BW_UP_SPEED_OF[sail_tier]
     s.speed += _clamp(target - s.speed, -BW_ACCEL, BW_ACCEL)
 
     brad = s.heading >> 2
@@ -235,8 +269,9 @@ def bw_fire(d, s, owner, side):
     by = side * bw_sin(brad)
     kx = bw_sin(brad)
     ky = -bw_cos(brad)
+    balls = BW_UP_BALLS_OF[d.up_cannon] if owner == 0 else BW_BALLS_PER_SIDE
 
-    for k in range(BW_BALLS_PER_SIDE):
+    for k in range(balls):
         along = (k - 1) * BW_BALL_SPREAD
         for ball in d.balls:
             if ball.live:
@@ -267,7 +302,11 @@ def bw_balls_step(d):
         dmg = BW_DMG_NEAR - (ball.age * BW_DMG_FALL) // BW_BALL_LIFE
         target = d.enemy if ball.owner == 0 else d.player
         if bw_chebyshev(ball.x, ball.y, target.x, target.y) < BW_HIT_RANGE:
-            target.hull = _clamp(target.hull - dmg, 0, BW_HULL_MAX)
+            # dmg > 0 always, so floor at 0 — no upper clamp: an upgraded
+            # player hull sits above BW_HULL_MAX (bit-identical at tier 0)
+            target.hull -= dmg
+            if target.hull < 0:
+                target.hull = 0
             ball.live = 0
 
 
@@ -312,6 +351,51 @@ def bw_dock_step(d):
     d.hold = 0
     d.hold_gold = 0
     return banked
+
+
+def bw_up_hull_max(tier):
+    """Mirror of bw_up_hull_max()."""
+    return BW_UP_HULL_OF[tier]
+
+
+def bw_up_reload(tier):
+    """Mirror of bw_up_reload()."""
+    return BW_UP_RELOAD_OF[tier]
+
+
+def bw_up_price(tier):
+    """Mirror of bw_up_price()."""
+    return BW_UP_COST[tier]
+
+
+def bw_repair_cost(d):
+    """Mirror of bw_repair_cost()."""
+    missing = BW_UP_HULL_OF[d.up_hull] - d.player.hull
+    if missing <= 0:
+        return 0
+    # positive // positive only (signed-division rule kept trivially)
+    return (missing + BW_REPAIR_PER_GOLD - 1) // BW_REPAIR_PER_GOLD
+
+
+def bw_port_buy(d, row, gold):
+    """Mirror of bw_port_buy() -> gold spent (0 = refused)."""
+    if row == BW_PORT_ROW_REPAIR:
+        cost = bw_repair_cost(d)
+        if cost <= 0 or gold < cost:
+            return 0
+        d.player.hull = BW_UP_HULL_OF[d.up_hull]
+        return cost
+
+    attr = {BW_PORT_ROW_HULL: 'up_hull',
+            BW_PORT_ROW_CANNON: 'up_cannon',
+            BW_PORT_ROW_SAIL: 'up_sail'}.get(row)
+    if attr is None or getattr(d, attr) >= BW_UP_TIERS - 1:
+        return 0
+    cost = BW_UP_COST[getattr(d, attr) + 1]
+    if gold < cost:
+        return 0
+    setattr(d, attr, getattr(d, attr) + 1)   # buying != healing: REPAIR
+    return cost                              # fills the raised ceiling
 
 
 def bw_ai(e, p):
@@ -376,6 +460,9 @@ def bw_duel_init(d, seed):
         c.live = 0
     d.hold = 0                           # caller re-injects a carried hold
     d.hold_gold = 0                      # (sinking forfeits: no re-inject)
+    d.up_hull = 0                        # caller re-injects the bought
+    d.up_cannon = 0                      #   tiers (upgrades are NEVER
+    d.up_sail = 0                        #   lost — main.c's Score owns them)
     d.frame = 0
     d.over = BW_DUEL_RUNNING
 
@@ -387,15 +474,15 @@ def bw_duel_step(d, inputs):
 
     ai = bw_ai(d.enemy, d.player)
 
-    bw_ship_step(d.player, inputs)
-    bw_ship_step(d.enemy, ai)
+    bw_ship_step(d.player, inputs, d.up_sail)
+    bw_ship_step(d.enemy, ai, 0)
 
     if inputs.fire_l and d.player.reload_l == 0:
         bw_fire(d, d.player, 0, -1)
-        d.player.reload_l = BW_RELOAD_PLAYER
+        d.player.reload_l = BW_UP_RELOAD_OF[d.up_cannon]
     if inputs.fire_r and d.player.reload_r == 0:
         bw_fire(d, d.player, 0, 1)
-        d.player.reload_r = BW_RELOAD_PLAYER
+        d.player.reload_r = BW_UP_RELOAD_OF[d.up_cannon]
     if ai.fire_l and d.enemy.reload_l == 0:
         bw_fire(d, d.enemy, 1, -1)
         d.enemy.reload_l = BW_RELOAD_ENEMY
@@ -420,7 +507,7 @@ def bw_salvage_step(d, inputs):
     if d.over != BW_DUEL_ENEMY_SUNK:
         return
 
-    bw_ship_step(d.player, inputs)
+    bw_ship_step(d.player, inputs, d.up_sail)
     bw_balls_step(d)                     # a late rake can still strike
     bw_loot_step(d)
 
@@ -726,6 +813,170 @@ def check_salvage_containment():
           'ship and crates stay in the sea, hold stays bounded')
 
 
+def check_upgrade_tables():
+    # tier 0 IS the slice-2 sloop — the recorded-route/pin guard: any
+    # drift here invalidates every committed route and carried proof pin.
+    assert BW_UP_HULL_OF[0] == BW_HULL_MAX
+    assert BW_UP_RELOAD_OF[0] == BW_RELOAD_PLAYER
+    assert BW_UP_BALLS_OF[0] == BW_BALLS_PER_SIDE
+    assert BW_UP_SPEED_OF[0] == 0 and BW_UP_TURN_OF[0] == 0
+    assert BW_UP_COST[0] == 0
+    # the concept doc's hull ladder, verbatim
+    assert BW_UP_HULL_OF == (100, 150, 220)
+    for t in range(1, BW_UP_TIERS):
+        assert BW_UP_HULL_OF[t] > BW_UP_HULL_OF[t - 1], t
+        assert BW_UP_RELOAD_OF[t] < BW_UP_RELOAD_OF[t - 1], t
+        assert BW_UP_BALLS_OF[t] >= BW_UP_BALLS_OF[t - 1], t
+        assert BW_UP_SPEED_OF[t] > BW_UP_SPEED_OF[t - 1], t
+        assert BW_UP_TURN_OF[t] >= BW_UP_TURN_OF[t - 1], t
+        assert BW_UP_COST[t] >= 3 * BW_UP_COST[t - 1], t   # doc: ~triple
+    assert BW_UP_COST[1] > 0
+    # a max-tier player rake + a full enemy rake still fit the ball pool
+    assert BW_UP_BALLS_OF[-1] + BW_BALLS_PER_SIDE <= BW_MAX_BALLS
+    # the player can always outshoot the enemy crew at any tier
+    assert BW_UP_RELOAD_OF[-1] >= 1
+    assert BW_UP_RELOAD_OF[0] < BW_RELOAD_ENEMY
+    print('upgrade tables: tier 0 = the slice-2 sloop exactly (route '
+          'guard), tiers strictly improve, prices triple, hull ladder '
+          f'{BW_UP_HULL_OF} per the concept doc')
+
+
+def _fresh_port_duel(hull=None, tiers=(0, 0, 0)):
+    d = Duel()
+    bw_duel_init(d, 7)
+    d.up_hull, d.up_cannon, d.up_sail = tiers
+    d.player.hull = BW_UP_HULL_OF[tiers[0]] if hull is None else hull
+    return d
+
+
+def _duel_fingerprint(d):
+    """Everything bw_port_buy must NOT touch."""
+    return (d.player.x, d.player.y, d.player.heading, d.player.trim,
+            d.player.speed, d.player.reload_l, d.player.reload_r,
+            d.enemy.x, d.enemy.y, d.enemy.hull, d.hold, d.hold_gold,
+            tuple((c.live) for c in d.loot),
+            tuple((b.live) for b in d.balls), d.frame, d.over)
+
+
+def check_port_buy():
+    tracks = ((BW_PORT_ROW_HULL, 'up_hull'),
+              (BW_PORT_ROW_CANNON, 'up_cannon'),
+              (BW_PORT_ROW_SAIL, 'up_sail'))
+    for row, attr in tracks:
+        d = _fresh_port_duel()
+        fp = _duel_fingerprint(d)
+        for t in (1, 2):
+            cost = BW_UP_COST[t]
+            # one gold short: refused, NOTHING changes
+            assert bw_port_buy(d, row, cost - 1) == 0, (row, t)
+            assert getattr(d, attr) == t - 1, (row, t)
+            # exact price: spends exactly the price, bumps exactly one tier
+            assert bw_port_buy(d, row, cost) == cost, (row, t)
+            assert getattr(d, attr) == t, (row, t)
+        # maxed: refused no matter the purse
+        assert bw_port_buy(d, row, 10 ** 6) == 0, row
+        assert getattr(d, attr) == BW_UP_TIERS - 1, row
+        # no cross-talk and no side effects on the water
+        for other_row, other in tracks:
+            if other != attr:
+                assert getattr(d, other) == 0, (row, other)
+        assert _duel_fingerprint(d) == fp, row
+        # buying a hull tier raises the ceiling, never heals (row HULL)
+        if row == BW_PORT_ROW_HULL:
+            assert d.player.hull == BW_HULL_MAX
+    # unknown rows are refused
+    d = _fresh_port_duel()
+    for row in (-1, BW_PORT_ROWS, 99):
+        assert bw_port_buy(d, row, 10 ** 6) == 0, row
+    # repair: exact ceil pricing for EVERY reachable hull at every tier
+    for tier in range(BW_UP_TIERS):
+        hull_max = BW_UP_HULL_OF[tier]
+        for hull in range(1, hull_max + 1):
+            d = _fresh_port_duel(hull=hull, tiers=(tier, 0, 0))
+            missing = hull_max - hull
+            cost = (missing + BW_REPAIR_PER_GOLD - 1) // BW_REPAIR_PER_GOLD
+            assert bw_repair_cost(d) == cost, (tier, hull)
+            if cost == 0:
+                assert bw_port_buy(d, BW_PORT_ROW_REPAIR, 10 ** 6) == 0
+                assert d.player.hull == hull_max
+                continue
+            assert bw_port_buy(d, BW_PORT_ROW_REPAIR, cost - 1) == 0
+            assert d.player.hull == hull, (tier, hull)
+            assert bw_port_buy(d, BW_PORT_ROW_REPAIR, cost) == cost
+            assert d.player.hull == hull_max, (tier, hull)
+            assert bw_repair_cost(d) == 0
+    print('port ledger: every buy spends exactly the price; one gold '
+          'short / max tier / sound hull / unknown row all refused '
+          'changing nothing; repair = ceil(missing/'
+          f'{BW_REPAIR_PER_GOLD}) exact for every hull value at every '
+          'tier; no cross-talk; the water untouched')
+
+
+def check_upgraded_duels():
+    maxed = BW_UP_TIERS - 1
+    for tiers in ((maxed, 0, 0), (0, maxed, 0), (0, 0, maxed),
+                  (maxed, maxed, maxed)):
+        for seed in range(8):
+            d = Duel()
+            bw_duel_init(d, seed)
+            d.up_hull, d.up_cannon, d.up_sail = tiers
+            d.player.hull = BW_UP_HULL_OF[tiers[0]]
+            for _ in range(3600):
+                bw_duel_step(d, bw_policy(d.player, d.enemy))
+                if d.over != BW_DUEL_RUNNING:
+                    break
+            assert d.over == BW_DUEL_ENEMY_SUNK, (tiers, seed, d.over)
+            assert d.player.hull > 0, (tiers, seed)
+        idle = Inputs()
+        for seed in range(8):
+            d = Duel()
+            bw_duel_init(d, seed)
+            d.up_hull, d.up_cannon, d.up_sail = tiers
+            d.player.hull = BW_UP_HULL_OF[tiers[0]]
+            for _ in range(10800):
+                bw_duel_step(d, idle)
+                if d.over != BW_DUEL_RUNNING:
+                    break
+            assert d.over == BW_DUEL_PLAYER_SUNK, (tiers, seed, d.over)
+    print('upgraded duels: each single track maxed AND all three maxed — '
+          'the policy player still wins (8 seeds each) and the idle '
+          'player is still sunk (upgrades delay the loss, never annul it)')
+
+
+def check_upgraded_containment():
+    d = Duel()
+    bw_duel_init(d, 0xC0FFEE & U32)
+    maxed = BW_UP_TIERS - 1
+    d.up_hull, d.up_cannon, d.up_sail = maxed, maxed, maxed
+    speed_cap = BW_SPEED_OF[BW_TRIM_FULL] + BW_UP_SPEED_OF[maxed]
+    hull_cap = BW_UP_HULL_OF[maxed]
+    frames = 10000
+    for f in range(frames):
+        h = bw_hash(0x5EA4, f)
+        inp = Inputs(turn=(h & 3) - 1 if (h & 3) < 3 else 0,
+                     trim_delta=((h >> 2) & 3) - 1 if ((h >> 2) & 3) < 3
+                     else 0,
+                     fire_l=(h >> 4) & 1, fire_r=(h >> 5) & 1)
+        d.over = BW_DUEL_RUNNING          # adversarial: never let it end
+        d.player.hull = hull_cap
+        d.enemy.hull = BW_HULL_MAX
+        bw_duel_step(d, inp)
+        for s in (d.player, d.enemy):
+            assert BW_SEA_X_MIN <= s.x <= BW_SEA_X_MAX, f
+            assert BW_SEA_Y_MIN <= s.y <= BW_SEA_Y_MAX, f
+            assert 0 <= s.heading < BW_CIRCLE, f
+            assert BW_TRIM_BATTLE <= s.trim <= BW_TRIM_FULL, f
+        assert 0 < d.player.speed <= speed_cap, f
+        assert 0 < d.enemy.speed <= BW_SPEED_OF[BW_TRIM_FULL], f
+        for ball in d.balls:
+            if ball.live:
+                assert BW_SEA_X_MIN <= ball.x <= BW_SEA_X_MAX, f
+                assert BW_SEA_Y_MIN <= ball.y <= BW_SEA_Y_MAX, f
+    print(f'upgraded containment: {frames} adversarial frames at max '
+          'tiers — ships and balls never leave the sea, the raised '
+          f'speed cap ({speed_cap}) holds, the enemy keeps the stock one')
+
+
 def main():
     check_sine_table()
     check_spawns()
@@ -737,6 +988,10 @@ def main():
     check_hold_cap()
     check_dock()
     check_salvage_containment()
+    check_upgrade_tables()
+    check_port_buy()
+    check_upgraded_duels()
+    check_upgraded_containment()
     print('check-brine: ALL GREEN')
     return 0
 

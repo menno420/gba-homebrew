@@ -1,5 +1,5 @@
-// Brineward — arc slice 3: LOOT + GOLD (roadmap item 1 on the slice-2
-// walking skeleton).
+// Brineward — arc slice 4: PORT + UPGRADES (roadmap item 2 on the
+// slice-3 loot/gold economy).
 //
 // The concept doc's skeleton cut (docs/concepts/brineward-concept.md):
 // one open-water screen off the Graywake breakwater (top screen), momentum
@@ -7,26 +7,30 @@
 // ship always makes way), ONE enemy sloop on an intercept-and-circle sail
 // AI, L/R broadside batteries with reload + range falloff on BOTH ships,
 // hull bars, sink-or-be-sunk -> card -> START instant restart. Bottom
-// screen = the Graywake ledger (ship status + gold). Slice 3 adds the
-// concept's loot loop: a sunk rum-runner breaks up into flotsam crates,
-// sail through to scoop (hold cap 8), lie alongside the Graywake pier to
-// bank (banked gold is safe forever), press START from the salvage water
-// to put out again WITH the hold aboard — sinking forfeits every unbanked
-// crate. All game rules live in the pure layer (bw_sim.h/.c, mirrored by
-// tools/check-brine.py); this file is input, state machine, rendering,
-// and the telemetry mailbox.
+// screen = the Graywake ledger (ship status + gold). Slice 3 added the
+// loot loop (flotsam scoop, hold cap, pier banking, sink-forfeits-hold).
+// Slice 4 gives banked gold its purpose: press A alongside the same pier
+// (from the salvage water — no shopping under fire) and the GRAYWAKE
+// PORT menu opens: three persistent upgrade tracks (hull / cannons /
+// sails, tiers I/II/III) plus paid repairs. Upgrades are NEVER lost;
+// hull damage now CARRIES when you put out again from salvage (repair is
+// the fix — coming home hurt beats sinking, which still refits the sloop
+// free but forfeits the hold). All game rules live in the pure layer
+// (bw_sim.h/.c, mirrored by tools/check-brine.py); this file is input,
+// state machine, rendering, and the telemetry mailbox.
 //
 // Determinism: seed = frame counter latched at the START press that
 // begins a duel (printed on the HUD and cards, so any human run is
 // reproducible); scripted CI presses START on a fixed frame, so the whole
 // run is a pure function of the input script. No wall clock, no runtime
-// RNG.
+// RNG. The port menu freezes the water (pure state machine, no sim
+// steps), so port shopping adds no determinism surface.
 //
-// Telemetry mailbox (Gloamline's pattern): 20 u32 words at the exported
+// Telemetry mailbox (Gloamline's pattern): 26 u32 words at the exported
 // symbol `bw_telemetry`, rewritten every frame, so headless proofs
 // (tools/nds-headless-check.py --elf/--watch) can assert game state
-// numerically. Layout below at BW_T_* — slice 3 EXTENDED the mailbox
-// 16 -> 20 (session-20 guard recipe: words 0-15 are pinned by the
+// numerically. Layout below at BW_T_* — slice 4 EXTENDED the mailbox
+// 20 -> 26 (session-20 guard recipe: words 0-19 are pinned by the
 // existing proofs; extend, never re-map).
 //
 // 100% original content: code, text, and the code-authored sprites.
@@ -59,8 +63,15 @@
 #define BW_T_HOLDGOLD 17 // unbanked gold the hold is worth
 #define BW_T_GOLD 18    // gold banked at Graywake (safe forever)
 #define BW_T_LOOT 19    // crates afloat right now
+// slice 4 (extension; words 0-19 stay pinned)
+#define BW_T_UPHULL 20  // hull upgrade tier, 0..2
+#define BW_T_UPCANNON 21 // cannon upgrade tier, 0..2
+#define BW_T_UPSAIL 22  // sail upgrade tier, 0..2
+#define BW_T_PORTROW 23 // port menu cursor row (meaningful in state 4)
+#define BW_T_HULLMAX 24 // player max hull at the current hull tier
+#define BW_T_RELOADL 25 // player PORT battery frames-to-ready
 
-volatile uint32_t bw_telemetry[20];
+volatile uint32_t bw_telemetry[26];
 
 enum
 {
@@ -68,6 +79,7 @@ enum
     STATE_DUEL = 1,
     STATE_SUNK = 2,
     STATE_SALVAGE = 3,   // slice 3: the win state is live water, not a card
+    STATE_PORT = 4,      // slice 4: the Graywake port menu (water frozen)
 };
 
 // --- original sprite art (code-authored, 4bpp, shared 16-color palette) ------
@@ -182,6 +194,9 @@ typedef struct
     uint32_t sinks;
     uint32_t wins;
     uint32_t gold;                       // banked at Graywake — safe forever
+    int32_t up_hull;                     // upgrade tiers — bought with
+    int32_t up_cannon;                   //   banked gold, NEVER lost
+    int32_t up_sail;                     //   (concept-doc rule)
 } Score;
 
 // --- top-screen scenes -----------------------------------------------------------
@@ -274,6 +289,65 @@ static void draw_salvage_hud(const BwDuel *d, const Score *sc)
                (int)d->hold, BW_HOLD_CAP, (int)d->hold_gold);
 }
 
+// --- the Graywake port menu (slice 4) ----------------------------------------
+// Pure render of duel tiers + banked gold; every rule (prices, refusals,
+// repair math) lives in bw_port_buy — this only draws what it will say.
+static const char *const TIER_NAME[BW_UP_TIERS] = { "I  ", "II ", "III" };
+
+static void draw_port_row(int row, int cursor, const char *label,
+                          int32_t tier, const char *effect, int32_t cost,
+                          int maxed)
+{
+    printf("\x1b[%d;3H%c %s ", 9 + 2 * row, cursor == row ? '>' : ' ',
+           label);
+    if (maxed)
+        printf("%s %-9s   MAX\x1b[K", TIER_NAME[tier], effect);
+    else
+        printf("%s %-9s %3dg\x1b[K", TIER_NAME[tier + 1], effect,
+               (int)cost);
+}
+
+static void draw_port(const BwDuel *d, const Score *sc, int row)
+{
+    static char fx[3][10];
+    consoleSelect(&top_console);
+    printf("\x1b[3;9HGRAYWAKE PORT");
+    printf("\x1b[5;7HGOLD BANKED %lug\x1b[K", (unsigned long)sc->gold);
+
+    int hull_maxed = d->up_hull >= BW_UP_TIERS - 1;
+    int can_maxed = d->up_cannon >= BW_UP_TIERS - 1;
+    int sail_maxed = d->up_sail >= BW_UP_TIERS - 1;
+    snprintf(fx[0], sizeof fx[0], "%d hp",
+             (int)bw_up_hull_max(hull_maxed ? d->up_hull : d->up_hull + 1));
+    snprintf(fx[1], sizeof fx[1], "rld %d",
+             (int)bw_up_reload(can_maxed ? d->up_cannon : d->up_cannon + 1));
+    snprintf(fx[2], sizeof fx[2], "swifter");
+    draw_port_row(BW_PORT_ROW_HULL, row, "HULL   ", d->up_hull,
+                  fx[0], bw_up_price(hull_maxed ? d->up_hull
+                                                : d->up_hull + 1),
+                  hull_maxed);
+    draw_port_row(BW_PORT_ROW_CANNON, row, "CANNONS", d->up_cannon,
+                  fx[1], bw_up_price(can_maxed ? d->up_cannon
+                                               : d->up_cannon + 1),
+                  can_maxed);
+    draw_port_row(BW_PORT_ROW_SAIL, row, "SAILS  ", d->up_sail,
+                  fx[2], bw_up_price(sail_maxed ? d->up_sail
+                                                : d->up_sail + 1),
+                  sail_maxed);
+
+    int32_t rcost = bw_repair_cost(d);
+    printf("\x1b[%d;3H%c REPAIR  ", 9 + 2 * BW_PORT_ROW_REPAIR,
+           row == BW_PORT_ROW_REPAIR ? '>' : ' ');
+    if (rcost > 0)
+        printf("hull %d>%d %3dg\x1b[K", (int)d->player.hull,
+               (int)bw_up_hull_max(d->up_hull), (int)rcost);
+    else
+        printf("hull sound\x1b[K");
+
+    printf("\x1b[18;3HUP/DOWN pick   A buy");
+    printf("\x1b[19;3HSTART: back to the water");
+}
+
 // --- bottom-screen ship status v0 ------------------------------------------------
 static void draw_status_frame(void)
 {
@@ -286,7 +360,13 @@ static void draw_status_frame(void)
 
 static void draw_bar(int row, const char *label, int value, int max)
 {
+    // render-only clamp: a cannon-tier purchase can briefly leave a
+    // mid-count reload above the NEW (shorter) max — never overdraw
     int filled = value * 20 / max;
+    if (filled < 0)
+        filled = 0;
+    if (filled > 20)
+        filled = 20;
     printf("\x1b[%d;1H%s [", row, label);
     for (int i = 0; i < 20; i++)
         putchar(i < filled ? '=' : '-');
@@ -295,12 +375,14 @@ static void draw_bar(int row, const char *label, int value, int max)
 
 static void draw_status(const BwDuel *d, const Score *sc, int state)
 {
+    // Bars scale to the UPGRADED maxima (slice 4) — tier 0 = the old
+    // constants, so the slice-2/3 look is unchanged until a purchase.
+    int32_t hull_max = bw_up_hull_max(d->up_hull);
+    int32_t reload_max = bw_up_reload(d->up_cannon);
     consoleSelect(&bottom_console);
-    draw_bar(4, "HULL", d->player.hull, BW_HULL_MAX);
-    draw_bar(6, "PORT", BW_RELOAD_PLAYER - d->player.reload_l,
-             BW_RELOAD_PLAYER);
-    draw_bar(8, "STBD", BW_RELOAD_PLAYER - d->player.reload_r,
-             BW_RELOAD_PLAYER);
+    draw_bar(4, "HULL", d->player.hull, hull_max);
+    draw_bar(6, "PORT", reload_max - d->player.reload_l, reload_max);
+    draw_bar(8, "STBD", reload_max - d->player.reload_r, reload_max);
     printf("\x1b[10;1HTRIM %s   %s\x1b[K", TRIM_NAME[d->player.trim],
            state == STATE_DUEL ? "at sea " :
            state == STATE_SUNK ? "SUNK   " :
@@ -377,14 +459,25 @@ static void draw_ships_and_balls(const BwDuel *d,
 
 // Begin a duel: latch the frame-counter seed, reset the sim, and re-inject
 // whatever the score says survives the transition — a hold carried out of
-// salvage water rides along; a sunk hold was forfeited (nothing carried).
+// salvage water rides along (a sunk hold was forfeited: nothing carried),
+// the bought upgrade tiers ALWAYS ride (never lost), and slice 4 carries
+// the HULL too: putting out from salvage keeps the damage (repair at the
+// port is the fix), while sinking or a fresh power-on refits free
+// (carry_hull <= 0 = full at the current hull tier — the concept's
+// "respawn at port with full (repaired) hull").
 static void begin_duel(BwDuel *duel, Score *sc, uint32_t frame,
-                       int32_t carry_hold, int32_t carry_gold)
+                       int32_t carry_hold, int32_t carry_gold,
+                       int32_t carry_hull)
 {
     sc->seed = frame;
     bw_duel_init(duel, sc->seed);
     duel->hold = carry_hold;
     duel->hold_gold = carry_gold;
+    duel->up_hull = sc->up_hull;
+    duel->up_cannon = sc->up_cannon;
+    duel->up_sail = sc->up_sail;
+    duel->player.hull = carry_hull > 0 ? carry_hull
+                                       : bw_up_hull_max(sc->up_hull);
     consoleSelect(&top_console);
     consoleClear();
     draw_swell();
@@ -425,6 +518,7 @@ int main(void)
     bw_duel_init(&duel, 0);              // idle telemetry before first START
     Score score = {0};
     int state = STATE_TITLE;
+    int port_row = 0;              // Graywake port menu cursor (slice 4)
     uint32_t frame = 0;
     bool pad_seen_idle = false;    // KEYINPUT boot-trap guard (PLATFORM-LIMITS)
 
@@ -456,9 +550,9 @@ int main(void)
         {
         case STATE_TITLE:
         case STATE_SUNK:
-            if (start)                   // fresh sail: nothing carried
-            {                            // (a sunk hold was forfeited)
-                begin_duel(&duel, &score, frame, 0, 0);
+            if (start)                   // fresh sail: no hold carried (a
+            {                            // sunk hold was forfeited), free
+                begin_duel(&duel, &score, frame, 0, 0, 0);  // full refit
                 state = STATE_DUEL;
             }
             break;
@@ -505,11 +599,25 @@ int main(void)
 
         case STATE_SALVAGE:
         {
-            if (start)                   // put out again WITH the hold
-            {
+            if (start)                   // put out again WITH the hold —
+            {                            // and the dents (slice 4)
                 begin_duel(&duel, &score, frame,
-                           duel.hold, duel.hold_gold);
+                           duel.hold, duel.hold_gold, duel.player.hull);
                 state = STATE_DUEL;
+                break;
+            }
+            // A alongside the pier opens the Graywake port (slice 4).
+            // Only from the salvage water: no shopping under fire — the
+            // mid-duel berth still BANKS (turn for home), nothing more.
+            if (pad_seen_idle && (down & KEY_A)
+                && bw_chebyshev(duel.player.x, duel.player.y,
+                                BW_PIER_X, BW_PIER_Y) < BW_DOCK_RANGE)
+            {
+                state = STATE_PORT;
+                port_row = 0;
+                consoleSelect(&top_console);
+                consoleClear();
+                draw_port(&duel, &score, port_row);
                 break;
             }
             BwInputs in = {
@@ -539,6 +647,42 @@ int main(void)
             {
                 draw_salvage_hud(&duel, &score);
             }
+            break;
+        }
+
+        case STATE_PORT:
+        {
+            // The water is FROZEN: no sim steps, a pure menu machine.
+            // UP/DOWN pick a row, A buys (bw_port_buy owns every rule —
+            // a refusal changes nothing), START/B walk back to the water.
+            if (down & KEY_UP)
+                port_row = port_row > 0 ? port_row - 1 : 0;
+            if (down & KEY_DOWN)
+                port_row = port_row < BW_PORT_ROWS - 1 ? port_row + 1
+                                                       : BW_PORT_ROWS - 1;
+            if (down & KEY_A)
+            {
+                int32_t spent = bw_port_buy(&duel, port_row,
+                                            (int32_t)score.gold);
+                if (spent > 0)
+                {
+                    score.gold -= (uint32_t)spent;
+                    score.up_hull = duel.up_hull;      // tiers are score:
+                    score.up_cannon = duel.up_cannon;  // bought once,
+                    score.up_sail = duel.up_sail;      // kept forever
+                }
+            }
+            if (start || (pad_seen_idle && (down & KEY_B)))
+            {
+                state = STATE_SALVAGE;   // back to the berth, water live
+                consoleSelect(&top_console);
+                consoleClear();
+                draw_swell();
+                draw_pier();
+                draw_salvage_hud(&duel, &score);
+                break;
+            }
+            draw_port(&duel, &score, port_row);
             break;
         }
         }
@@ -573,6 +717,12 @@ int main(void)
             if (duel.loot[i].live)
                 afloat++;
         bw_telemetry[BW_T_LOOT] = afloat;
+        bw_telemetry[BW_T_UPHULL] = (uint32_t)duel.up_hull;
+        bw_telemetry[BW_T_UPCANNON] = (uint32_t)duel.up_cannon;
+        bw_telemetry[BW_T_UPSAIL] = (uint32_t)duel.up_sail;
+        bw_telemetry[BW_T_PORTROW] = (uint32_t)port_row;
+        bw_telemetry[BW_T_HULLMAX] = (uint32_t)bw_up_hull_max(duel.up_hull);
+        bw_telemetry[BW_T_RELOADL] = (uint32_t)duel.player.reload_l;
     }
 
     return 0;

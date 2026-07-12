@@ -66,13 +66,47 @@ static const int32_t BW_TURN_OF[3] = {
     BW_TURN_BATTLE, BW_TURN_HALF, BW_TURN_FULL,
 };
 
-static void bw_ship_step(BwShip *s, const BwInputs *in)
+// --- upgrade tier tables (slice 4; player only, tier 0 = the slice-2
+// sloop EXACTLY — check-brine.py asserts the tier-0 identities so the
+// recorded routes and carried pins stay bit-valid) -----------------------------
+static const int32_t BW_UP_HULL_OF[BW_UP_TIERS] = { BW_HULL_MAX, 150, 220 };
+static const int32_t BW_UP_RELOAD_OF[BW_UP_TIERS] = {
+    BW_RELOAD_PLAYER, 70, 55,
+};
+static const int32_t BW_UP_BALLS_OF[BW_UP_TIERS] = {
+    BW_BALLS_PER_SIDE, BW_BALLS_PER_SIDE, 4,
+};
+static const int32_t BW_UP_SPEED_OF[BW_UP_TIERS] = { 0, 24, 48 };
+static const int32_t BW_UP_TURN_OF[BW_UP_TIERS] = { 0, 1, 2 };
+// price of buying INTO tier t (index by the NEW tier; tier 0 is free —
+// it's the sloop you start with). Triples per step, doc rule.
+static const int32_t BW_UP_COST[BW_UP_TIERS] = { 0, 15, 45 };
+
+int32_t bw_up_hull_max(int32_t tier)
+{
+    return BW_UP_HULL_OF[tier];
+}
+
+int32_t bw_up_reload(int32_t tier)
+{
+    return BW_UP_RELOAD_OF[tier];
+}
+
+int32_t bw_up_price(int32_t tier)
+{
+    return BW_UP_COST[tier];
+}
+
+// sail_tier: the SAIL upgrade tier of this ship (enemy always 0).
+static void bw_ship_step(BwShip *s, const BwInputs *in, int32_t sail_tier)
 {
     s->trim = clamp32(s->trim + in->trim_delta, BW_TRIM_BATTLE, BW_TRIM_FULL);
-    s->heading = (s->heading + in->turn * BW_TURN_OF[s->trim])
+    s->heading = (s->heading
+                  + in->turn * (BW_TURN_OF[s->trim]
+                                + BW_UP_TURN_OF[sail_tier]))
                  & (BW_CIRCLE - 1);
 
-    int32_t target = BW_SPEED_OF[s->trim];
+    int32_t target = BW_SPEED_OF[s->trim] + BW_UP_SPEED_OF[sail_tier];
     s->speed += clamp32(target - s->speed, -BW_ACCEL, BW_ACCEL);
 
     int32_t brad = s->heading >> 2;
@@ -87,7 +121,8 @@ static void bw_ship_step(BwShip *s, const BwInputs *in)
 
 // --- broadsides ----------------------------------------------------------------
 
-// Fire one 3-ball rake abeam. side: -1 = port, +1 = starboard.
+// Fire one rake abeam. side: -1 = port, +1 = starboard. Rake size is
+// the firer's cannon-tier balls-per-broadside (enemy: always tier 0).
 // Beam direction (screen y down, heading clockwise from north):
 // starboard = (cos, sin), port = (-cos, -sin); keel axis = (sin, -cos).
 static void bw_fire(BwDuel *d, const BwShip *s, int32_t owner, int32_t side)
@@ -97,8 +132,10 @@ static void bw_fire(BwDuel *d, const BwShip *s, int32_t owner, int32_t side)
     int32_t by = side * bw_sin(brad);
     int32_t kx = bw_sin(brad);               // keel unit vector, 1/256
     int32_t ky = -bw_cos(brad);
+    int32_t balls = owner == 0 ? BW_UP_BALLS_OF[d->up_cannon]
+                               : BW_BALLS_PER_SIDE;
 
-    for (int32_t k = 0; k < BW_BALLS_PER_SIDE; k++)
+    for (int32_t k = 0; k < balls; k++)
     {
         int32_t along = (k - 1) * BW_BALL_SPREAD;
         for (int32_t i = 0; i < BW_MAX_BALLS; i++)
@@ -141,7 +178,11 @@ static void bw_balls_step(BwDuel *d)
         if (bw_chebyshev(ball->x, ball->y, target->x, target->y)
                 < BW_HIT_RANGE)
         {
-            target->hull = clamp32(target->hull - dmg, 0, BW_HULL_MAX);
+            // dmg > 0 always, so floor at 0 — no upper clamp: an upgraded
+            // player hull sits above BW_HULL_MAX (bit-identical at tier 0).
+            target->hull -= dmg;
+            if (target->hull < 0)
+                target->hull = 0;
             ball->live = 0;
         }
     }
@@ -207,6 +248,41 @@ int32_t bw_dock_step(BwDuel *d)
     d->hold = 0;
     d->hold_gold = 0;
     return banked;
+}
+
+// --- port + upgrades (slice 4) --------------------------------------------------
+
+int32_t bw_repair_cost(const BwDuel *d)
+{
+    int32_t missing = BW_UP_HULL_OF[d->up_hull] - d->player.hull;
+    if (missing <= 0)
+        return 0;
+    // positive / positive only (signed-division rule kept trivially)
+    return (missing + BW_REPAIR_PER_GOLD - 1) / BW_REPAIR_PER_GOLD;
+}
+
+int32_t bw_port_buy(BwDuel *d, int32_t row, int32_t gold)
+{
+    if (row == BW_PORT_ROW_REPAIR)
+    {
+        int32_t cost = bw_repair_cost(d);
+        if (cost <= 0 || gold < cost)
+            return 0;
+        d->player.hull = BW_UP_HULL_OF[d->up_hull];
+        return cost;
+    }
+
+    int32_t *tier = row == BW_PORT_ROW_HULL ? &d->up_hull
+                    : row == BW_PORT_ROW_CANNON ? &d->up_cannon
+                    : row == BW_PORT_ROW_SAIL ? &d->up_sail
+                    : 0;
+    if (tier == 0 || *tier >= BW_UP_TIERS - 1)
+        return 0;
+    int32_t cost = BW_UP_COST[*tier + 1];
+    if (gold < cost)
+        return 0;
+    (*tier)++;                           // new planking raises the ceiling;
+    return cost;                         // REPAIR fills it (buying != healing)
 }
 
 // --- enemy sail AI ----------------------------------------------------------------
@@ -289,6 +365,9 @@ void bw_duel_init(BwDuel *d, uint32_t seed)
         d->loot[i].live = 0;
     d->hold = 0;                         // caller re-injects a carried hold
     d->hold_gold = 0;                    // (sinking forfeits: no re-inject)
+    d->up_hull = 0;                      // caller re-injects the bought
+    d->up_cannon = 0;                    //   tiers (upgrades are NEVER
+    d->up_sail = 0;                      //   lost — main.c's Score owns them)
     d->frame = 0;
     d->over = BW_DUEL_RUNNING;
 }
@@ -301,18 +380,18 @@ void bw_duel_step(BwDuel *d, const BwInputs *in)
     BwInputs ai;
     bw_ai(&d->enemy, &d->player, &ai);
 
-    bw_ship_step(&d->player, in);
-    bw_ship_step(&d->enemy, &ai);
+    bw_ship_step(&d->player, in, d->up_sail);
+    bw_ship_step(&d->enemy, &ai, 0);
 
     if (in->fire_l && d->player.reload_l == 0)
     {
         bw_fire(d, &d->player, 0, -1);
-        d->player.reload_l = BW_RELOAD_PLAYER;
+        d->player.reload_l = BW_UP_RELOAD_OF[d->up_cannon];
     }
     if (in->fire_r && d->player.reload_r == 0)
     {
         bw_fire(d, &d->player, 0, 1);
-        d->player.reload_r = BW_RELOAD_PLAYER;
+        d->player.reload_r = BW_UP_RELOAD_OF[d->up_cannon];
     }
     if (ai.fire_l && d->enemy.reload_l == 0)
     {
@@ -344,7 +423,7 @@ void bw_salvage_step(BwDuel *d, const BwInputs *in)
     if (d->over != BW_DUEL_ENEMY_SUNK)
         return;
 
-    bw_ship_step(&d->player, in);
+    bw_ship_step(&d->player, in, d->up_sail);
     bw_balls_step(d);                    // a late rake can still strike
     bw_loot_step(d);
 

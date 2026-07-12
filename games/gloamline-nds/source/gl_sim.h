@@ -396,4 +396,55 @@ int gl_save_decode(const uint8_t in[GL_SAVE_BYTES],
 // (equal runs write nothing: EEPROM wear discipline). Pure.
 int gl_record_improves(uint32_t best_nights, uint32_t nights);
 
+// --- watch-map geometry + the chalk mark (slice 10) --------------------------
+// The concept doc's LAST later-slice cut, "watch-map polish", honoring
+// its own watch-map words: "Touch optional, never required (tap the
+// map to drop a marker at most); the game is 100% playable on
+// buttons." The lamplighter chalks ONE mark on the watch-map: X
+// places it at the player's own position / clears it again
+// (buttons-first — BINDING), and tapping the map plot is the optional
+// alias that drops or moves the mark to the tapped cell. The mark is
+// chalk ON THE MAP, not a thing in the yard: nothing in the sim reads
+// it (the dead ignore chalk), so every pre-slice-10 pin holds
+// bit-identically. It persists across nights within a run (chalk
+// doesn't wash off at dawn) and wipes on a fresh run.
+//
+// The map plot geometry (previously main.c statics, moved here
+// VERBATIM so the render is bit-identical and the inverse is
+// provable): a GL_MAP_COLS x GL_MAP_ROWS console-cell plot at
+// (GL_MAP_COL0, GL_MAP_ROW0), each cell GL_MAP_CELL_PX x
+// GL_MAP_CELL_PX LCD pixels; yard pixel spans x 16..239 / y 32..175
+// (the sprite-center arena) map linearly onto it.
+#define GL_MAP_COL0 2
+#define GL_MAP_ROW0 5
+#define GL_MAP_COLS 28
+#define GL_MAP_ROWS 14
+#define GL_MAP_CELL_PX 8                     // console cell = 8x8 LCD px
+
+// Yard position (8.8 fixed) -> watch-map plot column/row (clamped to
+// the plot). Pure; the exact math main.c has rendered with since
+// slice 3.
+int gl_map_col(int32_t x);
+int gl_map_row(int32_t y);
+
+// Chalk-mark placement from a map plot cell: returns 1 and fills the
+// yard position (8.8 fixed) of the CELL's mid-span iff (col, row) is
+// inside the plot; returns 0 (outputs untouched) for any cell off the
+// plot — a tap on the border/header/gauges drops nothing. EXACT
+// ROUND-TRIP BY CONSTRUCTION (proved host-side for every plot cell):
+// gl_map_col/gl_map_row of the returned position give back exactly
+// (col, row) — the mark renders in the very cell you tapped. The
+// returned point is strictly interior to the arena. Pure.
+int gl_mark_of_cell(int col, int row, int32_t *x, int32_t *y);
+
+// The optional touch alias, fully pure: bottom-screen LCD pixel
+// (tx, ty) -> the plot cell under the stylus -> gl_mark_of_cell.
+// Same contract (1 + yard position inside the plot, else 0).
+int gl_mark_of_touch(int tx, int ty, int32_t *x, int32_t *y);
+
+// The watch line's count (slice 10): how many of tonight's dead are
+// still OUT in the gloam — scheduled but not yet over the fence.
+// Pure f(wave_total, spawned), floored at 0 (never underflows).
+uint32_t gl_gloam_out(uint32_t wave_total, uint32_t spawned);
+
 #endif // GL_SIM_H

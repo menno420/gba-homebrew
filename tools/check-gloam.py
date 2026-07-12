@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gloamline host proof (stdlib-only, <2s) — arc slice 9: best-nights saves.
+"""Gloamline host proof (stdlib-only, <2s) — arc slice 10: watch-map polish.
 
 The check-cave.py sibling for Gloamline: a line-for-line Python mirror of
 the pure simulation layer in games/gloamline-nds/source/gl_sim.c
@@ -9,9 +9,10 @@ gl_wave_count / gl_spawn_frame / gl_shove / gl_barricade_blocks /
 gl_planks_at_dawn / gl_cache_of_interlude / gl_cache_grab /
 gl_planks_after_grab / gl_oil_burn / gl_light_radius / gl_dark_press /
 gl_flask_of_interlude / gl_oil_after_flask / gl_save_checksum /
-gl_save_encode / gl_save_decode / gl_record_improves), proving the
-meaningful invariants for EVERY reachable input instead of the handful a
-replay touches:
+gl_save_encode / gl_save_decode / gl_record_improves / gl_map_col /
+gl_map_row / gl_mark_of_cell / gl_mark_of_touch / gl_gloam_out), proving
+the meaningful invariants for EVERY reachable input instead of the
+handful a replay touches:
 
   1. spawn schedule — for seeds 0..255 x nights 1..8 (index 0) PLUS every
      scheduled index of seeds 0..127 x nights 1..13: the spawn is a pure
@@ -114,7 +115,16 @@ replay touches:
      wrong-magic / future-version blobs each carrying a VALID
      recomputed checksum (so magic and version reject on their own);
      and gl_record_improves is strictly-better-only over its truth
-     table (equal runs write nothing — EEPROM wear discipline).
+     table (equal runs write nothing — EEPROM wear discipline);
+ 15. watch-map chalk mark + watch line (slice 10) — gl_mark_of_cell is
+     deterministic, places a strictly-interior yard point for EVERY
+     plot cell, and round-trips EXACTLY (gl_map_col/gl_map_row of the
+     mark = the very cell — no +-1 smear); every off-plot cell rejects;
+     gl_mark_of_touch aliases the cell placement for every pixel of the
+     256x192 bottom LCD (no second geometry) and rejects negatives; the
+     forward map (moved verbatim from main.c) lands the arena extremes
+     on the plot edges; gl_gloam_out matches max(total - spawned, 0)
+     over its full reachable truth table.
 
 MIRROR RULE (keep in lockstep): every function and constant below mirrors
 games/gloamline-nds/source/gl_sim.c. Any change to the C MUST land here in
@@ -190,6 +200,11 @@ GL_SAVE_ADDR = 0
 GL_SAVE_EEPROM_TYPE = 2
 GL_SAVE_SALT = 0x53415645
 GL_SAVE_POLL_BOUND = 4096
+GL_MAP_COL0 = 2
+GL_MAP_ROW0 = 5
+GL_MAP_COLS = 28
+GL_MAP_ROWS = 14
+GL_MAP_CELL_PX = 8
 GL_NIGHT_FRAMES = 3600
 
 U32 = 0xFFFFFFFF
@@ -479,6 +494,58 @@ def gl_save_decode(blob):
 def gl_record_improves(best_nights, nights):
     """Mirror of gl_record_improves()."""
     return 1 if nights > best_nights else 0
+
+
+def _div_toward_zero(a, b):
+    """C integer division truncates toward zero; Python floors."""
+    q = abs(a) // abs(b)
+    return q if (a >= 0) == (b >= 0) else -q
+
+
+def gl_map_col(x):
+    """Mirror of gl_map_col()."""
+    px = _div_toward_zero(x, GL_ONE)                     # 16..239
+    col = GL_MAP_COL0 + _div_toward_zero((px - 16) * GL_MAP_COLS, 224)
+    if col < GL_MAP_COL0:
+        col = GL_MAP_COL0
+    if col > GL_MAP_COL0 + GL_MAP_COLS - 1:
+        col = GL_MAP_COL0 + GL_MAP_COLS - 1
+    return col
+
+
+def gl_map_row(y):
+    """Mirror of gl_map_row()."""
+    py = _div_toward_zero(y, GL_ONE)                     # 32..175
+    row = GL_MAP_ROW0 + _div_toward_zero((py - 32) * GL_MAP_ROWS, 144)
+    if row < GL_MAP_ROW0:
+        row = GL_MAP_ROW0
+    if row > GL_MAP_ROW0 + GL_MAP_ROWS - 1:
+        row = GL_MAP_ROW0 + GL_MAP_ROWS - 1
+    return row
+
+
+def gl_mark_of_cell(col, row):
+    """Mirror of gl_mark_of_cell() -> (ok, x, y)."""
+    if (col < GL_MAP_COL0 or col >= GL_MAP_COL0 + GL_MAP_COLS
+            or row < GL_MAP_ROW0 or row >= GL_MAP_ROW0 + GL_MAP_ROWS):
+        return 0, 0, 0                       # off the plot: no chalk
+    x = (16 + ((col - GL_MAP_COL0) * 224 + 224 // 2) // GL_MAP_COLS) \
+        * GL_ONE
+    y = (32 + ((row - GL_MAP_ROW0) * 144 + 144 // 2) // GL_MAP_ROWS) \
+        * GL_ONE
+    return 1, x, y
+
+
+def gl_mark_of_touch(tx, ty):
+    """Mirror of gl_mark_of_touch() -> (ok, x, y)."""
+    if tx < 0 or ty < 0:
+        return 0, 0, 0                       # defensive: no negative cell
+    return gl_mark_of_cell(tx // GL_MAP_CELL_PX, ty // GL_MAP_CELL_PX)
+
+
+def gl_gloam_out(wave_total, spawned):
+    """Mirror of gl_gloam_out()."""
+    return wave_total - spawned if spawned < wave_total else 0
 
 
 # --- proofs ------------------------------------------------------------------
@@ -1245,6 +1312,92 @@ def main():
                 failures += 1
                 print(f'FAIL record improves: ({best},{nights})')
 
+    # 15. watch-map chalk mark + watch line (slice 10).
+    # 15a. every plot cell places: gl_mark_of_cell is deterministic,
+    # returns a strictly-interior arena point (chalk marks a yard spot,
+    # never the fence), and ROUND-TRIPS EXACTLY — gl_map_col/gl_map_row
+    # of the placed mark give back the very cell (the mark renders in
+    # the cell you tapped, no +-1 smear).
+    mark_cells = 0
+    for col in range(GL_MAP_COL0, GL_MAP_COL0 + GL_MAP_COLS):
+        for row in range(GL_MAP_ROW0, GL_MAP_ROW0 + GL_MAP_ROWS):
+            ok, mx, my = gl_mark_of_cell(col, row)
+            mark_cells += 1
+            if (ok, mx, my) != gl_mark_of_cell(col, row):
+                failures += 1
+                print(f'FAIL mark determinism: cell ({col},{row})')
+            if not ok:
+                failures += 1
+                print(f'FAIL mark placement: plot cell ({col},{row}) '
+                      'rejected')
+                continue
+            if not (GL_ARENA_X_MIN < mx < GL_ARENA_X_MAX
+                    and GL_ARENA_Y_MIN < my < GL_ARENA_Y_MAX):
+                failures += 1
+                print(f'FAIL mark interior: cell ({col},{row}) -> '
+                      f'({mx},{my}) not strictly inside the arena')
+            if on_perimeter(mx, my):
+                failures += 1
+                print(f'FAIL mark on fence: cell ({col},{row})')
+            if (gl_map_col(mx), gl_map_row(my)) != (col, row):
+                failures += 1
+                print(f'FAIL mark round-trip: cell ({col},{row}) -> '
+                      f'({mx},{my}) -> cell '
+                      f'({gl_map_col(mx)},{gl_map_row(my)})')
+    # 15b. everything OFF the plot rejects: the border/header/gauge
+    # cells around the plot (one full ring plus the console's edges).
+    off_cells = 0
+    for col in range(-1, 33):
+        for row in range(-1, 25):
+            inside = (GL_MAP_COL0 <= col < GL_MAP_COL0 + GL_MAP_COLS
+                      and GL_MAP_ROW0 <= row < GL_MAP_ROW0 + GL_MAP_ROWS)
+            if inside:
+                continue
+            off_cells += 1
+            if gl_mark_of_cell(col, row)[0] != 0:
+                failures += 1
+                print(f'FAIL mark off-plot: cell ({col},{row}) accepted')
+    # 15c. the touch alias covers the WHOLE bottom LCD: every pixel of
+    # the 256x192 screen either lands in the plot (and equals the
+    # cell's own placement — the alias adds no second geometry) or
+    # rejects; negative coordinates reject defensively.
+    touch_px = 0
+    for ty in range(192):
+        for tx in range(256):
+            touch_px += 1
+            got = gl_mark_of_touch(tx, ty)
+            want = gl_mark_of_cell(tx // GL_MAP_CELL_PX,
+                                   ty // GL_MAP_CELL_PX)
+            if got != want:
+                failures += 1
+                print(f'FAIL touch alias: ({tx},{ty}): {got} != {want}')
+    for tx, ty in ((-1, 100), (100, -1), (-8, -8)):
+        if gl_mark_of_touch(tx, ty)[0] != 0:
+            failures += 1
+            print(f'FAIL touch negative: ({tx},{ty}) accepted')
+    # 15d. the map geometry mirrors main.c's render VERBATIM: spot
+    # checks of the forward map (arena corners + center land inside
+    # the plot, clamped), and gl_gloam_out's full truth table over
+    # every reachable (wave_total, spawned) pair.
+    if (gl_map_col(GL_ARENA_X_MIN) != GL_MAP_COL0
+            or gl_map_col(GL_ARENA_X_MAX) != GL_MAP_COL0 + GL_MAP_COLS - 1
+            or gl_map_row(GL_ARENA_Y_MIN) != GL_MAP_ROW0
+            or gl_map_row(GL_ARENA_Y_MAX) != GL_MAP_ROW0 + GL_MAP_ROWS - 1):
+        failures += 1
+        print('FAIL map corners: arena extremes do not land on the plot '
+              'edges')
+    out_cases = 0
+    for total in range(GL_ZOMBIE_CAP + 1):
+        for spawned in range(GL_ZOMBIE_CAP + 8):
+            out_cases += 1
+            got = gl_gloam_out(total, spawned)
+            if got != gl_gloam_out(total, spawned):
+                failures += 1
+                print(f'FAIL gloam-out determinism: ({total},{spawned})')
+            if got != max(total - spawned, 0):
+                failures += 1
+                print(f'FAIL gloam-out: ({total},{spawned}) -> {got}')
+
     if failures:
         print(f'check-gloam: {failures} failure(s)')
         return 1
@@ -1285,8 +1438,13 @@ def main():
           f'(golden bytes pinned, one-page layout), {rejects} bad-blob '
           'decodes ALL reject to the fresh table (blank chips, every '
           'single-byte corruption, wrong-magic + future-version each '
-          f'with a valid checksum), and {improve_cases} record-update '
-          'cases strictly-better-only')
+          f'with a valid checksum), {improve_cases} record-update '
+          f'cases strictly-better-only, {mark_cells} chalk-mark plot '
+          'cells place strictly-interior with EXACT cell round-trips '
+          f'({off_cells} off-plot cells all reject), {touch_px} touch '
+          'pixels alias the cell placement exactly (negatives reject), '
+          f'map corners land on the plot edges, and {out_cases} '
+          'gloam-out cases match max(total - spawned, 0)')
     return 0
 
 

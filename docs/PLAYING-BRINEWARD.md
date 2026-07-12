@@ -1,17 +1,18 @@
-# Playing Brineward (Nintendo DS) — port + upgrades
+# Playing Brineward (Nintendo DS) — the Maw
 
-> **Status:** `owner-guidance` — arc slice 4 (port/upgrades on the
-> slice-3 economy). Broadside duels off the Graywake breakwater: sail,
-> out-turn the rum-runner, sink her, scoop the flotsam, bank the gold at
-> the pier — then SPEND it: hull, cannons and sails upgrade tracks and
-> paid repairs at the Graywake port. Concept + roadmap:
+> **Status:** `owner-guidance` — arc slice 5 (the first sea monster on
+> the slice-4 port/upgrades economy). Broadside duels off the Graywake
+> breakwater: sail, out-turn the rum-runner, sink her, scoop the
+> flotsam, bank and SPEND the gold at the Graywake port — but don't
+> linger over the wreck's blood, because the water goes dark and THE
+> MAW comes up under your keel. Concept + roadmap:
 > [`concepts/brineward-concept.md`](concepts/brineward-concept.md).
 
 ## Get the ROM
 
 - **Download and play:** [`dist/brineward.nds`](../dist/brineward.nds)
-  (112,128 bytes, sha256
-  `9f354a3744377e49a5bd78c532ae411c316e64d9e11e50d95f54e1d484c64322`)
+  (116,224 bytes, sha256
+  `6e571941c4d286e76d1a05b18cb1c498b0ccfc20da5c62c95bc2d22a26d2af7c`)
   in any DS emulator — melonDS and DeSmuME both work; no BIOS files
   needed for homebrew. The build is byte-deterministic and CI re-builds
   it from source on every PR, printing both hashes side by side.
@@ -27,6 +28,7 @@
 | UP / DOWN | sail trim: battle -> half -> full (and back) |
 | L | fire the PORT (left) battery — 3-ball rake, own reload |
 | R | fire the STARBOARD (right) battery — own reload |
+| L / R | in the salvage water: the batteries WAKE while the Maw is up |
 | A | dock: open the Graywake port (alongside the pier, no foe afloat) |
 | START | begin / restart after sinking / put out again / leave port |
 | UP / DOWN / A / B | in port: pick a row / buy / walk back out |
@@ -58,6 +60,35 @@ your edge is cadence, if you can hold the angle.
   flash); the bottom-screen ledger carries the running `hold` and
   `GOLD BANKED` lines at all times.
 
+## The Maw (new in slice 5)
+
+- **Linger and it comes:** ten seconds after the rum-runner goes under,
+  the wreck's blood draws something. A dark SHADOW rises at the wreck
+  and homes under your keel — that is the telegraph, and it is the
+  whole warning you get. HUD: `THE WATER GOES DARK...`; the chart
+  table: `something big is turning`.
+- **Shadow -> surface -> lunge:** after a fixed telegraph it SURFACES
+  where the shadow lies, winds up, and LUNGES at you. **A bite costs
+  35 hull** — real dents that carry, repair-priced like any others (and
+  yes, a bite can send you down; the hold goes with you).
+- **Outrun the shadow at full sail** — it is slower than a full-sail
+  sloop by design, and battle-sail scooping is exactly the pace it
+  hunts. **Dodge the lunge crosswise**: the charge is a straight,
+  committed line at where you WERE; a hull moving beam-on slides out of
+  the jaws. Running dead away from a close lunge is how you get bitten.
+- **Or kill it:** while it is up (surface + lunge) your batteries WAKE
+  — L/R rake it like any hull (a shot at a mere shadow wastes the rake
+  over its back). It takes ~two clean rakes. The carcass **breaks up
+  RICHER than any rum-runner: 3 crates at 15g each** — one slain Maw
+  banks 45g, a tier-III purchase in one stand.
+- **The pier is sanctuary:** it never surfaces inside the harbor ring
+  and never lunges at a berthed ship — banking, shopping, and repairs
+  are always reachable. It gives up, sounds, and stalks again while
+  you stay in its water; slay it and that water is safe until you put
+  out again.
+- One Maw per water: putting out to a fresh duel resets the hunt (and
+  the patience clock starts at the next wreck).
+
 ## The Graywake port (new in slice 4)
 
 - **Dock to shop:** once the water is yours (salvage, no foe), lie
@@ -87,9 +118,11 @@ your edge is cadence, if you can hold the angle.
 
 - Top screen: open water, your sloop, ONE enemy sloop
   (intercept-and-circle sail AI), cannonballs, flotsam crates, the
-  Graywake pier, HUD (hull / battery reloads / trim / seed / salvage).
+  Graywake pier, the Maw (shadow and risen frames), HUD (hull /
+  battery reloads / trim / seed / salvage / Maw warnings).
 - Bottom screen: the Graywake ledger — hull bars for both ships, reload
-  bars, trim, sunk/lost tallies, hold + banked gold, range to the foe.
+  bars, trim, sunk/lost/maws tallies, hold + banked gold, range to the
+  foe, and a Maw status line reading the water.
 - Duel resolves both ways: go under (sunk card — shows the forfeited
   hold and the safe banked gold) or sink the rum-runner and salvage the
   wreck; START restarts / re-sails instantly with a fresh seed. Tallies
@@ -108,8 +141,11 @@ your edge is cadence, if you can hold the angle.
   table (hull 100/150/220, reload 90/70/55, rake 3/3/4, sail bonuses):
   all one-constant changes in `bw_sim.{h,c}`, machine-proven but not
   taste-tested.
-- **One enemy, one fight at a time** — no sea monsters, no danger bands
-  yet.
+- **One enemy, one fight at a time** — one rum-runner and one Maw; no
+  danger bands yet (the Maw's numbers — patience 600 frames, telegraph
+  150, windup 60, lunge 55 at speed 520, bite 35, hull 120, 40 px
+  sanctuary, 15g crates — are all one-constant owner-tunables in
+  `bw_sim.h`, machine-proven but not taste-tested).
 - **You can sail away forever** — both ships top out at the same speed,
   so fleeing beyond the enemy's engage range stalls the duel instead of
   ending it. The pier now gives "home" a meaning; the run economy will
@@ -140,7 +176,10 @@ window hold; salvage containment), and the slice-4 port rails (tier-0
 tables ARE the slice-2 sloop, so every recorded route stays bit-valid;
 the port ledger's exact prices, refusals and repair math for every
 reachable hull value at every tier; upgraded duels still converge both
-ways; containment at max tiers). Then TEN headless DeSmuME proofs
+ways; containment at max tiers), and the slice-5 Maw rails (the whole
+telegraph contract frame-exact; ONE bite of exactly 35 per lunge; the
+pier sanctuary; the hunter policy slays it and banks the richer crates;
+a slain Maw never stirs again). Then TWELVE headless DeSmuME proofs
 assert the ROM's `bw_telemetry` mailbox numerically: boot, exact sail
 kinematics, an idle player sunk + instant restart, a recorded route
 (from `games/brineward-nds/tools/record-duel-win.py`) that WINS the
@@ -154,5 +193,14 @@ recorded bank: the menu opens in the berth and buys HULL II with the
 the next duel), REPAIR heals 47 -> 100 for exactly 14g, SAILS II makes
 the same seed + same inputs measurably faster than its own tier-0
 control run, and CANNONS II reloads the battery in 70 frames, not 90.
+Slice 5 adds two recorded Maw stories on their own anchor seed
+(`games/brineward-nds/tools/record-maw.py`, both robust at every
+alignment shift in [-6,+6]): the BAIT sails at the dark water and takes
+exactly one 35-hull bite (telegraph, surfacing, lunge, and the sounding
+all pinned to the frame, the bitten hull carried into the next duel),
+and the HUNTER rakes the risen Maw (its hull words drop mid-windup IN
+the emulator), watches it give up over the sanctuary, slays it on its
+second rising, scoops wreck + monster crates, and banks 60g with the
+hunter's own hull untouched.
 Proof screenshots:
 [`games/brineward-nds/proof/`](../games/brineward-nds/proof/).

@@ -1,4 +1,5 @@
-// Gloamline — pure simulation layer (arc slice 6: scavenge interlude).
+// Gloamline — pure simulation layer (arc slice 7: lantern-oil light
+// pressure, on the slice-6 scavenge interlude).
 //
 // EVERYTHING in this header + gl_sim.c is a pure function of its arguments:
 // fixed-point integers only, no wall clock, no runtime RNG, no globals, no
@@ -109,6 +110,36 @@
 #define GL_CACHE_INSET (16 * GL_ONE)         // caches keep off the fence
 #define GL_CACHE_SALT 0x5CAF0157u            // cache hash stream != spawns
 
+// --- lantern oil (slice 7) -------------------------------------------------------
+// The concept doc's stated pressure: "lantern oil — light radius shrinks
+// as it burns, dark edges spawn faster; the Lumen-Drift-style
+// decay-you-can-buy-back pressure." The lantern burns GL_OIL_BURN oil
+// every NIGHT frame (daylight — the interlude and the cards — burns
+// nothing). While the tank holds at least GL_OIL_LOW the light is full
+// (GL_LIGHT_R_MAX) and NOTHING below changes — that is the zero-re-pin
+// gate: a fresh lantern (GL_OIL_MAX = 3 nights of burn) outlasts every
+// window a pre-slice-7 proof crosses. Once oil runs LOW the light
+// radius shrinks linearly toward GL_LIGHT_R_MIN (the lantern gutters
+// but NEVER dies — the pressure is speed, not an unwinnable blackout),
+// and the dead beyond the lamplight stop hesitating: the 1-in-4
+// stagger skip is cancelled outside the light circle (gl_dark_press),
+// so the gloam presses ~33% faster where you cannot see. Buy-back:
+// GL_FLASK_COUNT oil flasks lie in the scavenge interlude on their own
+// salted pure schedule (gl_flask_of_interlude), each worth GL_OIL_FLASK
+// (one night of burn), capped at GL_OIL_MAX and NEVER consumed on a
+// full tank (no flask is wasted — slice 6's no-waste rule). The START
+// skip path grants NO oil: like the planks, the interlude is the only
+// source (loot-replaces-grant, reused). All numbers are decide-and-flag
+// owner-tunables.
+#define GL_OIL_MAX 10800                     // a fresh lantern: 3 nights
+#define GL_OIL_BURN 1                        // oil per night frame
+#define GL_OIL_LOW 3000                      // below this the light fails
+#define GL_LIGHT_R_MAX (80 * GL_ONE)         // full lamplight radius
+#define GL_LIGHT_R_MIN (24 * GL_ONE)         // guttering — never darker
+#define GL_FLASK_COUNT 2                     // flasks per interlude
+#define GL_OIL_FLASK 3600                    // one night of burn each
+#define GL_FLASK_SALT 0xF1A5C01Du            // flask hash stream != caches
+
 // --- night clock -------------------------------------------------------------
 // One night = 60 s at 60 fps. Headless DeSmuME runs ~800 fps in CI, so the
 // survive-to-dawn proof replays a FULL night on the shipped ROM — no
@@ -134,8 +165,21 @@ void gl_player_step(int32_t *px, int32_t *py,
 // One Shambler step toward the player: fixed sub-pixel speed with a
 // per-zombie deterministic stagger (hash of (zombie_id, frame) skips 1
 // frame in 4). Pure f(zombie_state, player_pos, frame).
+// Slice 7 decomposition (bit-identical): gl_shambler_step ==
+// gl_shambler_staggers ? no-op : gl_shambler_stride. The caller may
+// cancel a stagger with gl_dark_press (the dead don't hesitate in the
+// dark) by calling gl_shambler_stride directly.
 void gl_shambler_step(int32_t *zx, int32_t *zy, int32_t px, int32_t py,
                       uint32_t zombie_id, uint32_t frame);
+
+// 1 if this zombie's chase step is a stagger skip this frame (the
+// hash-of-(id, frame) 1-in-4 rule, extracted verbatim from
+// gl_shambler_step).
+int gl_shambler_staggers(uint32_t zombie_id, uint32_t frame);
+
+// The chase move itself, sans stagger (extracted verbatim from
+// gl_shambler_step).
+void gl_shambler_stride(int32_t *zx, int32_t *zy, int32_t px, int32_t py);
 
 // Chebyshev distance between two centers (the contact metric).
 int32_t gl_chebyshev(int32_t ax, int32_t ay, int32_t bx, int32_t by);
@@ -187,5 +231,34 @@ int gl_cache_grab(int32_t px, int32_t py, int32_t cx, int32_t cy);
 // GL_PLANK_MAX. Pure f(planks). (The caller must not consume a cache
 // on a full pocket — gl_cache_grab + a planks < GL_PLANK_MAX check.)
 uint32_t gl_planks_after_grab(uint32_t planks);
+
+// The lantern burns one night frame of oil: -GL_OIL_BURN, floored at 0
+// (an empty lantern gutters, it does not underflow). Pure f(oil).
+uint32_t gl_oil_burn(uint32_t oil);
+
+// Light radius of the lantern at this oil level: GL_LIGHT_R_MAX while
+// oil >= GL_OIL_LOW (the zero-re-pin gate — full light changes
+// nothing), then shrinking linearly to GL_LIGHT_R_MIN at empty. Pure,
+// monotone non-decreasing in oil, never below GL_LIGHT_R_MIN.
+int32_t gl_light_radius(uint32_t oil);
+
+// 1 if the dark press cancels a Shambler's stagger skip: the light is
+// failing (oil < GL_OIL_LOW) AND the body is beyond the lamplight
+// (dist > gl_light_radius(oil)). At full light this is ALWAYS 0 — the
+// pre-slice-7 chase is bit-identical. Pure f(oil, dist).
+int gl_dark_press(uint32_t oil, int32_t dist);
+
+// Flask schedule: position of oil flask `index` of night `night`'s
+// interlude for `seed` — same interior box as the plank caches
+// (GL_CACHE_INSET off the fence), on a salted hash stream disjoint
+// from both spawns and caches. Pure f(seed, night, index). Pickup
+// reach is gl_cache_grab (the same Chebyshev metric family).
+void gl_flask_of_interlude(uint32_t seed, uint32_t night, uint32_t index,
+                           int32_t *x, int32_t *y);
+
+// Tank after pocketing a flask: + GL_OIL_FLASK, capped at GL_OIL_MAX.
+// Pure f(oil). (The caller must not consume a flask on a full tank —
+// gl_cache_grab + an oil < GL_OIL_MAX check: no flask is wasted.)
+uint32_t gl_oil_after_flask(uint32_t oil);
 
 #endif // GL_SIM_H

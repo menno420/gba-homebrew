@@ -51,12 +51,59 @@
 (Nothing — the **Gloamline arc** (owner-picked original NDS zombie
 horde-defense) is the active track: concept (PR #50) → toolchain
 feasibility (PR #51) → walking skeleton (PR #52) → shove + waves
-(PR #54) → barricades (PR #56) → **scavenge interlude (session 24, this
-ledger entry) SHIPPED**. Next slices per the concept doc: lantern-oil
-light pressure, synthesized audio, best-nights saves. A parallel
-sibling session runs the Brineward pirate arc in its own dirs.)
+(PR #54) → barricades (PR #56) → scavenge interlude (PR #62) →
+**lantern-oil light pressure (session 27, this ledger entry) SHIPPED**.
+Next slices per the concept doc: synthesized audio, best-nights saves,
+watch-map polish. A parallel sibling session runs the Brineward pirate
+arc in its own dirs.)
 
 ## Recently shipped (newest first)
+
+- **Session 27 — Gloamline slice 7: LANTERN-OIL LIGHT PRESSURE**
+  (2026-07-12): the concept doc's stated pressure ("lantern oil — light
+  radius shrinks as it burns … decay-you-can-buy-back"). The lantern
+  burns 1 oil per NIGHT frame (a fresh lantern = 10800 = exactly 3
+  nights; daylight and cards burn nothing). While the tank holds
+  ≥ GL_OIL_LOW (3000) the light is full and **nothing else changes** —
+  that headroom is the zero-re-pin gate, and **all 177 pre-slice-7
+  asserts re-ran UNCHANGED, zero re-pins (the trick's FIFTH hold)**,
+  even though the drain itself is passive. Below LOW the light radius
+  gutters linearly 80 px → 24 px (never out — the pressure is speed,
+  not an unwinnable blackout), the yard backdrop dims with it, and the
+  dead **beyond the lamplight stop hesitating**: `gl_dark_press`
+  cancels the 1-in-4 stagger skip outside the light circle (~33%
+  faster in the dark; host-proven never slower to contact, worst
+  pressed chase 186 vs 258 lit). Buy-back: two **oil flasks** per
+  scavenge interlude on their own salted pure schedule, +3600 each
+  (one night), capped at 10800, NEVER consumed on a full tank; the
+  START skip grants no oil — interlude-only, like the planks.
+  Decomposed `gl_shambler_step` into `staggers`/`stride` (host-proven
+  exact); pure layer + `check-gloam.py` + `gloam-route.py` in
+  three-way lockstep (+2 host proofs: radius/press truth tables +
+  inertness-at-healthy-oil + pressed-chase convergence; flask
+  schedule + oil economy — one interlude's flasks out-earn one
+  night's burn, greedy all-pickups route fits the dawn light, worst
+  448/1200); all committed routes reproduce with zero drift.
+  Telemetry 40 → 48 (slots 0-39 untouched); fifth code-authored
+  sprite (oil flask), watch-map `o` marks + draining OIL gauge
+  (redrawn only on cell change), HUD `O<pct>`. **Three new pinned
+  headless proofs (15 proofs / 240 asserts total)**: proof 13 burn +
+  full-light inertness + card-freeze; proof 14 a rollout-planned
+  route survives into night 3 where oil crosses LOW on schedule —
+  radius pinned guttering exactly, dark press LIVE on the nearest
+  Shambler, and the pressed dead kill the idle lamplighter in the
+  failing light (night-3 route margin 13.8 px vs the lit routes'
+  20+ px floors — the pressure is real and machine-visible); proof 15
+  interlude entry tops the tank to EXACTLY the cap (+3600), standing
+  on the second flask with a full tank consumes nothing, and the
+  lantern burns again in night 2. Stress re-measure **with the
+  low-oil path live on the measured frames** (GL_STRESS now starts at
+  oil 1500): steady ≤70 scanlines (mean 58.4) vs the 71-line vblank
+  budget, spike 144 < 263 (DeSmuME timing model, not hardware —
+  **margin now 1 modeled line at absolute worst case**, the arc's
+  thinnest rail). Screenshots: `proof/slice7-oil-{flask,dark,death}.png`.
+  Ships as **`dist/gloamline.nds`** (114,176 B, byte-deterministic) +
+  [`PLAYING-GLOAMLINE.md`](PLAYING-GLOAMLINE.md) refresh.
 
 - **Session 24 — Gloamline slice 6: the between-nights SCAVENGE
   INTERLUDE** (2026-07-12): the concept doc's stated next cut and

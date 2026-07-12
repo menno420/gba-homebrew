@@ -78,14 +78,15 @@ void gl_player_step(int32_t *px, int32_t *py,
     *py = clamp32(*py + dy * speed, GL_ARENA_Y_MIN, GL_ARENA_Y_MAX);
 }
 
-void gl_shambler_step(int32_t *zx, int32_t *zy, int32_t px, int32_t py,
-                      uint32_t zombie_id, uint32_t frame)
+int gl_shambler_staggers(uint32_t zombie_id, uint32_t frame)
 {
     // Per-zombie deterministic stagger: skip 1 frame in 4, so a future
     // crowd smears into a readable arc instead of a stack.
-    if ((gl_hash(zombie_id, frame) & 3u) == 0u)
-        return;
+    return (gl_hash(zombie_id, frame) & 3u) == 0u;
+}
 
+void gl_shambler_stride(int32_t *zx, int32_t *zy, int32_t px, int32_t py)
+{
     int32_t dx = px - *zx;
     int32_t dy = py - *zy;
     int32_t sx = (dx > GL_AXIS_DEADZONE) - (dx < -GL_AXIS_DEADZONE);
@@ -94,6 +95,15 @@ void gl_shambler_step(int32_t *zx, int32_t *zy, int32_t px, int32_t py,
 
     *zx = clamp32(*zx + sx * speed, GL_ARENA_X_MIN, GL_ARENA_X_MAX);
     *zy = clamp32(*zy + sy * speed, GL_ARENA_Y_MIN, GL_ARENA_Y_MAX);
+}
+
+void gl_shambler_step(int32_t *zx, int32_t *zy, int32_t px, int32_t py,
+                      uint32_t zombie_id, uint32_t frame)
+{
+    // Slice-7 decomposition, bit-identical to the slice-3 original.
+    if (gl_shambler_staggers(zombie_id, frame))
+        return;
+    gl_shambler_stride(zx, zy, px, py);
 }
 
 int32_t gl_chebyshev(int32_t ax, int32_t ay, int32_t bx, int32_t by)
@@ -175,4 +185,48 @@ uint32_t gl_planks_after_grab(uint32_t planks)
 {
     uint32_t p = planks + GL_CACHE_PLANKS;
     return p > GL_PLANK_MAX ? GL_PLANK_MAX : p;
+}
+
+uint32_t gl_oil_burn(uint32_t oil)
+{
+    return oil > GL_OIL_BURN ? oil - GL_OIL_BURN : 0;
+}
+
+int32_t gl_light_radius(uint32_t oil)
+{
+    if (oil >= GL_OIL_LOW)
+        return GL_LIGHT_R_MAX;
+    // Linear gutter: (R_MAX - R_MIN) * oil fits int32 (14336 * 2999).
+    return GL_LIGHT_R_MIN
+        + (int32_t)((GL_LIGHT_R_MAX - GL_LIGHT_R_MIN) * oil / GL_OIL_LOW);
+}
+
+int gl_dark_press(uint32_t oil, int32_t dist)
+{
+    return oil < GL_OIL_LOW && dist > gl_light_radius(oil);
+}
+
+void gl_flask_of_interlude(uint32_t seed, uint32_t night, uint32_t index,
+                           int32_t *x, int32_t *y)
+{
+    // Same interior box as the plank caches (inset off the fence), own
+    // salted stream so flasks and caches are independent draws.
+    const int32_t w = (GL_ARENA_X_MAX - GL_ARENA_X_MIN
+                       - 2 * GL_CACHE_INSET) / GL_ONE;           // 191
+    const int32_t h = (GL_ARENA_Y_MAX - GL_ARENA_Y_MIN
+                       - 2 * GL_CACHE_INSET) / GL_ONE;           // 111
+
+    uint32_t hx = gl_hash(gl_hash(seed ^ GL_FLASK_SALT, night), index);
+    uint32_t hy = gl_hash(hx, index);
+
+    *x = GL_ARENA_X_MIN + GL_CACHE_INSET
+         + (int32_t)(hx % (uint32_t)(w + 1)) * GL_ONE;
+    *y = GL_ARENA_Y_MIN + GL_CACHE_INSET
+         + (int32_t)(hy % (uint32_t)(h + 1)) * GL_ONE;
+}
+
+uint32_t gl_oil_after_flask(uint32_t oil)
+{
+    uint32_t o = oil + GL_OIL_FLASK;
+    return o > GL_OIL_MAX ? GL_OIL_MAX : o;
 }

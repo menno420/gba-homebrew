@@ -18,8 +18,12 @@ and the slice-7 lantern oil: the lantern burns GL_OIL_BURN per NIGHT
 frame, below GL_OIL_LOW the light radius gutters and the dark press
 cancels the stagger of every Shambler beyond the lamplight; oil flasks
 in the interlude top the tank up, never wasted on a full one; daylight
-burns nothing and presses nobody), driven by the same
-`--keys START-END:NAME` spans tools/nds-headless-check.py replays.
+burns nothing and presses nobody — and the slice-8 synthesized-audio
+DECISION mirror: which one-shot cue fires each frame (counter deltas +
+state flips, highest cue id wins) and which ambience tier the drone
+plays, so audio telemetry pins are mirror-predicted like everything
+else), driven by the same `--keys START-END:NAME` spans
+tools/nds-headless-check.py replays.
 
 Emulator/ROM alignment (session-17 guard): the py-desmume frontend's frame
 N sets input that the ROM's loop iteration sees ~2 frames later (ROM frame
@@ -128,6 +132,16 @@ class GloamSim:
         self.fy = [0] * cg.GL_FLASK_COUNT
         self.flask_up = [0] * cg.GL_FLASK_COUNT
         self.oil_grabs = 0
+        # synthesized audio (slice 8): the DECISION mirror — which cue
+        # fires when, which ambience tier the drone plays. Playback is
+        # ARM7/hardware-side and mirrors nothing back.
+        self.amb_on = False
+        self.amb_tier = 0
+        self.amb_flips = 0
+        self.cue_left = 0
+        self.last_cue = 0
+        self.cues = 0
+        self.cue_frame = 0
         # evidence
         self.min_dist = None                 # over PLAYING+SCAVENGE frames
         self.dawn_emu_frames = []            # emu frame of each dawn flip
@@ -279,6 +293,51 @@ class GloamSim:
             self.min_dist = dist
         return touched
 
+    def audio_update(self, prev_state, prev_counts):
+        """Mirror of main.c's slice-8 audio block (runs after the state
+        machine each frame): one-shot cue selection by counter deltas +
+        state flips with highest-id-wins priority, the cue channel's
+        frame countdown, and the ambience drone's tier flips."""
+        (prev_shoves, prev_places, prev_repairs, prev_breaches,
+         prev_scavenged, prev_oil_grabs) = prev_counts
+        _i, dist = self.nearest()
+        press_now = 1 if (self.state == STATE_PLAYING and self.zx
+                          and cg.gl_dark_press(self.oil, dist)) else 0
+        if self.cue_left > 0:
+            self.cue_left -= 1               # channel closes at 0
+        cue = cg.GL_CUE_NONE
+        if self.shoves > prev_shoves:
+            cue = cg.GL_CUE_SHOVE
+        if self.places > prev_places or self.repairs > prev_repairs:
+            cue = cg.GL_CUE_PLANK
+        if self.scavenged > prev_scavenged:
+            cue = cg.GL_CUE_CACHE
+        if self.oil_grabs > prev_oil_grabs:
+            cue = cg.GL_CUE_FLASK
+        if self.breaches > prev_breaches:
+            cue = cg.GL_CUE_BREACH
+        if self.state == STATE_PLAYING and prev_state != STATE_PLAYING:
+            cue = cg.GL_CUE_NIGHTFALL        # every path into a night
+        if self.state == STATE_DAWN and prev_state == STATE_PLAYING:
+            cue = cg.GL_CUE_DAWN
+        if self.state == STATE_DEAD and prev_state != STATE_DEAD:
+            cue = cg.GL_CUE_DEATH
+        if cue != cg.GL_CUE_NONE:
+            self.cue_left = cg.gl_cue_len(cue)
+            self.last_cue = cue
+            self.cues += 1
+            self.cue_frame = self.frame
+        if self.state in (STATE_PLAYING, STATE_SCAVENGE):
+            tier = cg.gl_amb_tier(self.state == STATE_PLAYING, self.oil,
+                                  press_now)
+            if not self.amb_on or tier != self.amb_tier:
+                self.amb_on = True
+                self.amb_tier = tier
+                self.amb_flips += 1
+        elif self.amb_on:
+            self.amb_on = False
+            self.amb_flips += 1
+
     def step(self, emu_frame, held):
         """One main-loop iteration (the ROM iteration run at emu_frame)."""
         self.frame += 1
@@ -287,6 +346,9 @@ class GloamSim:
         if not held:
             self.pad_seen_idle = True
         start = self.pad_seen_idle and 'START' in down
+        prev_state = self.state
+        prev_counts = (self.shoves, self.places, self.repairs,
+                       self.breaches, self.scavenged, self.oil_grabs)
 
         if self.state == STATE_TITLE:
             if start:
@@ -362,6 +424,7 @@ class GloamSim:
                 self.scavs += 1
                 self.begin_scavenge()
                 self.state = STATE_SCAVENGE
+        self.audio_update(prev_state, prev_counts)
 
     def run(self, end_emu_frame, probes=(), stop_on_death=True):
         probes = set(probes)
@@ -410,7 +473,12 @@ class GloamSim:
               f'oil_grabs {self.oil_grabs} '
               f'fx {self.fx[nearf] if nearf >= 0 else 0} '
               f'fy {self.fy[nearf] if nearf >= 0 else 0} '
-              f'fdist {cg.gl_chebyshev(self.px, self.py, self.fx[nearf], self.fy[nearf]) if nearf >= 0 else 0}')
+              f'fdist {cg.gl_chebyshev(self.px, self.py, self.fx[nearf], self.fy[nearf]) if nearf >= 0 else 0} '
+              f'atier {self.amb_tier if self.amb_on else 0} '
+              f'acue {self.last_cue} acues {self.cues} '
+              f'acuefr {self.cue_frame} '
+              f'adrone {cg.gl_amb_freq(self.amb_tier) if self.amb_on else 0} '
+              f'aflips {self.amb_flips} asfxl {self.cue_left}')
 
 
 def skewed(spans, delta):

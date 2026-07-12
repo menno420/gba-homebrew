@@ -5,13 +5,14 @@
 > the shipped ROM changes (written 2026-07-11, arc slice 3; refreshed same
 > date for arc slice 4 — shove + waves — and slice 5 — barricades; refreshed
 > 2026-07-12 for arc slice 6 — the scavenge interlude — and slice 7 —
-> lantern-oil light pressure).
+> lantern-oil light pressure; refreshed same date for slice 8 —
+> synthesized audio).
 
-**Download → open in a DS emulator → play.** No build step needed. Slice 7
-makes the light itself a resource: your lantern burns oil every night
-frame, and when the tank runs low the lamplight gutters and the dead in
-the dark stop hesitating. Scavenge oil flasks at dawn or outrun a faster
-gloam.
+**Download → open in a DS emulator → play.** No build step needed. Slice 8
+gives the night a voice: a low moor-drone that climbs as your lantern
+fails and the dark presses, and chiptune cues for everything you do —
+all synthesized on the DS's own square-wave and noise channels, no
+samples of anything. Turn the sound on.
 
 ## 1. Get the ROM
 
@@ -124,6 +125,21 @@ fence-line spawn. **NTS** (nights survived) on the HUD is your score.
   (nothing is ever wasted), and the START skip grants no oil, ever.
   Skipping every dawn is now a choice with a price: the light runs out
   in night 3.
+- **The moor has a voice — listen to your lantern.** A low drone hums
+  under every night (and calmer under the dawn light of the interlude).
+  While the tank is healthy it stays put; when the oil runs LOW the
+  drone climbs and widens with the guttering light, and when the dead
+  beyond your lamplight start pressing it becomes a throb — you can
+  HEAR the stagger-cancel arrive before the crowd does, and the drone
+  falls back the moment every walker is inside your light again. On
+  top of that, every beat of the loop has its own chiptune cue: the
+  night tolls in low, a shove lands with a thump, a plank knocks, a
+  breach splinters, cache and flask pickups clink bright (standing on
+  a flask with a full tank is pointedly silent — nothing is wasted,
+  and the silence tells you so), dawn rings a bell, and the cold hands
+  end the run with a rattle as the drone cuts out dead. Every sound is
+  synthesized in code on the DS hardware channels — 100% original, no
+  sampled audio anywhere.
 - **One touch kills.** A cold-hands card shows your night, your seed and
   your death count; START restarts instantly. Dying while scavenging
   counts all the same — greed has a price on the moor.
@@ -132,4 +148,4 @@ fence-line spawn. **NTS** (nights survived) on the HUD is your score.
   inputs). Same seed + same moves = same night, every time.
 
 Next slices per the [concept](concepts/gloamline-concept.md):
-original synthesized audio, best-nights saves, and watch-map polish.
+best-nights saves and watch-map polish.

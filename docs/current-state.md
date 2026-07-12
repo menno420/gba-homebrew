@@ -52,12 +52,51 @@
 horde-defense) is the active track: concept (PR #50) → toolchain
 feasibility (PR #51) → walking skeleton (PR #52) → shove + waves
 (PR #54) → barricades (PR #56) → scavenge interlude (PR #62) →
-**lantern-oil light pressure (session 27, this ledger entry) SHIPPED**.
-Next slices per the concept doc: synthesized audio, best-nights saves,
-watch-map polish. A parallel sibling session runs the Brineward pirate
-arc in its own dirs.)
+lantern-oil light pressure (PR #64) → **synthesized audio (session 30,
+this ledger entry) SHIPPED**. Next slices per the concept doc:
+best-nights saves, watch-map polish. A parallel sibling session runs
+the Brineward pirate arc in its own dirs.)
 
 ## Recently shipped (newest first)
+
+- **Session 30 — Gloamline slice 8: SYNTHESIZED AUDIO** (2026-07-12):
+  the concept doc's "synthesized audio set", built the way session
+  27's guard recipe demanded: playback on the **NDS hardware PSG
+  channels** (square + noise generators, driven by the default
+  BlocksDS ARM7 core over the libnds sound FIFO) — every sound is
+  synthesized in code from pure parameter tables, **no sampled or
+  binary audio asset exists anywhere in the repo**, and the ARM9
+  per-frame cost is a few integer compares. Two voices: an **ambience
+  drone** whose pitch/duty/volume track the lantern through the pure
+  `gl_amb_tier` (calm 55 Hz daylight interlude → 65 Hz lit night →
+  82 Hz once the light gutters → a 110 Hz throb while the dark press
+  is live on the nearest of the dead; FIFO touched ONLY on tier flips,
+  drone cut on the cards — dying silences the moor), and a **one-shot
+  cue channel** (nightfall toll, shove thump, plank knock, breach
+  splinter, cache/flask pickups, dawn bell, death rattle; cue id order
+  IS the priority order on a multi-event frame). Audio feeds nothing
+  back into the sim — **all 240 pre-slice-8 asserts re-ran UNCHANGED,
+  zero re-pins (the trick's SIXTH hold)**. Decision layer pure +
+  three-way lockstep (`gl_sim` ↔ `check-gloam.py` ↔ `gloam-route.py`
+  audio mirror); telemetry 48 → 56 (slots 0-47 frozen). **Four new
+  pinned headless proofs (19 proofs / 353 asserts total)** — cue
+  chain on the idle run, the drone climbing tier-exact through the
+  committed oil-press route's failing light (drone restart count
+  pinned across the press flicker), day-tier + pickup cues + audible
+  silence on the no-waste flask stand, and the verb cues with live
+  priority preemption — every pinned value mirror-predicted and
+  emulator-matched exactly. **Frame budget: the audio glue initially
+  tipped the worst stress frame 70 → 71 modeled scanlines (measured,
+  not hidden); fixed in-slice** by retiring the last full-line
+  per-frame reprint (the dawn bar now redraws flip-only, like the
+  slice-7 oil gauge): steady max now **69 scanlines (mean 56.8) vs
+  the 71-line vblank budget** — 2 modeled lines of headroom, better
+  than slice 7's 70 (DeSmuME timing model, not hardware). Honest
+  rail: headless CI proves WHICH sound is asked for WHEN; it cannot
+  HEAR — audible output/mix quality is owner-playtest-only.
+  Screenshots: `proof/slice8-audio-{press,flask,breach}.png`. Ships
+  as **`dist/gloamline.nds`** (116,224 B, byte-deterministic) +
+  [`PLAYING-GLOAMLINE.md`](PLAYING-GLOAMLINE.md) sound guide.
 
 - **Session 27 — Gloamline slice 7: LANTERN-OIL LIGHT PRESSURE**
   (2026-07-12): the concept doc's stated pressure ("lantern oil — light

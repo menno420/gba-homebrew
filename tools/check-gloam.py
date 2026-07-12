@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gloamline host proof (stdlib-only, <2s) — arc slice 7: lantern oil.
+"""Gloamline host proof (stdlib-only, <2s) — arc slice 8: synthesized audio.
 
 The check-cave.py sibling for Gloamline: a line-for-line Python mirror of
 the pure simulation layer in games/gloamline-nds/source/gl_sim.c
@@ -93,7 +93,17 @@ touches:
      sustainable-by-choice: one interlude's full flask yield
      (GL_FLASK_COUNT x GL_OIL_FLASK) out-earns one night's burn
      (GL_NIGHT_FRAMES x GL_OIL_BURN), while a skipped interlude gives
-     NOTHING back — the pressure is real but never a scripted loss.
+     NOTHING back — the pressure is real but never a scripted loss;
+ 13. synthesized-audio decision layer (slice 8) — gl_amb_tier matches
+     its truth table for thousands of hash-driven (is_night, oil,
+     press) cases and is ALWAYS plain NIGHT at healthy night oil and
+     ALWAYS DAY in daylight (the zero-re-pin gate: audio adds no new
+     observable at full light); the drone rows climb strictly in
+     frequency with legal duty codes and audible in-range volumes; the
+     8 one-shot cue rows are PSG-legal (freq 50..4000 Hz), bounded
+     (hold 1..90 frames — no cue hogs the channel), audible, and the
+     cue ids are exactly the documented priority ranking that main.c
+     and the mirror resolve a multi-event frame with.
 
 MIRROR RULE (keep in lockstep): every function and constant below mirrors
 games/gloamline-nds/source/gl_sim.c. Any change to the C MUST land here in
@@ -145,6 +155,22 @@ GL_LIGHT_R_MIN = 24 * GL_ONE
 GL_FLASK_COUNT = 2
 GL_OIL_FLASK = 3600
 GL_FLASK_SALT = 0xF1A5C01D
+GL_AMB_TIER_DAY = 0
+GL_AMB_TIER_NIGHT = 1
+GL_AMB_TIER_GUTTER = 2
+GL_AMB_TIER_PRESS = 3
+GL_AMB_TIERS = 4
+GL_CUE_NONE = 0
+GL_CUE_SHOVE = 1
+GL_CUE_PLANK = 2
+GL_CUE_CACHE = 3
+GL_CUE_FLASK = 4
+GL_CUE_BREACH = 5
+GL_CUE_NIGHTFALL = 6
+GL_CUE_DAWN = 7
+GL_CUE_DEATH = 8
+GL_CUE_COUNT = 9
+GL_CUE_ON_NOISE = 255
 GL_NIGHT_FRAMES = 3600
 
 U32 = 0xFFFFFFFF
@@ -331,6 +357,73 @@ def gl_oil_after_flask(oil):
     """Mirror of gl_oil_after_flask()."""
     o = oil + GL_OIL_FLASK
     return GL_OIL_MAX if o > GL_OIL_MAX else o
+
+
+def gl_amb_tier(is_night, oil, press_nearest):
+    """Mirror of gl_amb_tier()."""
+    if not is_night:
+        return GL_AMB_TIER_DAY
+    if oil >= GL_OIL_LOW:
+        return GL_AMB_TIER_NIGHT             # full light: one sound only
+    return GL_AMB_TIER_PRESS if press_nearest else GL_AMB_TIER_GUTTER
+
+
+# Mirror of GL_AMB_ROWS: { freq Hz, duty code, vol } per tier.
+GL_AMB_ROWS = (
+    (55, 0, 10),                             # DAY: the moor at dawn
+    (65, 1, 18),                             # NIGHT: the gloam hum
+    (82, 2, 30),                             # GUTTER: the lamp fails
+    (110, 3, 44),                            # PRESS: the dark comes on
+)
+
+
+def gl_amb_freq(tier):
+    """Mirror of gl_amb_freq()."""
+    return GL_AMB_ROWS[tier if tier < GL_AMB_TIERS else 0][0]
+
+
+def gl_amb_duty(tier):
+    """Mirror of gl_amb_duty()."""
+    return GL_AMB_ROWS[tier if tier < GL_AMB_TIERS else 0][1]
+
+
+def gl_amb_vol(tier):
+    """Mirror of gl_amb_vol()."""
+    return GL_AMB_ROWS[tier if tier < GL_AMB_TIERS else 0][2]
+
+
+# Mirror of GL_CUE_ROWS: { freq Hz, len frames, duty|ON_NOISE, vol }.
+GL_CUE_ROWS = (
+    (0, 0, 0, 0),                            # NONE
+    (196, 8, 6, 88),                         # SHOVE: G3 thump, wide duty
+    (262, 10, 3, 80),                        # PLANK: C4 knock of wood
+    (523, 12, 4, 78),                        # CACHE: C5 pocketed bright
+    (784, 14, 4, 84),                        # FLASK: G5 brass slosh
+    (900, 20, GL_CUE_ON_NOISE, 100),         # BREACH: splintering noise
+    (98, 40, 2, 96),                         # NIGHTFALL: G2 toll
+    (392, 50, 4, 90),                        # DAWN: G4 bell
+    (220, 60, GL_CUE_ON_NOISE, 112),         # DEATH: the cold rattle
+)
+
+
+def gl_cue_freq(cue):
+    """Mirror of gl_cue_freq()."""
+    return GL_CUE_ROWS[cue if cue < GL_CUE_COUNT else 0][0]
+
+
+def gl_cue_len(cue):
+    """Mirror of gl_cue_len()."""
+    return GL_CUE_ROWS[cue if cue < GL_CUE_COUNT else 0][1]
+
+
+def gl_cue_duty(cue):
+    """Mirror of gl_cue_duty()."""
+    return GL_CUE_ROWS[cue if cue < GL_CUE_COUNT else 0][2]
+
+
+def gl_cue_vol(cue):
+    """Mirror of gl_cue_vol()."""
+    return GL_CUE_ROWS[cue if cue < GL_CUE_COUNT else 0][3]
 
 
 # --- proofs ------------------------------------------------------------------
@@ -930,6 +1023,95 @@ def main():
         print('FAIL oil economy: a fresh lantern cannot even cover one '
               'night before going LOW')
 
+    # 13. synthesized-audio decision layer (slice 8).
+    # 13a. gl_amb_tier truth table over hash-driven (is_night, oil,
+    # press) cases; the zero-re-pin gate: at night with healthy oil the
+    # tier is ALWAYS plain NIGHT (one sound only — nothing for an old
+    # route to hear differently), and daylight is ALWAYS DAY.
+    tier_cases = 0
+    for case in range(8192):
+        is_night = gl_hash(case, 31) & 1
+        oil = gl_hash(case, 32) % (GL_OIL_MAX + 1)
+        press = gl_hash(case, 33) & 1
+        tier_cases += 1
+        got = gl_amb_tier(is_night, oil, press)
+        if got != gl_amb_tier(is_night, oil, press):
+            failures += 1
+            print(f'FAIL tier determinism: case {case}')
+        want = (GL_AMB_TIER_DAY if not is_night
+                else GL_AMB_TIER_NIGHT if oil >= GL_OIL_LOW
+                else GL_AMB_TIER_PRESS if press else GL_AMB_TIER_GUTTER)
+        if got != want:
+            failures += 1
+            print(f'FAIL tier truth-table: case {case}: got {got}')
+        if is_night and oil >= GL_OIL_LOW and got != GL_AMB_TIER_NIGHT:
+            failures += 1
+            print(f'FAIL tier inertness: case {case}: healthy-oil night '
+                  f'tier {got} != NIGHT — zero-re-pin gate broken')
+        if not GL_AMB_TIER_DAY <= got < GL_AMB_TIERS:
+            failures += 1
+            print(f'FAIL tier bounds: case {case}: {got}')
+    # 13b. ambience rows: freq strictly climbs with the tier (the moor
+    # hums higher as the night closes in), duty is a legal DutyCycle
+    # code, volume audible and inside the 0..127 hardware range.
+    prev_f = 0
+    for tier in range(GL_AMB_TIERS):
+        f, d, v = (gl_amb_freq(tier), gl_amb_duty(tier), gl_amb_vol(tier))
+        if (f, d, v) != (gl_amb_freq(tier), gl_amb_duty(tier),
+                         gl_amb_vol(tier)):
+            failures += 1
+            print(f'FAIL amb determinism: tier {tier}')
+        if f <= prev_f:
+            failures += 1
+            print(f'FAIL amb freq climb: tier {tier}: {f} <= {prev_f}')
+        if not 0 <= d <= 7:
+            failures += 1
+            print(f'FAIL amb duty code: tier {tier}: {d}')
+        if not 1 <= v <= 127:
+            failures += 1
+            print(f'FAIL amb volume: tier {tier}: {v}')
+        prev_f = f
+    if gl_amb_freq(GL_AMB_TIERS + 3) != gl_amb_freq(0):
+        failures += 1
+        print('FAIL amb out-of-range: bad tier must fall back to DAY')
+    # 13c. cue table: row 0 is a no-op; every real cue has a PSG-legal
+    # frequency, a bounded channel hold (a cue can never hog the SFX
+    # channel), an audible in-range volume, and a legal duty code or
+    # the noise-channel marker; ids are exactly the documented priority
+    # ranking (death > dawn > nightfall > breach > flask > cache >
+    # plank > shove — highest id wins a frame, mirrored in main.c).
+    if (gl_cue_freq(GL_CUE_NONE), gl_cue_len(GL_CUE_NONE),
+            gl_cue_vol(GL_CUE_NONE)) != (0, 0, 0):
+        failures += 1
+        print('FAIL cue NONE: row 0 must be a no-op')
+    for cue in range(1, GL_CUE_COUNT):
+        f, ln = gl_cue_freq(cue), gl_cue_len(cue)
+        d, v = gl_cue_duty(cue), gl_cue_vol(cue)
+        if (f, ln, d, v) != (gl_cue_freq(cue), gl_cue_len(cue),
+                             gl_cue_duty(cue), gl_cue_vol(cue)):
+            failures += 1
+            print(f'FAIL cue determinism: id {cue}')
+        if not 50 <= f <= 4000:
+            failures += 1
+            print(f'FAIL cue freq: id {cue}: {f} outside [50, 4000]')
+        if not 1 <= ln <= 90:
+            failures += 1
+            print(f'FAIL cue hold: id {cue}: {ln} frames outside [1, 90]')
+        if not (0 <= d <= 7 or d == GL_CUE_ON_NOISE):
+            failures += 1
+            print(f'FAIL cue duty: id {cue}: {d}')
+        if not 1 <= v <= 127:
+            failures += 1
+            print(f'FAIL cue volume: id {cue}: {v}')
+    ranking = [GL_CUE_SHOVE, GL_CUE_PLANK, GL_CUE_CACHE, GL_CUE_FLASK,
+               GL_CUE_BREACH, GL_CUE_NIGHTFALL, GL_CUE_DAWN, GL_CUE_DEATH]
+    if ranking != sorted(ranking) or ranking != list(range(1, 9)):
+        failures += 1
+        print('FAIL cue priority: ids are not the documented ranking')
+    if gl_cue_len(GL_CUE_COUNT + 5) != 0:
+        failures += 1
+        print('FAIL cue out-of-range: bad id must fall back to the no-op')
+
     if failures:
         print(f'check-gloam: {failures} failure(s)')
         return 1
@@ -960,8 +1142,12 @@ def main():
           f'contact frame {worst_pressed}), {flasks} flask positions '
           f'pure/interior/off-fence, burn floors at 0, flask top-up '
           f'capped at {GL_OIL_MAX}, {full_routes} greedy full-pickup '
-          f'routes fit the dawn light (worst {worst_full}), and one '
-          'interlude of flasks out-earns one night of burn')
+          f'routes fit the dawn light (worst {worst_full}), one '
+          'interlude of flasks out-earns one night of burn, '
+          f'{tier_cases} ambience-tier cases truth-table-exact (always '
+          'NIGHT at healthy oil, always DAY in daylight), drone rows '
+          'climb/legal, and all 8 cue rows PSG-legal/bounded with the '
+          'id order = the documented priority ranking')
     return 0
 
 

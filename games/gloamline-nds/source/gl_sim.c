@@ -230,3 +230,73 @@ uint32_t gl_oil_after_flask(uint32_t oil)
     uint32_t o = oil + GL_OIL_FLASK;
     return o > GL_OIL_MAX ? GL_OIL_MAX : o;
 }
+
+uint32_t gl_amb_tier(int is_night, uint32_t oil, int press_nearest)
+{
+    if (!is_night)
+        return GL_AMB_TIER_DAY;
+    if (oil >= GL_OIL_LOW)
+        return GL_AMB_TIER_NIGHT;            // full light: one sound only
+    return press_nearest ? GL_AMB_TIER_PRESS : GL_AMB_TIER_GUTTER;
+}
+
+// Ambience drone rows, indexed by tier: { freq Hz, duty code, vol }.
+// One row per tier — the owner-tunable table. The drone is a low
+// square wave; the duty widens and the pitch/volume climb as the
+// night closes in (DAY 12.5% barely-there hum -> PRESS 50% throb).
+static const uint16_t GL_AMB_ROWS[GL_AMB_TIERS][3] = {
+    { 55, 0, 10 },                           // DAY: the moor at dawn
+    { 65, 1, 18 },                           // NIGHT: the gloam hum
+    { 82, 2, 30 },                           // GUTTER: the lamp fails
+    { 110, 3, 44 },                          // PRESS: the dark comes on
+};
+
+uint32_t gl_amb_freq(uint32_t tier)
+{
+    return GL_AMB_ROWS[tier < GL_AMB_TIERS ? tier : 0][0];
+}
+
+uint32_t gl_amb_duty(uint32_t tier)
+{
+    return GL_AMB_ROWS[tier < GL_AMB_TIERS ? tier : 0][1];
+}
+
+uint32_t gl_amb_vol(uint32_t tier)
+{
+    return GL_AMB_ROWS[tier < GL_AMB_TIERS ? tier : 0][2];
+}
+
+// One-shot cue rows, indexed by cue id: { freq Hz, len frames, duty
+// code or GL_CUE_ON_NOISE, vol }. One row per sound — the owner-
+// tunable table. Row 0 (GL_CUE_NONE) is all zeros: a no-op cue.
+static const uint16_t GL_CUE_ROWS[GL_CUE_COUNT][4] = {
+    { 0, 0, 0, 0 },                          // NONE
+    { 196, 8, 6, 88 },                       // SHOVE: G3 thump, wide duty
+    { 262, 10, 3, 80 },                      // PLANK: C4 knock of wood
+    { 523, 12, 4, 78 },                      // CACHE: C5 pocketed bright
+    { 784, 14, 4, 84 },                      // FLASK: G5 brass slosh
+    { 900, 20, GL_CUE_ON_NOISE, 100 },       // BREACH: splintering noise
+    { 98, 40, 2, 96 },                       // NIGHTFALL: G2 toll
+    { 392, 50, 4, 90 },                      // DAWN: G4 bell
+    { 220, 60, GL_CUE_ON_NOISE, 112 },       // DEATH: the cold rattle
+};
+
+uint32_t gl_cue_freq(uint32_t cue)
+{
+    return GL_CUE_ROWS[cue < GL_CUE_COUNT ? cue : 0][0];
+}
+
+uint32_t gl_cue_len(uint32_t cue)
+{
+    return GL_CUE_ROWS[cue < GL_CUE_COUNT ? cue : 0][1];
+}
+
+uint32_t gl_cue_duty(uint32_t cue)
+{
+    return GL_CUE_ROWS[cue < GL_CUE_COUNT ? cue : 0][2];
+}
+
+uint32_t gl_cue_vol(uint32_t cue)
+{
+    return GL_CUE_ROWS[cue < GL_CUE_COUNT ? cue : 0][3];
+}

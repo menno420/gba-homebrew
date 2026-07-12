@@ -140,6 +140,48 @@
 #define GL_OIL_FLASK 3600                    // one night of burn each
 #define GL_FLASK_SALT 0xF1A5C01Du            // flask hash stream != caches
 
+// --- synthesized audio (slice 8) -------------------------------------------------
+// The concept doc's "synthesized audio set", per session 27's guard
+// recipe: playback lives on the NDS hardware PSG channels (square-wave
+// + white-noise generators driven by the default BlocksDS ARM7 core
+// over the libnds sound FIFO) — every sound is synthesized in code
+// from the pure parameters below, there is NO sampled or binary audio
+// asset anywhere in the repo, and the ARM9 per-frame cost is a few
+// integer compares (the slice-7 frame budget left 1 modeled scanline).
+// The DECISION layer is pure and mirrored: gl_amb_tier says which
+// ambience the night wants this frame, gl_cue_* say what each one-shot
+// cue sounds like, and the cue ids double as the priority order (on a
+// frame with several events the HIGHEST id fires the one SFX channel).
+// Playback itself (FIFO writes) is render-like ARM9 glue in main.c —
+// no sim state feeds back from audio, so every pre-slice-8 pin holds.
+// All numbers are decide-and-flag owner-tunables (one table row per
+// sound in gl_sim.c).
+//
+// Ambience tiers: the night drone tracks the lantern.
+#define GL_AMB_TIER_DAY 0                    // scavenge daylight: calm
+#define GL_AMB_TIER_NIGHT 1                  // lit night: the gloam hum
+#define GL_AMB_TIER_GUTTER 2                 // oil LOW: the lamp gutters
+#define GL_AMB_TIER_PRESS 3                  // dark press live: it comes
+#define GL_AMB_TIERS 4
+//
+// One-shot cue ids (0 = none). ID ORDER IS PRIORITY: death > dawn >
+// nightfall > breach > flask > cache > plank > shove.
+#define GL_CUE_NONE 0
+#define GL_CUE_SHOVE 1                       // a body thumped off the light
+#define GL_CUE_PLANK 2                       // the knock of a placed plank
+#define GL_CUE_CACHE 3                       // planks pocketed
+#define GL_CUE_FLASK 4                       // brass flask, bright slosh
+#define GL_CUE_BREACH 5                      // a barricade splinters
+#define GL_CUE_NIGHTFALL 6                   // the night tolls in
+#define GL_CUE_DAWN 7                        // the dawn bell
+#define GL_CUE_DEATH 8                       // the cold hands
+#define GL_CUE_COUNT 9                       // ids 0..8
+//
+// gl_cue_duty(cue) == GL_CUE_ON_NOISE routes the cue to the hardware
+// noise channel (soundPlayNoise) instead of a square wave; otherwise
+// the value is the libnds DutyCycle register code (0..7).
+#define GL_CUE_ON_NOISE 255
+
 // --- night clock -------------------------------------------------------------
 // One night = 60 s at 60 fps. Headless DeSmuME runs ~800 fps in CI, so the
 // survive-to-dawn proof replays a FULL night on the shipped ROM — no
@@ -260,5 +302,33 @@ void gl_flask_of_interlude(uint32_t seed, uint32_t night, uint32_t index,
 // Pure f(oil). (The caller must not consume a flask on a full tank —
 // gl_cache_grab + an oil < GL_OIL_MAX check: no flask is wasted.)
 uint32_t gl_oil_after_flask(uint32_t oil);
+
+// Ambience tier this frame (slice 8): DAY in the daylight interlude
+// (is_night = 0 — daylight presses nobody and hums calm regardless of
+// the tank), else NIGHT while the oil is healthy (>= GL_OIL_LOW — the
+// zero-re-pin shape: at full light the night sounds exactly one way),
+// GUTTER once the light fails, PRESS when the dark press is live on
+// the nearest of the dead (press_nearest = the GL_T_PRESS predicate).
+// Pure f(is_night, oil, press_nearest).
+uint32_t gl_amb_tier(int is_night, uint32_t oil, int press_nearest);
+
+// Ambience drone parameters of a tier: square-wave frequency (Hz),
+// libnds DutyCycle register code (0..7), volume (0..127). Pure lookup;
+// out-of-range tiers return the DAY row. gl_amb_freq is strictly
+// increasing in tier (the moor hums higher as the night closes in).
+uint32_t gl_amb_freq(uint32_t tier);
+uint32_t gl_amb_duty(uint32_t tier);
+uint32_t gl_amb_vol(uint32_t tier);
+
+// One-shot cue parameters: frequency (Hz — square-wave pitch, or the
+// noise-generator rate for GL_CUE_ON_NOISE cues), length the ARM9
+// holds the channel open (frames, bounded — a cue can never hog the
+// SFX channel), duty (DutyCycle code 0..7, or GL_CUE_ON_NOISE for the
+// noise channel), volume (0..127). Pure lookups; GL_CUE_NONE and
+// out-of-range ids return 0 across the board (a no-op cue).
+uint32_t gl_cue_freq(uint32_t cue);
+uint32_t gl_cue_len(uint32_t cue);
+uint32_t gl_cue_duty(uint32_t cue);
+uint32_t gl_cue_vol(uint32_t cue);
 
 #endif // GL_SIM_H

@@ -114,7 +114,9 @@ directly reachable from the fleet container — no mirror needed.
   wave/shove/stun counters + the GL_T_VLINES/GL_T_VLMAX frame-cost probe;
   slice 5 -> 32: planks + barricade state; slice 6 -> 40: scavenge
   interlude timer/cache/loot state; slice 7 -> 48: lantern oil, light
-  radius, dark press + flask state).
+  radius, dark press + flask state; slice 8 -> 56: synthesized-audio
+  decision state — ambience tier, drone frequency, last/count/frame of
+  the one-shot cues, cue-channel countdown).
   Survive routes are derived and skew-verified on the host mirror with
   `tools/gloam-route.py` (`derive --nights N --out FILE`, `verify
   --keys-file FILE --nights N`). `make GL_STRESS=1` builds the CI-only

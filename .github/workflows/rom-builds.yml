@@ -71,7 +71,7 @@ jobs:
   # the walking skeleton). Deliberately a SEPARATE job so the required "ROM
   # builds" GBA gate is untouched: BlocksDS 1.21.1 + Wonderful GCC
   # (sha256-pinned by tools/setup-nds-toolchain.sh, which the cache key
-  # hashes), then the host-mirror proof + fifteen headless py-desmume proofs
+  # hashes), then the host-mirror proof + nineteen headless py-desmume proofs
   # against the ROM's gl_telemetry mailbox (ELF-symbol-resolved watches;
   # every numeric value below was pinned from a deterministic in-container
   # run — the ROM build is byte-deterministic, so drift = regression).
@@ -127,7 +127,7 @@ jobs:
       # Proof 1 — boot: dual-screen title renders, telemetry mailbox is
       # live (magic words present, frame counter running, full-length
       # 3600-frame nights — i.e. the shipped ROM, not a test build).
-      - name: 'proof 1/15 — boot + telemetry mailbox'
+      - name: 'proof 1/19 — boot + telemetry mailbox'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-boot-300.png \
@@ -143,7 +143,7 @@ jobs:
       # then RIGHT / DOWN / UP+LEFT each move the player by the exact
       # pure-function distances (1.5 px/f straight, 271/256 px/f per axis
       # diagonal). Positions are 8.8 fixed (32768 = x128).
-      - name: 'proof 2/15 — 8-way move (position telemetry tracks input)'
+      - name: 'proof 2/19 — 8-way move (position telemetry tracks input)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-move.png \
@@ -167,7 +167,7 @@ jobs:
       # 2405 < 2560), state flips to DEAD with deaths=1, the card holds,
       # and START restarts instantly (fresh seed 348, player re-centered,
       # the new night's Shambler closing again).
-      - name: 'proof 3/15 — chase closes, contact = death, START restarts'
+      - name: 'proof 3/19 — chase closes, contact = death, START restarts'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-death.png \
@@ -194,7 +194,7 @@ jobs:
       # >= 22 px of margin at every alignment +-6 frames) replays a FULL
       # 60-second night headlessly (~5 s wall): dawn breaks (state 3),
       # nights survived = 1, deaths = 0.
-      - name: 'proof 4/15 — survive night 1 to dawn (full-length night)'
+      - name: 'proof 4/19 — survive night 1 to dawn (full-length night)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-dawn.png \
@@ -218,7 +218,7 @@ jobs:
       # only DELAYS — the idle player still dies by frame 490. Every
       # value below was predicted by the tools/gloam-route.py mirror sim
       # and matched by the emulator run exactly.
-      - name: 'proof 5/15 — shove: knockback + stun + cooldown (pressure valve)'
+      - name: 'proof 5/19 — shove: knockback + stun + cooldown (pressure valve)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-shove.png \
@@ -251,7 +251,7 @@ jobs:
       # schedule (alive t[16]: 1 at rf 100, 2 past rf 800, 3 past rf
       # 1600), and dawn breaks on night 2 with 3 Shamblers up and 0
       # deaths. ~10 s wall headless for the two full nights.
-      - name: 'proof 6/15 — night-2 wave (3 zombies) spawns on schedule + survive to dawn'
+      - name: 'proof 6/19 — night-2 wave (3 zombies) spawns on schedule + survive to dawn'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-night2.png \
@@ -288,7 +288,7 @@ jobs:
       # i.e. 60 fps with the maximum crowd + full ring. Honest-method
       # note: this is DeSmuME's scanline timing model (py-desmume 0.0.9),
       # not hardware.
-      - name: 'proof 7/15 — 24-Shambler + 8-barricade frame budget (stress build, vcount probe)'
+      - name: 'proof 7/19 — 24-Shambler + 8-barricade frame budget (stress build, vcount probe)'
         run: |
           python3 tools/nds-headless-check.py \
             gloamline-stress.nds nds-stress.png \
@@ -319,7 +319,7 @@ jobs:
       # 690 with the unspent planks intact (t[24]=5). Every value was
       # predicted by the tools/gloam-route.py mirror sim and matched by
       # the emulator exactly.
-      - name: 'proof 8/15 — barricade: place blocks the dead, chew-through breaches, still no free lunch'
+      - name: 'proof 8/19 — barricade: place blocks the dead, chew-through breaches, still no free lunch'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-barricade.png \
@@ -351,7 +351,7 @@ jobs:
       # exactly 1 plank (t[26] back to 236 = 240 minus the chews since,
       # t[24] 5->4, t[29]=1) and the block keeps holding (alive at 420,
       # chewing resumed: t[26]=155). Mirror-predicted, emulator-matched.
-      - name: 'proof 9/15 — barricade repair: 1 plank, full hp, no waste on a full one'
+      - name: 'proof 9/19 — barricade repair: 1 plank, full hp, no waste on a full one'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-repair.png \
@@ -388,7 +388,7 @@ jobs:
       # wiped, 0 deaths. Route survives every +-6-frame movement skew on
       # the mirror (min dist >= 22.4 px); every pinned value below was
       # mirror-predicted and emulator-matched exactly.
-      - name: 'proof 10/15 — scavenge: SELECT enters, 3 caches looted, full pocket wastes nothing, START exits with the loot'
+      - name: 'proof 10/19 — scavenge: SELECT enters, 3 caches looted, full pocket wastes nothing, START exits with the loot'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-scavenge-loot.png \
@@ -433,7 +433,7 @@ jobs:
       # closes 6821 -> 2789) and killed INSIDE the interlude (state 4 ->
       # 2, deaths 1, contact dist 2405 — the same cold hands as proof 3),
       # planks unlooted. Daylight is bought planks, not safety.
-      - name: 'proof 11/15 — scavenge risk: the dead walk back in, idling in the interlude kills you'
+      - name: 'proof 11/19 — scavenge risk: the dead walk back in, idling in the interlude kills you'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-scavenge-death.png \
@@ -466,7 +466,7 @@ jobs:
       # (state 4 -> 1, night 2, wave of 3 on schedule, player recentered,
       # caches wiped, interlude counter 0, planks carried, 0 deaths).
       # Route survives every +-6-frame movement skew on the mirror.
-      - name: 'proof 12/15 — scavenge timer: kite out the full dawn light, night 2 starts by itself with the loot'
+      - name: 'proof 12/19 — scavenge timer: kite out the full dawn light, night 2 starts by itself with the loot'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-scavenge-timer.png \
@@ -501,7 +501,7 @@ jobs:
       # 80 px) and the dark press stays 0 the whole night — the
       # zero-re-pin gate, emulator-visible — and the death card FREEZES
       # the burn (10673 at both 250 and 340: cards burn nothing).
-      - name: 'proof 13/15 — lantern oil burns per night frame; at full light nothing changes'
+      - name: 'proof 13/19 — lantern oil burns per night frame; at full light nothing changes'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-oil-burn.png \
@@ -535,7 +535,7 @@ jobs:
       # unhesitating and kill the lamplighter in the failing light
       # (contact 2437, radius 16599 = 64.8 px, nights survived 2).
       # Every pinned value mirror-predicted, emulator-matched exactly.
-      - name: 'proof 14/15 — night 3: the light fails, the dark presses, the pressed dead kill'
+      - name: 'proof 14/19 — night 3: the light fails, the dark presses, the pressed dead kill'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-oil-press.png \
@@ -581,7 +581,7 @@ jobs:
       # (t[43] stays 1: no flask is ever wasted); START exits into
       # night 2 where the lantern burns again (10780 at run frame 20,
       # 10740 at 60), flasks wiped, loot carried, 0 deaths.
-      - name: 'proof 15/15 — oil flask: entry tops the tank to the cap, a full tank wastes nothing'
+      - name: 'proof 15/19 — oil flask: entry tops the tank to the cap, a full tank wastes nothing'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-oil-flask.png \
@@ -613,6 +613,201 @@ jobs:
             --assert-watch 3880:t:24:eq:7 \
             --assert-watch 3880:t:11:eq:0 \
             --assert-watch 3920:t:40:eq:10740
+      # Proof 16 — SYNTHESIZED AUDIO trigger chain (slice 8), on proof
+      # 3's own idle run (same seed 118, same death): START tolls
+      # NIGHTFALL (last-cue t[49] = 6, count t[50] = 1, fired at ROM
+      # frame 118, cue channel holding 30 more frames at the pin), the
+      # drone hums the LIT-NIGHT tier (t[48] = 1, 65 Hz on t[52], one
+      # flip); the cue channel closes on schedule (t[54] = 0 by 205);
+      # the cold hands fire the DEATH rattle (t[49] = 8, t[50] = 2 at
+      # 250) and the drone CUTS OUT on the card (t[52] = 0 — dying
+      # silences the moor); START restarts and the night tolls again
+      # (t[50] = 3, seed 348's run, drone back at 65 Hz). Every pinned
+      # value was predicted by the tools/gloam-route.py audio mirror
+      # and matched by the emulator exactly. Honest-method note: this
+      # proves WHICH sound is asked for WHEN — headless CI cannot hear
+      # the PSG output itself (owner playtest for the mix).
+      - name: 'proof 16/19 — audio cues: nightfall toll, death rattle, the drone dies with you'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-audio-idle.png \
+            --frames 420 --keys 120-125:START --keys 350-355:START \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:56 \
+            --assert-watch 130:t:48:eq:1 \
+            --assert-watch 130:t:49:eq:6 \
+            --assert-watch 130:t:50:eq:1 \
+            --assert-watch 130:t:51:eq:118 \
+            --assert-watch 130:t:52:eq:65 \
+            --assert-watch 130:t:53:eq:1 \
+            --assert-watch 130:t:54:eq:30 \
+            --assert-watch 205:t:52:eq:65 \
+            --assert-watch 205:t:54:eq:0 \
+            --assert-watch 250:t:3:eq:2 \
+            --assert-watch 250:t:49:eq:8 \
+            --assert-watch 250:t:50:eq:2 \
+            --assert-watch 250:t:51:eq:245 \
+            --assert-watch 250:t:52:eq:0 \
+            --assert-watch 250:t:53:eq:2 \
+            --assert-watch 250:t:54:eq:57 \
+            --assert-watch 340:t:52:eq:0 \
+            --assert-watch 340:t:54:eq:0 \
+            --assert-watch 360:t:49:eq:6 \
+            --assert-watch 360:t:50:eq:3 \
+            --assert-watch 360:t:51:eq:348 \
+            --assert-watch 360:t:52:eq:65 \
+            --assert-watch 360:t:53:eq:3 \
+            --assert-watch 419:t:50:eq:3
+      # Proof 17 — the AMBIENCE FOLLOWS THE FAILING LIGHT (slice 8), on
+      # proof 14's committed oil-press route (no new route needed): the
+      # lit nights hum tier 1 (65 Hz), each dawn card rings the DAWN
+      # bell and silences the drone (t[49] = 7, t[52] = 0 at 7460),
+      # night 3 tolls in (t[50] = 5, channel holding 32 at 7550), the
+      # tank crossing GL_OIL_LOW lifts the drone to GUTTER (t[48] = 2,
+      # 82 Hz at 8150 — press still 0) and the dark press to PRESS
+      # (t[48] = 3, 110 Hz at 8166/8426/8830, press live), with the
+      # drone restart count pinned at 6/7/9/13/15 across the flicker
+      # (the tier follows the pure press predicate frame-exactly as
+      # the dead cross the shrinking light circle); the pressed kill
+      # fires the DEATH rattle and cuts the drone (8960). All
+      # mirror-predicted, emulator-matched exactly.
+      - name: 'proof 17/19 — ambience: the drone climbs as the light fails and the dark presses'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-audio-press.png \
+            --frames 9000 $(cat games/gloamline-nds/proof/oil-press-keys.txt) \
+            --shot 8166:nds-audio-dark.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:56 \
+            --assert-watch 2000:t:48:eq:1 \
+            --assert-watch 2000:t:49:eq:6 \
+            --assert-watch 2000:t:50:eq:1 \
+            --assert-watch 2000:t:52:eq:65 \
+            --assert-watch 2000:t:53:eq:1 \
+            --assert-watch 7460:t:3:eq:3 \
+            --assert-watch 7460:t:49:eq:7 \
+            --assert-watch 7460:t:50:eq:4 \
+            --assert-watch 7460:t:52:eq:0 \
+            --assert-watch 7550:t:49:eq:6 \
+            --assert-watch 7550:t:50:eq:5 \
+            --assert-watch 7550:t:52:eq:65 \
+            --assert-watch 7550:t:54:eq:32 \
+            --assert-watch 8100:t:48:eq:1 \
+            --assert-watch 8100:t:52:eq:65 \
+            --assert-watch 8150:t:42:eq:0 \
+            --assert-watch 8150:t:48:eq:2 \
+            --assert-watch 8150:t:52:eq:82 \
+            --assert-watch 8150:t:53:eq:6 \
+            --assert-watch 8166:t:42:eq:1 \
+            --assert-watch 8166:t:48:eq:3 \
+            --assert-watch 8166:t:52:eq:110 \
+            --assert-watch 8166:t:53:eq:7 \
+            --assert-watch 8426:t:48:eq:3 \
+            --assert-watch 8426:t:52:eq:110 \
+            --assert-watch 8426:t:53:eq:9 \
+            --assert-watch 8830:t:48:eq:3 \
+            --assert-watch 8830:t:52:eq:110 \
+            --assert-watch 8830:t:53:eq:13 \
+            --assert-watch 8960:t:3:eq:2 \
+            --assert-watch 8960:t:49:eq:8 \
+            --assert-watch 8960:t:50:eq:6 \
+            --assert-watch 8960:t:51:eq:8952 \
+            --assert-watch 8960:t:52:eq:0 \
+            --assert-watch 8960:t:53:eq:15 \
+            --assert-watch 8960:t:54:eq:54
+      # Proof 18 — DAYLIGHT + PICKUP cues (slice 8), on proof 15's
+      # committed oil-flask route: the night-1 dawn card rings the bell
+      # (t[49] = 7, drone silent, channel holding 20), SELECT drops the
+      # drone to the DAY tier (t[48] = 0 at 55 Hz — the calm interlude
+      # hum) and the entry flask pays the tank with the FLASK slosh
+      # (t[49] = 4, t[50] = 3 — the pickup that proof 15 pins as oil
+      # 7200 -> the 10800 cap); the cache en route clinks CACHE
+      # (t[49] = 3, t[50] = 4); standing ON the second flask with a
+      # full tank fires NOTHING (t[50] holds 4 at 3825 AND 3855 — the
+      # no-waste rule is audible silence); START exits and night 2
+      # tolls in over the 65 Hz night drone (t[50] = 5, t[53] = 4).
+      # All mirror-predicted, emulator-matched exactly.
+      - name: 'proof 18/19 — interlude audio: day drone, flask + cache cues, silence on the no-waste stand'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-audio-flask.png \
+            --frames 3940 $(cat games/gloamline-nds/proof/oil-flask-keys.txt) \
+            --shot 3770:nds-audio-day.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:56 \
+            --assert-watch 3750:t:3:eq:3 \
+            --assert-watch 3750:t:49:eq:7 \
+            --assert-watch 3750:t:50:eq:2 \
+            --assert-watch 3750:t:52:eq:0 \
+            --assert-watch 3750:t:54:eq:20 \
+            --assert-watch 3770:t:3:eq:4 \
+            --assert-watch 3770:t:44:eq:1 \
+            --assert-watch 3770:t:48:eq:0 \
+            --assert-watch 3770:t:49:eq:4 \
+            --assert-watch 3770:t:50:eq:3 \
+            --assert-watch 3770:t:52:eq:55 \
+            --assert-watch 3770:t:53:eq:3 \
+            --assert-watch 3770:t:54:eq:5 \
+            --assert-watch 3800:t:34:eq:1 \
+            --assert-watch 3800:t:49:eq:3 \
+            --assert-watch 3800:t:50:eq:4 \
+            --assert-watch 3825:t:47:eq:194 \
+            --assert-watch 3825:t:50:eq:4 \
+            --assert-watch 3855:t:47:eq:194 \
+            --assert-watch 3855:t:50:eq:4 \
+            --assert-watch 3855:t:52:eq:55 \
+            --assert-watch 3880:t:3:eq:1 \
+            --assert-watch 3880:t:49:eq:6 \
+            --assert-watch 3880:t:50:eq:5 \
+            --assert-watch 3880:t:52:eq:65 \
+            --assert-watch 3880:t:53:eq:4 \
+            --assert-watch 3920:t:50:eq:5
+      # Proof 19 — the VERB cues (slice 8), fresh input script against
+      # proof 3's control seed 118: B knocks the PLANK cue (t[49] = 2
+      # at 140, fired at ROM frame 126 with the barricade up), the same
+      # Shambler that proof 8 pins at dist 4517 is SHOVED (t[13] jumps
+      # to 14757, t[49] = 1, channel holding 7 — the thump rides the
+      # knockback frame exactly), the held barricade is chewed through
+      # and SPLINTERS (breach t[27] = 1 with t[49] = 5 at 675, fired at
+      # 668), and the unwalled death fires the rattle + cuts the drone
+      # (700; channel closed again by 750). Cue priority is live in
+      # this run: plank/shove/breach/death each preempt the channel as
+      # they land. All mirror-predicted, emulator-matched exactly.
+      - name: 'proof 19/19 — verb cues: plank knock, shove thump, breach splinter, death preempts'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-audio-verbs.png \
+            --frames 760 --keys 120-125:START --keys 128-133:B \
+            --keys 232-237:A \
+            --shot 675:nds-audio-breach.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:56 \
+            --assert-watch 140:t:25:eq:1 \
+            --assert-watch 140:t:49:eq:2 \
+            --assert-watch 140:t:50:eq:2 \
+            --assert-watch 140:t:51:eq:126 \
+            --assert-watch 231:t:13:eq:4517 \
+            --assert-watch 231:t:50:eq:2 \
+            --assert-watch 233:t:13:eq:14757 \
+            --assert-watch 233:t:19:eq:1 \
+            --assert-watch 233:t:49:eq:1 \
+            --assert-watch 233:t:50:eq:3 \
+            --assert-watch 233:t:51:eq:230 \
+            --assert-watch 233:t:54:eq:7 \
+            --assert-watch 300:t:50:eq:3 \
+            --assert-watch 675:t:25:eq:0 \
+            --assert-watch 675:t:27:eq:1 \
+            --assert-watch 675:t:49:eq:5 \
+            --assert-watch 675:t:50:eq:4 \
+            --assert-watch 675:t:51:eq:668 \
+            --assert-watch 675:t:54:eq:15 \
+            --assert-watch 700:t:3:eq:2 \
+            --assert-watch 700:t:49:eq:8 \
+            --assert-watch 700:t:50:eq:5 \
+            --assert-watch 700:t:51:eq:680 \
+            --assert-watch 700:t:52:eq:0 \
+            --assert-watch 700:t:54:eq:42 \
+            --assert-watch 750:t:54:eq:0
       - name: upload NDS ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -652,6 +847,13 @@ jobs:
             nds-oil-death.png
             nds-oil-flask.png
             nds-oil-flask-stand.png
+            nds-audio-idle.png
+            nds-audio-press.png
+            nds-audio-dark.png
+            nds-audio-flask.png
+            nds-audio-day.png
+            nds-audio-verbs.png
+            nds-audio-breach.png
           if-no-files-found: error
           retention-days: 14
   # Parallel NDS job #2 (Brineward arc — slice 4: port + upgrades on the

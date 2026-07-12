@@ -1,3 +1,33 @@
+// Gloamline — arc slice 8: SYNTHESIZED AUDIO (on the slice-7 lantern
+// oil).
+//
+// The concept doc's "synthesized audio set": the night gets a voice,
+// 100% synthesized in code — no sampled or binary audio asset exists
+// anywhere in this repo. Playback is the NDS hardware PSG channels
+// (square + noise generators), driven by the default BlocksDS ARM7
+// core over the libnds sound FIFO — per session 27's guard recipe the
+// ARM9 (1 modeled scanline of headroom) spends only a handful of
+// integer compares per frame; the tone generation itself runs in
+// hardware on the ARM7 side. Two voices: (1) an AMBIENCE DRONE, a low
+// square wave whose pitch/duty/volume track the lantern via the pure
+// gl_amb_tier — calm in the daylight interlude, the gloam hum on a lit
+// night, higher/wider once the light gutters, a throb while the dark
+// press is live on the nearest of the dead; the FIFO is touched ONLY
+// when the tier flips (the channel free-runs between flips), and the
+// drone cuts out on the cards (dying silences the moor). (2) a CUE
+// channel for one-shot chiptune SFX: nightfall toll, shove thump,
+// plank knock, breach splinter, cache/flask pickups, the dawn bell,
+// the death rattle — parameters are pure gl_cue_* table rows, and on a
+// frame with several events the highest cue id wins the channel (id
+// order IS the priority order, mirrored). Audio feeds NOTHING back
+// into the sim — it is render-like output, so every pre-slice-8 pin
+// holds bit-identically. Telemetry appends slots 48-55 (tier, drone
+// freq, last cue, cue count, ...) with slots 0-47 frozen; headless CI
+// proves the DECISION chain exactly and honestly cannot hear the
+// result (owner playtest for the mix).
+//
+// Below this line the slice-7 story still applies verbatim:
+//
 // Gloamline — arc slice 7: LANTERN-OIL LIGHT PRESSURE (on the slice-6
 // scavenge interlude).
 //
@@ -130,8 +160,16 @@
 #define GL_T_FX 45      // nearest remaining flask x, 8.8 fixed (0 = none)
 #define GL_T_FY 46      // nearest remaining flask y
 #define GL_T_FDIST 47   // Chebyshev player<->nearest flask (0 = none)
+#define GL_T_ATIER 48   // ambience tier the drone plays (see GL_T_ADRONE)
+#define GL_T_ACUE 49    // last one-shot cue id fired (0 = none yet)
+#define GL_T_ACUES 50   // one-shot cues fired this power-on
+#define GL_T_ACUEFR 51  // global frame the last cue fired on
+#define GL_T_ADRONE 52  // drone frequency now, Hz (0 = drone silent)
+#define GL_T_AFLIPS 53  // drone restarts/stops (tier flips) this power-on
+#define GL_T_ASFXL 54   // frames left on the one-shot cue channel
+#define GL_T_SPARE3 55  // reserved, always 0
 
-volatile uint32_t gl_telemetry[48];
+volatile uint32_t gl_telemetry[56];
 
 enum
 {
@@ -689,6 +727,13 @@ static int map_prev_n = 0;
 // Oil gauge (slice 7): cells drawn last time, so the bar is redrawn
 // ONLY when a cell flips (frame-budget rail; -1 = force a redraw).
 static int map_prev_oil_cells = -1;
+// Dawn bar (slice 8): same flip-only treatment — reprinting ~30
+// console cells every frame was the last full-line reprint on the
+// per-frame path, and the audio glue tipped the measured worst stress
+// frame from 70 to 71 scanlines; a dawn cell flips every 180 frames,
+// so this buys the line back (render-only; no pin reads the bar).
+static int map_prev_dawn_cells = -1;
+static uint32_t map_prev_dawn_night = 0;
 
 static void draw_watch_map_frame(void)
 {
@@ -702,20 +747,29 @@ static void draw_watch_map_frame(void)
     printf("\x1b[19;1H+----------------------------+");
     map_prev_n = 0;
     map_prev_oil_cells = -1;         // consoleClear wiped the gauge
+    map_prev_dawn_cells = -1;        // ... and the dawn bar
+    map_prev_dawn_night = 0;
 }
 
 static void draw_watch_map(const Run *run, int state)
 {
     consoleSelect(&bottom_console);
 
-    // dawn bar: 20 cells fill as the night burns down
-    unsigned int filled =
-        (unsigned int)((GL_NIGHT_FRAMES - run->dawn_left) * 20
+    // dawn bar: 20 cells fill as the night burns down. Redrawn ONLY
+    // when a cell (or the night number) flips — about every 180
+    // frames (slice 8: the last full-line per-frame reprint, retired
+    // to buy the audio glue's scanline back).
+    int filled = (int)((GL_NIGHT_FRAMES - run->dawn_left) * 20
                        / GL_NIGHT_FRAMES);
-    printf("\x1b[21;1HDAWN [");
-    for (unsigned int i = 0; i < 20; i++)
-        putchar(i < filled ? '=' : '-');
-    printf("] N%lu", (unsigned long)run->night);
+    if (filled != map_prev_dawn_cells || run->night != map_prev_dawn_night)
+    {
+        printf("\x1b[21;1HDAWN [");
+        for (int i = 0; i < 20; i++)
+            putchar(i < filled ? '=' : '-');
+        printf("] N%lu", (unsigned long)run->night);
+        map_prev_dawn_cells = filled;
+        map_prev_dawn_night = run->night;
+    }
 
     // oil gauge (slice 7, the concept doc's bottom-screen gauge):
     // 20 cells drain as the lantern burns. Redrawn ONLY when a cell
@@ -809,6 +863,11 @@ int main(void)
     load_sprite_gfx(cache_gfx, CACHE_ART);
     load_sprite_gfx(flask_gfx, FLASK_ART);
 
+    // Slice 8: power the sound block. Every voice below is a hardware
+    // PSG/noise channel serviced by the default ARM7 core — synthesized
+    // square waves and noise, no sample data anywhere.
+    soundEnable();
+
     Run run = {0};
     run.dawn_left = GL_NIGHT_FRAMES;         // title-screen dawn bar: empty
     int state = STATE_TITLE;
@@ -824,6 +883,18 @@ int main(void)
     uint32_t oil_grabs = 0;        // oil flasks pocketed this power-on
     uint32_t vlines_max = 0;       // worst frame cost seen, in scanlines
     bool pad_seen_idle = false;    // KEYINPUT boot-trap guard (session 16)
+    // Slice-8 audio state (ARM9 bookkeeping only — the sound itself
+    // runs on the ARM7/hardware channels). The drone free-runs on its
+    // channel between tier flips; the cue channel is opened for
+    // gl_cue_len frames then killed.
+    int amb_ch = -1;               // drone channel handle (-1 = silent)
+    uint32_t amb_tier = 0;         // tier the drone is playing
+    uint32_t amb_flips = 0;        // drone restarts/stops this power-on
+    int cue_ch = -1;               // one-shot cue channel handle
+    uint32_t cue_left = 0;         // frames left on the cue channel
+    uint32_t last_cue = 0;         // last cue id fired
+    uint32_t cues = 0;             // cues fired this power-on
+    uint32_t cue_frame = 0;        // global frame of the last cue
 
     draw_title();
     draw_watch_map_frame();
@@ -847,6 +918,16 @@ int main(void)
         if (held == 0)
             pad_seen_idle = true;
         bool start = pad_seen_idle && (down & KEY_START);
+
+        // Slice-8 audio event capture: remember where the frame began,
+        // so counter deltas + state flips below say which cues fire.
+        int prev_state = state;
+        uint32_t prev_shoves = shoves;
+        uint32_t prev_places = places;
+        uint32_t prev_repairs = repairs;
+        uint32_t prev_breaches = breaches;
+        uint32_t prev_scavenged = scavenged;
+        uint32_t prev_oil_grabs = oil_grabs;
 
         switch (state)
         {
@@ -1136,6 +1217,80 @@ int main(void)
             if (d < nearb_d) { nearb_d = d; nearb_i = i; }
         }
 
+        // --- slice-8 audio (decision layer pure + mirrored; playback =
+        // hardware channels via the ARM7 sound FIFO; nothing feeds back
+        // into the sim) -------------------------------------------------
+        int press_now = (state == STATE_PLAYING && run.z_count > 0
+                         && gl_dark_press(run.oil, near_d)) ? 1 : 0;
+
+        // One-shot cue channel: close it when its frames run out.
+        if (cue_left > 0 && --cue_left == 0)
+        {
+            soundKill(cue_ch);
+            cue_ch = -1;
+        }
+
+        // Which cue does this frame want? Highest id wins the channel
+        // (the id order IS the priority order — gl_sim.h).
+        uint32_t cue = GL_CUE_NONE;
+        if (shoves > prev_shoves)
+            cue = GL_CUE_SHOVE;
+        if (places > prev_places || repairs > prev_repairs)
+            cue = GL_CUE_PLANK;
+        if (scavenged > prev_scavenged)
+            cue = GL_CUE_CACHE;
+        if (oil_grabs > prev_oil_grabs)
+            cue = GL_CUE_FLASK;
+        if (breaches > prev_breaches)
+            cue = GL_CUE_BREACH;
+        if (state == STATE_PLAYING && prev_state != STATE_PLAYING)
+            cue = GL_CUE_NIGHTFALL;          // every path into a night
+        if (state == STATE_DAWN && prev_state == STATE_PLAYING)
+            cue = GL_CUE_DAWN;
+        if (state == STATE_DEAD && prev_state != STATE_DEAD)
+            cue = GL_CUE_DEATH;
+        if (cue != GL_CUE_NONE)
+        {
+            if (cue_ch >= 0)
+                soundKill(cue_ch);           // a new cue preempts
+            cue_ch = (gl_cue_duty(cue) == GL_CUE_ON_NOISE)
+                ? soundPlayNoise((u16)gl_cue_freq(cue),
+                                 (u8)gl_cue_vol(cue), 64)
+                : soundPlayPSG((DutyCycle)gl_cue_duty(cue),
+                               (u16)gl_cue_freq(cue),
+                               (u8)gl_cue_vol(cue), 64);
+            cue_left = gl_cue_len(cue);
+            last_cue = cue;
+            cues++;
+            cue_frame = frame;
+        }
+
+        // Ambience drone: on during the night and the interlude, off on
+        // the title/cards (dying silences the moor). The FIFO is touched
+        // ONLY when the wanted tier flips or the drone starts/stops —
+        // between flips the hardware channel free-runs at zero ARM9 cost.
+        if (state == STATE_PLAYING || state == STATE_SCAVENGE)
+        {
+            uint32_t tier = gl_amb_tier(state == STATE_PLAYING, run.oil,
+                                        press_now);
+            if (amb_ch < 0 || tier != amb_tier)
+            {
+                if (amb_ch >= 0)
+                    soundKill(amb_ch);
+                amb_ch = soundPlayPSG((DutyCycle)gl_amb_duty(tier),
+                                      (u16)gl_amb_freq(tier),
+                                      (u8)gl_amb_vol(tier), 64);
+                amb_tier = tier;
+                amb_flips++;
+            }
+        }
+        else if (amb_ch >= 0)
+        {
+            soundKill(amb_ch);
+            amb_ch = -1;
+            amb_flips++;
+        }
+
         // Frame-cost probe: swiWaitForVBlank returns at scanline 192 (the
         // top of vblank); REG_VCOUNT here says how many scanlines this
         // frame's whole update took. <71 = everything fit inside vblank,
@@ -1189,9 +1344,7 @@ int main(void)
         gl_telemetry[GL_T_SPARE2] = 0;
         gl_telemetry[GL_T_OIL] = run.oil;
         gl_telemetry[GL_T_LRADIUS] = (uint32_t)lradius;
-        gl_telemetry[GL_T_PRESS] =
-            (state == STATE_PLAYING && run.z_count > 0
-             && gl_dark_press(run.oil, near_d)) ? 1u : 0u;
+        gl_telemetry[GL_T_PRESS] = (uint32_t)press_now;
         gl_telemetry[GL_T_FLASKS] = flask_up_n;
         gl_telemetry[GL_T_OILGRAB] = oil_grabs;
         gl_telemetry[GL_T_FX] = (uint32_t)(nearf_i >= 0 ? run.fx[nearf_i]
@@ -1199,6 +1352,15 @@ int main(void)
         gl_telemetry[GL_T_FY] = (uint32_t)(nearf_i >= 0 ? run.fy[nearf_i]
                                                         : 0);
         gl_telemetry[GL_T_FDIST] = (uint32_t)(nearf_i >= 0 ? nearf_d : 0);
+        gl_telemetry[GL_T_ATIER] = amb_ch >= 0 ? amb_tier : 0;
+        gl_telemetry[GL_T_ACUE] = last_cue;
+        gl_telemetry[GL_T_ACUES] = cues;
+        gl_telemetry[GL_T_ACUEFR] = cue_frame;
+        gl_telemetry[GL_T_ADRONE] =
+            amb_ch >= 0 ? gl_amb_freq(amb_tier) : 0;
+        gl_telemetry[GL_T_AFLIPS] = amb_flips;
+        gl_telemetry[GL_T_ASFXL] = cue_left;
+        gl_telemetry[GL_T_SPARE3] = 0;
     }
 
     return 0;

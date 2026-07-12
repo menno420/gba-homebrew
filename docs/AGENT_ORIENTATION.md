@@ -7,6 +7,21 @@
 
 ## Start every session
 
+**Preflight first — land on origin's HEAD before reading anything else:**
+
+```
+git fetch origin main && git reset --hard origin/main
+```
+
+(or `git checkout -B main origin/main`; substitute your default branch).
+Then verify: local HEAD (`git rev-parse HEAD`) must equal
+`git ls-remote origin main`. A warm container clone can lag origin by
+dozens of commits, and a stale clone reads stale orders and stale state —
+every orientation read below assumes this step already ran. The hard reset
+discards uncommitted local changes by design: at session START there should
+be none; if `git status` shows work you did not author, stop and report it
+instead of resetting over it.
+
 The boot set lives in the working agreement — `CONSTITUTION.md` — and its
 orientation guidance (one list, one home). This file is not boot reading —
 open it when a task needs a route into the deeper docs.
@@ -27,12 +42,17 @@ The planted doc set (this router reaches every live doc — keep it that way):
 `docs/repo-navigation-map.md` · `docs/ai-project-workflow.md` ·
 `docs/owner-profile.md` · `docs/current-state.md` · `docs/decisions.md` ·
 `docs/question-router.md` · `docs/CAPABILITIES.md` · `docs/SKILLS.md` ·
-`docs/ideas/README.md` — plus the root
+`docs/ROUTINES.md` · `docs/ideas/README.md` — plus the root
 `CONSTITUTION.md` (the working agreement) and `.session-journal.md`.
 
 Recurring action? **`docs/SKILLS.md`** — the skill index — names every
 kit-shipped skill and when to reach for it; check it before improvising a
 procedure.
+
+Arming, deleting, or auditing a scheduled trigger/routine/wake chain?
+**`docs/ROUTINES.md`** — binding choice, delivery verification,
+probe-not-record, scheduler-health signatures, pacing — read it before
+touching the trigger registry.
 
 ## Verifying any change
 

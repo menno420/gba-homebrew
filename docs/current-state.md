@@ -51,13 +51,54 @@
 (Nothing — the **Gloamline arc** (owner-picked original NDS zombie
 horde-defense) is the active track: concept (PR #50) → toolchain
 feasibility (PR #51) → walking skeleton (PR #52) → shove + waves
-(PR #54) → **barricades (session 21, this ledger entry) SHIPPED**. Next
-slices per the concept doc: between-nights scavenge interlude (the real
-plank source), lantern-oil light pressure, synthesized audio,
-best-nights saves. A parallel sibling session runs the Brineward pirate
-arc in its own dirs.)
+(PR #54) → barricades (PR #56) → **scavenge interlude (session 24, this
+ledger entry) SHIPPED**. Next slices per the concept doc: lantern-oil
+light pressure, synthesized audio, best-nights saves. A parallel
+sibling session runs the Brineward pirate arc in its own dirs.)
 
 ## Recently shipped (newest first)
+
+- **Session 24 — Gloamline slice 6: the between-nights SCAVENGE
+  INTERLUDE** (2026-07-12): the concept doc's stated next cut and
+  slice 5's flagged "real plank source". At the dawn card, **SELECT**
+  enters a 20-second daylight interlude in the same yard: the
+  lamplighter returns to the lamppost, the dawn light drives the
+  leftover dead back to the fence line (each to its own night spawn
+  point — pure, provably outside the safe radius: no instant death by
+  construction) and they immediately walk back in; five plank caches
+  lie scattered on a pure f(seed, night, index) schedule (interior box,
+  never on the fence). Walking over a cache pockets a plank — never on
+  a full pocket (no cache is wasted, it stays on the ground). START
+  leaves early; at 0 the next night starts by itself. **Taking the
+  interlude REPLACES the flat +2 dawn grant** — loot what you carry
+  out (5 caches > the 2 it replaces, host-proven reachable inside the
+  timer: worst greedy route 431 vs 1200 frames). Contact still kills.
+  START at the dawn card keeps the old skip path bit-identical — **all
+  112 pre-slice-6 asserts re-ran UNCHANGED, zero re-pins** (slice-5
+  guard recipe: new state inert until the new button; old proofs never
+  press SELECT). Pure layer + `tools/check-gloam.py` +
+  `tools/gloam-route.py` moved in three-way lockstep (2 new host
+  proofs: cache schedule pure/interior/off-fence; interlude honesty —
+  greedy reachability + loot > skip grant; slice-3/4/5 routes
+  reproduce with zero drift); telemetry 32 → 40 words (slots 0-31
+  untouched); fourth code-authored sprite (plank cache) + watch-map
+  `*` marks + SCAVENGE HUD. **Three new pinned headless proofs**
+  (12 proofs / 177 asserts total): proof 10 loot + no-waste-on-full +
+  START early exit into night 2 with planks 9 (vs the skip grant's 8 —
+  the economy fork is emulator-visible); proof 11 risk — SELECT
+  recenters exactly, the returned Shambler walks back in and kills the
+  idle player INSIDE the interlude (state 4 → 2, same 2405 contact
+  dist as proof 3); proof 12 timer — an autopilot-derived kite survives
+  the full 1200 frames and night 2 starts by itself with the loot
+  carried. All three routes survive every ±6-frame movement skew on
+  the mirror; every pinned value mirror-predicted and emulator-matched
+  exactly. Stress re-measure with the slice-6 per-frame additions:
+  steady ≤69 scanlines (mean 57.2) vs the 71-line vblank budget, spike
+  141 < 263 (DeSmuME timing model, not hardware — margin now 2 modeled
+  lines at absolute worst case). Screenshots:
+  `proof/slice6-scavenge-{loot,death,kite}.png`. Ships as
+  **`dist/gloamline.nds`** (112,128 B, byte-deterministic) +
+  [`PLAYING-GLOAMLINE.md`](PLAYING-GLOAMLINE.md) refresh.
 
 - **Session 21 — Gloamline slice 5: BARRICADES** (2026-07-11): the
   concept's next feature cut. **B verb:** place a barricade at the

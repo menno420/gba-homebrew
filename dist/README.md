@@ -16,7 +16,7 @@ changes its game, with provenance:
 | File | Version / date | Size | Built from | sha256 |
 |---|---|---|---|---|
 | [`lumen-drift.gba`](lumen-drift.gba) | **v1.3** · session 8 slice 6 · 2026-07-11 | 167,996 bytes | source tree of the v1.3 pause/mute + graze-flash micro-polish commit (`games/lumen-drift/` at the same tree as this file) | `195a86795e57e2fa0059a96782f1ac7a147cbcebc0cb28a96f353e5d9babae94` |
-| [`gloamline.nds`](gloamline.nds) | **barricades** (arc slice 5) · session 21 · 2026-07-11 | 110,080 bytes | source tree of the slice-5 barricades commit (`games/gloamline-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `25ae4f81b665e60cdfa6498cb26933cfced11a5bf3f71302b389af9b17b43cdc` |
+| [`gloamline.nds`](gloamline.nds) | **scavenge interlude** (arc slice 6) · session 24 · 2026-07-12 | 112,128 bytes | source tree of the slice-6 scavenge-interlude commit (`games/gloamline-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `ce0bfd25be4deb9d60c035bb899843019a249b18de4c703e0c57809ba60f0912` |
 | [`brineward.nds`](brineward.nds) | **walking skeleton** (arc slice 2) · session 20 · 2026-07-11 | 108,032 bytes | source tree of the slice-2 skeleton commit (`games/brineward-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `89e68dc2dd926050fdd6202a6d3b9bd8f2d82e10047453de7b41ac7b462dc475` |
 
 **How they were built:** GBA — `tools/setup-toolchain.sh` (pinned

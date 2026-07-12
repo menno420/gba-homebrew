@@ -1,18 +1,19 @@
-# Playing Brineward (Nintendo DS) — the Maw
+# Playing Brineward (Nintendo DS) — wind + sailing feel
 
-> **Status:** `owner-guidance` — arc slice 5 (the first sea monster on
-> the slice-4 port/upgrades economy). Broadside duels off the Graywake
-> breakwater: sail, out-turn the rum-runner, sink her, scoop the
-> flotsam, bank and SPEND the gold at the Graywake port — but don't
-> linger over the wreck's blood, because the water goes dark and THE
-> MAW comes up under your keel. Concept + roadmap:
-> [`concepts/brineward-concept.md`](concepts/brineward-concept.md).
+> **Status:** `owner-guidance` — arc slice 6 (weather on the slice-5
+> water). Broadside duels off the Graywake breakwater: sail, out-turn
+> the rum-runner, sink her, scoop the flotsam, bank and SPEND the gold
+> at the Graywake port — don't linger over the wreck's blood (the Maw
+> comes up under your keel), and now READ THE SKY before you commit:
+> each water rolls its weather, the wind vector turns all run long,
+> and your point of sail is real speed gained or lost. Concept +
+> roadmap: [`concepts/brineward-concept.md`](concepts/brineward-concept.md).
 
 ## Get the ROM
 
 - **Download and play:** [`dist/brineward.nds`](../dist/brineward.nds)
   (116,224 bytes, sha256
-  `6e571941c4d286e76d1a05b18cb1c498b0ccfc20da5c62c95bc2d22a26d2af7c`)
+  `2a83ba6db77d77281f02d570211f2120dee21bbe0f3236fe4805b9cdc31549c9`)
   in any DS emulator — melonDS and DeSmuME both work; no BIOS files
   needed for homebrew. The build is byte-deterministic and CI re-builds
   it from source on every PR, printing both hashes side by side.
@@ -36,6 +37,32 @@
 **Sail trim is the whole helm:** full sail is fast but turns wide;
 battle sail is slow but turns tight. Speed eases toward the trim target
 (momentum), so plan your turns a second early.
+
+## The weather (new in slice 6)
+
+- **Each water rolls its weather from the seed** (printed like the
+  seed, reproducible like the seed): about a quarter of waters are
+  **dead calm**, half carry a **breeze**, a quarter blow a **GALE**.
+- **The wind vector turns slowly all run long** — a full box of the
+  compass in about two minutes. The HUD's top row carries the gauge:
+  `NE~` is a breeze out of the northeast, `NE!` is a gale, `calm` is
+  a millpond; the chart table spells it out (`wind out of the NE
+  GALE`).
+- **Your point of sail is real speed:** running with the wind fills
+  the canvas (up to +24 speed units in a gale), beating into it
+  fights the hull (up to -24), abeam is neutral — and **the more
+  canvas you set, the more the weather matters**: full sail catches
+  all of it, half sail half, battle sail a quarter. Shortening sail
+  is now also the storm verb.
+- **Both ships sail the same weather** — the rum-runner's intercept
+  is downwind-fast and upwind-slow exactly like you, so the weather
+  is a broadside-geometry knob: force the beat on them, keep the run
+  for yourself.
+- **The Maw doesn't care.** It swims UNDER the water: gale or calm,
+  the shadow homes at the same pace and full sail still outruns it
+  (verified even beating diagonally into a gale — barely; read the
+  sky before you scoop). Iron doesn't care either: cannonballs fly
+  the same in any weather.
 
 **Broadsides fire square off your sides, never forward.** The entire
 fight is positional: bring your side to bear while staying off theirs.
@@ -133,8 +160,14 @@ your edge is cadence, if you can hold the angle.
 ## Honest gaps (deliberate, roadmap-ordered)
 
 - **Crate value is flat 5g** — danger bands, which scale loot with
-  distance from home, are roadmap slice 5; until then the upgrade
-  treadmill is a grind of home-water wrecks by design.
+  distance from home, are the NEXT roadmap slice; until then the
+  upgrade treadmill is a grind of home-water wrecks by design.
+- **The weather is machine-proven, not taste-tested** — the concept
+  doc calls this slice "owner-taste, hand-feel gated". Every number
+  (breeze push 12 / gale push 24, canvas quarters 1/2/4, rotation one
+  unit per 8 frames, the calm/breeze/gale seed mix) is a one-constant
+  owner-tunable in `bw_sim.{h,c}`; whether a gale FEELS like weather
+  on real hands is the owner's call, and the feel gate is open.
 - **Economy numbers are decide-and-flag owner-tunables** — 3 crates per
   wreck, 5g each, hold cap 8, 10 px scoop reach, 12 px pier berth,
   upgrade prices 15g/45g, repair at 4 hull per gold, and every tier
@@ -179,7 +212,14 @@ reachable hull value at every tier; upgraded duels still converge both
 ways; containment at max tiers), and the slice-5 Maw rails (the whole
 telegraph contract frame-exact; ONE bite of exactly 35 per lunge; the
 pier sanctuary; the hunter policy slays it and banks the richer crates;
-a slain Maw never stirs again). Then TWELVE headless DeSmuME proofs
+a slain Maw never stirs again), and the slice-6 wind rails (the calm
+wind term is identically zero and every committed anchor seed is CALM,
+so every earlier route and pin carries verbatim; point-of-sail speed
+deltas exact at every bearing, trim, and weather; duels still converge
+both ways under forced breeze AND gale; the gale-armed salvage water
+stays contained; the escape rails survive the weather — a gale-beating
+full sail still outruns the shadow, a gale-running battle-sail scooper
+still does not). Then FOURTEEN headless DeSmuME proofs
 assert the ROM's `bw_telemetry` mailbox numerically: boot, exact sail
 kinematics, an idle player sunk + instant restart, a recorded route
 (from `games/brineward-nds/tools/record-duel-win.py`) that WINS the
@@ -202,5 +242,16 @@ and the HUNTER rakes the risen Maw (its hull words drop mid-windup IN
 the emulator), watches it give up over the sanctuary, slays it on its
 second rising, scoops wreck + monster crates, and banks 60g with the
 hunter's own hull untouched.
+Slice 6 adds two wind proofs: a scripted gale sail that walks the whole
+point-of-sail table in the emulator — the new speed telemetry word
+settles at exactly the mirror's predicted value on every leg (downwind
+half sail 171 vs the calm 160, upwind half 149, upwind full 202,
+upwind battle 90) while the wind-heading word ticks its slow rotation
+on camera — and a recorded gale story
+(`games/brineward-nds/tools/record-wind.py`, robust at every alignment
+shift in [-6,+6]): the committed duel brain WINS a broadside fight
+with both ships sailing the same gale, scoops the wreck, banks 15g
+before the Maw ever stirs, and puts out into a fresh water that rolls
+DIFFERENT weather.
 Proof screenshots:
 [`games/brineward-nds/proof/`](../games/brineward-nds/proof/).

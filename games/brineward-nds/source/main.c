@@ -77,8 +77,12 @@
 #define BW_T_MAWY 28    // Maw y
 #define BW_T_MAWHULL 29 // Maw hull, 0..BW_MAW_HULL (0 = slain)
 #define BW_T_MAWS 30    // Maws slain this power-on
+// slice 6 (extension; words 0-30 stay pinned)
+#define BW_T_WINDLVL 31 // this water's weather: 0 calm / 1 breeze / 2 gale
+#define BW_T_WINDHDG 32 // wind heading (blowing TOWARD), 0..1023, rotating
+#define BW_T_PSPEED 33  // player speed, units/frame (the point-of-sail word)
 
-volatile uint32_t bw_telemetry[31];
+volatile uint32_t bw_telemetry[34];
 
 enum
 {
@@ -344,17 +348,53 @@ static void draw_sunk_card(const Score *sc, const BwDuel *d)
 
 static const char *const TRIM_NAME[3] = { "BTL", "HLF", "FUL" };
 
+// --- the weather gauge (slice 6) -----------------------------------------------
+// Sailors name the wind by where it comes FROM: the sim's wind heading
+// points TOWARD, so the gauge shows the opposite bearing, folded onto
+// the 8-point compass. "NE~" = a breeze out of the northeast, "NE!" =
+// a gale; a calm water shows "calm". Pure render of sim state.
+static const char *const WIND_FROM[8] = {
+    "N", "NE", "E", "SE", "S", "SW", "W", "NW",
+};
+
+static const char *wind_from_name(const BwDuel *d)
+{
+    int32_t from = (bw_wind_heading(d) + BW_CIRCLE / 2) & (BW_CIRCLE - 1);
+    return WIND_FROM[((from + 64) & (BW_CIRCLE - 1)) >> 7];
+}
+
+static void wind_gauge(const BwDuel *d, char *out /* >= 8 bytes */)
+{
+    if (d->wind_level == BW_WIND_CALM)
+    {
+        out[0] = 'c'; out[1] = 'a'; out[2] = 'l'; out[3] = 'm';
+        out[4] = 0;
+        return;
+    }
+    const char *n = wind_from_name(d);
+    int i = 0;
+    while (n[i])
+    {
+        out[i] = n[i];
+        i++;
+    }
+    out[i++] = d->wind_level == BW_WIND_GALE ? '!' : '~';
+    out[i] = 0;
+}
+
 // Render-only bank flash: how many frames the "BANKED" line still shows.
 static int bank_flash;
 static uint32_t bank_amount;
 
 static void draw_hud_row0(const BwDuel *d)
 {
-    printf("\x1b[0;1HHULL %3d  L%2d R%2d  %s\x1b[K",
+    char wind[8];
+    wind_gauge(d, wind);                 // slice 6: read the weather
+    printf("\x1b[0;1HHULL %3d  L%2d R%2d  %s %s\x1b[K",
            (int)d->player.hull,
            (int)((d->player.reload_l + 9) / 10),
            (int)((d->player.reload_r + 9) / 10),
-           TRIM_NAME[d->player.trim]);
+           TRIM_NAME[d->player.trim], wind);
 }
 
 static void draw_hud(const BwDuel *d, const Score *sc)
@@ -494,6 +534,14 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
     printf("\x1b[19;1Hrange %3d yd\x1b[K",
            (int)(bw_chebyshev(d->player.x, d->player.y,
                               d->enemy.x, d->enemy.y) / BW_ONE));
+    // slice 6: the chart table reads the sky too (pure render of the
+    // seeded weather — the watch-map rule, as ever)
+    if (d->wind_level == BW_WIND_CALM)
+        printf("\x1b[20;1Hdead calm on the water\x1b[K");
+    else
+        printf("\x1b[20;1Hwind out of the %-2s  %s\x1b[K",
+               wind_from_name(d),
+               d->wind_level == BW_WIND_GALE ? "GALE" : "breeze");
     // slice 5: the chart table reads the water (a pure render of maw
     // state — the watch-map rule, as ever)
     if (d->maw.state == BW_MAW_SHADOW)
@@ -869,6 +917,9 @@ int main(void)
         bw_telemetry[BW_T_MAWY] = (uint32_t)duel.maw.y;
         bw_telemetry[BW_T_MAWHULL] = (uint32_t)duel.maw.hull;
         bw_telemetry[BW_T_MAWS] = score.maws;
+        bw_telemetry[BW_T_WINDLVL] = (uint32_t)duel.wind_level;
+        bw_telemetry[BW_T_WINDHDG] = (uint32_t)bw_wind_heading(&duel);
+        bw_telemetry[BW_T_PSPEED] = (uint32_t)duel.player.speed;
     }
 
     return 0;

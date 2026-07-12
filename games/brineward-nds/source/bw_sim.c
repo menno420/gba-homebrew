@@ -66,6 +66,31 @@ static const int32_t BW_TURN_OF[3] = {
     BW_TURN_BATTLE, BW_TURN_HALF, BW_TURN_FULL,
 };
 
+// --- wind tables (slice 6; all one-constant owner-tunables) --------------------
+// Weather per seed-hash bucket: calm a quarter of the waters, breeze
+// half, gale a quarter. BW_WIND_SALT is pinned so every committed
+// anchor seed buckets to CALM (the pin-carry rule in bw_sim.h).
+static const int32_t BW_WIND_LEVEL_OF[4] = {
+    BW_WIND_CALM, BW_WIND_BREEZE, BW_WIND_BREEZE, BW_WIND_GALE,
+};
+// push per weather, units/frame at FULL canvas (calm MUST be 0: the
+// bit-identity of every committed story rides on it)
+static const int32_t BW_WIND_PUSH_OF[BW_WIND_STATES] = { 0, 12, 24 };
+// canvas quarters per trim: battle sail shows 1/4 of the push, half
+// 2/4, full 4/4 — the doc's "trim interacts with it"
+static const int32_t BW_WIND_CANVAS_OF[3] = { 1, 2, 4 };
+
+int32_t bw_wind_heading(const BwDuel *d)
+{
+    return (d->wind_base + (int32_t)(d->frame >> BW_WIND_TURN_SHIFT))
+           & (BW_CIRCLE - 1);
+}
+
+int32_t bw_wind_push(const BwDuel *d)
+{
+    return BW_WIND_PUSH_OF[d->wind_level];
+}
+
 // --- upgrade tier tables (slice 4; player only, tier 0 = the slice-2
 // sloop EXACTLY — check-brine.py asserts the tier-0 identities so the
 // recorded routes and carried pins stay bit-valid) -----------------------------
@@ -98,7 +123,11 @@ int32_t bw_up_price(int32_t tier)
 }
 
 // sail_tier: the SAIL upgrade tier of this ship (enemy always 0).
-static void bw_ship_step(BwShip *s, const BwInputs *in, int32_t sail_tier)
+// wind_hdg/wind_push: the water's wind this frame (slice 6) — BOTH
+// ships sail the same weather; a calm water (push 0) is bit-identical
+// to the slice-5 step.
+static void bw_ship_step(BwShip *s, const BwInputs *in, int32_t sail_tier,
+                         int32_t wind_hdg, int32_t wind_push)
 {
     s->trim = clamp32(s->trim + in->trim_delta, BW_TRIM_BATTLE, BW_TRIM_FULL);
     s->heading = (s->heading
@@ -107,6 +136,13 @@ static void bw_ship_step(BwShip *s, const BwInputs *in, int32_t sail_tier)
                  & (BW_CIRCLE - 1);
 
     int32_t target = BW_SPEED_OF[s->trim] + BW_UP_SPEED_OF[sail_tier];
+    // Point of sail (slice 6): the wind fills or fights the canvas —
+    // cos of (heading - wind) scales the push, the trim's canvas
+    // quarters scale how much of the weather the rig catches. Shifts
+    // only (the signed-division rule: >> floors identically in gcc/ARM
+    // and the Python mirror).
+    int32_t wrel = ((s->heading - wind_hdg) & (BW_CIRCLE - 1)) >> 2;
+    target += (bw_cos(wrel) * wind_push * BW_WIND_CANVAS_OF[s->trim]) >> 10;
     s->speed += clamp32(target - s->speed, -BW_ACCEL, BW_ACCEL);
 
     int32_t brad = s->heading >> 2;
@@ -553,6 +589,11 @@ void bw_duel_init(BwDuel *d, uint32_t seed)
     d->up_hull = 0;                      // caller re-injects the bought
     d->up_cannon = 0;                    //   tiers (upgrades are NEVER
     d->up_sail = 0;                      //   lost — main.c's Score owns them)
+    // Slice 6: this water's weather, pure f(seed) like the spawn ring —
+    // printed on the HUD (the seed rule: any run reproducible).
+    d->wind_level = BW_WIND_LEVEL_OF[bw_hash(seed, BW_WIND_SALT) & 3u];
+    d->wind_base = (int32_t)(bw_hash(seed, BW_WIND_DIR_SALT)
+                             & (BW_CIRCLE - 1));
     d->frame = 0;
     d->over = BW_DUEL_RUNNING;
 }
@@ -565,8 +606,10 @@ void bw_duel_step(BwDuel *d, const BwInputs *in)
     BwInputs ai;
     bw_ai(&d->enemy, &d->player, &ai);
 
-    bw_ship_step(&d->player, in, d->up_sail);
-    bw_ship_step(&d->enemy, &ai, 0);
+    int32_t wind_hdg = bw_wind_heading(d);   // slice 6: one wind, both
+    int32_t wind_push = bw_wind_push(d);     //   ships sail it
+    bw_ship_step(&d->player, in, d->up_sail, wind_hdg, wind_push);
+    bw_ship_step(&d->enemy, &ai, 0, wind_hdg, wind_push);
 
     if (in->fire_l && d->player.reload_l == 0)
     {
@@ -609,7 +652,8 @@ void bw_salvage_step(BwDuel *d, const BwInputs *in)
     if (d->over != BW_DUEL_ENEMY_SUNK)
         return;
 
-    bw_ship_step(&d->player, in, d->up_sail);
+    bw_ship_step(&d->player, in, d->up_sail,
+                 bw_wind_heading(d), bw_wind_push(d));
     bw_maw_step(d);                      // slice 5: the water is not empty
 
     // The batteries WAKE while the Maw is up (any awake state — firing

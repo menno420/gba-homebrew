@@ -177,6 +177,43 @@
 #define BW_MAW_SURFACE 2                 // up and vulnerable, winding up
 #define BW_MAW_LUNGE 3                   // committed charge at the latched bearing
 
+// --- wind + sailing feel (arc slice 6: roadmap item 4) -------------------------
+// The concept doc's owner-taste slice: "a slow-rotating wind vector,
+// trim interacts with it". Each water gets a WEATHER from its seed
+// (pure f(seed), printed on the HUD like the seed itself): dead calm,
+// a breeze, or a gale. The wind VECTOR rotates slowly all run long
+// (one heading unit every 2^BW_WIND_TURN_SHIFT frames — a full box of
+// the compass in ~2:16), and the point of sail scales the trim's
+// target speed: running with the wind fills the canvas (+push),
+// beating into it fights the hull (-push), abeam is neutral —
+// cos-shaped between, and the more canvas set, the more the weather
+// matters (full sail catches 4/4 of the push, half 2/4, battle 1/4:
+// the trim interaction the doc asks for; shortening sail is now ALSO
+// the storm verb). The wind moves HULLS only — iron balls and the Maw
+// (which swims UNDER the water) don't care; the broadside and
+// telegraph contracts are untouched by weather.
+//
+// PIN-CARRY RULE (decide-and-flag): BW_WIND_SALT is chosen so every
+// committed proof/recorder anchor seed (116, 117, 118, 119, 126, 127,
+// 558, 728) maps to CALM — a calm water's wind term is exactly zero,
+// so every slice-2..5 recorded route and emulator pin is bit-identical
+// and carries verbatim (the Maw-slice gate pattern: the new mechanic
+// provably never fires inside a committed story). check-brine.py
+// asserts the calm-anchor identity loudly, so a salt or table retune
+// fails the mirror before it silently re-times a route.
+//
+// Escapability rails survive the weather (asserted in the mirror):
+// a gale-beating full sail still outruns the shadow on its worst
+// (diagonal) axis ((224-24)*181>>8 = 141 > 140), and a gale-running
+// battle-sail scooper still does NOT (96+6 = 102 < 140).
+#define BW_WIND_CALM 0
+#define BW_WIND_BREEZE 1
+#define BW_WIND_GALE 2
+#define BW_WIND_STATES 3
+#define BW_WIND_SALT 0x57499826u         // level = f(seed); calm anchors, see above
+#define BW_WIND_DIR_SALT 0x57492881u     // base bearing = f(seed)
+#define BW_WIND_TURN_SHIFT 3             // 1 heading unit per 8 frames (slow box)
+
 // --- state -----------------------------------------------------------------------
 typedef struct
 {
@@ -229,6 +266,8 @@ typedef struct
     int32_t up_hull;                     // player upgrade tiers, 0..2
     int32_t up_cannon;                   //   (slice 4; enemy never upgrades;
     int32_t up_sail;                     //    caller re-injects, like hold)
+    int32_t wind_level;                  // this water's weather, BW_WIND_*
+    int32_t wind_base;                   //   (slice 6; both pure f(seed))
     uint32_t frame;                      // duel frames stepped so far
     int32_t over;                        // BW_DUEL_*
 } BwDuel;
@@ -255,6 +294,14 @@ int32_t bw_cos(int32_t brad);
 
 // Chebyshev distance between two centers (the range metric).
 int32_t bw_chebyshev(int32_t ax, int32_t ay, int32_t bx, int32_t by);
+
+// The wind right now (slice 6): the heading the wind blows TOWARD
+// (0..1023 — sailors would name it by the opposite bearing), rotating
+// slowly off the water's seeded base; and the push (units/frame at
+// full canvas) of this water's weather — 0 in a calm, so a calm water
+// is bit-identical to slice 5.
+int32_t bw_wind_heading(const BwDuel *d);
+int32_t bw_wind_push(const BwDuel *d);
 
 // Reset a duel: player sloop at the anchorage, enemy sloop on a
 // BW_SPAWN_DIST ring at hash angle f(seed), bow toward the player.

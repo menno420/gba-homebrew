@@ -153,6 +153,21 @@ BW_UP_SPEED_OF = (0, 24, 48)
 BW_UP_TURN_OF = (0, 1, 2)
 BW_UP_COST = (0, 15, 45)
 
+# wind + sailing feel (slice 6) — a slow-rotating seeded wind vector;
+# the point of sail scales the trim target speed, canvas quarters per
+# trim scale the catch. BW_WIND_SALT is pinned so every committed
+# anchor seed (116, 117, 118, 119, 126, 127, 558, 728) is CALM — the
+# pin-carry rule (check_wind_tables asserts it loudly).
+BW_WIND_CALM, BW_WIND_BREEZE, BW_WIND_GALE = 0, 1, 2
+BW_WIND_STATES = 3
+BW_WIND_SALT = 0x57499826
+BW_WIND_DIR_SALT = 0x57492881
+BW_WIND_TURN_SHIFT = 3
+BW_WIND_LEVEL_OF = (BW_WIND_CALM, BW_WIND_BREEZE, BW_WIND_BREEZE,
+                    BW_WIND_GALE)
+BW_WIND_PUSH_OF = (0, 12, 24)            # units/frame at FULL canvas
+BW_WIND_CANVAS_OF = (1, 2, 4)            # canvas quarters per trim
+
 # the Maw (slice 5) — shadow telegraph -> surface -> lunge; salvage
 # water only, pier sanctuary, richer crates when slain
 BW_MAW_PATIENCE = 600
@@ -260,8 +275,8 @@ class Duel:
     """Mirror of BwDuel."""
 
     __slots__ = ('player', 'enemy', 'balls', 'loot', 'maw', 'hold',
-                 'hold_gold', 'up_hull', 'up_cannon', 'up_sail', 'frame',
-                 'over')
+                 'hold_gold', 'up_hull', 'up_cannon', 'up_sail',
+                 'wind_level', 'wind_base', 'frame', 'over')
 
     def __init__(self):
         self.player = Ship()
@@ -283,8 +298,19 @@ class Inputs:
         self.fire_r = fire_r
 
 
-def bw_ship_step(s, inputs, sail_tier):
-    """Mirror of bw_ship_step(). sail_tier: SAIL upgrade tier (enemy 0)."""
+def bw_wind_heading(d):
+    """Mirror of bw_wind_heading() — the heading the wind blows TOWARD."""
+    return (d.wind_base + (d.frame >> BW_WIND_TURN_SHIFT)) & (BW_CIRCLE - 1)
+
+
+def bw_wind_push(d):
+    """Mirror of bw_wind_push()."""
+    return BW_WIND_PUSH_OF[d.wind_level]
+
+
+def bw_ship_step(s, inputs, sail_tier, wind_hdg, wind_push):
+    """Mirror of bw_ship_step(). sail_tier: SAIL upgrade tier (enemy 0);
+    wind_hdg/wind_push: this water's wind this frame (slice 6)."""
     s.trim = _clamp(s.trim + inputs.trim_delta, BW_TRIM_BATTLE, BW_TRIM_FULL)
     s.heading = (s.heading
                  + inputs.turn * (BW_TURN_OF[s.trim]
@@ -292,6 +318,10 @@ def bw_ship_step(s, inputs, sail_tier):
         & (BW_CIRCLE - 1)
 
     target = BW_SPEED_OF[s.trim] + BW_UP_SPEED_OF[sail_tier]
+    # point of sail (slice 6): shifts only — >> floors identically in
+    # gcc/ARM and Python (the signed-division rule)
+    wrel = ((s.heading - wind_hdg) & (BW_CIRCLE - 1)) >> 2
+    target += (bw_cos(wrel) * wind_push * BW_WIND_CANVAS_OF[s.trim]) >> 10
     s.speed += _clamp(target - s.speed, -BW_ACCEL, BW_ACCEL)
 
     brad = s.heading >> 2
@@ -627,6 +657,9 @@ def bw_duel_init(d, seed):
     d.up_hull = 0                        # caller re-injects the bought
     d.up_cannon = 0                      #   tiers (upgrades are NEVER
     d.up_sail = 0                        #   lost — main.c's Score owns them)
+    # slice 6: this water's weather, pure f(seed) like the spawn ring
+    d.wind_level = BW_WIND_LEVEL_OF[bw_hash(seed, BW_WIND_SALT) & 3]
+    d.wind_base = bw_hash(seed, BW_WIND_DIR_SALT) & (BW_CIRCLE - 1)
     d.frame = 0
     d.over = BW_DUEL_RUNNING
 
@@ -638,8 +671,10 @@ def bw_duel_step(d, inputs):
 
     ai = bw_ai(d.enemy, d.player)
 
-    bw_ship_step(d.player, inputs, d.up_sail)
-    bw_ship_step(d.enemy, ai, 0)
+    wind_hdg = bw_wind_heading(d)        # slice 6: one wind, both
+    wind_push = bw_wind_push(d)          #   ships sail it
+    bw_ship_step(d.player, inputs, d.up_sail, wind_hdg, wind_push)
+    bw_ship_step(d.enemy, ai, 0, wind_hdg, wind_push)
 
     if inputs.fire_l and d.player.reload_l == 0:
         bw_fire(d, d.player, 0, -1)
@@ -673,7 +708,8 @@ def bw_salvage_step(d, inputs):
     if d.over != BW_DUEL_ENEMY_SUNK:
         return
 
-    bw_ship_step(d.player, inputs, d.up_sail)
+    bw_ship_step(d.player, inputs, d.up_sail,
+                 bw_wind_heading(d), bw_wind_push(d))
     bw_maw_step(d)                       # slice 5: the water is not empty
 
     # the batteries WAKE while the Maw is up; cold on quiet water
@@ -1053,7 +1089,10 @@ def check_containment():
             assert BW_SEA_Y_MIN <= s.y <= BW_SEA_Y_MAX, f
             assert 0 <= s.heading < BW_CIRCLE, f
             assert BW_TRIM_BATTLE <= s.trim <= BW_TRIM_FULL, f
-            assert 0 < s.speed <= BW_SPEED_OF[BW_TRIM_FULL], f
+            # slice 6: a tailwind may fill the canvas past the trim
+            # target by at most the water's push
+            assert 0 < s.speed <= BW_SPEED_OF[BW_TRIM_FULL] \
+                + bw_wind_push(d), f
         for ball in d.balls:
             if ball.live:
                 assert BW_SEA_X_MIN <= ball.x <= BW_SEA_X_MAX, f
@@ -1250,7 +1289,8 @@ def _duel_fingerprint(d):
             tuple((c.live) for c in d.loot),
             tuple((b.live) for b in d.balls), d.frame, d.over,
             (m.x, m.y, m.vx, m.vy, m.state, m.hull, m.timer, m.wake,
-             m.stirs, m.slain, m.bit))
+             m.stirs, m.slain, m.bit),
+            d.wind_level, d.wind_base)   # slice 6: no shopping the weather
 
 
 def check_port_buy():
@@ -1343,7 +1383,8 @@ def check_upgraded_containment():
     bw_duel_init(d, 0xC0FFEE & U32)
     maxed = BW_UP_TIERS - 1
     d.up_hull, d.up_cannon, d.up_sail = maxed, maxed, maxed
-    speed_cap = BW_SPEED_OF[BW_TRIM_FULL] + BW_UP_SPEED_OF[maxed]
+    speed_cap = (BW_SPEED_OF[BW_TRIM_FULL] + BW_UP_SPEED_OF[maxed]
+                 + bw_wind_push(d))      # slice 6: tailwind headroom
     hull_cap = BW_UP_HULL_OF[maxed]
     frames = 10000
     for f in range(frames):
@@ -1362,7 +1403,8 @@ def check_upgraded_containment():
             assert 0 <= s.heading < BW_CIRCLE, f
             assert BW_TRIM_BATTLE <= s.trim <= BW_TRIM_FULL, f
         assert 0 < d.player.speed <= speed_cap, f
-        assert 0 < d.enemy.speed <= BW_SPEED_OF[BW_TRIM_FULL], f
+        assert 0 < d.enemy.speed <= BW_SPEED_OF[BW_TRIM_FULL] \
+            + bw_wind_push(d), f
         for ball in d.balls:
             if ball.live:
                 assert BW_SEA_X_MIN <= ball.x <= BW_SEA_X_MAX, f
@@ -1521,6 +1563,184 @@ def check_maw_slain():
           f'{worst_frames}; a slain Maw never stirs again')
 
 
+def check_wind_tables():
+    # Calm identity (the pin-carry rule): the calm push is zero and the
+    # wind term vanishes at EVERY point of sail and trim, so a calm
+    # water is bit-identical to the slice-5 sim.
+    assert BW_WIND_PUSH_OF[BW_WIND_CALM] == 0
+    for trim in range(3):
+        for brad in range(256):
+            assert (bw_cos(brad) * BW_WIND_PUSH_OF[BW_WIND_CALM]
+                    * BW_WIND_CANVAS_OF[trim]) >> 10 == 0
+    # The committed anchors are ALL calm: every slice-2..5 recorded
+    # route and emulator pin carries verbatim (118 = the kinematics/
+    # idle-loss anchor, 126 = the duel-win anchor, 127 = the salvage/
+    # port anchor, 116/117/119 = the maw recorder's scan prefix + its
+    # anchor, 558/728 = the carry-duel waters proofs 6/8/9/10 pin
+    # positions in). A wind salt or table retune fails HERE, loudly,
+    # before it silently re-times a committed route.
+    for seed in (116, 117, 118, 119, 126, 127, 558, 728):
+        lvl = BW_WIND_LEVEL_OF[bw_hash(seed, BW_WIND_SALT) & 3]
+        assert lvl == BW_WIND_CALM, seed
+    # weather and canvas tables are sane and monotone
+    assert BW_WIND_PUSH_OF[BW_WIND_BREEZE] > 0
+    assert BW_WIND_PUSH_OF[BW_WIND_GALE] > BW_WIND_PUSH_OF[BW_WIND_BREEZE]
+    for t in (1, 2):
+        assert BW_WIND_CANVAS_OF[t] > BW_WIND_CANVAS_OF[t - 1]
+    assert all(0 <= lv < BW_WIND_STATES for lv in BW_WIND_LEVEL_OF)
+    assert BW_WIND_LEVEL_OF[0] == BW_WIND_CALM      # calm waters exist
+    assert BW_WIND_GALE in BW_WIND_LEVEL_OF         # so do gales
+    # Escapability rails survive the weather: a gale-beating full sail
+    # still outruns the shadow on its worst (diagonal) axis, and a
+    # gale-running battle-sail scooper still does NOT — the slice-5
+    # counterplay is weather-proof in BOTH directions.
+    gale = BW_WIND_PUSH_OF[BW_WIND_GALE]
+    worst_full = ((BW_SPEED_OF[BW_TRIM_FULL] - gale) * 181) >> 8
+    assert worst_full > BW_MAW_SHADOW_SPEED, worst_full
+    best_battle = BW_SPEED_OF[BW_TRIM_BATTLE] \
+        + ((256 * gale * BW_WIND_CANVAS_OF[BW_TRIM_BATTLE]) >> 10)
+    assert best_battle < BW_MAW_SHADOW_SPEED, best_battle
+    # the ship ALWAYS makes way: the worst headwind never zeroes a trim
+    for trim in range(3):
+        drag = (256 * gale * BW_WIND_CANVAS_OF[trim]) >> 10
+        assert BW_SPEED_OF[trim] - drag > 0, trim
+    print('wind tables: calm term identically zero (all points of sail), '
+          'the 8 committed anchor seeds ALL calm (pin-carry rule), '
+          f'gale-beating full sail {worst_full} still outruns the shadow '
+          f'({BW_MAW_SHADOW_SPEED}), gale-running battle sail '
+          f'{best_battle} still does not, every trim keeps way on')
+
+
+def check_wind_pointofsail():
+    # The vector rotates exactly one heading unit per 2^SHIFT frames
+    # off the seeded base, wrapping the circle.
+    d = Duel()
+    bw_duel_init(d, 0)
+    for f in (0, 7, 8, 9, 4095, 4096, 8191, 8192):
+        d.frame = f
+        want = (d.wind_base + (f >> BW_WIND_TURN_SHIFT)) & (BW_CIRCLE - 1)
+        assert bw_wind_heading(d) == want, f
+    # Exact point-of-sail speed deltas: a lone ship stepped to a settled
+    # speed at 8 relative bearings, every trim, breeze and gale — the
+    # settled speed IS trim target + (cos(rel) * push * canvas) >> 10,
+    # downwind/upwind deltas are exact mirror images (cos symmetry),
+    # and abeam is exactly neutral.
+    idle = Inputs()
+    for level in (BW_WIND_BREEZE, BW_WIND_GALE):
+        push = BW_WIND_PUSH_OF[level]
+        for trim in range(3):
+            deltas = {}
+            for rel in (0, 128, 256, 384, 512, 640, 768, 896):
+                s = Ship()
+                s.x, s.y = BW_PLAYER_START_X, BW_PLAYER_START_Y
+                s.heading = rel          # wind toward 0: rel IS the angle
+                s.trim = trim
+                s.speed = BW_SPEED_OF[trim]
+                s.hull = BW_HULL_MAX
+                s.reload_l = s.reload_r = 0
+                for _ in range(64):      # ease well past the worst delta
+                    bw_ship_step(s, idle, 0, 0, push)
+                delta = (bw_cos(rel >> 2) * push
+                         * BW_WIND_CANVAS_OF[trim]) >> 10
+                assert s.speed == BW_SPEED_OF[trim] + delta, \
+                    (level, trim, rel, s.speed)
+                deltas[rel] = delta
+            assert deltas[0] == (push * BW_WIND_CANVAS_OF[trim]) >> 2
+            assert deltas[256] == 0 and deltas[768] == 0    # abeam neutral
+            # dead runs and dead beats are exact mirror images; at the
+            # off-cardinal bearings the arithmetic shift FLOORS, so
+            # beating costs at most ONE unit more than running gains —
+            # the sea is cruel by a single unit, never generous
+            assert deltas[0] == -deltas[512]
+            for rel in (0, 128, 256, 384):
+                back = deltas[(rel + 512) & 1023]
+                assert -deltas[rel] - 1 <= back <= -deltas[rel], rel
+    print('wind point of sail: rotation exactly 1 unit per '
+          f'{1 << BW_WIND_TURN_SHIFT} frames; settled speeds exact at 8 '
+          'bearings x 3 trims x breeze+gale; run/beat mirror-imaged at '
+          'the cardinals (floor-crueller by <= 1 off them); abeam '
+          'exactly neutral')
+
+
+def check_wind_duels():
+    # Convergence survives the weather, both ways: with the weather
+    # FORCED to breeze and to gale (whatever the seed hashed to), the
+    # idle player is still sunk and the beam-holding policy player
+    # still wins — wind retunes the dance, never the outcomes.
+    idle = Inputs()
+    for level in (BW_WIND_BREEZE, BW_WIND_GALE):
+        for seed in range(8):
+            d = Duel()
+            bw_duel_init(d, seed)
+            d.wind_level = level
+            for _ in range(10800):
+                bw_duel_step(d, idle)
+                if d.over != BW_DUEL_RUNNING:
+                    break
+            assert d.over == BW_DUEL_PLAYER_SUNK, (level, seed, d.over)
+        for seed in range(8):
+            d = Duel()
+            bw_duel_init(d, seed)
+            d.wind_level = level
+            for _ in range(3600):
+                bw_duel_step(d, bw_policy(d.player, d.enemy))
+                if d.over != BW_DUEL_RUNNING:
+                    break
+            assert d.over == BW_DUEL_ENEMY_SUNK, (level, seed, d.over)
+            assert d.player.hull > 0, (level, seed)
+    print('wind duels: forced breeze AND gale (8 seeds each) — the idle '
+          'player is still sunk, the policy player still wins surviving')
+
+
+def check_wind_containment():
+    # The gale-armed salvage water stays contained: adversarial input
+    # with the weather forced to gale, the Maw stalking, and the fire
+    # keys live — ship, crates, and Maw stay in the sea, the speed
+    # never exceeds the gale-filled trim ceiling or stalls, and a
+    # slain Maw stays down (the slice-5 sweep, re-armed under weather).
+    d = Duel()
+    bw_duel_init(d, 0x6A1E)
+    d.wind_level = BW_WIND_GALE
+    d.enemy.hull = 0
+    d.over = BW_DUEL_ENEMY_SUNK
+    bw_loot_spawn(d)
+    d.maw.wake = d.frame + BW_MAW_PATIENCE
+    cap = BW_SPEED_OF[BW_TRIM_FULL] + BW_WIND_PUSH_OF[BW_WIND_GALE]
+    frames = 8000
+    stirs_after_slain = None
+    for f in range(frames):
+        h = bw_hash(0x6A1E, f)
+        inp = Inputs(turn=(h & 3) - 1 if (h & 3) < 3 else 0,
+                     trim_delta=((h >> 2) & 3) - 1 if ((h >> 2) & 3) < 3
+                     else 0,
+                     fire_l=(h >> 4) & 1, fire_r=(h >> 5) & 1)
+        d.player.hull = BW_HULL_MAX      # adversarial: never let it end
+        d.over = BW_DUEL_ENEMY_SUNK
+        bw_salvage_step(d, inp)
+        bw_dock_step(d)
+        s = d.player
+        assert BW_SEA_X_MIN <= s.x <= BW_SEA_X_MAX, f
+        assert BW_SEA_Y_MIN <= s.y <= BW_SEA_Y_MAX, f
+        assert 0 < s.speed <= cap, (f, s.speed)
+        for c in d.loot:
+            if c.live:
+                assert BW_SEA_X_MIN <= c.x <= BW_SEA_X_MAX, f
+                assert BW_SEA_Y_MIN <= c.y <= BW_SEA_Y_MAX, f
+        m = d.maw
+        assert 0 <= m.hull <= BW_MAW_HULL, f
+        if m.state != BW_MAW_DOWN:
+            assert BW_SEA_X_MIN <= m.x <= BW_SEA_X_MAX, f
+            assert BW_SEA_Y_MIN <= m.y <= BW_SEA_Y_MAX, f
+        if m.slain:
+            assert m.state == BW_MAW_DOWN, f
+            if stirs_after_slain is None:
+                stirs_after_slain = m.stirs
+            assert m.stirs == stirs_after_slain, f
+    print(f'wind containment: {frames} adversarial gale frames (fire '
+          'keys live, the Maw stalking) — ship, crates, and Maw stay in '
+          f'the sea, speed in (0, {cap}], a slain Maw stays down')
+
+
 def main():
     check_sine_table()
     check_spawns()
@@ -1539,6 +1759,10 @@ def main():
     check_maw_stalks()
     check_maw_sanctuary()
     check_maw_slain()
+    check_wind_tables()
+    check_wind_pointofsail()
+    check_wind_duels()
+    check_wind_containment()
     print('check-brine: ALL GREEN')
     return 0
 

@@ -1,1 +1,0 @@
-- `claude/kit-upgrade-v1130` · **kit upgrade v1.12.1→v1.13.0** — distribution wave B · bootstrap.py + kit-owned files · 2026-07-12

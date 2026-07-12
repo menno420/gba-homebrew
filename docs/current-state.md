@@ -52,12 +52,50 @@
 horde-defense) is the active track: concept (PR #50) → toolchain
 feasibility (PR #51) → walking skeleton (PR #52) → shove + waves
 (PR #54) → barricades (PR #56) → scavenge interlude (PR #62) →
-lantern-oil light pressure (PR #64) → **synthesized audio (session 30,
-this ledger entry) SHIPPED**. Next slices per the concept doc:
-best-nights saves, watch-map polish. A parallel sibling session runs
-the Brineward pirate arc in its own dirs.)
+lantern-oil light pressure (PR #64) → synthesized audio (PR #68) →
+**save-file best-nights (session 33, this ledger entry) SHIPPED**.
+Next slice per the concept doc: watch-map polish. A parallel sibling
+session runs the Brineward pirate arc in its own dirs.)
 
 ## Recently shipped (newest first)
+
+- **Session 33 — Gloamline slice 9: SAVE-FILE BEST-NIGHTS** (2026-07-12):
+  the concept doc's "save-file best-nights" — the lamplighter's best
+  run (most nights survived + the seed of that run, so the best night
+  is literally replayable) now **persists across power cycles** on the
+  cartridge backup chip (SPI EEPROM; the battery save DeSmuME emulates).
+  The record is one 32-byte blob — magic, format version, nights, seed,
+  checksum — with everything that can be pure in `gl_sim.h/.c` and
+  mirrored three ways: deterministic byte-exact serialization
+  (`gl_save_encode`), a decode that returns the fresh table on ANY bad
+  blob (blank/corrupt/wrong-magic/future-version — **never a crash**),
+  and a strictly-better-only update rule (`gl_record_improves`): the
+  backup is written ONLY on a dawn that beats the record — never per
+  frame, never at death, never on an equal run (EEPROM wear
+  discipline). The I/O glue is two bounded routines in `main.c` on
+  state-edge frames; **libnds's own cardRead/WriteEeprom demonstrably
+  hangs and loses writes under DeSmuME** (it never drops the AUXSPI
+  HOLD bit before a command's last byte, so DeSmuME never sees a
+  chip-select edge — measured in-slice: the ROM froze on the first
+  dawn write, then wrote bytes that landed nowhere), so the routines
+  speak the protocol-correct flow with every wait bounded by
+  GL_SAVE_POLL_BOUND. **All 353 pre-slice-9 asserts re-ran UNCHANGED,
+  zero re-pins (the trick's SEVENTH hold)** — saves feed nothing back
+  into the night, and the dawn-frame page write costs no frame slip
+  (the ROM frame counter is pinned on the post-dawn probe). Telemetry
+  56 → 64 (slots 0-55 frozen). **Four new pinned proofs (23 proofs /
+  399 asserts total)**: fresh-chip roundtrip with the exported battery
+  bytes byte-identical to the mirror's encode (golden bytes also
+  pinned host-side), power-cycle persistence + equal-run-writes-
+  nothing (battery cmp-identical), the record climbing over two dawns
+  with death moving nothing (all values save-mirror-predicted exactly),
+  and corrupt-save recovery + future-version reset (fixtures crafted
+  by the new `tools/gloam-save.py` through the check-gloam mirror).
+  `tools/nds-headless-check.py` gained `--battery-in/--battery-out`.
+  Honest rail: CI proves the DeSmuME battery path — a real cartridge's
+  backup chip (type, size, wear) is owner-hardware-only. Ships as
+  **`dist/gloamline.nds`** (117,248 B, byte-deterministic) +
+  [`PLAYING-GLOAMLINE.md`](PLAYING-GLOAMLINE.md) save notes.
 
 - **Session 30 — Gloamline slice 8: SYNTHESIZED AUDIO** (2026-07-12):
   the concept doc's "synthesized audio set", built the way session

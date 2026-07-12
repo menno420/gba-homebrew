@@ -19,6 +19,25 @@ Usage:
         [--require-distinct]
         [--elf ELF] [--watch NAME:ADDR:NWORDS ...] [--watch-log PATH]
         [--assert-watch FRAME:NAME:IDX:OP:VALUE ...]
+        [--battery-in PATH[:SIZE]] [--battery-out PATH]
+
+Battery saves (Gloamline slice 9 — the best-nights record):
+    --battery-in save.sav[:8192]
+                            import a RAW battery image into the emulated
+                            cartridge backup BEFORE the first frame (the
+                            "the cart has this chip with these bytes on
+                            it" fixture; SIZE forces the chip size,
+                            default 8192 = the 64Kbit-class EEPROM the
+                            ROM assumes). Without this fixture DeSmuME's
+                            backup is in its autodetect state and a
+                            homebrew save write is NOT faithfully
+                            emulated — always seed save-path proofs
+                            with a sized image (a blank chip is 8192
+                            bytes of 0xFF).
+    --battery-out save.sav  export the backup as a RAW image after the
+                            last frame (py-desmume 0.0.9 quirk: raw
+                            .sav export works; .dsv export returns
+                            False — use .sav).
 
 Input scripting (subset of headless-screenshot.py's interface):
     --keys 240-420:A        hold the A button during frames [240, 420)
@@ -252,6 +271,13 @@ def main():
                         help='assert watch NAME word [IDX] against VALUE at '
                              f'FRAME (OPs: {", ".join(sorted(WATCH_OPS))}); '
                              'repeatable')
+    parser.add_argument('--battery-in', metavar='PATH[:SIZE]',
+                        help='import a RAW battery image into the emulated '
+                             'cartridge backup before frame 0 (SIZE forces '
+                             'the chip size; default 8192)')
+    parser.add_argument('--battery-out', metavar='PATH',
+                        help='export the cartridge backup as a RAW image '
+                             '(.sav) after the last frame')
     args = parser.parse_args()
 
     key_spans = [parse_keys(spec) for spec in args.keys]
@@ -276,6 +302,11 @@ def main():
 
     emu = DeSmuME()
     emu.open(args.rom)
+    if args.battery_in:
+        path, _, size = args.battery_in.partition(':')
+        if not emu.backup.import_file(path, int(size) if size else 8192):
+            sys.exit(f'FAIL: battery import of {path!r} failed')
+        print(f'battery in: {path} ({size or 8192} bytes)')
     emu.volume_set(0)
     # BlocksDS-vs-DeSmuME boot quirk: latch "no keys pressed" BEFORE the
     # first frame (see module docstring / docs/PLATFORM-LIMITS.md).
@@ -340,6 +371,12 @@ def main():
     rgbx = bytes(emu.display_buffer_as_rgbx())
     write_png(args.out_png, SCREEN_WIDTH, SCREEN_HEIGHT * 2, rgbx)
     saved.append((args.out_png, args.frames - 1, rgbx))
+
+    if args.battery_out:
+        if not emu.backup.export_file(args.battery_out):
+            sys.exit(f'FAIL: battery export to {args.battery_out!r} failed '
+                     '(py-desmume 0.0.9 exports RAW .sav only)')
+        print(f'battery out: {args.battery_out}')
 
     held = ', '.join(args.keys) or 'none'
     print(f'ran {args.frames} frames (keys: {held}), saved {len(saved)} '

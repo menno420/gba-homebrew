@@ -12,7 +12,9 @@
 gives the night a voice: a low moor-drone that climbs as your lantern
 fails and the dark presses, and chiptune cues for everything you do —
 all synthesized on the DS's own square-wave and noise channels, no
-samples of anything. Turn the sound on.
+samples of anything. Turn the sound on. Slice 9 makes the moor remember:
+your best run — most nights survived, and the seed that made it — now
+persists across power cycles in the cartridge's battery save.
 
 ## 1. Get the ROM
 
@@ -32,8 +34,16 @@ like: the sha256 is pinned in [`dist/README.md`](../dist/README.md).
   DS). Copy the file to the device (or download it straight from GitHub)
   and open it from the emulator's file picker.
 - **Real hardware:** runs from any DS flashcart that takes homebrew
-  `.nds` files. No save file is used yet (best-nights persistence is a
-  later slice), so there is nothing to configure.
+  `.nds` files. Since slice 9 the game keeps a tiny battery save (one
+  32-byte record — your best run) via standard SPI-EEPROM commands on
+  the cartridge backup; most flashcarts map this to an ordinary `.sav`
+  file automatically. If your cart exposes a save-size choice, any size
+  works (the game assumes the common 64Kbit-class EEPROM addressing).
+  Honest note: CI verifies this persistence in DeSmuME's emulated
+  battery only — on real carts it is untested; if the save doesn't
+  stick, the game still plays perfectly (a missing/odd save just reads
+  as "no record yet"). In desktop emulators there is nothing to
+  configure — melonDS/DeSmuME create the battery file themselves.
 
 ## 3. How to play
 
@@ -143,9 +153,20 @@ fence-line spawn. **NTS** (nights survived) on the HUD is your score.
 - **One touch kills.** A cold-hands card shows your night, your seed and
   your death count; START restarts instantly. Dying while scavenging
   counts all the same — greed has a price on the moor.
+- **The moor remembers your best night.** Your record — the most nights
+  survived in a single run, and the seed of that run — is written to
+  the cartridge's battery save the moment a dawn beats it, and greets
+  you on the title screen (`best N night(s) seed S`) every time you
+  power on. The dawn and death cards show it too, so you always know
+  what you're chasing. Only a strictly better dawn moves it; deaths
+  and equal runs touch nothing. And because every run is seed-
+  deterministic, the recorded seed means your best night is *literally
+  replayable* — start a run when the frame counter matches... or just
+  accept the moor's challenge. A corrupt or foreign save can never
+  crash the game — it simply reads as a fresh record.
 - Every run is **reproducible**: the SEED on the HUD fully determines
   every spawn of every night (and everything after it, given your
   inputs). Same seed + same moves = same night, every time.
 
-Next slices per the [concept](concepts/gloamline-concept.md):
-best-nights saves and watch-map polish.
+Next slice per the [concept](concepts/gloamline-concept.md):
+watch-map polish.

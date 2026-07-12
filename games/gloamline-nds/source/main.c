@@ -1,3 +1,32 @@
+// Gloamline — arc slice 9: SAVE-FILE BEST-NIGHTS (on the slice-8
+// synthesized audio).
+//
+// The concept doc's "save-file best-nights": the lamplighter's best-run
+// record — most nights survived in one run, and the seed of that run so
+// the owner can replay it (determinism is the feature) — persists
+// across power cycles on the cartridge backup chip, read/written with
+// the libnds card-EEPROM calls over the card SPI bus (the battery save
+// DeSmuME emulates as a .dsv file). The record blob, its checksum, the
+// decode ("corrupt/blank/future-version save = fresh table, NEVER a
+// crash") and the update rule ("strictly better only") are all pure
+// gl_sim.h/.c functions, mirrored three ways like every other rule.
+// This file only adds the I/O glue at two state edges, both OFF the
+// per-frame path: ONE bounded EEPROM read at power-on (before the main
+// loop — a bad blob falls back to the fresh table), and ONE page write
+// on a dawn that strictly improves the record (wear discipline: never
+// per frame, never at death — a death cannot improve a best-nights
+// record; the write rides the dawn-card state flip, a frame that
+// already rebuilds the console). Saves feed NOTHING back into the
+// night's sim — the record is displayed (title / cards) and persisted,
+// so every pre-slice-9 pin holds bit-identically. Telemetry appends
+// slots 56-63 (best nights, best seed, save-loaded flag, writes this
+// power-on, format version) with slots 0-55 frozen. Honest rail:
+// headless CI proves the DeSmuME battery path exactly; a real
+// cartridge's backup chip (type, size, wear) is owner-hardware-only —
+// GL_SAVE_EEPROM_TYPE is a decide-and-flag constant, not a probe.
+//
+// Below this line the slice-8 story still applies verbatim:
+//
 // Gloamline — arc slice 8: SYNTHESIZED AUDIO (on the slice-7 lantern
 // oil).
 //
@@ -97,7 +126,9 @@
 // headless proofs (tools/nds-headless-check.py --elf/--watch) can assert
 // game state numerically. Layout below at GL_T_*. Slots 0-39 keep their
 // slice-3/4/5/6 meanings EXACTLY (the pinned CI asserts read them);
-// slice 7 appends 40-47 (lantern oil). On a multi-zombie night the
+// slice 7 appends 40-47 (lantern oil), slice 8 appends 48-55 (audio
+// decisions), slice 9 appends 56-63 (the best-nights save record) —
+// each with every older slot frozen. On a multi-zombie night the
 // ZX/ZY/DIST/NSTUN slots describe the NEAREST Shambler (identical to
 // slice 3 whenever one zombie is up); BX/BY/BHP likewise describe the
 // intact barricade nearest the player.
@@ -168,8 +199,16 @@
 #define GL_T_AFLIPS 53  // drone restarts/stops (tier flips) this power-on
 #define GL_T_ASFXL 54   // frames left on the one-shot cue channel
 #define GL_T_SPARE3 55  // reserved, always 0
+#define GL_T_BEST 56    // best nights survived on record (live table)
+#define GL_T_BESTSEED 57// seed of the record run (replay the best night)
+#define GL_T_SAVEOK 58  // 1 = power-on read decoded a valid save blob
+#define GL_T_SAVEWR 59  // record writes to the backup this power-on
+#define GL_T_SAVEVER 60 // save format version (build-flag visibility)
+#define GL_T_SPARE4 61  // reserved, always 0
+#define GL_T_SPARE5 62  // reserved, always 0
+#define GL_T_SPARE6 63  // reserved, always 0
 
-volatile uint32_t gl_telemetry[56];
+volatile uint32_t gl_telemetry[64];
 
 enum
 {
@@ -631,6 +670,94 @@ static int the_cold_hands(const Run *run)
     return touched;
 }
 
+// --- slice-9 backup I/O (bounded card-SPI EEPROM read + page program) ----------
+// The record's ONLY two backup touches: one read at power-on, one page
+// program on an improving dawn. Both are the standard SPI-EEPROM
+// command flows (READ 0x03 / WREN 0x06 / PAGE PROGRAM 0x02 / RDSR 0x05
+// with GL_SAVE_EEPROM_TYPE-2 = 2-byte addressing), hand-rolled instead
+// of libnds's cardReadEeprom/cardWriteEeprom for two measured reasons:
+//
+// 1. CHIP-SELECT DISCIPLINE. The AUXSPI protocol (GBATEK; DeSmuME
+//    models it faithfully) releases the chip select AFTER the next
+//    byte once CARD_SPI_HOLD (bit 6) is dropped — so a command must
+//    clear HOLD BEFORE its last byte. libnds's cardRead/WriteEeprom
+//    instead "deselects" by writing 0x0040 (bit 6 stays set) after the
+//    last byte: real chips tolerate it, but DeSmuME's backup device
+//    (the proof carrier) never sees a select edge, keeps the previous
+//    command open, and swallows every later command byte as more read
+//    traffic — measured in this slice as (a) the record write landing
+//    NOWHERE (the battery bytes stayed 0xFF while the ROM thought it
+//    had written) and (b) libnds's unbounded write-in-progress poll
+//    then reading save bytes (0xFF, WIP bit set) forever: the ROM
+//    froze solid on the first dawn write.
+// 2. BOUNDED WAITS. Every wait below gives up after
+//    GL_SAVE_POLL_BOUND iterations — a chip (or emulator) that never
+//    answers costs a bounded sub-frame stall on one boot/dawn-card
+//    frame, never a hang. An expired program poll is harmless: the
+//    page data is already clocked in and the chip finishes programming
+//    internally; the next backup command is minutes away (the next
+//    improving dawn) or a power cycle.
+
+static void save_spi_byte(uint8_t b)
+{
+    REG_AUXSPIDATA = b;
+    for (uint32_t i = 0;
+         i < GL_SAVE_POLL_BOUND && (REG_AUXSPICNT & CARD_SPI_BUSY); i++) { }
+}
+
+static uint8_t save_spi_read(void)
+{
+    save_spi_byte(0);
+    return REG_AUXSPIDATA;
+}
+
+static void save_select(void)                // begin a command window
+{
+    REG_AUXSPICNT = CARD_ENABLE | CARD_SPI_ENABLE | CARD_SPI_HOLD;
+}
+
+static void save_final_byte(void)            // CS releases after the NEXT
+{                                            // byte (drop HOLD first —
+    REG_AUXSPICNT = CARD_ENABLE | CARD_SPI_ENABLE;   // the protocol rule)
+}
+
+static void save_read_backup(uint8_t blob[GL_SAVE_BYTES])
+{
+    save_select();
+    save_spi_byte(0x03);                     // READ + 2 address bytes
+    save_spi_byte((GL_SAVE_ADDR >> 8) & 0xFF);
+    save_spi_byte(GL_SAVE_ADDR & 0xFF);
+    for (int i = 0; i < GL_SAVE_BYTES - 1; i++)
+        blob[i] = save_spi_read();
+    save_final_byte();
+    blob[GL_SAVE_BYTES - 1] = save_spi_read();
+}
+
+static void save_write_backup(const uint8_t blob[GL_SAVE_BYTES])
+{
+    // WRITE ENABLE — its own one-byte chip-select window
+    save_select();
+    save_final_byte();
+    save_spi_byte(0x06);
+    // PAGE PROGRAM: GL_SAVE_BYTES is exactly one 32-byte page at
+    // GL_SAVE_ADDR 0, so no page-crossing loop is needed.
+    save_select();
+    save_spi_byte(0x02);
+    save_spi_byte((GL_SAVE_ADDR >> 8) & 0xFF);
+    save_spi_byte(GL_SAVE_ADDR & 0xFF);
+    for (int i = 0; i < GL_SAVE_BYTES - 1; i++)
+        save_spi_byte(blob[i]);
+    save_final_byte();
+    save_spi_byte(blob[GL_SAVE_BYTES - 1]);  // CS falls: the chip programs
+    // READ STATUS: wait out the program cycle — BOUNDED
+    save_select();
+    save_spi_byte(0x05);
+    for (uint32_t i = 0;
+         i < GL_SAVE_POLL_BOUND && (save_spi_read() & 0x01); i++) { }
+    save_final_byte();
+    save_spi_read();                         // terminating dummy byte
+}
+
 // --- top-screen scenes -----------------------------------------------------------
 static PrintConsole top_console;
 static PrintConsole bottom_console;
@@ -644,7 +771,7 @@ static void draw_fence(void)
     printf("\x1b[23;0H################################");
 }
 
-static void draw_title(void)
+static void draw_title(uint32_t best_nights, uint32_t best_seed)
 {
     consoleSelect(&top_console);
     consoleClear();
@@ -659,9 +786,15 @@ static void draw_title(void)
     printf("\x1b[17;6Hsurvive to dawn\n");
     printf("\x1b[18;6Hkeep the lantern fed\n");
     printf("\x1b[19;9HPRESS START\n");
+    // Slice 9: the record survived the power cycle — show it. A fresh
+    // (or reset) table shows nothing: the moor keeps no empty boasts.
+    if (best_nights > 0)
+        printf("\x1b[21;3Hbest %lu night(s)  seed %lu",
+               (unsigned long)best_nights, (unsigned long)best_seed);
 }
 
-static void draw_death_card(const Run *run, uint32_t deaths)
+static void draw_death_card(const Run *run, uint32_t deaths,
+                            uint32_t best_nights)
 {
     consoleSelect(&top_console);
     consoleClear();
@@ -670,10 +803,13 @@ static void draw_death_card(const Run *run, uint32_t deaths)
     printf("\x1b[11;7Hnight %lu", (unsigned long)run->night);
     printf("\x1b[12;7Hseed %lu", (unsigned long)run->seed);
     printf("\x1b[13;7Hdeaths %lu", (unsigned long)deaths);
+    if (best_nights > 0)                 // slice 9: what you're chasing
+        printf("\x1b[14;7Hbest %lu night(s)", (unsigned long)best_nights);
     printf("\x1b[16;5HPRESS START: retry\n");
 }
 
-static void draw_dawn_card(const Run *run, uint32_t nights)
+static void draw_dawn_card(const Run *run, uint32_t nights,
+                           uint32_t best_nights, uint32_t best_seed)
 {
     consoleSelect(&top_console);
     consoleClear();
@@ -681,6 +817,12 @@ static void draw_dawn_card(const Run *run, uint32_t nights)
     printf("\x1b[10;5Hnight %lu survived", (unsigned long)run->night);
     printf("\x1b[11;5Hnights total %lu", (unsigned long)nights);
     printf("\x1b[12;5Hseed %lu", (unsigned long)run->seed);
+    // Slice 9: the record (already updated for THIS dawn if it
+    // improved — the caller writes the backup first, so what the card
+    // shows is what the cartridge now holds).
+    if (best_nights > 0)
+        printf("\x1b[13;5Hbest %lu night(s) seed %lu",
+               (unsigned long)best_nights, (unsigned long)best_seed);
     printf("\x1b[15;3HPRESS START: night %lu",
            (unsigned long)(run->night + 1));
     printf("\x1b[17;3HPRESS SELECT: scavenge");
@@ -868,6 +1010,22 @@ int main(void)
     // square waves and noise, no sample data anywhere.
     soundEnable();
 
+    // Slice 9: the best-nights record — ONE bounded read of the
+    // cartridge backup at power-on (card SPI EEPROM; DeSmuME emulates
+    // it as the battery .dsv). A missing, blank, corrupt or
+    // future-version blob decodes to 0 and the fresh table stands —
+    // never a crash, never a hang. GL_SAVE_EEPROM_TYPE is the assumed
+    // decide-and-flag addressing constant, not a boot-time chip probe.
+    uint32_t best_nights = 0;
+    uint32_t best_seed = 0;
+    uint32_t save_ok = 0;
+    uint32_t save_writes = 0;
+    {
+        uint8_t blob[GL_SAVE_BYTES];
+        save_read_backup(blob);
+        save_ok = (uint32_t)gl_save_decode(blob, &best_nights, &best_seed);
+    }
+
     Run run = {0};
     run.dawn_left = GL_NIGHT_FRAMES;         // title-screen dawn bar: empty
     int state = STATE_TITLE;
@@ -896,7 +1054,7 @@ int main(void)
     uint32_t cues = 0;             // cues fired this power-on
     uint32_t cue_frame = 0;        // global frame of the last cue
 
-    draw_title();
+    draw_title(best_nights, best_seed);
     draw_watch_map_frame();
 
     gl_telemetry[GL_T_MAGIC0] = 0x474C4F41u;   // 'GLOA'
@@ -964,15 +1122,30 @@ int main(void)
                 state = STATE_DEAD;
                 oamClear(&oamMain, 0, 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
                                       + GL_CACHE_COUNT + GL_FLASK_COUNT);
-                draw_death_card(&run, deaths);
+                draw_death_card(&run, deaths, best_nights);
             }
             else if (--run.dawn_left == 0)
             {
                 nights_survived = run.night;
+                // Slice 9: the record moves ONLY here — a dawn that
+                // strictly beats it. One page write to the backup, on
+                // a state-flip frame that already rebuilds the console
+                // (off the per-frame path); equal-or-worse dawns and
+                // deaths write NOTHING (EEPROM wear discipline).
+                if (gl_record_improves(best_nights, nights_survived))
+                {
+                    best_nights = nights_survived;
+                    best_seed = run.seed;
+                    uint8_t blob[GL_SAVE_BYTES];
+                    gl_save_encode(best_nights, best_seed, blob);
+                    save_write_backup(blob);
+                    save_writes++;
+                }
                 state = STATE_DAWN;
                 oamClear(&oamMain, 0, 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
                                       + GL_CACHE_COUNT + GL_FLASK_COUNT);
-                draw_dawn_card(&run, nights_survived);
+                draw_dawn_card(&run, nights_survived, best_nights,
+                               best_seed);
             }
             else
             {
@@ -1032,7 +1205,7 @@ int main(void)
                 state = STATE_DEAD;
                 oamClear(&oamMain, 0, 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
                                       + GL_CACHE_COUNT + GL_FLASK_COUNT);
-                draw_death_card(&run, deaths);
+                draw_death_card(&run, deaths, best_nights);
             }
             else if (--run.scav_left == 0)   // dawn light spent
             {
@@ -1361,6 +1534,14 @@ int main(void)
         gl_telemetry[GL_T_AFLIPS] = amb_flips;
         gl_telemetry[GL_T_ASFXL] = cue_left;
         gl_telemetry[GL_T_SPARE3] = 0;
+        gl_telemetry[GL_T_BEST] = best_nights;
+        gl_telemetry[GL_T_BESTSEED] = best_seed;
+        gl_telemetry[GL_T_SAVEOK] = save_ok;
+        gl_telemetry[GL_T_SAVEWR] = save_writes;
+        gl_telemetry[GL_T_SAVEVER] = GL_SAVE_VERSION;
+        gl_telemetry[GL_T_SPARE4] = 0;
+        gl_telemetry[GL_T_SPARE5] = 0;
+        gl_telemetry[GL_T_SPARE6] = 0;
     }
 
     return 0;

@@ -182,6 +182,48 @@
 // the value is the libnds DutyCycle register code (0..7).
 #define GL_CUE_ON_NOISE 255
 
+// --- best-nights save (slice 9) ------------------------------------------------
+// The concept doc's "save-file best-nights": the lamplighter's best-run
+// record persists across power cycles on the cartridge backup chip
+// (EEPROM over the card SPI bus — the battery save DeSmuME emulates as
+// a .dsv file). The record is one fixed 32-byte blob: 8 little-endian
+// u32 words { magic, version, best nights survived, seed of that run,
+// 3 spares (0), checksum-of-words-0..6 }, so serialization is fully
+// deterministic and one word 4 = one type-2 EEPROM page write.
+// SAFETY BY CONSTRUCTION: gl_save_decode returns 0 (and the caller
+// keeps the fresh all-zero table) on ANY bad blob — wrong magic, wrong
+// version, bad checksum, blank/0xFF chip — a corrupt save can reset
+// the record, NEVER crash or hang the game. Writes are wear-disciplined:
+// the ARM9 writes the blob ONLY on a dawn that strictly improves the
+// record (gl_record_improves) — never per frame, never at death (a
+// death cannot improve a best-nights record). All constants are
+// decide-and-flag owner-tunables; GL_SAVE_EEPROM_TYPE is the libnds
+// addrtype the ROM ASSUMES (64Kbit-class EEPROM, 2-byte addressing) —
+// a fixed constant, not a boot-time chip probe.
+#define GL_SAVE_MAGIC 0x474C5356u            // 'GLSV'
+#define GL_SAVE_VERSION 1u                   // bump on any layout change
+#define GL_SAVE_WORDS 8
+#define GL_SAVE_BYTES 32                     // one type-2 EEPROM page
+#define GL_SAVE_ADDR 0                       // blob offset in the backup
+#define GL_SAVE_EEPROM_TYPE 2                // libnds addrtype (see card.h)
+#define GL_SAVE_SALT 0x53415645u             // 'SAVE' checksum stream
+// Iteration cap on every card-SPI wait in the write path (main.c's
+// save_write_backup): libnds's cardWriteEeprom polls the chip's status
+// register UNBOUNDEDLY and hangs forever under DeSmuME's backup
+// emulation (measured in this slice: the ROM froze on the first dawn
+// write). Every wait in our write flow gives up after this many
+// iterations instead. Sizing (both rails measured in this slice):
+// big enough that ~4096 RDSR polls outlast a real EEPROM's ~5 ms page
+// program with margin, small enough that a chip/emulator that NEVER
+// answers (DeSmuME reads the status as busy forever) costs only a
+// bounded sub-frame stall on the one dawn-card frame — at 65536 the
+// expired poll ate 2 whole emulated frames and every post-dawn pin
+// would have shifted. An expired poll is harmless by construction:
+// the page data commits on chip-deselect and the chip finishes
+// programming internally; the next backup command is minutes away
+// (the next improving dawn) or next power-on.
+#define GL_SAVE_POLL_BOUND 4096u
+
 // --- night clock -------------------------------------------------------------
 // One night = 60 s at 60 fps. Headless DeSmuME runs ~800 fps in CI, so the
 // survive-to-dawn proof replays a FULL night on the shipped ROM — no
@@ -330,5 +372,28 @@ uint32_t gl_cue_freq(uint32_t cue);
 uint32_t gl_cue_len(uint32_t cue);
 uint32_t gl_cue_duty(uint32_t cue);
 uint32_t gl_cue_vol(uint32_t cue);
+
+// Checksum of a save blob's words 0..GL_SAVE_WORDS-2 (a gl_hash fold on
+// the GL_SAVE_SALT stream). Pure; word GL_SAVE_WORDS-1 is not read.
+uint32_t gl_save_checksum(const uint32_t words[GL_SAVE_WORDS]);
+
+// Serialize the best-run record into a GL_SAVE_BYTES blob (slice 9):
+// { GL_SAVE_MAGIC, GL_SAVE_VERSION, best_nights, best_seed, 0, 0, 0,
+// checksum } as little-endian u32 words. Deterministic: equal records
+// encode to identical bytes.
+void gl_save_encode(uint32_t best_nights, uint32_t best_seed,
+                    uint8_t out[GL_SAVE_BYTES]);
+
+// Parse a blob read back from the backup: returns 1 and fills the
+// record ONLY if magic, version AND checksum all match; returns 0 on
+// any other input (corrupt, blank, 0xFF, future version) WITHOUT
+// touching the outputs — the caller's fresh table stands. Never
+// crashes on any 32-byte input. Pure.
+int gl_save_decode(const uint8_t in[GL_SAVE_BYTES],
+                   uint32_t *best_nights, uint32_t *best_seed);
+
+// 1 if a run of `nights` beats the record — STRICTLY better only
+// (equal runs write nothing: EEPROM wear discipline). Pure.
+int gl_record_improves(uint32_t best_nights, uint32_t nights);
 
 #endif // GL_SIM_H

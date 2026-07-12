@@ -71,7 +71,7 @@ jobs:
   # the walking skeleton). Deliberately a SEPARATE job so the required "ROM
   # builds" GBA gate is untouched: BlocksDS 1.21.1 + Wonderful GCC
   # (sha256-pinned by tools/setup-nds-toolchain.sh, which the cache key
-  # hashes), then the host-mirror proof + nineteen headless py-desmume proofs
+  # hashes), then the host-mirror proof + twenty-three headless py-desmume proofs
   # against the ROM's gl_telemetry mailbox (ELF-symbol-resolved watches;
   # every numeric value below was pinned from a deterministic in-container
   # run — the ROM build is byte-deterministic, so drift = regression).
@@ -127,7 +127,7 @@ jobs:
       # Proof 1 — boot: dual-screen title renders, telemetry mailbox is
       # live (magic words present, frame counter running, full-length
       # 3600-frame nights — i.e. the shipped ROM, not a test build).
-      - name: 'proof 1/19 — boot + telemetry mailbox'
+      - name: 'proof 1/23 — boot + telemetry mailbox'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-boot-300.png \
@@ -143,7 +143,7 @@ jobs:
       # then RIGHT / DOWN / UP+LEFT each move the player by the exact
       # pure-function distances (1.5 px/f straight, 271/256 px/f per axis
       # diagonal). Positions are 8.8 fixed (32768 = x128).
-      - name: 'proof 2/19 — 8-way move (position telemetry tracks input)'
+      - name: 'proof 2/23 — 8-way move (position telemetry tracks input)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-move.png \
@@ -167,7 +167,7 @@ jobs:
       # 2405 < 2560), state flips to DEAD with deaths=1, the card holds,
       # and START restarts instantly (fresh seed 348, player re-centered,
       # the new night's Shambler closing again).
-      - name: 'proof 3/19 — chase closes, contact = death, START restarts'
+      - name: 'proof 3/23 — chase closes, contact = death, START restarts'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-death.png \
@@ -194,7 +194,7 @@ jobs:
       # >= 22 px of margin at every alignment +-6 frames) replays a FULL
       # 60-second night headlessly (~5 s wall): dawn breaks (state 3),
       # nights survived = 1, deaths = 0.
-      - name: 'proof 4/19 — survive night 1 to dawn (full-length night)'
+      - name: 'proof 4/23 — survive night 1 to dawn (full-length night)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-dawn.png \
@@ -218,7 +218,7 @@ jobs:
       # only DELAYS — the idle player still dies by frame 490. Every
       # value below was predicted by the tools/gloam-route.py mirror sim
       # and matched by the emulator run exactly.
-      - name: 'proof 5/19 — shove: knockback + stun + cooldown (pressure valve)'
+      - name: 'proof 5/23 — shove: knockback + stun + cooldown (pressure valve)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-shove.png \
@@ -251,7 +251,7 @@ jobs:
       # schedule (alive t[16]: 1 at rf 100, 2 past rf 800, 3 past rf
       # 1600), and dawn breaks on night 2 with 3 Shamblers up and 0
       # deaths. ~10 s wall headless for the two full nights.
-      - name: 'proof 6/19 — night-2 wave (3 zombies) spawns on schedule + survive to dawn'
+      - name: 'proof 6/23 — night-2 wave (3 zombies) spawns on schedule + survive to dawn'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-night2.png \
@@ -288,7 +288,7 @@ jobs:
       # i.e. 60 fps with the maximum crowd + full ring. Honest-method
       # note: this is DeSmuME's scanline timing model (py-desmume 0.0.9),
       # not hardware.
-      - name: 'proof 7/19 — 24-Shambler + 8-barricade frame budget (stress build, vcount probe)'
+      - name: 'proof 7/23 — 24-Shambler + 8-barricade frame budget (stress build, vcount probe)'
         run: |
           python3 tools/nds-headless-check.py \
             gloamline-stress.nds nds-stress.png \
@@ -319,7 +319,7 @@ jobs:
       # 690 with the unspent planks intact (t[24]=5). Every value was
       # predicted by the tools/gloam-route.py mirror sim and matched by
       # the emulator exactly.
-      - name: 'proof 8/19 — barricade: place blocks the dead, chew-through breaches, still no free lunch'
+      - name: 'proof 8/23 — barricade: place blocks the dead, chew-through breaches, still no free lunch'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-barricade.png \
@@ -351,7 +351,7 @@ jobs:
       # exactly 1 plank (t[26] back to 236 = 240 minus the chews since,
       # t[24] 5->4, t[29]=1) and the block keeps holding (alive at 420,
       # chewing resumed: t[26]=155). Mirror-predicted, emulator-matched.
-      - name: 'proof 9/19 — barricade repair: 1 plank, full hp, no waste on a full one'
+      - name: 'proof 9/23 — barricade repair: 1 plank, full hp, no waste on a full one'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-repair.png \
@@ -388,7 +388,7 @@ jobs:
       # wiped, 0 deaths. Route survives every +-6-frame movement skew on
       # the mirror (min dist >= 22.4 px); every pinned value below was
       # mirror-predicted and emulator-matched exactly.
-      - name: 'proof 10/19 — scavenge: SELECT enters, 3 caches looted, full pocket wastes nothing, START exits with the loot'
+      - name: 'proof 10/23 — scavenge: SELECT enters, 3 caches looted, full pocket wastes nothing, START exits with the loot'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-scavenge-loot.png \
@@ -433,7 +433,7 @@ jobs:
       # closes 6821 -> 2789) and killed INSIDE the interlude (state 4 ->
       # 2, deaths 1, contact dist 2405 — the same cold hands as proof 3),
       # planks unlooted. Daylight is bought planks, not safety.
-      - name: 'proof 11/19 — scavenge risk: the dead walk back in, idling in the interlude kills you'
+      - name: 'proof 11/23 — scavenge risk: the dead walk back in, idling in the interlude kills you'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-scavenge-death.png \
@@ -466,7 +466,7 @@ jobs:
       # (state 4 -> 1, night 2, wave of 3 on schedule, player recentered,
       # caches wiped, interlude counter 0, planks carried, 0 deaths).
       # Route survives every +-6-frame movement skew on the mirror.
-      - name: 'proof 12/19 — scavenge timer: kite out the full dawn light, night 2 starts by itself with the loot'
+      - name: 'proof 12/23 — scavenge timer: kite out the full dawn light, night 2 starts by itself with the loot'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-scavenge-timer.png \
@@ -501,7 +501,7 @@ jobs:
       # 80 px) and the dark press stays 0 the whole night — the
       # zero-re-pin gate, emulator-visible — and the death card FREEZES
       # the burn (10673 at both 250 and 340: cards burn nothing).
-      - name: 'proof 13/19 — lantern oil burns per night frame; at full light nothing changes'
+      - name: 'proof 13/23 — lantern oil burns per night frame; at full light nothing changes'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-oil-burn.png \
@@ -535,7 +535,7 @@ jobs:
       # unhesitating and kill the lamplighter in the failing light
       # (contact 2437, radius 16599 = 64.8 px, nights survived 2).
       # Every pinned value mirror-predicted, emulator-matched exactly.
-      - name: 'proof 14/19 — night 3: the light fails, the dark presses, the pressed dead kill'
+      - name: 'proof 14/23 — night 3: the light fails, the dark presses, the pressed dead kill'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-oil-press.png \
@@ -581,7 +581,7 @@ jobs:
       # (t[43] stays 1: no flask is ever wasted); START exits into
       # night 2 where the lantern burns again (10780 at run frame 20,
       # 10740 at 60), flasks wiped, loot carried, 0 deaths.
-      - name: 'proof 15/19 — oil flask: entry tops the tank to the cap, a full tank wastes nothing'
+      - name: 'proof 15/23 — oil flask: entry tops the tank to the cap, a full tank wastes nothing'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-oil-flask.png \
@@ -627,7 +627,7 @@ jobs:
       # and matched by the emulator exactly. Honest-method note: this
       # proves WHICH sound is asked for WHEN — headless CI cannot hear
       # the PSG output itself (owner playtest for the mix).
-      - name: 'proof 16/19 — audio cues: nightfall toll, death rattle, the drone dies with you'
+      - name: 'proof 16/23 — audio cues: nightfall toll, death rattle, the drone dies with you'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-audio-idle.png \
@@ -671,7 +671,7 @@ jobs:
       # the dead cross the shrinking light circle); the pressed kill
       # fires the DEATH rattle and cuts the drone (8960). All
       # mirror-predicted, emulator-matched exactly.
-      - name: 'proof 17/19 — ambience: the drone climbs as the light fails and the dark presses'
+      - name: 'proof 17/23 — ambience: the drone climbs as the light fails and the dark presses'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-audio-press.png \
@@ -727,7 +727,7 @@ jobs:
       # no-waste rule is audible silence); START exits and night 2
       # tolls in over the 65 Hz night drone (t[50] = 5, t[53] = 4).
       # All mirror-predicted, emulator-matched exactly.
-      - name: 'proof 18/19 — interlude audio: day drone, flask + cache cues, silence on the no-waste stand'
+      - name: 'proof 18/23 — interlude audio: day drone, flask + cache cues, silence on the no-waste stand'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-audio-flask.png \
@@ -773,7 +773,7 @@ jobs:
       # (700; channel closed again by 750). Cue priority is live in
       # this run: plank/shove/breach/death each preempt the channel as
       # they land. All mirror-predicted, emulator-matched exactly.
-      - name: 'proof 19/19 — verb cues: plank knock, shove thump, breach splinter, death preempts'
+      - name: 'proof 19/23 — verb cues: plank knock, shove thump, breach splinter, death preempts'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-audio-verbs.png \
@@ -808,6 +808,143 @@ jobs:
             --assert-watch 700:t:52:eq:0 \
             --assert-watch 700:t:54:eq:42 \
             --assert-watch 750:t:54:eq:0
+      # Proof 20 — BEST-NIGHTS SAVE roundtrip (slice 9), on proof 4's
+      # committed dawn route: a factory-fresh chip (all 0xFF — the
+      # sized battery fixture DeSmuME's backup emulation needs) decodes
+      # to the fresh table at boot (save-loaded t[58] = 0, best t[56] =
+      # 0, format version t[60] = 1); surviving night 1 moves the
+      # record at the dawn card EXACTLY once (best 1, best-seed 118,
+      # writes t[59] = 1) — and the ROM frame counter t[2] pinned at
+      # 3748 on the post-dawn probe proves the EEPROM page write cost
+      # NO frame slip (same alignment as every pre-slice-9 route). The
+      # exported battery image then carries the record BYTE-IDENTICAL
+      # to the host mirror's gl_save_encode(1, 118) (golden bytes also
+      # pinned host-side in check-gloam.py) — the C encoder, the
+      # emulated chip, and the mirror agree at byte level.
+      - name: 'proof 20/23 — best-nights save: fresh chip, one dawn write, battery bytes == mirror encode'
+        run: |
+          python3 tools/gloam-save.py blank gl-blank.sav
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-save-dawn.png \
+            --frames 3900 $(cat games/gloamline-nds/proof/dawn-route-keys.txt) \
+            --battery-in gl-blank.sav --battery-out gl-save1.sav \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:64 \
+            --assert-watch 130:t:58:eq:0 \
+            --assert-watch 130:t:56:eq:0 \
+            --assert-watch 130:t:60:eq:1 \
+            --assert-watch 3750:t:3:eq:3 \
+            --assert-watch 3750:t:2:eq:3748 \
+            --assert-watch 3750:t:56:eq:1 \
+            --assert-watch 3750:t:57:eq:118 \
+            --assert-watch 3750:t:59:eq:1
+          python3 tools/gloam-save.py expect gl-save1.sav --best 1 --seed 118
+          python3 tools/gloam-save.py inspect gl-save1.sav
+      # Proof 21 — the record SURVIVES THE POWER CYCLE and an equal run
+      # never rewrites it (slice 9): a fresh boot with proof 20's
+      # battery image loads the record (save-loaded t[58] = 1, best 1,
+      # seed 118 — on the title screen before any input); replaying the
+      # SAME dawn route ties the record (nights 1 vs best 1) and the
+      # dawn writes NOTHING (t[59] stays 0 — strictly-better-only, the
+      # EEPROM wear discipline); the battery image is cmp-identical
+      # after the run (zero wear at byte level).
+      - name: 'proof 21/23 — save persistence: power cycle loads the record, an equal run writes nothing'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-save-reload.png \
+            --frames 3900 $(cat games/gloamline-nds/proof/dawn-route-keys.txt) \
+            --battery-in gl-save1.sav --battery-out gl-save2.sav \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:64 \
+            --assert-watch 130:t:58:eq:1 \
+            --assert-watch 130:t:56:eq:1 \
+            --assert-watch 130:t:57:eq:118 \
+            --assert-watch 130:t:59:eq:0 \
+            --assert-watch 3750:t:3:eq:3 \
+            --assert-watch 3750:t:56:eq:1 \
+            --assert-watch 3750:t:59:eq:0 \
+            --assert-watch 3750:t:2:eq:3748
+          cmp gl-save1.sav gl-save2.sav
+          echo "battery image byte-identical after the equal run"
+      # Proof 22 — the record CLIMBS on better runs and death moves it
+      # nowhere (slice 9), on proof 6's committed night-2 route + a
+      # scripted START into night 3 and an idle death: dawn 1 writes
+      # best 1 (t[59] = 1 at 3750), dawn 2 writes best 2 (t[56] = 2,
+      # t[59] = 2 at 7450), night 3 begins with the record standing
+      # (7560), and the idle death (the same cold hands — contact dist
+      # pinned 2469 at 7850) fires NO write: best 2 / writes 2 on the
+      # death card. The exported battery carries encode(2, 118)
+      # byte-identically. Every pinned value was predicted by the
+      # tools/gloam-route.py save mirror and matched exactly.
+      - name: 'proof 22/23 — record update: better dawns replace, death replaces nothing'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-save-climb.png \
+            --frames 7900 $(cat games/gloamline-nds/proof/night2-route-keys.txt) \
+            --keys 7520-7525:START \
+            --battery-in gl-blank.sav --battery-out gl-save3.sav \
+            --shot 7460:nds-save-best2.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:64 \
+            --assert-watch 3750:t:3:eq:3 \
+            --assert-watch 3750:t:56:eq:1 \
+            --assert-watch 3750:t:59:eq:1 \
+            --assert-watch 7450:t:3:eq:3 \
+            --assert-watch 7450:t:10:eq:2 \
+            --assert-watch 7450:t:56:eq:2 \
+            --assert-watch 7450:t:57:eq:118 \
+            --assert-watch 7450:t:59:eq:2 \
+            --assert-watch 7560:t:3:eq:1 \
+            --assert-watch 7560:t:9:eq:3 \
+            --assert-watch 7560:t:56:eq:2 \
+            --assert-watch 7850:t:3:eq:2 \
+            --assert-watch 7850:t:11:eq:1 \
+            --assert-watch 7850:t:13:eq:2469 \
+            --assert-watch 7850:t:56:eq:2 \
+            --assert-watch 7850:t:59:eq:2
+          python3 tools/gloam-save.py expect gl-save3.sav --best 2 --seed 118
+      # Proof 23 — CORRUPT-SAVE RECOVERY + VERSION-MISMATCH RESET
+      # (slice 9): a battery image with one flipped bit in the record's
+      # checksum word (data intact — only the checksum can reject it)
+      # boots to the fresh table with NO crash — title renders, both
+      # screens live, START begins a normal run (control seed 118, the
+      # proof-3 chase and death land on schedule); a crafted
+      # FUTURE-VERSION record carrying a VALID recomputed checksum
+      # (mirror-confirmed to differ only in the version word) also
+      # resets to the fresh table — the version gate rejects on its
+      # own. Both fixtures are built by tools/gloam-save.py through the
+      # check-gloam.py mirror, which asserts they must NOT decode
+      # before they're used.
+      - name: 'proof 23/23 — corrupt save = fresh table + the game plays on; future version = reset'
+        run: |
+          python3 tools/gloam-save.py corrupt gl-save1.sav --out gl-corrupt.sav
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-save-corrupt.png \
+            --frames 420 --keys 120-125:START \
+            --battery-in gl-corrupt.sav \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:64 \
+            --assert-watch 110:t:3:eq:0 \
+            --assert-watch 110:t:58:eq:0 \
+            --assert-watch 110:t:56:eq:0 \
+            --assert-watch 110:t:57:eq:0 \
+            --assert-watch 130:t:3:eq:1 \
+            --assert-watch 130:t:12:eq:118 \
+            --assert-watch 250:t:3:eq:2 \
+            --assert-watch 250:t:11:eq:1
+          python3 tools/gloam-save.py version-bump gl-save1.sav --out gl-vbump.sav
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-save-vbump.png \
+            --frames 300 \
+            --battery-in gl-vbump.sav \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:64 \
+            --assert-watch 250:t:0:eq:0x474C4F41 \
+            --assert-watch 250:t:3:eq:0 \
+            --assert-watch 250:t:58:eq:0 \
+            --assert-watch 250:t:56:eq:0 \
+            --assert-watch 250:t:60:eq:1 \
+            --assert-watch 250:t:2:ge:200
       - name: upload NDS ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -854,6 +991,14 @@ jobs:
             nds-audio-day.png
             nds-audio-verbs.png
             nds-audio-breach.png
+            nds-save-dawn.png
+            nds-save-reload.png
+            nds-save-climb.png
+            nds-save-best2.png
+            nds-save-corrupt.png
+            nds-save-vbump.png
+            gl-save1.sav
+            gl-save3.sav
           if-no-files-found: error
           retention-days: 14
   # Parallel NDS job #2 (Brineward arc — slice 5: THE MAW, the first sea

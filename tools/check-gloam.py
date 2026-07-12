@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gloamline host proof (stdlib-only, <2s) — arc slice 8: synthesized audio.
+"""Gloamline host proof (stdlib-only, <2s) — arc slice 9: best-nights saves.
 
 The check-cave.py sibling for Gloamline: a line-for-line Python mirror of
 the pure simulation layer in games/gloamline-nds/source/gl_sim.c
@@ -8,9 +8,10 @@ gl_shambler_stride / gl_shambler_step / gl_chebyshev / gl_contact /
 gl_wave_count / gl_spawn_frame / gl_shove / gl_barricade_blocks /
 gl_planks_at_dawn / gl_cache_of_interlude / gl_cache_grab /
 gl_planks_after_grab / gl_oil_burn / gl_light_radius / gl_dark_press /
-gl_flask_of_interlude / gl_oil_after_flask), proving the meaningful
-invariants for EVERY reachable input instead of the handful a replay
-touches:
+gl_flask_of_interlude / gl_oil_after_flask / gl_save_checksum /
+gl_save_encode / gl_save_decode / gl_record_improves), proving the
+meaningful invariants for EVERY reachable input instead of the handful a
+replay touches:
 
   1. spawn schedule — for seeds 0..255 x nights 1..8 (index 0) PLUS every
      scheduled index of seeds 0..127 x nights 1..13: the spawn is a pure
@@ -103,7 +104,17 @@ touches:
      8 one-shot cue rows are PSG-legal (freq 50..4000 Hz), bounded
      (hold 1..90 frames — no cue hogs the channel), audible, and the
      cue ids are exactly the documented priority ranking that main.c
-     and the mirror resolve a multi-event frame with.
+     and the mirror resolve a multi-event frame with;
+ 14. best-nights save record (slice 9) — gl_save_encode/gl_save_decode
+     roundtrip byte-deterministically over a value grid incl. extremes
+     (golden bytes pinned for the CI battery cross-check; the blob is
+     exactly one type-2 EEPROM page); EVERY bad blob decodes to the
+     fresh table and never anything else — blank chips (all-00 /
+     all-FF), every single-byte corruption of a valid blob, and
+     wrong-magic / future-version blobs each carrying a VALID
+     recomputed checksum (so magic and version reject on their own);
+     and gl_record_improves is strictly-better-only over its truth
+     table (equal runs write nothing — EEPROM wear discipline).
 
 MIRROR RULE (keep in lockstep): every function and constant below mirrors
 games/gloamline-nds/source/gl_sim.c. Any change to the C MUST land here in
@@ -171,6 +182,14 @@ GL_CUE_DAWN = 7
 GL_CUE_DEATH = 8
 GL_CUE_COUNT = 9
 GL_CUE_ON_NOISE = 255
+GL_SAVE_MAGIC = 0x474C5356
+GL_SAVE_VERSION = 1
+GL_SAVE_WORDS = 8
+GL_SAVE_BYTES = 32
+GL_SAVE_ADDR = 0
+GL_SAVE_EEPROM_TYPE = 2
+GL_SAVE_SALT = 0x53415645
+GL_SAVE_POLL_BOUND = 4096
 GL_NIGHT_FRAMES = 3600
 
 U32 = 0xFFFFFFFF
@@ -424,6 +443,42 @@ def gl_cue_duty(cue):
 def gl_cue_vol(cue):
     """Mirror of gl_cue_vol()."""
     return GL_CUE_ROWS[cue if cue < GL_CUE_COUNT else 0][3]
+
+
+def gl_save_checksum(words):
+    """Mirror of gl_save_checksum()."""
+    h = GL_SAVE_SALT
+    for i in range(GL_SAVE_WORDS - 1):
+        h = gl_hash(h, words[i])
+    return h
+
+
+def gl_save_encode(best_nights, best_seed):
+    """Mirror of gl_save_encode() (returns the blob as bytes)."""
+    w = [GL_SAVE_MAGIC, GL_SAVE_VERSION, best_nights & U32, best_seed & U32,
+         0, 0, 0, 0]
+    w[GL_SAVE_WORDS - 1] = gl_save_checksum(w)
+    return b''.join(x.to_bytes(4, 'little') for x in w)
+
+
+def gl_save_decode(blob):
+    """Mirror of gl_save_decode() (returns (ok, best_nights, best_seed);
+    on ok == 0 the C leaves its outputs untouched — callers keep the
+    fresh table)."""
+    w = [int.from_bytes(blob[4 * i:4 * i + 4], 'little')
+         for i in range(GL_SAVE_WORDS)]
+    if w[0] != GL_SAVE_MAGIC:
+        return 0, 0, 0
+    if w[1] != GL_SAVE_VERSION:
+        return 0, 0, 0
+    if w[GL_SAVE_WORDS - 1] != gl_save_checksum(w):
+        return 0, 0, 0
+    return 1, w[2], w[3]
+
+
+def gl_record_improves(best_nights, nights):
+    """Mirror of gl_record_improves()."""
+    return 1 if nights > best_nights else 0
 
 
 # --- proofs ------------------------------------------------------------------
@@ -1112,6 +1167,84 @@ def main():
         failures += 1
         print('FAIL cue out-of-range: bad id must fall back to the no-op')
 
+    # 14. best-nights save record (slice 9).
+    # 14a. encode/decode roundtrip over a value grid incl. extremes:
+    # deterministic byte-identical encoding, exact blob size, and the
+    # decode returns exactly what was encoded.
+    save_cases = 0
+    for best in (0, 1, 2, 3, 13, 999, 0xFFFFFFFF):
+        for seed in (0, 118, 348, 0xDEADBEEF, 0xFFFFFFFF):
+            blob = gl_save_encode(best, seed)
+            save_cases += 1
+            if blob != gl_save_encode(best, seed):
+                failures += 1
+                print(f'FAIL save determinism: ({best},{seed})')
+            if len(blob) != GL_SAVE_BYTES:
+                failures += 1
+                print(f'FAIL save size: ({best},{seed}): {len(blob)}')
+            if gl_save_decode(blob) != (1, best, seed):
+                failures += 1
+                print(f'FAIL save roundtrip: ({best},{seed}) -> '
+                      f'{gl_save_decode(blob)}')
+    # Golden-bytes pin: the "survived night 1, seed 118" record that the
+    # CI battery-roundtrip proof reads back out of the DeSmuME battery
+    # file — C encoder <-> this mirror drift is caught at byte level.
+    if gl_save_encode(1, 118).hex() != ('56534c47' '01000000' '01000000'
+                                        '76000000' '00000000' '00000000'
+                                        '00000000' '75ed83cd'):
+        failures += 1
+        print('FAIL save golden bytes: encode(1, 118) drifted')
+    # One-page invariants: the blob is exactly the 8 words it claims and
+    # sits page-aligned inside one 32-byte type-2 EEPROM page (main.c's
+    # save_write_backup relies on never crossing a page boundary).
+    if GL_SAVE_BYTES != GL_SAVE_WORDS * 4 or GL_SAVE_BYTES > 32 \
+            or GL_SAVE_ADDR % 32 != 0:
+        failures += 1
+        print('FAIL save layout: blob does not fit one EEPROM page')
+    # 14b. rejection = fresh table, never a crash: blank chips (all-00 /
+    # all-FF), EVERY single-byte corruption of a valid blob (the spares
+    # are inside the checksum too), a wrong-magic blob and a
+    # future-version blob EACH WITH A RECOMPUTED (valid) checksum — so
+    # magic and version are proven to reject on their own — all decode
+    # to (0, _, _).
+    rejects = 0
+    for label, blob in (('all-00', b'\x00' * GL_SAVE_BYTES),
+                        ('all-FF', b'\xff' * GL_SAVE_BYTES)):
+        if gl_save_decode(blob)[0] != 0:
+            failures += 1
+            print(f'FAIL save reject {label}: accepted')
+        rejects += 1
+    valid = gl_save_encode(3, 12345)
+    for i in range(GL_SAVE_BYTES):
+        mut = bytearray(valid)
+        mut[i] ^= 0xFF
+        rejects += 1
+        if gl_save_decode(bytes(mut))[0] != 0:
+            failures += 1
+            print(f'FAIL save reject: byte {i} corruption accepted')
+    for label, w0, w1 in (('future-version', GL_SAVE_MAGIC,
+                           GL_SAVE_VERSION + 1),
+                          ('wrong-magic', gl_hash(GL_SAVE_MAGIC, 1) & U32,
+                           GL_SAVE_VERSION)):
+        w = [w0, w1, 3, 12345, 0, 0, 0, 0]
+        w[GL_SAVE_WORDS - 1] = gl_save_checksum(w)
+        crafted = b''.join(x.to_bytes(4, 'little') for x in w)
+        rejects += 1
+        if gl_save_decode(crafted)[0] != 0:
+            failures += 1
+            print(f'FAIL save reject {label}: accepted despite a valid '
+                  'checksum')
+    # 14c. the record moves on STRICTLY better runs only (equal runs
+    # write nothing — EEPROM wear discipline), full truth table.
+    improve_cases = 0
+    for best in list(range(30)) + [0xFFFFFFFE, 0xFFFFFFFF]:
+        for nights in list(range(30)) + [0xFFFFFFFE, 0xFFFFFFFF]:
+            improve_cases += 1
+            if gl_record_improves(best, nights) != (1 if nights > best
+                                                    else 0):
+                failures += 1
+                print(f'FAIL record improves: ({best},{nights})')
+
     if failures:
         print(f'check-gloam: {failures} failure(s)')
         return 1
@@ -1146,8 +1279,14 @@ def main():
           'interlude of flasks out-earns one night of burn, '
           f'{tier_cases} ambience-tier cases truth-table-exact (always '
           'NIGHT at healthy oil, always DAY in daylight), drone rows '
-          'climb/legal, and all 8 cue rows PSG-legal/bounded with the '
-          'id order = the documented priority ranking')
+          'climb/legal, all 8 cue rows PSG-legal/bounded with the '
+          'id order = the documented priority ranking, '
+          f'{save_cases} save-record roundtrips byte-deterministic '
+          f'(golden bytes pinned, one-page layout), {rejects} bad-blob '
+          'decodes ALL reject to the fresh table (blank chips, every '
+          'single-byte corruption, wrong-magic + future-version each '
+          f'with a valid checksum), and {improve_cases} record-update '
+          'cases strictly-better-only')
     return 0
 
 

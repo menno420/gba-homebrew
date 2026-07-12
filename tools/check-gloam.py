@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Gloamline host proof (stdlib-only, <2s) — arc slice 6: scavenge.
+"""Gloamline host proof (stdlib-only, <2s) — arc slice 7: lantern oil.
 
 The check-cave.py sibling for Gloamline: a line-for-line Python mirror of
 the pure simulation layer in games/gloamline-nds/source/gl_sim.c
-(gl_hash / gl_spawn_of_night / gl_player_step / gl_shambler_step /
-gl_chebyshev / gl_contact / gl_wave_count / gl_spawn_frame / gl_shove /
-gl_barricade_blocks / gl_planks_at_dawn / gl_cache_of_interlude /
-gl_cache_grab / gl_planks_after_grab), proving the meaningful
+(gl_hash / gl_spawn_of_night / gl_player_step / gl_shambler_staggers /
+gl_shambler_stride / gl_shambler_step / gl_chebyshev / gl_contact /
+gl_wave_count / gl_spawn_frame / gl_shove / gl_barricade_blocks /
+gl_planks_at_dawn / gl_cache_of_interlude / gl_cache_grab /
+gl_planks_after_grab / gl_oil_burn / gl_light_radius / gl_dark_press /
+gl_flask_of_interlude / gl_oil_after_flask), proving the meaningful
 invariants for EVERY reachable input instead of the handful a replay
 touches:
 
@@ -67,7 +69,31 @@ touches:
      never instant death by construction: SELECT recenters the player
      on the lamppost and returns every Shambler to its own night spawn
      point, and proof 1/1b already show every such spawn is outside
-     GL_SAFE_RADIUS of the lamppost.
+     GL_SAFE_RADIUS of the lamppost;
+ 11. lantern light + dark press (slice 7) — gl_light_radius is pure,
+     monotone non-decreasing in oil, bounded [GL_LIGHT_R_MIN,
+     GL_LIGHT_R_MAX], and EXACTLY GL_LIGHT_R_MAX for every oil >=
+     GL_OIL_LOW; gl_dark_press matches its truth table for thousands
+     of hash-driven (oil, dist) cases and is IDENTICALLY 0 whenever
+     oil >= GL_OIL_LOW (the zero-re-pin gate: a fresh lantern's
+     GL_OIL_MAX = 3 nights of burn outlasts every pre-slice-7 proof
+     window, so the old chase is bit-identical); the shambler-step
+     decomposition is exact (step == staggers ? no-op : stride, for
+     hash-driven states); and the WORST-CASE pressed chase (empty
+     lantern, guttering GL_LIGHT_R_MIN light) still converges from
+     every spawn — monotone non-increasing distance, contact within
+     the 400-frame bound, and never LATER than the lit chase from the
+     same spawn (the press only removes hesitation, it cannot stall);
+ 12. flask schedule + oil economy (slice 7) — gl_flask_of_interlude is
+     pure/interior-box/off-fence like the caches (and independent of
+     the cache stream); gl_oil_burn floors at 0; gl_oil_after_flask is
+     deterministic, monotone, +GL_OIL_FLASK below the cap, never above
+     GL_OIL_MAX; a greedy lamppost walk over ALL interlude pickups
+     (caches + flasks) still fits the dawn light; and the economy is
+     sustainable-by-choice: one interlude's full flask yield
+     (GL_FLASK_COUNT x GL_OIL_FLASK) out-earns one night's burn
+     (GL_NIGHT_FRAMES x GL_OIL_BURN), while a skipped interlude gives
+     NOTHING back — the pressure is real but never a scripted loss.
 
 MIRROR RULE (keep in lockstep): every function and constant below mirrors
 games/gloamline-nds/source/gl_sim.c. Any change to the C MUST land here in
@@ -111,6 +137,14 @@ GL_CACHE_PLANKS = 1
 GL_CACHE_RANGE = 12 * GL_ONE
 GL_CACHE_INSET = 16 * GL_ONE
 GL_CACHE_SALT = 0x5CAF0157
+GL_OIL_MAX = 10800
+GL_OIL_BURN = 1
+GL_OIL_LOW = 3000
+GL_LIGHT_R_MAX = 80 * GL_ONE
+GL_LIGHT_R_MIN = 24 * GL_ONE
+GL_FLASK_COUNT = 2
+GL_OIL_FLASK = 3600
+GL_FLASK_SALT = 0xF1A5C01D
 GL_NIGHT_FRAMES = 3600
 
 U32 = 0xFFFFFFFF
@@ -166,11 +200,13 @@ def gl_player_step(px, py, up, down, left, right):
             _clamp(py + dy * speed, GL_ARENA_Y_MIN, GL_ARENA_Y_MAX))
 
 
-def gl_shambler_step(zx, zy, px, py, zombie_id, frame):
-    """Mirror of gl_shambler_step() -> (zx, zy)."""
-    if (gl_hash(zombie_id, frame) & 3) == 0:
-        return zx, zy
+def gl_shambler_staggers(zombie_id, frame):
+    """Mirror of gl_shambler_staggers()."""
+    return (gl_hash(zombie_id, frame) & 3) == 0
 
+
+def gl_shambler_stride(zx, zy, px, py):
+    """Mirror of gl_shambler_stride() -> (zx, zy)."""
     dx = px - zx
     dy = py - zy
     sx = (1 if dx > GL_AXIS_DEADZONE else 0) - (1 if dx < -GL_AXIS_DEADZONE
@@ -180,6 +216,13 @@ def gl_shambler_step(zx, zy, px, py, zombie_id, frame):
     speed = GL_SHAMBLER_DIAG if (sx and sy) else GL_SHAMBLER_SPEED
     return (_clamp(zx + sx * speed, GL_ARENA_X_MIN, GL_ARENA_X_MAX),
             _clamp(zy + sy * speed, GL_ARENA_Y_MIN, GL_ARENA_Y_MAX))
+
+
+def gl_shambler_step(zx, zy, px, py, zombie_id, frame):
+    """Mirror of gl_shambler_step() -> (zx, zy)."""
+    if gl_shambler_staggers(zombie_id, frame):
+        return zx, zy
+    return gl_shambler_stride(zx, zy, px, py)
 
 
 def gl_chebyshev(ax, ay, bx, by):
@@ -252,6 +295,42 @@ def gl_planks_after_grab(planks):
     """Mirror of gl_planks_after_grab()."""
     p = planks + GL_CACHE_PLANKS
     return GL_PLANK_MAX if p > GL_PLANK_MAX else p
+
+
+def gl_oil_burn(oil):
+    """Mirror of gl_oil_burn()."""
+    return oil - GL_OIL_BURN if oil > GL_OIL_BURN else 0
+
+
+def gl_light_radius(oil):
+    """Mirror of gl_light_radius()."""
+    if oil >= GL_OIL_LOW:
+        return GL_LIGHT_R_MAX
+    return (GL_LIGHT_R_MIN
+            + (GL_LIGHT_R_MAX - GL_LIGHT_R_MIN) * oil // GL_OIL_LOW)
+
+
+def gl_dark_press(oil, dist):
+    """Mirror of gl_dark_press()."""
+    return oil < GL_OIL_LOW and dist > gl_light_radius(oil)
+
+
+def gl_flask_of_interlude(seed, night, index):
+    """Mirror of gl_flask_of_interlude() -> (x, y)."""
+    w = (GL_ARENA_X_MAX - GL_ARENA_X_MIN - 2 * GL_CACHE_INSET) // GL_ONE
+    h = (GL_ARENA_Y_MAX - GL_ARENA_Y_MIN - 2 * GL_CACHE_INSET) // GL_ONE
+
+    hx = gl_hash(gl_hash(seed ^ GL_FLASK_SALT, night), index)
+    hy = gl_hash(hx, index)
+
+    return (GL_ARENA_X_MIN + GL_CACHE_INSET + (hx % (w + 1)) * GL_ONE,
+            GL_ARENA_Y_MIN + GL_CACHE_INSET + (hy % (h + 1)) * GL_ONE)
+
+
+def gl_oil_after_flask(oil):
+    """Mirror of gl_oil_after_flask()."""
+    o = oil + GL_OIL_FLASK
+    return GL_OIL_MAX if o > GL_OIL_MAX else o
 
 
 # --- proofs ------------------------------------------------------------------
@@ -665,6 +744,192 @@ def main():
               f'{GL_CACHE_COUNT * GL_CACHE_PLANKS} does not out-earn the '
               f'flat skip grant {GL_PLANK_DAWN} it replaces')
 
+    # 11. lantern light + dark press (slice 7).
+    # 11a. gl_light_radius: pure, monotone non-decreasing, bounded, and
+    # EXACTLY full for every oil >= GL_OIL_LOW (zero-re-pin gate).
+    prev_r = None
+    for oil in list(range(0, GL_OIL_LOW + 2)) + [GL_OIL_MAX,
+                                                 GL_OIL_MAX * 2]:
+        r = gl_light_radius(oil)
+        if r != gl_light_radius(oil):
+            failures += 1
+            print(f'FAIL radius determinism: oil {oil}')
+        if not GL_LIGHT_R_MIN <= r <= GL_LIGHT_R_MAX:
+            failures += 1
+            print(f'FAIL radius bounds: oil {oil} -> {r}')
+        if oil >= GL_OIL_LOW and r != GL_LIGHT_R_MAX:
+            failures += 1
+            print(f'FAIL radius inertness: oil {oil} -> {r} != full '
+                  f'{GL_LIGHT_R_MAX} (zero-re-pin gate broken)')
+        if prev_r is not None and r < prev_r:
+            failures += 1
+            print(f'FAIL radius monotone: oil {oil}: {prev_r} -> {r}')
+        prev_r = r
+    # The fresh lantern outlasts every pre-slice-7 proof window: the
+    # longest old route burns 2 full nights of PLAYING frames.
+    if GL_OIL_MAX - 2 * GL_NIGHT_FRAMES * GL_OIL_BURN < GL_OIL_LOW:
+        failures += 1
+        print('FAIL oil headroom: a fresh lantern goes LOW inside the '
+              '2-night pre-slice-7 proof window — old pins would drift')
+    # 11b. dark-press truth table over hash-driven (oil, dist) cases;
+    # identically 0 at healthy oil.
+    press_cases = 0
+    pressed = 0
+    for case in range(8192):
+        oil = gl_hash(case, 21) % (GL_OIL_MAX + 1)
+        dist = gl_hash(case, 22) % (2 * GL_LIGHT_R_MAX + 1)
+        press_cases += 1
+        got = gl_dark_press(oil, dist)
+        if got != gl_dark_press(oil, dist):
+            failures += 1
+            print(f'FAIL press determinism: case {case}')
+        want = oil < GL_OIL_LOW and dist > gl_light_radius(oil)
+        if bool(got) != want:
+            failures += 1
+            print(f'FAIL press truth-table: case {case}: got {got}')
+        if oil >= GL_OIL_LOW and got:
+            failures += 1
+            print(f'FAIL press inertness: case {case}: oil {oil} '
+                  '(healthy) pressed — zero-re-pin gate broken')
+        if got:
+            pressed += 1
+    # 11c. the step decomposition is exact: step == staggers ? no-op
+    # : stride, for hash-driven reachable states.
+    for case in range(4096):
+        px = GL_ARENA_X_MIN + gl_hash(case, 23) % (GL_ARENA_X_MAX
+                                                   - GL_ARENA_X_MIN + 1)
+        py = GL_ARENA_Y_MIN + gl_hash(case, 24) % (GL_ARENA_Y_MAX
+                                                   - GL_ARENA_Y_MIN + 1)
+        zx = GL_ARENA_X_MIN + gl_hash(case, 25) % (GL_ARENA_X_MAX
+                                                   - GL_ARENA_X_MIN + 1)
+        zy = GL_ARENA_Y_MIN + gl_hash(case, 26) % (GL_ARENA_Y_MAX
+                                                   - GL_ARENA_Y_MIN + 1)
+        zid = gl_hash(case, 27) % GL_ZOMBIE_CAP
+        frame = gl_hash(case, 28) % (3 * GL_NIGHT_FRAMES)
+        want = ((zx, zy) if gl_shambler_staggers(zid, frame)
+                else gl_shambler_stride(zx, zy, px, py))
+        if gl_shambler_step(zx, zy, px, py, zid, frame) != want:
+            failures += 1
+            print(f'FAIL step decomposition: case {case}')
+    # 11d. worst-case pressed chase (empty lantern, guttering light):
+    # from every spawn, an idle player is still reached monotonically
+    # within the 400-frame bound, and never LATER than the lit chase —
+    # the press removes hesitation, it cannot stall or slow.
+    pressed_chases = 0
+    worst_pressed = 0
+    for seed in range(64):
+        for night in range(1, 5):
+            sx0, sy0 = gl_spawn_of_night(seed, night, 0)
+            px, py = GL_PLAYER_START_X, GL_PLAYER_START_Y
+            contact_frame = {}
+            for mode in ('lit', 'dark'):
+                zx, zy = sx0, sy0
+                dist = gl_chebyshev(px, py, zx, zy)
+                for frame in range(400):
+                    if gl_contact(px, py, zx, zy):
+                        contact_frame[mode] = frame
+                        break
+                    if (not gl_shambler_staggers(0, frame)
+                            or (mode == 'dark'
+                                and gl_dark_press(0, gl_chebyshev(
+                                    px, py, zx, zy)))):
+                        zx, zy = gl_shambler_stride(zx, zy, px, py)
+                    new_dist = gl_chebyshev(px, py, zx, zy)
+                    if new_dist > dist:
+                        failures += 1
+                        print(f'FAIL pressed monotone: seed {seed} night '
+                              f'{night} frame {frame} ({mode})')
+                        break
+                    dist = new_dist
+                else:
+                    failures += 1
+                    print(f'FAIL pressed bounded: seed {seed} night '
+                          f'{night} ({mode}): no contact in 400 frames')
+            pressed_chases += 1
+            if 'lit' in contact_frame and 'dark' in contact_frame:
+                if contact_frame['dark'] > contact_frame['lit']:
+                    failures += 1
+                    print(f'FAIL press never-slower: seed {seed} night '
+                          f'{night}: dark {contact_frame["dark"]} > lit '
+                          f'{contact_frame["lit"]}')
+                worst_pressed = max(worst_pressed, contact_frame['dark'])
+
+    # 12. flask schedule + oil economy (slice 7).
+    flasks = 0
+    for seed in range(256):
+        for night in range(1, 14):
+            for index in range(GL_FLASK_COUNT):
+                x, y = gl_flask_of_interlude(seed, night, index)
+                flasks += 1
+                if (x, y) != gl_flask_of_interlude(seed, night, index):
+                    failures += 1
+                    print(f'FAIL flask determinism: '
+                          f'({seed},{night},{index}) unstable')
+                if not (GL_ARENA_X_MIN + GL_CACHE_INSET <= x
+                        <= GL_ARENA_X_MAX - GL_CACHE_INSET
+                        and GL_ARENA_Y_MIN + GL_CACHE_INSET <= y
+                        <= GL_ARENA_Y_MAX - GL_CACHE_INSET):
+                    failures += 1
+                    print(f'FAIL flask box: ({seed},{night},{index}) = '
+                          f'({x},{y}) outside the inset interior')
+                if on_perimeter(x, y):
+                    failures += 1
+                    print(f'FAIL flask on fence: ({seed},{night},{index})')
+    # oil burn floors at 0; flask top-up deterministic/monotone/capped.
+    if gl_oil_burn(0) != 0 or gl_oil_burn(1) != 0 \
+            or gl_oil_burn(GL_OIL_MAX) != GL_OIL_MAX - GL_OIL_BURN:
+        failures += 1
+        print('FAIL oil burn: floor/step broken')
+    prev = None
+    for oil in range(0, GL_OIL_MAX + 2 * GL_OIL_FLASK, 997):
+        got = gl_oil_after_flask(oil)
+        if got != gl_oil_after_flask(oil):
+            failures += 1
+            print(f'FAIL flask top-up determinism: {oil}')
+        if got != min(oil + GL_OIL_FLASK, GL_OIL_MAX):
+            failures += 1
+            print(f'FAIL flask top-up: {oil} -> {got}')
+        if prev is not None and got < prev:
+            failures += 1
+            print(f'FAIL flask top-up monotone: {got} < {prev}')
+        prev = got
+    # greedy lamppost walk over ALL interlude pickups (caches + flasks)
+    # still fits the dawn light, same conservative bound as proof 10.
+    full_routes = 0
+    worst_full = 0
+    for seed in range(128):
+        for night in range(1, 14):
+            remaining = ([gl_cache_of_interlude(seed, night, i)
+                          for i in range(GL_CACHE_COUNT)]
+                         + [gl_flask_of_interlude(seed, night, i)
+                            for i in range(GL_FLASK_COUNT)])
+            px, py = GL_PLAYER_START_X, GL_PLAYER_START_Y
+            frames = 0
+            while remaining:
+                nxt = min(remaining,
+                          key=lambda c: gl_chebyshev(px, py, c[0], c[1]))
+                frames += -(-gl_chebyshev(px, py, nxt[0], nxt[1])
+                            // GL_PLAYER_DIAG)                   # ceil
+                px, py = nxt
+                remaining.remove(nxt)
+            full_routes += 1
+            worst_full = max(worst_full, frames)
+            if frames > GL_SCAVENGE_FRAMES:
+                failures += 1
+                print(f'FAIL full-pickup honesty: seed {seed} night '
+                      f'{night}: greedy route {frames} > '
+                      f'{GL_SCAVENGE_FRAMES}')
+    # sustainable-by-choice: one interlude's flasks out-earn one
+    # night's burn; the cap keeps hoarding finite.
+    if GL_FLASK_COUNT * GL_OIL_FLASK <= GL_NIGHT_FRAMES * GL_OIL_BURN:
+        failures += 1
+        print('FAIL oil economy: an interlude cannot pay for a night — '
+              'the run is a scripted loss')
+    if GL_OIL_MAX < GL_OIL_LOW + GL_NIGHT_FRAMES * GL_OIL_BURN:
+        failures += 1
+        print('FAIL oil economy: a fresh lantern cannot even cover one '
+              'night before going LOW')
+
     if failures:
         print(f'check-gloam: {failures} failure(s)')
         return 1
@@ -687,7 +952,16 @@ def main():
           f'pure/interior/off-fence, {routes} greedy interlude routes '
           f'all fit the dawn light (worst {worst_route} vs '
           f'{GL_SCAVENGE_FRAMES} frames) and the loot out-earns the '
-          'skip grant')
+          f'skip grant, light radius pure/monotone/bounded and full at '
+          f'healthy oil, {press_cases} dark-press cases truth-table-exact '
+          f'({pressed} pressed, zero at healthy oil), step decomposition '
+          f'exact, {pressed_chases} guttering-light pressed chases '
+          f'converge monotonically and never slower than lit (worst '
+          f'contact frame {worst_pressed}), {flasks} flask positions '
+          f'pure/interior/off-fence, burn floors at 0, flask top-up '
+          f'capped at {GL_OIL_MAX}, {full_routes} greedy full-pickup '
+          f'routes fit the dawn light (worst {worst_full}), and one '
+          'interlude of flasks out-earns one night of burn')
     return 0
 
 

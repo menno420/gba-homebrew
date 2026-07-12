@@ -71,7 +71,7 @@ jobs:
   # the walking skeleton). Deliberately a SEPARATE job so the required "ROM
   # builds" GBA gate is untouched: BlocksDS 1.21.1 + Wonderful GCC
   # (sha256-pinned by tools/setup-nds-toolchain.sh, which the cache key
-  # hashes), then the host-mirror proof + twelve headless py-desmume proofs
+  # hashes), then the host-mirror proof + fifteen headless py-desmume proofs
   # against the ROM's gl_telemetry mailbox (ELF-symbol-resolved watches;
   # every numeric value below was pinned from a deterministic in-container
   # run — the ROM build is byte-deterministic, so drift = regression).
@@ -127,7 +127,7 @@ jobs:
       # Proof 1 — boot: dual-screen title renders, telemetry mailbox is
       # live (magic words present, frame counter running, full-length
       # 3600-frame nights — i.e. the shipped ROM, not a test build).
-      - name: 'proof 1/12 — boot + telemetry mailbox'
+      - name: 'proof 1/15 — boot + telemetry mailbox'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-boot-300.png \
@@ -143,7 +143,7 @@ jobs:
       # then RIGHT / DOWN / UP+LEFT each move the player by the exact
       # pure-function distances (1.5 px/f straight, 271/256 px/f per axis
       # diagonal). Positions are 8.8 fixed (32768 = x128).
-      - name: 'proof 2/12 — 8-way move (position telemetry tracks input)'
+      - name: 'proof 2/15 — 8-way move (position telemetry tracks input)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-move.png \
@@ -167,7 +167,7 @@ jobs:
       # 2405 < 2560), state flips to DEAD with deaths=1, the card holds,
       # and START restarts instantly (fresh seed 348, player re-centered,
       # the new night's Shambler closing again).
-      - name: 'proof 3/12 — chase closes, contact = death, START restarts'
+      - name: 'proof 3/15 — chase closes, contact = death, START restarts'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-death.png \
@@ -194,7 +194,7 @@ jobs:
       # >= 22 px of margin at every alignment +-6 frames) replays a FULL
       # 60-second night headlessly (~5 s wall): dawn breaks (state 3),
       # nights survived = 1, deaths = 0.
-      - name: 'proof 4/12 — survive night 1 to dawn (full-length night)'
+      - name: 'proof 4/15 — survive night 1 to dawn (full-length night)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-dawn.png \
@@ -218,7 +218,7 @@ jobs:
       # only DELAYS — the idle player still dies by frame 490. Every
       # value below was predicted by the tools/gloam-route.py mirror sim
       # and matched by the emulator run exactly.
-      - name: 'proof 5/12 — shove: knockback + stun + cooldown (pressure valve)'
+      - name: 'proof 5/15 — shove: knockback + stun + cooldown (pressure valve)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-shove.png \
@@ -251,7 +251,7 @@ jobs:
       # schedule (alive t[16]: 1 at rf 100, 2 past rf 800, 3 past rf
       # 1600), and dawn breaks on night 2 with 3 Shamblers up and 0
       # deaths. ~10 s wall headless for the two full nights.
-      - name: 'proof 6/12 — night-2 wave (3 zombies) spawns on schedule + survive to dawn'
+      - name: 'proof 6/15 — night-2 wave (3 zombies) spawns on schedule + survive to dawn'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-night2.png \
@@ -288,7 +288,7 @@ jobs:
       # i.e. 60 fps with the maximum crowd + full ring. Honest-method
       # note: this is DeSmuME's scanline timing model (py-desmume 0.0.9),
       # not hardware.
-      - name: 'proof 7/12 — 24-Shambler + 8-barricade frame budget (stress build, vcount probe)'
+      - name: 'proof 7/15 — 24-Shambler + 8-barricade frame budget (stress build, vcount probe)'
         run: |
           python3 tools/nds-headless-check.py \
             gloamline-stress.nds nds-stress.png \
@@ -319,7 +319,7 @@ jobs:
       # 690 with the unspent planks intact (t[24]=5). Every value was
       # predicted by the tools/gloam-route.py mirror sim and matched by
       # the emulator exactly.
-      - name: 'proof 8/12 — barricade: place blocks the dead, chew-through breaches, still no free lunch'
+      - name: 'proof 8/15 — barricade: place blocks the dead, chew-through breaches, still no free lunch'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-barricade.png \
@@ -351,7 +351,7 @@ jobs:
       # exactly 1 plank (t[26] back to 236 = 240 minus the chews since,
       # t[24] 5->4, t[29]=1) and the block keeps holding (alive at 420,
       # chewing resumed: t[26]=155). Mirror-predicted, emulator-matched.
-      - name: 'proof 9/12 — barricade repair: 1 plank, full hp, no waste on a full one'
+      - name: 'proof 9/15 — barricade repair: 1 plank, full hp, no waste on a full one'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-repair.png \
@@ -388,7 +388,7 @@ jobs:
       # wiped, 0 deaths. Route survives every +-6-frame movement skew on
       # the mirror (min dist >= 22.4 px); every pinned value below was
       # mirror-predicted and emulator-matched exactly.
-      - name: 'proof 10/12 — scavenge: SELECT enters, 3 caches looted, full pocket wastes nothing, START exits with the loot'
+      - name: 'proof 10/15 — scavenge: SELECT enters, 3 caches looted, full pocket wastes nothing, START exits with the loot'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-scavenge-loot.png \
@@ -433,7 +433,7 @@ jobs:
       # closes 6821 -> 2789) and killed INSIDE the interlude (state 4 ->
       # 2, deaths 1, contact dist 2405 — the same cold hands as proof 3),
       # planks unlooted. Daylight is bought planks, not safety.
-      - name: 'proof 11/12 — scavenge risk: the dead walk back in, idling in the interlude kills you'
+      - name: 'proof 11/15 — scavenge risk: the dead walk back in, idling in the interlude kills you'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-scavenge-death.png \
@@ -466,7 +466,7 @@ jobs:
       # (state 4 -> 1, night 2, wave of 3 on schedule, player recentered,
       # caches wiped, interlude counter 0, planks carried, 0 deaths).
       # Route survives every +-6-frame movement skew on the mirror.
-      - name: 'proof 12/12 — scavenge timer: kite out the full dawn light, night 2 starts by itself with the loot'
+      - name: 'proof 12/15 — scavenge timer: kite out the full dawn light, night 2 starts by itself with the loot'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-scavenge-timer.png \
@@ -493,6 +493,126 @@ jobs:
             --assert-watch 4975:t:4:eq:32768 \
             --assert-watch 4975:t:5:eq:26624 \
             --assert-watch 4975:t:11:eq:0
+      # Proof 13 — LANTERN OIL burns + full light changes nothing
+      # (slice 7): proof 3's own idle run (same seed 118, same death)
+      # with the new mailbox slots watched: the tank counts down 1 per
+      # PLAYING frame (10790 at 130, 10715 at 205 — a fresh lantern is
+      # 10800 = 3 nights), the light radius holds full (t[41] = 20480 =
+      # 80 px) and the dark press stays 0 the whole night — the
+      # zero-re-pin gate, emulator-visible — and the death card FREEZES
+      # the burn (10673 at both 250 and 340: cards burn nothing).
+      - name: 'proof 13/15 — lantern oil burns per night frame; at full light nothing changes'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-oil-burn.png \
+            --frames 420 --keys 120-125:START \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:48 \
+            --assert-watch 130:t:40:eq:10790 \
+            --assert-watch 130:t:41:eq:20480 \
+            --assert-watch 130:t:42:eq:0 \
+            --assert-watch 130:t:43:eq:0 \
+            --assert-watch 130:t:47:eq:0 \
+            --assert-watch 205:t:40:eq:10715 \
+            --assert-watch 205:t:41:eq:20480 \
+            --assert-watch 205:t:42:eq:0 \
+            --assert-watch 250:t:3:eq:2 \
+            --assert-watch 250:t:40:eq:10673 \
+            --assert-watch 340:t:40:eq:10673 \
+            --assert-watch 340:t:41:eq:20480
+      # Proof 14 — the DARK PRESSES (slice 7): a rollout-planned route
+      # (proof/oil-press-keys.txt — survives every +-6-frame movement
+      # skew on the mirror, min dist >= 13.8 px; the dark floor is 12
+      # vs the lit routes' 20 — the pressure is real) survives nights
+      # 1-2 (oil pinned exactly 3600 at the night-2 dawn card = two
+      # nights burned), STARTs into night 3 (wave of 5), and 600
+      # frames in the tank crosses GL_OIL_LOW: the radius still full
+      # at 8100 (oil 3042), then guttering EXACTLY as the pure
+      # function says (20365 at oil 2976, 19122 at 2716, 17192 at
+      # 2312) with the dark press LIVE on the nearest Shambler
+      # (t[42] = 1 at 8166/8426/8830, 0 at 2000/8100 — inert until
+      # the threshold); when the inputs end the pressed dead close
+      # unhesitating and kill the lamplighter in the failing light
+      # (contact 2437, radius 16599 = 64.8 px, nights survived 2).
+      # Every pinned value mirror-predicted, emulator-matched exactly.
+      - name: 'proof 14/15 — night 3: the light fails, the dark presses, the pressed dead kill'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-oil-press.png \
+            --frames 9000 $(cat games/gloamline-nds/proof/oil-press-keys.txt) \
+            --shot 8426:nds-oil-dark.png --shot 8980:nds-oil-death.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:48 \
+            --assert-watch 2000:t:41:eq:20480 \
+            --assert-watch 2000:t:42:eq:0 \
+            --assert-watch 7460:t:3:eq:3 \
+            --assert-watch 7460:t:40:eq:3600 \
+            --assert-watch 7550:t:3:eq:1 \
+            --assert-watch 7550:t:9:eq:3 \
+            --assert-watch 7550:t:17:eq:5 \
+            --assert-watch 8100:t:40:eq:3042 \
+            --assert-watch 8100:t:41:eq:20480 \
+            --assert-watch 8100:t:42:eq:0 \
+            --assert-watch 8166:t:42:eq:1 \
+            --assert-watch 8166:t:40:eq:2976 \
+            --assert-watch 8166:t:41:eq:20365 \
+            --assert-watch 8426:t:42:eq:1 \
+            --assert-watch 8426:t:40:eq:2716 \
+            --assert-watch 8426:t:41:eq:19122 \
+            --assert-watch 8830:t:40:eq:2312 \
+            --assert-watch 8830:t:41:eq:17192 \
+            --assert-watch 8830:t:42:eq:1 \
+            --assert-watch 8830:t:3:eq:1 \
+            --assert-watch 8960:t:3:eq:2 \
+            --assert-watch 8960:t:11:eq:1 \
+            --assert-watch 8960:t:9:eq:3 \
+            --assert-watch 8960:t:10:eq:2 \
+            --assert-watch 8960:t:13:eq:2437 \
+            --assert-watch 8960:t:40:eq:2188 \
+            --assert-watch 8960:t:41:eq:16599
+      # Proof 15 — the FLASK buys the light back, never wasted
+      # (slice 7): the proof-11 interlude entry (same seed 118) lands
+      # 5 px from flask 1, which pays 7200 + 3600 = EXACTLY the 10800
+      # cap on entry (t[40], t[44]=1, one flask left); the walk
+      # (proof/oil-flask-keys.txt, survives every +-6 skew, min dist
+      # >= 20 px) pockets cache 0 en route (planks 7) and then STANDS
+      # ON flask 0 for 30+ frames — in pickup reach (t[47] = 194 =
+      # 0.8 px) with a FULL tank, and the flask is NOT consumed
+      # (t[43] stays 1: no flask is ever wasted); START exits into
+      # night 2 where the lantern burns again (10780 at run frame 20,
+      # 10740 at 60), flasks wiped, loot carried, 0 deaths.
+      - name: 'proof 15/15 — oil flask: entry tops the tank to the cap, a full tank wastes nothing'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-oil-flask.png \
+            --frames 3940 $(cat games/gloamline-nds/proof/oil-flask-keys.txt) \
+            --shot 3830:nds-oil-flask-stand.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:48 \
+            --assert-watch 3750:t:3:eq:3 \
+            --assert-watch 3750:t:40:eq:7200 \
+            --assert-watch 3770:t:3:eq:4 \
+            --assert-watch 3770:t:40:eq:10800 \
+            --assert-watch 3770:t:43:eq:1 \
+            --assert-watch 3770:t:44:eq:1 \
+            --assert-watch 3770:t:32:eq:1190 \
+            --assert-watch 3770:t:24:eq:6 \
+            --assert-watch 3800:t:24:eq:7 \
+            --assert-watch 3800:t:34:eq:1 \
+            --assert-watch 3800:t:47:eq:3262 \
+            --assert-watch 3825:t:47:eq:194 \
+            --assert-watch 3825:t:43:eq:1 \
+            --assert-watch 3825:t:40:eq:10800 \
+            --assert-watch 3855:t:47:eq:194 \
+            --assert-watch 3855:t:43:eq:1 \
+            --assert-watch 3855:t:40:eq:10800 \
+            --assert-watch 3880:t:3:eq:1 \
+            --assert-watch 3880:t:9:eq:2 \
+            --assert-watch 3880:t:40:eq:10780 \
+            --assert-watch 3880:t:43:eq:0 \
+            --assert-watch 3880:t:24:eq:7 \
+            --assert-watch 3880:t:11:eq:0 \
+            --assert-watch 3920:t:40:eq:10740
       - name: upload NDS ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -526,6 +646,12 @@ jobs:
             nds-scavenge-deathcard.png
             nds-scavenge-timer.png
             nds-scavenge-kite.png
+            nds-oil-burn.png
+            nds-oil-press.png
+            nds-oil-dark.png
+            nds-oil-death.png
+            nds-oil-flask.png
+            nds-oil-flask-stand.png
           if-no-files-found: error
           retention-days: 14
   # Parallel NDS job #2 (Brineward arc — slice 3: loot + gold on the

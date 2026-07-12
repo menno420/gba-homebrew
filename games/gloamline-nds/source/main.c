@@ -1,5 +1,29 @@
-// Gloamline — arc slice 6: the between-nights SCAVENGE INTERLUDE (on
-// the slice-5 barricades).
+// Gloamline — arc slice 7: LANTERN-OIL LIGHT PRESSURE (on the slice-6
+// scavenge interlude).
+//
+// The concept doc's stated pressure ("lantern oil — light radius
+// shrinks as it burns, dark edges spawn faster; the Lumen-Drift-style
+// decay-you-can-buy-back pressure"): the lantern burns GL_OIL_BURN oil
+// every NIGHT frame. While the tank holds GL_OIL_LOW or more the light
+// is full and NOTHING changes — a fresh lantern (GL_OIL_MAX = 3 nights
+// of burn) outlasts every pre-slice-7 proof window, so every old pin
+// holds bit-identically. Once the oil runs LOW the light radius
+// gutters toward GL_LIGHT_R_MIN (never out — the pressure is speed,
+// not an unwinnable blackout), the yard's backdrop dims with it, and
+// the dead beyond the lamplight stop hesitating: gl_dark_press cancels
+// the 1-in-4 stagger skip outside the light circle, so the gloam
+// presses ~33% faster where you cannot see. Buy-back: GL_FLASK_COUNT
+// oil flasks lie in the scavenge interlude on their own salted pure
+// schedule, each worth GL_OIL_FLASK (one night), capped at GL_OIL_MAX
+// and NEVER consumed on a full tank (no flask is wasted). The START
+// skip path grants NO oil — like the planks, the interlude is the only
+// source. Daylight burns nothing and presses nobody. Fifth
+// code-authored sprite (the oil flask); watch-map gains 'o' flask
+// marks + an OIL gauge bar (the concept doc's promised bottom-screen
+// oil gauge), redrawn only when a gauge cell changes (frame-budget
+// rail); the HUD shows the tank as O<percent>.
+//
+// Below this line the slice-6 story still applies verbatim:
 //
 // The concept doc's next feature cut (docs/concepts/gloamline-concept.md
 // slice order) and slice 5's own flag ("the scavenge interlude NEXT
@@ -41,9 +65,9 @@
 // Telemetry mailbox (the gl_audio_hook concept ported to NDS): 32 u32
 // words at the exported symbol `gl_telemetry`, rewritten every frame, so
 // headless proofs (tools/nds-headless-check.py --elf/--watch) can assert
-// game state numerically. Layout below at GL_T_*. Slots 0-31 keep their
-// slice-3/4/5 meanings EXACTLY (the pinned CI asserts read them);
-// slice 6 appends 32-39 (scavenge state). On a multi-zombie night the
+// game state numerically. Layout below at GL_T_*. Slots 0-39 keep their
+// slice-3/4/5/6 meanings EXACTLY (the pinned CI asserts read them);
+// slice 7 appends 40-47 (lantern oil). On a multi-zombie night the
 // ZX/ZY/DIST/NSTUN slots describe the NEAREST Shambler (identical to
 // slice 3 whenever one zombie is up); BX/BY/BHP likewise describe the
 // intact barricade nearest the player.
@@ -98,8 +122,16 @@
 #define GL_T_CY 37      // nearest remaining cache y
 #define GL_T_CDIST 38   // Chebyshev player<->nearest cache (0 = none)
 #define GL_T_SPARE2 39  // reserved, always 0
+#define GL_T_OIL 40     // lantern oil left (burn units)
+#define GL_T_LRADIUS 41 // lantern light radius, 8.8 fixed (pure f(oil))
+#define GL_T_PRESS 42   // 1 = dark press live on the NEAREST Shambler
+#define GL_T_FLASKS 43  // oil flasks still on the ground (interlude)
+#define GL_T_OILGRAB 44 // flasks pocketed this power-on
+#define GL_T_FX 45      // nearest remaining flask x, 8.8 fixed (0 = none)
+#define GL_T_FY 46      // nearest remaining flask y
+#define GL_T_FDIST 47   // Chebyshev player<->nearest flask (0 = none)
 
-volatile uint32_t gl_telemetry[40];
+volatile uint32_t gl_telemetry[48];
 
 enum
 {
@@ -193,6 +225,28 @@ static const char CACHE_ART[16][17] = {
     "....caaaaaaaac..",
     "................",
     "................",
+    "................",
+};
+
+// Oil flask = a squat brass lantern-bottle with a glowing fill line
+// (reuses the lantern palette indices 3-5: brass, glow, dark cork).
+// Fifth code-authored sprite.
+static const char FLASK_ART[16][17] = {
+    "................",
+    "................",
+    "......55........",
+    "......55........",
+    ".....3333.......",
+    "......33........",
+    ".....3333.......",
+    "....333333......",
+    "...33333333.....",
+    "...33444433.....",
+    "...34444443.....",
+    "...34444443.....",
+    "...33444433.....",
+    "....333333......",
+    ".....3333.......",
     "................",
 };
 
@@ -294,6 +348,11 @@ typedef struct
     int32_t cx[GL_CACHE_COUNT], cy[GL_CACHE_COUNT];
     uint32_t cache_up[GL_CACHE_COUNT];
     uint32_t scav_left;
+    // Lantern oil (slice 7): the tank burns every NIGHT frame; the
+    // interlude's flasks (up = 1, pocketed = 0) are the only refill.
+    uint32_t oil;
+    int32_t fx[GL_FLASK_COUNT], fy[GL_FLASK_COUNT];
+    uint32_t flask_up[GL_FLASK_COUNT];
 } Run;
 
 // Spawn every zombie whose scheduled frame has arrived (index order — the
@@ -319,10 +378,12 @@ static void start_night(Run *run)
     run->z_count = 0;
     run->wave_total = WAVE_TOTAL(run->night);
     run->shove_cd = 0;
-    // Scavenge state is night-inert: caches exist only inside the
-    // interlude, and the dawn-light clock reads 0 outside it.
+    // Scavenge state is night-inert: caches and flasks exist only
+    // inside the interlude, and the dawn-light clock reads 0 outside.
     for (int i = 0; i < GL_CACHE_COUNT; i++)
         run->cache_up[i] = 0;
+    for (int i = 0; i < GL_FLASK_COUNT; i++)
+        run->flask_up[i] = 0;
     run->scav_left = 0;
     // Barricades deliberately NOT reset: they persist across nights.
 #ifdef GL_STRESS
@@ -349,6 +410,14 @@ static void start_run(Run *run, uint32_t seed)
     run->seed = seed;
     run->night = 1;
     run->planks = GL_PLANK_STOCK;
+    run->oil = GL_OIL_MAX;           // a fresh lantern
+#ifdef GL_STRESS
+    // Perf build only: start with the light already failing so the
+    // dark-press step path, the guttering radius math, the backdrop
+    // dimming and the oil-gauge redraws are all ON the measured
+    // frames — the honest worst case for the vcount probe.
+    run->oil = GL_OIL_LOW / 2;
+#endif
     for (int i = 0; i < GL_BARRICADE_CAP; i++)
         run->bhp[i] = 0;             // fresh run: bare yard
     start_night(run);
@@ -376,6 +445,12 @@ static void begin_scavenge(Run *run)
         gl_cache_of_interlude(run->seed, run->night, (uint32_t)i,
                               &run->cx[i], &run->cy[i]);
         run->cache_up[i] = 1;
+    }
+    for (int i = 0; i < GL_FLASK_COUNT; i++)
+    {
+        gl_flask_of_interlude(run->seed, run->night, (uint32_t)i,
+                              &run->fx[i], &run->fy[i]);
+        run->flask_up[i] = 1;
     }
     run->scav_left = GL_SCAVENGE_FRAMES;
     run->shove_cd = 0;
@@ -463,8 +538,15 @@ static void do_barricade_verb(Run *run, uint32_t down,
 // radius — the blocked attempt chews it for exactly 1 hp instead
 // (hp 0 = breached, slot free). First blocking slot wins:
 // deterministic. A stagger frame proposes no move, so it neither
-// enters nor chews.
-static void step_the_dead(Run *run, uint32_t *breaches)
+// enters nor chews — UNLESS the dark press cancels it (slice 7): with
+// the light failing, a body beyond the lamplight strides anyway (and
+// a pressed stride that is blocked chews, like any real step).
+// oil_for_press is the oil level the press sees: the real tank at
+// night (PLAYING), GL_OIL_MAX in the daylight interlude — the dawn
+// light presses nobody, and at healthy oil gl_dark_press is
+// identically 0, so the pre-slice-7 step is bit-identical.
+static void step_the_dead(Run *run, uint32_t *breaches,
+                          uint32_t oil_for_press)
 {
     for (uint32_t i = 0; i < run->z_count; i++)
     {
@@ -474,8 +556,11 @@ static void step_the_dead(Run *run, uint32_t *breaches)
             continue;
         }
         int32_t nx = run->zx[i], ny = run->zy[i];
-        gl_shambler_step(&nx, &ny, run->px, run->py,
-                         i /* zombie_id */, run->run_frame);
+        if (!gl_shambler_staggers(i /* zombie_id */, run->run_frame)
+            || gl_dark_press(oil_for_press,
+                             gl_chebyshev(run->px, run->py,
+                                          run->zx[i], run->zy[i])))
+            gl_shambler_stride(&nx, &ny, run->px, run->py);
         int blocker = -1;
         for (int j = 0; j < GL_BARRICADE_CAP; j++)
             if (run->bhp[j] > 0
@@ -534,6 +619,7 @@ static void draw_title(void)
     printf("\x1b[15;6Hscavenge at dawn: SELECT\n");
     printf("\x1b[16;6Hdon't get touched\n");
     printf("\x1b[17;6Hsurvive to dawn\n");
+    printf("\x1b[18;6Hkeep the lantern fed\n");
     printf("\x1b[19;9HPRESS START\n");
 }
 
@@ -580,9 +666,12 @@ static void draw_hud(const Run *run, uint32_t nights)
 {
     unsigned int secs = run->dawn_left / 60;
     consoleSelect(&top_console);
-    printf("\x1b[0;1HNIGHT %lu  DAWN %u:%02u  Z %lu\x1b[K",
+    // O<pct> = the lantern's oil tank, 0-100 (the full gauge lives on
+    // the watch-map).
+    printf("\x1b[0;1HNIGHT %lu  DAWN %u:%02u  Z %lu O%lu\x1b[K",
            (unsigned long)run->night, secs / 60, secs % 60,
-           (unsigned long)run->z_count);
+           (unsigned long)run->z_count,
+           (unsigned long)(run->oil * 100u / GL_OIL_MAX));
     printf("\x1b[1;1HSEED %lu NTS %lu SHV %c PK %lu\x1b[K",
            (unsigned long)run->seed, (unsigned long)nights,
            run->shove_cd == 0 ? '+' : '.', (unsigned long)run->planks);
@@ -593,22 +682,26 @@ static void draw_hud(const Run *run, uint32_t nights)
 // barricade + every remaining plank cache, so the map is the yard
 // radar the concept promises. prev arrays remember last frame's cells.
 static int map_prev_row[1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
-                        + GL_CACHE_COUNT];
+                        + GL_CACHE_COUNT + GL_FLASK_COUNT];
 static int map_prev_col[1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
-                        + GL_CACHE_COUNT];
+                        + GL_CACHE_COUNT + GL_FLASK_COUNT];
 static int map_prev_n = 0;
+// Oil gauge (slice 7): cells drawn last time, so the bar is redrawn
+// ONLY when a cell flips (frame-budget rail; -1 = force a redraw).
+static int map_prev_oil_cells = -1;
 
 static void draw_watch_map_frame(void)
 {
     consoleSelect(&bottom_console);
     consoleClear();
     printf("\x1b[0;1HWATCH-MAP");
-    printf("\x1b[2;1HP you Z dead # wall * plank");
+    printf("\x1b[2;1HP you Z dead # wall * wd o oil");
     printf("\x1b[4;1H+----------------------------+");
     for (int row = MAP_ROW0; row < MAP_ROW0 + MAP_ROWS_N; row++)
         printf("\x1b[%d;1H|\x1b[%d;30H|", row, row);
     printf("\x1b[19;1H+----------------------------+");
     map_prev_n = 0;
+    map_prev_oil_cells = -1;         // consoleClear wiped the gauge
 }
 
 static void draw_watch_map(const Run *run, int state)
@@ -623,6 +716,19 @@ static void draw_watch_map(const Run *run, int state)
     for (unsigned int i = 0; i < 20; i++)
         putchar(i < filled ? '=' : '-');
     printf("] N%lu", (unsigned long)run->night);
+
+    // oil gauge (slice 7, the concept doc's bottom-screen gauge):
+    // 20 cells drain as the lantern burns. Redrawn ONLY when a cell
+    // flips (about every 540 frames) — the frame-budget rail.
+    int oil_cells = (int)(run->oil * 20 / GL_OIL_MAX);
+    if (oil_cells != map_prev_oil_cells)
+    {
+        printf("\x1b[22;1HOIL  [");
+        for (int i = 0; i < 20; i++)
+            putchar(i < oil_cells ? '#' : '.');
+        putchar(']');
+        map_prev_oil_cells = oil_cells;
+    }
 
     if (state != STATE_PLAYING && state != STATE_SCAVENGE)
         return;
@@ -639,6 +745,15 @@ static void draw_watch_map(const Run *run, int state)
         printf("\x1b[%d;%dH*", c_row, c_col);
         map_prev_row[map_prev_n] = c_row;
         map_prev_col[map_prev_n++] = c_col;
+    }
+    for (int i = 0; i < GL_FLASK_COUNT; i++)
+    {
+        if (!run->flask_up[i])
+            continue;
+        int f_row = map_row_of(run->fy[i]), f_col = map_col_of(run->fx[i]);
+        printf("\x1b[%d;%dHo", f_row, f_col);
+        map_prev_row[map_prev_n] = f_row;
+        map_prev_col[map_prev_n++] = f_col;
     }
     for (int i = 0; i < GL_BARRICADE_CAP; i++)
     {
@@ -686,10 +801,13 @@ int main(void)
                                         SpriteColorFormat_16Color);
     u16 *cache_gfx = oamAllocateGfx(&oamMain, SpriteSize_16x16,
                                     SpriteColorFormat_16Color);
+    u16 *flask_gfx = oamAllocateGfx(&oamMain, SpriteSize_16x16,
+                                    SpriteColorFormat_16Color);
     load_sprite_gfx(player_gfx, PLAYER_ART);
     load_sprite_gfx(shambler_gfx, SHAMBLER_ART);
     load_sprite_gfx(barricade_gfx, BARRICADE_ART);
     load_sprite_gfx(cache_gfx, CACHE_ART);
+    load_sprite_gfx(flask_gfx, FLASK_ART);
 
     Run run = {0};
     run.dawn_left = GL_NIGHT_FRAMES;         // title-screen dawn bar: empty
@@ -703,6 +821,7 @@ int main(void)
     uint32_t breaches = 0;         // barricades chewed to 0 this power-on
     uint32_t scavenged = 0;        // planks scavenged this power-on
     uint32_t scavs = 0;            // interludes entered this power-on
+    uint32_t oil_grabs = 0;        // oil flasks pocketed this power-on
     uint32_t vlines_max = 0;       // worst frame cost seen, in scanlines
     bool pad_seen_idle = false;    // KEYINPUT boot-trap guard (session 16)
 
@@ -745,13 +864,14 @@ int main(void)
 
         case STATE_PLAYING:
         {
+            run.oil = gl_oil_burn(run.oil);  // the lantern burns
             spawn_due(&run);                 // tonight's wave trickles in
             gl_player_step(&run.px, &run.py,
                            held & KEY_UP, held & KEY_DOWN,
                            held & KEY_LEFT, held & KEY_RIGHT);
             do_shove_verb(&run, down, &shoves);
             do_barricade_verb(&run, down, &places, &repairs);
-            step_the_dead(&run, &breaches);
+            step_the_dead(&run, &breaches, run.oil);
 
             int touched = the_cold_hands(&run);
 #ifdef GL_STRESS
@@ -762,7 +882,7 @@ int main(void)
                 deaths++;
                 state = STATE_DEAD;
                 oamClear(&oamMain, 0, 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
-                                      + GL_CACHE_COUNT);
+                                      + GL_CACHE_COUNT + GL_FLASK_COUNT);
                 draw_death_card(&run, deaths);
             }
             else if (--run.dawn_left == 0)
@@ -770,7 +890,7 @@ int main(void)
                 nights_survived = run.night;
                 state = STATE_DAWN;
                 oamClear(&oamMain, 0, 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
-                                      + GL_CACHE_COUNT);
+                                      + GL_CACHE_COUNT + GL_FLASK_COUNT);
                 draw_dawn_card(&run, nights_survived);
             }
             else
@@ -811,14 +931,26 @@ int main(void)
                     scavenged++;
                 }
 
-            step_the_dead(&run, &breaches);  // daylight is not safety
+            // Same rule for the oil flasks: never on a full tank —
+            // no flask is wasted, it stays on the ground.
+            for (int i = 0; i < GL_FLASK_COUNT; i++)
+                if (run.flask_up[i] && run.oil < GL_OIL_MAX
+                    && gl_cache_grab(run.px, run.py, run.fx[i], run.fy[i]))
+                {
+                    run.flask_up[i] = 0;
+                    run.oil = gl_oil_after_flask(run.oil);
+                    oil_grabs++;
+                }
+
+            // daylight is not safety — but it presses nobody
+            step_the_dead(&run, &breaches, GL_OIL_MAX);
 
             if (the_cold_hands(&run))
             {
                 deaths++;
                 state = STATE_DEAD;
                 oamClear(&oamMain, 0, 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
-                                      + GL_CACHE_COUNT);
+                                      + GL_CACHE_COUNT + GL_FLASK_COUNT);
                 draw_death_card(&run, deaths);
             }
             else if (--run.scav_left == 0)   // dawn light spent
@@ -918,7 +1050,31 @@ int main(void)
                        SpriteColorFormat_16Color, cache_gfx, -1, false,
                        false, false, false, false);
             }
+            for (int i = 0; i < GL_FLASK_COUNT; i++)
+            {
+                int oam_id = 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
+                             + GL_CACHE_COUNT + i;
+                if (state != STATE_SCAVENGE || !run.flask_up[i])
+                {
+                    oamSetHidden(&oamMain, oam_id, true);
+                    continue;
+                }
+                oamSet(&oamMain, oam_id,
+                       run.fx[i] / GL_ONE - 8, run.fy[i] / GL_ONE - 8,
+                       1 /* under player + dead */, 0, SpriteSize_16x16,
+                       SpriteColorFormat_16Color, flask_gfx, -1, false,
+                       false, false, false, false);
+            }
         }
+        // The lamplight itself (slice 7): the yard's backdrop carries a
+        // faint lantern-blue that dims with the light radius — full
+        // light = 5/31 blue, guttering = 1/31, gone everywhere else.
+        // One palette write per frame; pure render of pure state.
+        int32_t lradius = gl_light_radius(run.oil);
+        BG_PALETTE[0] = (state == STATE_PLAYING)
+            ? RGB15(0, 0, (lradius / GL_ONE) / 16)
+            : RGB15(0, 0, 0);
+
         oamUpdate(&oamMain);
         draw_watch_map(&run, state);
 
@@ -952,6 +1108,19 @@ int main(void)
             cache_up_n++;
             int32_t d = gl_chebyshev(run.px, run.py, run.cx[i], run.cy[i]);
             if (d < nearc_d) { nearc_d = d; nearc_i = i; }
+        }
+
+        // Remaining oil flask nearest the player (same idiom).
+        uint32_t flask_up_n = 0;
+        int nearf_i = -1;
+        int32_t nearf_d = INT32_MAX;
+        for (int i = 0; i < GL_FLASK_COUNT; i++)
+        {
+            if (!run.flask_up[i])
+                continue;
+            flask_up_n++;
+            int32_t d = gl_chebyshev(run.px, run.py, run.fx[i], run.fy[i]);
+            if (d < nearf_d) { nearf_d = d; nearf_i = i; }
         }
 
         // Intact barricade nearest the player (mirrors the ZX/ZY idiom).
@@ -1018,6 +1187,18 @@ int main(void)
                                                         : 0);
         gl_telemetry[GL_T_CDIST] = (uint32_t)(nearc_i >= 0 ? nearc_d : 0);
         gl_telemetry[GL_T_SPARE2] = 0;
+        gl_telemetry[GL_T_OIL] = run.oil;
+        gl_telemetry[GL_T_LRADIUS] = (uint32_t)lradius;
+        gl_telemetry[GL_T_PRESS] =
+            (state == STATE_PLAYING && run.z_count > 0
+             && gl_dark_press(run.oil, near_d)) ? 1u : 0u;
+        gl_telemetry[GL_T_FLASKS] = flask_up_n;
+        gl_telemetry[GL_T_OILGRAB] = oil_grabs;
+        gl_telemetry[GL_T_FX] = (uint32_t)(nearf_i >= 0 ? run.fx[nearf_i]
+                                                        : 0);
+        gl_telemetry[GL_T_FY] = (uint32_t)(nearf_i >= 0 ? run.fy[nearf_i]
+                                                        : 0);
+        gl_telemetry[GL_T_FDIST] = (uint32_t)(nearf_i >= 0 ? nearf_d : 0);
     }
 
     return 0;

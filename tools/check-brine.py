@@ -23,7 +23,18 @@ instead of the handful a replay touches:
      frames and survives it;
   5. containment — under 20,000 frames of hash-driven adversarial input
      both ships and every live ball stay inside the sea rectangle, and
-     trim/heading/speed stay in range.
+     trim/heading/speed stay in range;
+  6. loot drop (slice 3) — every policy win breaks the wreck into exactly
+     BW_LOOT_DROPS crates, inside the sea, on the wreck ring;
+  7. salvage convergence (slice 3) — from every win state the salvage
+     policy (the exact brain games/brineward-nds/tools/record-salvage.py
+     records routes from) scoops all crates and banks them at the pier;
+  8. hold cap / dock economy (slice 3) — the hold never exceeds
+     BW_HOLD_CAP from any start fill, overflow crates stay afloat, gold
+     is exactly BW_LOOT_VALUE per crate, and banking happens strictly
+     inside the pier window, emptying the hold exactly once;
+  9. salvage containment (slice 3) — adversarial salvage frames keep the
+     ship and every crate inside the sea and the hold bounded.
 
 MIRROR RULE (keep in lockstep): every function and constant below mirrors
 games/brineward-nds/source/bw_sim.c. Any change to the C MUST land here
@@ -81,6 +92,17 @@ BW_AI_FIRE_ARC = 12
 BW_AI_TURN_ARC = 16
 
 BW_DUEL_RUNNING, BW_DUEL_PLAYER_SUNK, BW_DUEL_ENEMY_SUNK = 0, 1, 2
+
+# loot / gold (slice 3)
+BW_MAX_LOOT = 8
+BW_LOOT_DROPS = 3
+BW_LOOT_VALUE = 5
+BW_HOLD_CAP = 8
+BW_LOOT_RING = 18
+BW_SCOOP_RANGE = 10 * BW_ONE
+BW_PIER_X = 128 * BW_ONE
+BW_PIER_Y = 172 * BW_ONE
+BW_DOCK_RANGE = 12 * BW_ONE
 
 U32 = 0xFFFFFFFF
 
@@ -151,15 +173,26 @@ class Ball:
         self.live = 0
 
 
+class Loot:
+    """Mirror of BwLoot."""
+
+    __slots__ = ('x', 'y', 'live')
+
+    def __init__(self):
+        self.live = 0
+
+
 class Duel:
     """Mirror of BwDuel."""
 
-    __slots__ = ('player', 'enemy', 'balls', 'frame', 'over')
+    __slots__ = ('player', 'enemy', 'balls', 'loot', 'hold', 'hold_gold',
+                 'frame', 'over')
 
     def __init__(self):
         self.player = Ship()
         self.enemy = Ship()
         self.balls = [Ball() for _ in range(BW_MAX_BALLS)]
+        self.loot = [Loot() for _ in range(BW_MAX_LOOT)]
 
 
 class Inputs:
@@ -238,6 +271,49 @@ def bw_balls_step(d):
             ball.live = 0
 
 
+BW_LOOT_ANGLE = (0, 85, 171)             # fixed thirds of the crate ring
+
+
+def bw_loot_spawn(d):
+    """Mirror of bw_loot_spawn()."""
+    for k in range(BW_LOOT_DROPS):
+        for c in d.loot:
+            if c.live:
+                continue
+            c.x = _clamp(d.enemy.x + BW_LOOT_RING * bw_sin(BW_LOOT_ANGLE[k]),
+                         BW_SEA_X_MIN, BW_SEA_X_MAX)
+            c.y = _clamp(d.enemy.y - BW_LOOT_RING * bw_cos(BW_LOOT_ANGLE[k]),
+                         BW_SEA_Y_MIN, BW_SEA_Y_MAX)
+            c.live = 1
+            break
+
+
+def bw_loot_step(d):
+    """Mirror of bw_loot_step()."""
+    for c in d.loot:
+        if not c.live:
+            continue
+        if d.hold >= BW_HOLD_CAP:
+            return
+        if bw_chebyshev(c.x, c.y, d.player.x, d.player.y) < BW_SCOOP_RANGE:
+            c.live = 0
+            d.hold += 1
+            d.hold_gold += BW_LOOT_VALUE
+
+
+def bw_dock_step(d):
+    """Mirror of bw_dock_step() -> gold banked this frame."""
+    if d.hold_gold <= 0:
+        return 0
+    if bw_chebyshev(d.player.x, d.player.y,
+                    BW_PIER_X, BW_PIER_Y) >= BW_DOCK_RANGE:
+        return 0
+    banked = d.hold_gold
+    d.hold = 0
+    d.hold_gold = 0
+    return banked
+
+
 def bw_ai(e, p):
     """Mirror of bw_ai() -> Inputs."""
     out = Inputs()
@@ -296,6 +372,10 @@ def bw_duel_init(d, seed):
 
     for ball in d.balls:
         ball.live = 0
+    for c in d.loot:
+        c.live = 0
+    d.hold = 0                           # caller re-injects a carried hold
+    d.hold_gold = 0                      # (sinking forfeits: no re-inject)
     d.frame = 0
     d.over = BW_DUEL_RUNNING
 
@@ -324,11 +404,28 @@ def bw_duel_step(d, inputs):
         d.enemy.reload_r = BW_RELOAD_ENEMY
 
     bw_balls_step(d)
+    bw_loot_step(d)                      # crates exist only after a sink
 
     if d.player.hull <= 0:
         d.over = BW_DUEL_PLAYER_SUNK
     elif d.enemy.hull <= 0:
         d.over = BW_DUEL_ENEMY_SUNK
+        bw_loot_spawn(d)                 # the wreck breaks up into flotsam
+
+    d.frame += 1
+
+
+def bw_salvage_step(d, inputs):
+    """Mirror of bw_salvage_step()."""
+    if d.over != BW_DUEL_ENEMY_SUNK:
+        return
+
+    bw_ship_step(d.player, inputs)
+    bw_balls_step(d)                     # a late rake can still strike
+    bw_loot_step(d)
+
+    if d.player.hull <= 0:
+        d.over = BW_DUEL_PLAYER_SUNK
 
     d.frame += 1
 
@@ -378,6 +475,47 @@ def bw_policy(p, e):
         else:
             out.fire_l = 1
     return out
+
+
+# --- the salvage policy (the salvage-route recorder's brain) -------------------
+# NOT a mirror of any C — the host-side brain the salvage proof records:
+# drop to battle sail (tightest turn radius, ~10 px — under both the
+# scoop and dock windows) and put the bow on the nearest crate; once the
+# hold has every crate (or is full), come home to the pier and bank.
+
+def bw_goto(p, tx, ty):
+    """Sail-to-point policy -> Inputs (battle sail, bow on the target)."""
+    out = Inputs()
+    out.trim_delta = -1 if p.trim > BW_TRIM_BATTLE else 0
+    dx = tx - p.x
+    dy = ty - p.y
+    brad = p.heading >> 2
+    hx = bw_sin(brad)
+    hy = -bw_cos(brad)
+    dot = hx * dx + hy * dy
+    cross = hx * dy - hy * dx
+    adot = -dot if dot < 0 else dot
+    across = -cross if cross < 0 else cross
+    if not (dot > 0 and across <= (adot >> 3)):     # outside ~7deg of bow
+        out.turn = 1 if cross > 0 else (-1 if cross < 0 else 1)
+    return out
+
+
+def bw_salvage_policy(d):
+    """Salvage brain: nearest crate first, then home to the pier."""
+    p = d.player
+    best = None
+    best_d = None
+    if d.hold < BW_HOLD_CAP:
+        for c in d.loot:
+            if not c.live:
+                continue
+            dist = bw_chebyshev(p.x, p.y, c.x, c.y)
+            if best is None or dist < best_d:
+                best, best_d = c, dist
+    if best is not None:
+        return bw_goto(p, best.x, best.y)
+    return bw_goto(p, BW_PIER_X, BW_PIER_Y)
 
 
 # --- proofs -------------------------------------------------------------------
@@ -474,12 +612,131 @@ def check_containment():
           'never leave the sea, trim/heading/speed in range')
 
 
+def _win_state(seed):
+    """Run the beam-holding policy duel to the win; returns the Duel."""
+    d = Duel()
+    bw_duel_init(d, seed)
+    for _ in range(3600):
+        bw_duel_step(d, bw_policy(d.player, d.enemy))
+        if d.over != BW_DUEL_RUNNING:
+            break
+    assert d.over == BW_DUEL_ENEMY_SUNK, (seed, d.over)
+    return d
+
+
+def check_loot_drop():
+    for seed in range(16):
+        d = _win_state(seed)
+        live = [c for c in d.loot if c.live]
+        assert len(live) == BW_LOOT_DROPS, (seed, len(live))
+        assert d.hold == 0 and d.hold_gold == 0, seed
+        for c in live:
+            assert BW_SEA_X_MIN <= c.x <= BW_SEA_X_MAX, seed
+            assert BW_SEA_Y_MIN <= c.y <= BW_SEA_Y_MAX, seed
+            off = bw_chebyshev(c.x, c.y, d.enemy.x, d.enemy.y)
+            assert off <= BW_LOOT_RING * BW_ONE, (seed, off)
+    print(f'loot drop: 16 policy wins each break up into exactly '
+          f'{BW_LOOT_DROPS} crates, in the sea, on the '
+          f'{BW_LOOT_RING} px wreck ring')
+
+
+def check_salvage_banks():
+    worst = 0
+    for seed in range(16):
+        d = _win_state(seed)
+        banked = 0
+        for _ in range(3600):
+            bw_salvage_step(d, bw_salvage_policy(d))
+            banked += bw_dock_step(d)
+            if banked > 0:
+                break
+        assert d.over == BW_DUEL_ENEMY_SUNK, (seed, d.over)
+        assert not any(c.live for c in d.loot), seed
+        assert banked == BW_LOOT_DROPS * BW_LOOT_VALUE, (seed, banked)
+        assert d.hold == 0 and d.hold_gold == 0, seed
+        worst = max(worst, d.frame)
+    print(f'salvage: from 16 win states the salvage policy scoops all '
+          f'{BW_LOOT_DROPS} crates and banks '
+          f'{BW_LOOT_DROPS * BW_LOOT_VALUE}g at the pier '
+          f'by duel frame {worst}')
+
+
+def check_hold_cap():
+    for h in range(BW_HOLD_CAP + 1):
+        d = Duel()
+        bw_duel_init(d, h)
+        d.hold = h
+        d.hold_gold = h * BW_LOOT_VALUE
+        for c in d.loot:                 # 8 crates right on the hull
+            c.x, c.y = d.player.x, d.player.y
+            c.live = 1
+        bw_loot_step(d)
+        scooped = BW_HOLD_CAP - h
+        assert d.hold == BW_HOLD_CAP, (h, d.hold)
+        assert d.hold_gold == (h + scooped) * BW_LOOT_VALUE, h
+        left = sum(1 for c in d.loot if c.live)
+        assert left == BW_MAX_LOOT - scooped, (h, left)
+    print(f'hold cap: never exceeds {BW_HOLD_CAP} crates from any start '
+          'fill; overflow crates stay afloat; gold = 5g per crate exactly')
+
+
+def check_dock():
+    for off_px, banks in ((0, True), (11, True), (12, False), (40, False)):
+        d = Duel()
+        bw_duel_init(d, 0)
+        d.hold = 3
+        d.hold_gold = 3 * BW_LOOT_VALUE
+        d.player.x = BW_PIER_X + off_px * BW_ONE
+        d.player.y = BW_PIER_Y
+        got = bw_dock_step(d)
+        if banks:
+            assert got == 15 and d.hold == 0 and d.hold_gold == 0, off_px
+            assert bw_dock_step(d) == 0     # empty hold banks nothing
+        else:
+            assert got == 0 and d.hold == 3 and d.hold_gold == 15, off_px
+    print('dock: banking happens strictly inside the 12 px pier window, '
+          'empties the hold exactly once, never pays twice')
+
+
+def check_salvage_containment():
+    d = Duel()
+    bw_duel_init(d, 0x5A1)
+    d.enemy.hull = 0
+    d.over = BW_DUEL_ENEMY_SUNK
+    bw_loot_spawn(d)
+    frames = 5000
+    for f in range(frames):
+        h = bw_hash(0x10A7, f)
+        inp = Inputs(turn=(h & 3) - 1 if (h & 3) < 3 else 0,
+                     trim_delta=((h >> 2) & 3) - 1 if ((h >> 2) & 3) < 3
+                     else 0)
+        bw_salvage_step(d, inp)
+        bw_dock_step(d)
+        s = d.player
+        assert BW_SEA_X_MIN <= s.x <= BW_SEA_X_MAX, f
+        assert BW_SEA_Y_MIN <= s.y <= BW_SEA_Y_MAX, f
+        assert 0 <= d.hold <= BW_HOLD_CAP, f
+        assert d.hold_gold == d.hold * BW_LOOT_VALUE \
+            or d.hold_gold == 0, f
+        for c in d.loot:
+            if c.live:
+                assert BW_SEA_X_MIN <= c.x <= BW_SEA_X_MAX, f
+                assert BW_SEA_Y_MIN <= c.y <= BW_SEA_Y_MAX, f
+    print(f'salvage containment: {frames} adversarial salvage frames — '
+          'ship and crates stay in the sea, hold stays bounded')
+
+
 def main():
     check_sine_table()
     check_spawns()
     check_idle_player_sunk()
     check_policy_player_wins()
     check_containment()
+    check_loot_drop()
+    check_salvage_banks()
+    check_hold_cap()
+    check_dock()
+    check_salvage_containment()
     print('check-brine: ALL GREEN')
     return 0
 

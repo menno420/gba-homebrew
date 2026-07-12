@@ -15,11 +15,21 @@ Deps (pinned recipe — docs/BUILDING.md):
 
 Usage:
     python3 tools/nds-headless-check.py ROM.nds OUT.png [--frames N]
-        [--keys START-END:NAME ...] [--shot FRAME:PATH ...]
+        [--keys START-END:NAME ...] [--touch START-END:X,Y ...]
+        [--shot FRAME:PATH ...]
         [--require-distinct]
         [--elf ELF] [--watch NAME:ADDR:NWORDS ...] [--watch-log PATH]
         [--assert-watch FRAME:NAME:IDX:OP:VALUE ...]
         [--battery-in PATH[:SIZE]] [--battery-out PATH]
+
+Touch scripting (Gloamline slice 10 — the watch-map chalk mark's
+optional stylus alias):
+    --touch 150-160:100,100 hold the stylus at bottom-LCD pixel
+                            (100, 100) during frames [150, 160); the
+                            pen lifts (touch_release) on the first
+                            frame after a span ends. Repeatable;
+                            overlapping spans: the last one listed
+                            wins the position.
 
 Battery saves (Gloamline slice 9 — the best-nights record):
     --battery-in save.sav[:8192]
@@ -112,6 +122,17 @@ def parse_shot(spec):
     """'FRAME:PATH' -> (frame, path)."""
     frame, _, path = spec.partition(':')
     return int(frame), path
+
+
+def parse_touch(spec):
+    """'START-END:X,Y' -> (start, end, x, y). Stylus held in [start, end)."""
+    span, _, pos = spec.partition(':')
+    start, _, end = span.partition('-')
+    x, _, y = pos.partition(',')
+    try:
+        return int(start), int(end), int(x), int(y)
+    except ValueError:
+        sys.exit(f'FAIL: bad --touch {spec!r} (want START-END:X,Y)')
 
 
 # --- ELF-resolved memory watches (ported from tools/headless-screenshot.py) --
@@ -249,6 +270,10 @@ def main():
                         metavar='START-END:NAME',
                         help='hold a button during frames [START, END); '
                              'repeatable')
+    parser.add_argument('--touch', action='append', default=[],
+                        metavar='START-END:X,Y',
+                        help='hold the stylus at bottom-LCD pixel (X, Y) '
+                             'during frames [START, END); repeatable')
     parser.add_argument('--shot', action='append', default=[],
                         metavar='FRAME:PATH',
                         help='dump an extra verified both-screens PNG at '
@@ -281,6 +306,7 @@ def main():
     args = parser.parse_args()
 
     key_spans = [parse_keys(spec) for spec in args.keys]
+    touch_spans = [parse_touch(spec) for spec in args.touch]
     shots = sorted(parse_shot(spec) for spec in args.shot)
     if any(frame >= args.frames for frame, _ in shots):
         sys.exit('FAIL: --shot frame beyond --frames')
@@ -324,12 +350,23 @@ def main():
     asserts_checked = 0
     saved = []  # (path, frame_number, rgbx-bytes) in capture order
     shot_index = 0
+    touching = False
     for frame_number in range(args.frames):
         mask = 0
         for start, end, key in key_spans:
             if start <= frame_number < end:
                 mask |= key
         emu.input.keypad_update(mask)
+        pen = None
+        for start, end, x, y in touch_spans:
+            if start <= frame_number < end:
+                pen = (x, y)
+        if pen is not None:
+            emu.input.touch_set_pos(*pen)
+            touching = True
+        elif touching:
+            emu.input.touch_release()
+            touching = False
         emu.cycle()
 
         if watches:

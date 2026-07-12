@@ -3,7 +3,9 @@
 Coordinator-only; overwritten wholesale each coordinator turn. Prior
 multi-arc narrative preserved in git history at `d1ec24f0`.
 
-- **ts:** 2026-07-12T09:09:20Z
+updated: 2026-07-12T09:14:30Z
+
+- **ts:** 2026-07-12T09:14:30Z
 - **phase:** BOOT COMPLETE → WORK LOOP (merged seat v1, owner restructure 2026-07-11; one seat + one failsafe replaces the retro parent+children pattern)
 - **seat:** game-lab coordinator (persistent session; heartbeat home = this file)
 
@@ -22,6 +24,7 @@ multi-arc narrative preserved in git history at `d1ec24f0`.
 - Gloamline: last shipped slice 5 "barricades" (session 21, PR #56). IN FLIGHT: slice 6 between-nights scavenge interlude (session 24, worker dispatched this turn).
 - Brineward: last shipped walking skeleton (session 20, PR #55). IN FLIGHT: loot/gold slice (session 25, worker dispatched this turn).
 - Owner standing directive: "please continue expanding the games, I will give my review on them soon, the further you already are the better".
+- Durable resume anchor (carried from the pre-boot narrative): `docs/retro/archive-ready-2026-07-11.md` — the chat-archive hand-off retro (owner rulings verbatim, resume instructions, ⚑ queue).
 
 **Track A — pokemon-mod-lab** (R22 verbatim `"private":true` / `"visibility":"private"` — PASS 2026-07-12T08:48Z; strict isolation intact — no Track A content on any public surface this turn):
 - main HEAD at boot recon: `2efe16d390c0a81c151e245220a4d0a1418232c4` ("control: ORDER 006 — .gitignore ROM guard (#53)").

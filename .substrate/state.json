@@ -7,7 +7,7 @@
     "soft_target_sessions": 50
   },
   "graduation_proposed": false,
-  "kit_version": "1.14.0",
+  "kit_version": "1.15.0",
   "last_compaction_session": 0,
   "mode": "active",
   "mode_history": [
@@ -20,11 +20,12 @@
   "open_questions": [],
   "planted_doc_hashes": {
     ".session-journal.md": "733512309398d2a33ba407ecd3081db6636fed0ba572c94407f8aad5fb59c033",
-    "CONSTITUTION.md": "05d1aa24a4b86454dbb8f01470170ad91e851a714cf20bd74f6c3d0c377d2d30",
+    "CONSTITUTION.md": "b14bc8fc7d501f993a083f50019ccbf53fa176f8ca4b22cb9b565dbe9a8c58b3",
     "control/claims/README.md": "6dc6854e77077fe3d2138e8273ad3f4eaa46f1ce96ce61d49f96264ca7f007ae",
-    "docs/AGENT_ORIENTATION.md": "8e9e09b4bb5804d9c240bb76b4d4dd59769984bd6b4a18b0c6a2e63858020a65",
+    "docs/AGENT_ORIENTATION.md": "f11c99991a5a146d65bbcfd1f0a0fd50eb84d69cdaad051920427daa0108b90d",
     "docs/CAPABILITIES.md": "32a6bb4d217677443322f6e1cf2531ee4c9045ec352878fae31d05bdd2832191",
-    "docs/SKILLS.md": "31562b84d4cec93a76e0627721c2d5eb04325048a4fd0f804dd40e7bced97a42",
+    "docs/ROUTINES.md": "76094eb30b50e6a1e55e6c2e2adc518ce69d76d3d4c583fe68f584d0e16c9821",
+    "docs/SKILLS.md": "2df4b17b686c5948ef6ef548d9db0b7d3ba8b959196c973efad0d7b656a62847",
     "docs/ai-project-workflow.md": "da120902c31bd15970cc88c2ae640d0d187e5d453982384ce52b0970ba6e9590",
     "docs/architecture.md": "71f28e51098f14f6eb3b69f9c900dad18436b82eea8577e47a4f92ce38ae5920",
     "docs/collaboration-model.md": "a60ded90a5231f98c89486850c2f5048844b000875349bd6ff687a5133311681",
@@ -37,6 +38,7 @@
     "docs/question-router.md": "c8a3052d47d78163a5ad905815c176323c8090f5828f007074ca081245421076",
     "docs/repo-navigation-map.md": "1a15951e2ebfaeb6821053438dfca908953b7913d48f107af7dea526c78424ad",
     "docs/runtime_contracts.md": "3362373df19331af1f0b5c26bac63a5fbc4a0b46bba236ed0455a2dd601fd021",
+    "docs/seat-digest.md": "a7d06d58de53395ac0c4e141dde7b65394042117894e062c7fac99df510cf66b",
     "scripts/env-setup.sh": "cd2145129fcba288ff9399ad44146a09017d85813e282c16bcba22340b613a2c"
   },
   "project_id": "9dbe6fc2bf0e",

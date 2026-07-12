@@ -116,7 +116,20 @@ directly reachable from the fleet container — no mirror needed.
   interlude timer/cache/loot state; slice 7 -> 48: lantern oil, light
   radius, dark press + flask state; slice 8 -> 56: synthesized-audio
   decision state — ambience tier, drone frequency, last/count/frame of
-  the one-shot cues, cue-channel countdown).
+  the one-shot cues, cue-channel countdown; slice 9 -> 64: the
+  best-nights save record — best nights, best seed, save-loaded flag,
+  backup writes this power-on, save format version). Slice 9 also adds
+  battery-save plumbing: `--battery-in IMG[:SIZE]` imports a raw
+  battery image into the emulated cartridge backup before frame 0
+  (REQUIRED for faithful save emulation — DeSmuME's autodetect state
+  does not emulate a homebrew EEPROM write correctly; make blank
+  fixtures with `tools/gloam-save.py blank`), and `--battery-out IMG`
+  exports the backup after the run (raw `.sav` — py-desmume 0.0.9's
+  .dsv export path returns False). `tools/gloam-save.py`
+  inspects/verifies/mutates the best-nights record inside such images
+  through the check-gloam.py mirror (`expect` = byte-identical
+  encoding check; `corrupt`/`version-bump` craft the recovery-proof
+  fixtures).
   Survive routes are derived and skew-verified on the host mirror with
   `tools/gloam-route.py` (`derive --nights N --out FILE`, `verify
   --keys-file FILE --nights N`). `make GL_STRESS=1` builds the CI-only
@@ -133,13 +146,14 @@ directly reachable from the fleet container — no mirror needed.
 
 CI: the `nds-rom-build` job in `rom-builds.yml` runs the host-mirror
 proof (`tools/check-gloam.py`), builds the .nds with the cached pinned
-toolchain, replays twelve headless proofs (boot+telemetry, 8-way move,
-chase+death+restart, survive-night-1-to-dawn, shove, night-2 waves +
-multi-zombie survive, 24-Shambler + 8-barricade frame-budget on the
-stress build, barricade hold/breach lifecycle, barricade repair
-economy, scavenge loot + no-waste + early exit, scavenge risk — idling
-in the interlude kills, scavenge timer expiry starting the next night
-by itself — all pinned `--assert-watch` numerics), and uploads `.nds` +
-sha256 +
+toolchain, replays twenty-three headless proofs (boot+telemetry, 8-way
+move, chase+death+restart, survive-night-1-to-dawn, shove, night-2
+waves + multi-zombie survive, 24-Shambler + 8-barricade frame-budget
+on the stress build, barricade hold/breach lifecycle, barricade repair
+economy, the three scavenge-interlude proofs, the three lantern-oil
+proofs, the four synthesized-audio decision proofs, and the four
+slice-9 battery-save proofs — roundtrip, power-cycle persistence,
+record update, corrupt/version recovery — all pinned `--assert-watch`
+numerics), and uploads `.nds` + sha256 +
 screenshots alongside the GBA artifacts. The required GBA `ROM builds` gate is a
 separate untouched job (its `games/*/` loop skips BlocksDS Makefiles).

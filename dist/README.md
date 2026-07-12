@@ -16,7 +16,7 @@ changes its game, with provenance:
 | File | Version / date | Size | Built from | sha256 |
 |---|---|---|---|---|
 | [`lumen-drift.gba`](lumen-drift.gba) | **v1.3** · session 8 slice 6 · 2026-07-11 | 167,996 bytes | source tree of the v1.3 pause/mute + graze-flash micro-polish commit (`games/lumen-drift/` at the same tree as this file) | `195a86795e57e2fa0059a96782f1ac7a147cbcebc0cb28a96f353e5d9babae94` |
-| [`gloamline.nds`](gloamline.nds) | **synthesized audio** (arc slice 8) · session 30 · 2026-07-12 | 116,224 bytes | source tree of the slice-8 audio commit (`games/gloamline-nds/` at the same tree as this file); build is byte-deterministic (two clean builds + an independent fresh-worktree build, identical hash) | `eab78ae04bcf46786f58dc03ddb05a5ee3bbd93ac5de4e9e1f1f55b2920b215d` |
+| [`gloamline.nds`](gloamline.nds) | **best-nights saves** (arc slice 9) · session 33 · 2026-07-12 | 117,248 bytes | source tree of the slice-9 saves commit (`games/gloamline-nds/` at the same tree as this file); build is byte-deterministic (two clean builds + an independent fresh-worktree build, identical hash) | `dc8798c8ff30f5713e15187ebe86a3d4edfbbb56bc1c95fe4f03f133fd0dbeae` |
 | [`brineward.nds`](brineward.nds) | **port + upgrades** (arc slice 4) · session 28 · 2026-07-12 | 112,128 bytes | source tree of the slice-4 port/upgrades commit (`games/brineward-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `9f354a3744377e49a5bd78c532ae411c316e64d9e11e50d95f54e1d484c64322` |
 
 **How they were built:** GBA — `tools/setup-toolchain.sh` (pinned

@@ -155,6 +155,11 @@ static void bw_fire(BwDuel *d, const BwShip *s, int32_t owner, int32_t side)
     }
 }
 
+// forward: the slain Maw breaks up mid-ball-pass (defined with the
+// loot code below)
+static void bw_loot_spawn_at(BwDuel *d, int32_t wx, int32_t wy,
+                             int32_t drops, int32_t value);
+
 static void bw_balls_step(BwDuel *d)
 {
     for (int32_t i = 0; i < BW_MAX_BALLS; i++)

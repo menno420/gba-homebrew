@@ -1,4 +1,5 @@
-// Brineward — arc slice 2: the WALKING SKELETON (first playable).
+// Brineward — arc slice 3: LOOT + GOLD (roadmap item 1 on the slice-2
+// walking skeleton).
 //
 // The concept doc's skeleton cut (docs/concepts/brineward-concept.md):
 // one open-water screen off the Graywake breakwater (top screen), momentum
@@ -6,11 +7,14 @@
 // ship always makes way), ONE enemy sloop on an intercept-and-circle sail
 // AI, L/R broadside batteries with reload + range falloff on BOTH ships,
 // hull bars, sink-or-be-sunk -> card -> START instant restart. Bottom
-// screen = ship status v0 (hull / battery reloads / trim / score). No
-// loot, no port, no monsters — the broadside duel IS the game, so it
-// ships first and alone. All game rules live in the pure layer
-// (bw_sim.h/.c, mirrored by tools/check-brine.py); this file is input,
-// state machine, rendering, and the telemetry mailbox.
+// screen = the Graywake ledger (ship status + gold). Slice 3 adds the
+// concept's loot loop: a sunk rum-runner breaks up into flotsam crates,
+// sail through to scoop (hold cap 8), lie alongside the Graywake pier to
+// bank (banked gold is safe forever), press START from the salvage water
+// to put out again WITH the hold aboard — sinking forfeits every unbanked
+// crate. All game rules live in the pure layer (bw_sim.h/.c, mirrored by
+// tools/check-brine.py); this file is input, state machine, rendering,
+// and the telemetry mailbox.
 //
 // Determinism: seed = frame counter latched at the START press that
 // begins a duel (printed on the HUD and cards, so any human run is
@@ -18,10 +22,12 @@
 // run is a pure function of the input script. No wall clock, no runtime
 // RNG.
 //
-// Telemetry mailbox (Gloamline's pattern): 16 u32 words at the exported
+// Telemetry mailbox (Gloamline's pattern): 20 u32 words at the exported
 // symbol `bw_telemetry`, rewritten every frame, so headless proofs
 // (tools/nds-headless-check.py --elf/--watch) can assert game state
-// numerically. Layout below at BW_T_*.
+// numerically. Layout below at BW_T_* — slice 3 EXTENDED the mailbox
+// 16 -> 20 (session-20 guard recipe: words 0-15 are pinned by the
+// existing proofs; extend, never re-map).
 //
 // 100% original content: code, text, and the code-authored sprites.
 
@@ -35,7 +41,7 @@
 #define BW_T_MAGIC0 0   // 0x4252494E 'BRIN'
 #define BW_T_MAGIC1 1   // 0x57415244 'WARD'
 #define BW_T_FRAME 2    // global frame counter (every vblank)
-#define BW_T_STATE 3    // 0 title / 1 duel / 2 sunk / 3 victory
+#define BW_T_STATE 3    // 0 title / 1 duel / 2 sunk / 3 salvage
 #define BW_T_PX 4       // player x, 8.8 fixed (sprite center)
 #define BW_T_PY 5       // player y
 #define BW_T_PHDG 6     // player heading, 0..1023 (0 = north, clockwise)
@@ -48,15 +54,20 @@
 #define BW_T_SEED 13    // seed of the current duel
 #define BW_T_DIST 14    // chebyshev player<->enemy, 8.8 fixed
 #define BW_T_TRIM 15    // player sail trim, 0..2
+// slice 3 (extension; words 0-15 stay pinned)
+#define BW_T_HOLD 16    // crates aboard, 0..BW_HOLD_CAP
+#define BW_T_HOLDGOLD 17 // unbanked gold the hold is worth
+#define BW_T_GOLD 18    // gold banked at Graywake (safe forever)
+#define BW_T_LOOT 19    // crates afloat right now
 
-volatile uint32_t bw_telemetry[16];
+volatile uint32_t bw_telemetry[20];
 
 enum
 {
     STATE_TITLE = 0,
     STATE_DUEL = 1,
     STATE_SUNK = 2,
-    STATE_VICTORY = 3,
+    STATE_SALVAGE = 3,   // slice 3: the win state is live water, not a card
 };
 
 // --- original sprite art (code-authored, 4bpp, shared 16-color palette) ------
@@ -114,6 +125,18 @@ static const char BALL_ART[8][9] = {
     "........",
 };
 
+// Flotsam crate, 8x8: 9 wet planking, 4 gold glint (shared accent).
+static const char CRATE_ART[8][9] = {
+    "........",
+    ".999999.",
+    ".944449.",
+    ".949949.",
+    ".949949.",
+    ".944449.",
+    ".999999.",
+    "........",
+};
+
 // Pack WxH character art into 4bpp tiles (8x8 tile raster order).
 static void load_sprite_gfx(u16 *gfx, const char *art, int w, int h,
                             int stride)
@@ -146,6 +169,7 @@ static void load_palette(void)
     SPRITE_PALETTE[6] = RGB15(25, 7, 6);     // red rag
     SPRITE_PALETTE[7] = RGB15(9, 9, 11);     // iron ball
     SPRITE_PALETTE[8] = RGB15(20, 20, 23);   // ball highlight
+    SPRITE_PALETTE[9] = RGB15(14, 9, 4);     // wet crate planking
     // slate sea on both backdrops
     BG_PALETTE[0] = RGB15(2, 5, 9);
     BG_PALETTE_SUB[0] = RGB15(2, 4, 7);
@@ -157,6 +181,7 @@ typedef struct
     uint32_t seed;
     uint32_t sinks;
     uint32_t wins;
+    uint32_t gold;                       // banked at Graywake — safe forever
 } Score;
 
 // --- top-screen scenes -----------------------------------------------------------
@@ -170,6 +195,15 @@ static void draw_swell(void)
     printf("\x1b[23;0H~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~-");
 }
 
+// The Graywake pier (BW_PIER_X/Y = 128,172 px -> console col 16, row 21):
+// lie alongside to bank the hold.
+static void draw_pier(void)
+{
+    consoleSelect(&top_console);
+    printf("\x1b[21;12H=######=");
+    printf("\x1b[22;12HGRAYWAKE");
+}
+
 static void draw_title(void)
 {
     consoleSelect(&top_console);
@@ -180,46 +214,64 @@ static void draw_title(void)
     printf("\x1b[11;4Hturn: LEFT/RIGHT\n");
     printf("\x1b[12;4Hsail trim: UP/DOWN\n");
     printf("\x1b[13;4Hbroadsides: L port, R stbd\n");
-    printf("\x1b[14;4Hsink the rum-runner\n");
+    printf("\x1b[14;4Hsink her, scoop the crates,\n");
+    printf("\x1b[15;4Hbank gold at the pier\n");
     printf("\x1b[17;9HPRESS START\n");
 }
 
-static void draw_sunk_card(const Score *sc)
+static void draw_sunk_card(const Score *sc, const BwDuel *d)
 {
     consoleSelect(&top_console);
     consoleClear();
-    printf("\x1b[7;7HTHE BRINE TAKES\n");
-    printf("\x1b[8;9HYOUR SLOOP\n");
-    printf("\x1b[11;7Hseed %lu", (unsigned long)sc->seed);
-    printf("\x1b[12;7Hships sunk %lu", (unsigned long)sc->wins);
-    printf("\x1b[13;7Htimes sunk %lu", (unsigned long)sc->sinks);
-    printf("\x1b[16;4HPRESS START: put out again\n");
-}
-
-static void draw_victory_card(const Score *sc)
-{
-    consoleSelect(&top_console);
-    consoleClear();
-    printf("\x1b[7;5HTHE RUM-RUNNER GOES\n");
-    printf("\x1b[8;9HUNDER\n");
-    printf("\x1b[11;7Hseed %lu", (unsigned long)sc->seed);
-    printf("\x1b[12;7Hships sunk %lu", (unsigned long)sc->wins);
-    printf("\x1b[13;7Htimes sunk %lu", (unsigned long)sc->sinks);
-    printf("\x1b[16;3HPRESS START: the next sail\n");
+    printf("\x1b[6;7HTHE BRINE TAKES\n");
+    printf("\x1b[7;9HYOUR SLOOP\n");
+    printf("\x1b[10;7Hseed %lu", (unsigned long)sc->seed);
+    printf("\x1b[11;7Hships sunk %lu", (unsigned long)sc->wins);
+    printf("\x1b[12;7Htimes sunk %lu", (unsigned long)sc->sinks);
+    printf("\x1b[13;7Hhold lost %d crates %3dg",
+           (int)d->hold, (int)d->hold_gold);
+    printf("\x1b[14;7Hbanked gold safe %lug",
+           (unsigned long)sc->gold);
+    printf("\x1b[17;4HPRESS START: put out again\n");
 }
 
 static const char *const TRIM_NAME[3] = { "BTL", "HLF", "FUL" };
 
-static void draw_hud(const BwDuel *d, const Score *sc)
+// Render-only bank flash: how many frames the "BANKED" line still shows.
+static int bank_flash;
+static uint32_t bank_amount;
+
+static void draw_hud_row0(const BwDuel *d)
 {
-    consoleSelect(&top_console);
     printf("\x1b[0;1HHULL %3d  L%2d R%2d  %s\x1b[K",
            (int)d->player.hull,
            (int)((d->player.reload_l + 9) / 10),
            (int)((d->player.reload_r + 9) / 10),
            TRIM_NAME[d->player.trim]);
-    printf("\x1b[1;1HFOE %3d  SEED %lu\x1b[K",
-           (int)d->enemy.hull, (unsigned long)sc->seed);
+}
+
+static void draw_hud(const BwDuel *d, const Score *sc)
+{
+    consoleSelect(&top_console);
+    draw_hud_row0(d);
+    if (bank_flash > 0)
+        printf("\x1b[1;1HBANKED %lug  GOLD %lu\x1b[K",
+               (unsigned long)bank_amount, (unsigned long)sc->gold);
+    else
+        printf("\x1b[1;1HFOE %3d  SEED %lu\x1b[K",
+               (int)d->enemy.hull, (unsigned long)sc->seed);
+}
+
+static void draw_salvage_hud(const BwDuel *d, const Score *sc)
+{
+    consoleSelect(&top_console);
+    draw_hud_row0(d);
+    if (bank_flash > 0)
+        printf("\x1b[1;1HBANKED %lug  GOLD %lu\x1b[K",
+               (unsigned long)bank_amount, (unsigned long)sc->gold);
+    else
+        printf("\x1b[1;1HSALVAGE hold %d/%d %3dg >PIER\x1b[K",
+               (int)d->hold, BW_HOLD_CAP, (int)d->hold_gold);
 }
 
 // --- bottom-screen ship status v0 ------------------------------------------------
@@ -252,9 +304,12 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
     printf("\x1b[10;1HTRIM %s   %s\x1b[K", TRIM_NAME[d->player.trim],
            state == STATE_DUEL ? "at sea " :
            state == STATE_SUNK ? "SUNK   " :
-           state == STATE_VICTORY ? "VICTORY" : "in port");
+           state == STATE_SALVAGE ? "SALVAGE" : "in port");
     printf("\x1b[12;1Hsunk %lu   lost %lu\x1b[K",
            (unsigned long)sc->wins, (unsigned long)sc->sinks);
+    printf("\x1b[13;1Hhold %d/%d crates %3dg\x1b[K",
+           (int)d->hold, BW_HOLD_CAP, (int)d->hold_gold);
+    printf("\x1b[14;1HGOLD BANKED %lug\x1b[K", (unsigned long)sc->gold);
     draw_bar(17, "HULL", d->enemy.hull, BW_HULL_MAX);
     printf("\x1b[19;1Hrange %3d yd\x1b[K",
            (int)(bw_chebyshev(d->player.x, d->player.y,
@@ -265,17 +320,20 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
 #define OAM_PLAYER 0
 #define OAM_ENEMY 1
 #define OAM_BALL0 2
+#define OAM_LOOT0 (OAM_BALL0 + BW_MAX_BALLS)
 
 static void draw_ships_and_balls(const BwDuel *d,
                                  u16 *player_gfx, u16 *enemy_gfx,
-                                 u16 *ball_gfx, int state)
+                                 u16 *ball_gfx, u16 *crate_gfx,
+                                 int state, uint32_t frame)
 {
-    // The survivor floats on the outcome cards; the sunk ship is gone.
+    // The survivor sails the salvage water; the sunk ship is gone.
     // NOTE: an OAM entry in rotate/scale mode has NO hide bit (attr0 bit
     // 9 becomes size-double), so a hidden ship must be set as a REGULAR
     // sprite with hide=true — passing hide to an affine oamSet does
     // nothing (verified headlessly: both ships ghosted over the title).
-    bool player_shown = state == STATE_DUEL || state == STATE_VICTORY;
+    bool water_live = state == STATE_DUEL || state == STATE_SALVAGE;
+    bool player_shown = water_live;
     bool enemy_shown = state == STATE_DUEL || state == STATE_SUNK;
 
     // libnds angle: 32768 units per circle, counter-clockwise; our
@@ -301,8 +359,37 @@ static void draw_ships_and_balls(const BwDuel *d,
                ball->x / BW_ONE - 4, ball->y / BW_ONE - 4,
                0, 0, SpriteSize_8x8, SpriteColorFormat_16Color,
                ball_gfx, -1, false,
-               !(ball->live && state == STATE_DUEL), false, false, false);
+               !(ball->live && water_live), false, false, false);
     }
+    for (int i = 0; i < BW_MAX_LOOT; i++)
+    {
+        // Crates bob on the swell: a 1 px render-only wobble off the
+        // frame counter (the sim position never moves — watch-map rule).
+        const BwLoot *c = &d->loot[i];
+        int bob = (int)(((frame >> 4) + (uint32_t)i) & 1u);
+        oamSet(&oamMain, OAM_LOOT0 + i,
+               c->x / BW_ONE - 4, c->y / BW_ONE - 4 + bob,
+               1, 0, SpriteSize_8x8, SpriteColorFormat_16Color,
+               crate_gfx, -1, false,
+               !(c->live && water_live), false, false, false);
+    }
+}
+
+// Begin a duel: latch the frame-counter seed, reset the sim, and re-inject
+// whatever the score says survives the transition — a hold carried out of
+// salvage water rides along; a sunk hold was forfeited (nothing carried).
+static void begin_duel(BwDuel *duel, Score *sc, uint32_t frame,
+                       int32_t carry_hold, int32_t carry_gold)
+{
+    sc->seed = frame;
+    bw_duel_init(duel, sc->seed);
+    duel->hold = carry_hold;
+    duel->hold_gold = carry_gold;
+    consoleSelect(&top_console);
+    consoleClear();
+    draw_swell();
+    draw_pier();
+    draw_status_frame();
 }
 
 // --- main ------------------------------------------------------------------------
@@ -327,9 +414,12 @@ int main(void)
                                     SpriteColorFormat_16Color);
     u16 *ball_gfx = oamAllocateGfx(&oamMain, SpriteSize_8x8,
                                    SpriteColorFormat_16Color);
+    u16 *crate_gfx = oamAllocateGfx(&oamMain, SpriteSize_8x8,
+                                    SpriteColorFormat_16Color);
     load_sprite_gfx(player_gfx, &PLAYER_SHIP_ART[0][0], 16, 16, 17);
     load_sprite_gfx(enemy_gfx, &ENEMY_SHIP_ART[0][0], 16, 16, 17);
     load_sprite_gfx(ball_gfx, &BALL_ART[0][0], 8, 8, 9);
+    load_sprite_gfx(crate_gfx, &CRATE_ART[0][0], 8, 8, 9);
 
     BwDuel duel = {0};
     bw_duel_init(&duel, 0);              // idle telemetry before first START
@@ -359,20 +449,17 @@ int main(void)
             pad_seen_idle = true;
         bool start = pad_seen_idle && (down & KEY_START);
 
+        if (bank_flash > 0)
+            bank_flash--;
+
         switch (state)
         {
         case STATE_TITLE:
         case STATE_SUNK:
-        case STATE_VICTORY:
-            if (start)                   // latch the frame-counter seed
-            {
-                score.seed = frame;
-                bw_duel_init(&duel, score.seed);
+            if (start)                   // fresh sail: nothing carried
+            {                            // (a sunk hold was forfeited)
+                begin_duel(&duel, &score, frame, 0, 0);
                 state = STATE_DUEL;
-                consoleSelect(&top_console);
-                consoleClear();
-                draw_swell();
-                draw_status_frame();
             }
             break;
 
@@ -387,18 +474,27 @@ int main(void)
                 .fire_r = pad_seen_idle && (down & KEY_R),
             };
             bw_duel_step(&duel, &in);
+            // A hold carried into the fight can still be banked mid-duel:
+            // running for the pier IS the "turn for home" choice.
+            uint32_t banked = (uint32_t)bw_dock_step(&duel);
+            if (banked > 0)
+            {
+                score.gold += banked;
+                bank_flash = 120;
+                bank_amount = banked;
+            }
 
             if (duel.over == BW_DUEL_PLAYER_SUNK)
             {
-                score.sinks++;
+                score.sinks++;           // the hold goes down with the ship
                 state = STATE_SUNK;
-                draw_sunk_card(&score);
+                draw_sunk_card(&score, &duel);
             }
             else if (duel.over == BW_DUEL_ENEMY_SUNK)
             {
-                score.wins++;
-                state = STATE_VICTORY;
-                draw_victory_card(&score);
+                score.wins++;            // flotsam is up: salvage the wreck
+                state = STATE_SALVAGE;
+                draw_salvage_hud(&duel, &score);
             }
             else
             {
@@ -406,9 +502,49 @@ int main(void)
             }
             break;
         }
+
+        case STATE_SALVAGE:
+        {
+            if (start)                   // put out again WITH the hold
+            {
+                begin_duel(&duel, &score, frame,
+                           duel.hold, duel.hold_gold);
+                state = STATE_DUEL;
+                break;
+            }
+            BwInputs in = {
+                .turn = ((held & KEY_RIGHT) ? 1 : 0)
+                        - ((held & KEY_LEFT) ? 1 : 0),
+                .trim_delta = ((down & KEY_UP) ? 1 : 0)
+                              - ((down & KEY_DOWN) ? 1 : 0),
+                .fire_l = 0,             // batteries stay cold: no foe
+                .fire_r = 0,
+            };
+            bw_salvage_step(&duel, &in);
+            uint32_t banked = (uint32_t)bw_dock_step(&duel);
+            if (banked > 0)
+            {
+                score.gold += banked;
+                bank_flash = 120;
+                bank_amount = banked;
+            }
+
+            if (duel.over == BW_DUEL_PLAYER_SUNK)
+            {
+                score.sinks++;           // a lingering rake found its mark
+                state = STATE_SUNK;
+                draw_sunk_card(&score, &duel);
+            }
+            else
+            {
+                draw_salvage_hud(&duel, &score);
+            }
+            break;
+        }
         }
 
-        draw_ships_and_balls(&duel, player_gfx, enemy_gfx, ball_gfx, state);
+        draw_ships_and_balls(&duel, player_gfx, enemy_gfx, ball_gfx,
+                             crate_gfx, state, frame);
         oamUpdate(&oamMain);
         draw_status(&duel, &score, state);
 
@@ -429,6 +565,14 @@ int main(void)
             (uint32_t)bw_chebyshev(duel.player.x, duel.player.y,
                                    duel.enemy.x, duel.enemy.y);
         bw_telemetry[BW_T_TRIM] = (uint32_t)duel.player.trim;
+        bw_telemetry[BW_T_HOLD] = (uint32_t)duel.hold;
+        bw_telemetry[BW_T_HOLDGOLD] = (uint32_t)duel.hold_gold;
+        bw_telemetry[BW_T_GOLD] = score.gold;
+        uint32_t afloat = 0;
+        for (int i = 0; i < BW_MAX_LOOT; i++)
+            if (duel.loot[i].live)
+                afloat++;
+        bw_telemetry[BW_T_LOOT] = afloat;
     }
 
     return 0;

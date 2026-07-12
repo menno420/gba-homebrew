@@ -1,0 +1,1 @@
+--keys 271-348:RIGHT --keys 348-408:LEFT --keys 409-487:RIGHT --keys 271-273:DOWN

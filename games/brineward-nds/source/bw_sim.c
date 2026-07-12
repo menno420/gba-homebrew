@@ -147,6 +147,68 @@ static void bw_balls_step(BwDuel *d)
     }
 }
 
+// --- loot / gold (slice 3) ----------------------------------------------------
+
+// The wreck breaks up: BW_LOOT_DROPS crates on a BW_LOOT_RING around the
+// sunk ship at fixed third-of-circle angles (pure f(wreck position) —
+// deliberately not frame-hashed, so an input skew moves the crates only
+// as far as it moves the wreck). Crates are clamped into the sea.
+static void bw_loot_spawn(BwDuel *d)
+{
+    static const int32_t BW_LOOT_ANGLE[BW_LOOT_DROPS] = { 0, 85, 171 };
+    for (int32_t k = 0; k < BW_LOOT_DROPS; k++)
+    {
+        for (int32_t i = 0; i < BW_MAX_LOOT; i++)
+        {
+            BwLoot *c = &d->loot[i];
+            if (c->live)
+                continue;
+            c->x = clamp32(d->enemy.x
+                               + BW_LOOT_RING * bw_sin(BW_LOOT_ANGLE[k]),
+                           BW_SEA_X_MIN, BW_SEA_X_MAX);
+            c->y = clamp32(d->enemy.y
+                               - BW_LOOT_RING * bw_cos(BW_LOOT_ANGLE[k]),
+                           BW_SEA_Y_MIN, BW_SEA_Y_MAX);
+            c->live = 1;
+            break;
+        }
+    }
+}
+
+// Scoop pass: sail within BW_SCOOP_RANGE of a crate and it comes aboard,
+// until the hold is full (crates the full hold cannot take stay afloat).
+static void bw_loot_step(BwDuel *d)
+{
+    for (int32_t i = 0; i < BW_MAX_LOOT; i++)
+    {
+        BwLoot *c = &d->loot[i];
+        if (!c->live)
+            continue;
+        if (d->hold >= BW_HOLD_CAP)
+            return;
+        if (bw_chebyshev(c->x, c->y, d->player.x, d->player.y)
+                < BW_SCOOP_RANGE)
+        {
+            c->live = 0;
+            d->hold++;
+            d->hold_gold += BW_LOOT_VALUE;
+        }
+    }
+}
+
+int32_t bw_dock_step(BwDuel *d)
+{
+    if (d->hold_gold <= 0)
+        return 0;
+    if (bw_chebyshev(d->player.x, d->player.y, BW_PIER_X, BW_PIER_Y)
+            >= BW_DOCK_RANGE)
+        return 0;
+    int32_t banked = d->hold_gold;
+    d->hold = 0;
+    d->hold_gold = 0;
+    return banked;
+}
+
 // --- enemy sail AI ----------------------------------------------------------------
 
 void bw_ai(const BwShip *e, const BwShip *p, BwInputs *out)
@@ -223,6 +285,10 @@ void bw_duel_init(BwDuel *d, uint32_t seed)
 
     for (int32_t i = 0; i < BW_MAX_BALLS; i++)
         d->balls[i].live = 0;
+    for (int32_t i = 0; i < BW_MAX_LOOT; i++)
+        d->loot[i].live = 0;
+    d->hold = 0;                         // caller re-injects a carried hold
+    d->hold_gold = 0;                    // (sinking forfeits: no re-inject)
     d->frame = 0;
     d->over = BW_DUEL_RUNNING;
 }
@@ -260,11 +326,30 @@ void bw_duel_step(BwDuel *d, const BwInputs *in)
     }
 
     bw_balls_step(d);
+    bw_loot_step(d);                     // crates exist only after a sink
 
     if (d->player.hull <= 0)
         d->over = BW_DUEL_PLAYER_SUNK;   // simultaneous sinking = loss
     else if (d->enemy.hull <= 0)
+    {
         d->over = BW_DUEL_ENEMY_SUNK;
+        bw_loot_spawn(d);                // the wreck breaks up into flotsam
+    }
+
+    d->frame++;
+}
+
+void bw_salvage_step(BwDuel *d, const BwInputs *in)
+{
+    if (d->over != BW_DUEL_ENEMY_SUNK)
+        return;
+
+    bw_ship_step(&d->player, in);
+    bw_balls_step(d);                    // a late rake can still strike
+    bw_loot_step(d);
+
+    if (d->player.hull <= 0)
+        d->over = BW_DUEL_PLAYER_SUNK;   // sunk with the salvage aboard
 
     d->frame++;
 }

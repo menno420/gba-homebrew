@@ -90,6 +90,26 @@
 #define BW_DUEL_PLAYER_SUNK 1            // simultaneous sinking counts as loss
 #define BW_DUEL_ENEMY_SUNK 2
 
+// --- loot / gold (arc slice 3: roadmap item 1) -------------------------------
+// A sunk rum-runner breaks up into flotsam: BW_LOOT_DROPS crates on a
+// BW_LOOT_RING around the wreck at fixed third-of-circle angles (pure
+// f(wreck position) — deliberately NOT frame-hashed, so a +-frame input
+// skew moves the crates only as far as it moves the wreck). Sail within
+// BW_SCOOP_RANGE to scoop; the hold caps at BW_HOLD_CAP crates. Banking:
+// lie alongside the Graywake pier (BW_PIER_*, the breakwater south of
+// the anchorage) within BW_DOCK_RANGE and the hold empties into banked
+// gold. Banked gold is safe forever; sinking forfeits the unbanked hold
+// (main.c simply does not carry it into the next duel).
+#define BW_MAX_LOOT 8
+#define BW_LOOT_DROPS 3                  // crates per sunk ship
+#define BW_LOOT_VALUE 5                  // gold per crate (band-0 waters)
+#define BW_HOLD_CAP 8                    // crates the sloop can carry
+#define BW_LOOT_RING 18                  // px, crate ring radius off the wreck
+#define BW_SCOOP_RANGE (10 * BW_ONE)     // chebyshev hull<->crate
+#define BW_PIER_X (128 * BW_ONE)
+#define BW_PIER_Y (172 * BW_ONE)
+#define BW_DOCK_RANGE (12 * BW_ONE)      // chebyshev hull<->pier
+
 // --- state -----------------------------------------------------------------------
 typedef struct
 {
@@ -112,9 +132,18 @@ typedef struct
 
 typedef struct
 {
+    int32_t x, y;                        // 8.8 fixed, crate center
+    int32_t live;
+} BwLoot;
+
+typedef struct
+{
     BwShip player;
     BwShip enemy;
     BwBall balls[BW_MAX_BALLS];
+    BwLoot loot[BW_MAX_LOOT];            // flotsam afloat (slice 3)
+    int32_t hold;                        // crates aboard, 0..BW_HOLD_CAP
+    int32_t hold_gold;                   // unbanked gold those crates are worth
     uint32_t frame;                      // duel frames stepped so far
     int32_t over;                        // BW_DUEL_*
 } BwDuel;
@@ -152,7 +181,19 @@ void bw_duel_init(BwDuel *d, uint32_t seed);
 void bw_ai(const BwShip *e, const BwShip *p, BwInputs *out);
 
 // One duel frame: player inputs + enemy AI + both ships step + broadsides
-// spawn + balls fly + hits land + sink check. Sets d->over.
+// spawn + balls fly + hits land + sink check (the sink frame drops the
+// wreck's flotsam) + scoop pass. Sets d->over.
 void bw_duel_step(BwDuel *d, const BwInputs *in);
+
+// One salvage frame (after the enemy went under): the player sails on,
+// lingering balls fly out (a late rake can still strike — sinking during
+// salvage flips d->over to BW_DUEL_PLAYER_SUNK), crates are scooped.
+// Batteries stay cold: no fire verb without a foe.
+void bw_salvage_step(BwDuel *d, const BwInputs *in);
+
+// Pier pass, run once per live-water frame by the caller: if the player
+// lies alongside the Graywake pier with cargo aboard, the hold empties.
+// Returns the gold banked this frame (0 if not docked or nothing held).
+int32_t bw_dock_step(BwDuel *d);
 
 #endif // BW_SIM_H

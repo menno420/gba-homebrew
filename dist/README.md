@@ -17,7 +17,7 @@ changes its game, with provenance:
 |---|---|---|---|---|
 | [`lumen-drift.gba`](lumen-drift.gba) | **v1.3** · session 8 slice 6 · 2026-07-11 | 167,996 bytes | source tree of the v1.3 pause/mute + graze-flash micro-polish commit (`games/lumen-drift/` at the same tree as this file) | `195a86795e57e2fa0059a96782f1ac7a147cbcebc0cb28a96f353e5d9babae94` |
 | [`gloamline.nds`](gloamline.nds) | **lantern-oil light pressure** (arc slice 7) · session 27 · 2026-07-12 | 114,176 bytes | source tree of the slice-7 lantern-oil commit (`games/gloamline-nds/` at the same tree as this file); build is byte-deterministic (two clean builds + an independent fresh-worktree build, identical hash) | `522efc9e6c215eeea6a0a54db1d42266b3a4f4502ff79784329a85132f1f3a03` |
-| [`brineward.nds`](brineward.nds) | **loot + gold** (arc slice 3) · session 25 · 2026-07-12 | 110,080 bytes | source tree of the slice-3 loot/gold commit (`games/brineward-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `40ecf251f5c64d723107b9a1a20e9a0d41e86798bebde3c2bf1c724122607886` |
+| [`brineward.nds`](brineward.nds) | **port + upgrades** (arc slice 4) · session 28 · 2026-07-12 | 112,128 bytes | source tree of the slice-4 port/upgrades commit (`games/brineward-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `9f354a3744377e49a5bd78c532ae411c316e64d9e11e50d95f54e1d484c64322` |
 
 **How they were built:** GBA — `tools/setup-toolchain.sh` (pinned
 devkitARM r68 + Butano) then `tools/build.sh`; NDS —

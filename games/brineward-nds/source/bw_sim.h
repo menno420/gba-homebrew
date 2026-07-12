@@ -110,6 +110,30 @@
 #define BW_PIER_Y (172 * BW_ONE)
 #define BW_DOCK_RANGE (12 * BW_ONE)      // chebyshev hull<->pier
 
+// --- port + upgrades (arc slice 4: roadmap item 2) ---------------------------
+// Banked gold buys PERSISTENT player-ship upgrades at the Graywake port
+// (main.c hangs the menu off the same pier berth the hold banks at).
+// Three tracks, tiers I/II/III (0-based 0..2), concept-doc shaped:
+//   hull    — max HP 100/150/220 (the doc's exact ladder);
+//   cannons — battery reload 90/70/55 frames AND balls per rake 3/3/4;
+//   sails   — trim-target speed +0/+24/+48 units/f and turn +0/+1/+2.
+// Tier 0 IS the slice-2 sloop: every tier-0 table entry equals the
+// legacy constant, so all recorded routes and carried proof pins stay
+// bit-valid (check-brine.py asserts this identity). The ENEMY never
+// upgrades — the tables apply to the player only. Prices triple per
+// step (one banked band-0 wreck = 15g buys the first tier of one
+// track); repair prices the MISSING hull at BW_REPAIR_PER_GOLD points
+// per gold, rounded against the player. All one-constant owner-tunables
+// (tables live in bw_sim.c next to the trim tables).
+#define BW_UP_TIERS 3
+#define BW_REPAIR_PER_GOLD 4             // hull points one gold repairs
+// port menu rows (bw_port_buy's ledger; main.c renders the same order)
+#define BW_PORT_ROW_HULL 0
+#define BW_PORT_ROW_CANNON 1
+#define BW_PORT_ROW_SAIL 2
+#define BW_PORT_ROW_REPAIR 3
+#define BW_PORT_ROWS 4
+
 // --- state -----------------------------------------------------------------------
 typedef struct
 {
@@ -144,6 +168,9 @@ typedef struct
     BwLoot loot[BW_MAX_LOOT];            // flotsam afloat (slice 3)
     int32_t hold;                        // crates aboard, 0..BW_HOLD_CAP
     int32_t hold_gold;                   // unbanked gold those crates are worth
+    int32_t up_hull;                     // player upgrade tiers, 0..2
+    int32_t up_cannon;                   //   (slice 4; enemy never upgrades;
+    int32_t up_sail;                     //    caller re-injects, like hold)
     uint32_t frame;                      // duel frames stepped so far
     int32_t over;                        // BW_DUEL_*
 } BwDuel;
@@ -195,5 +222,24 @@ void bw_salvage_step(BwDuel *d, const BwInputs *in);
 // lies alongside the Graywake pier with cargo aboard, the hold empties.
 // Returns the gold banked this frame (0 if not docked or nothing held).
 int32_t bw_dock_step(BwDuel *d);
+
+// --- port + upgrades (slice 4) -----------------------------------------------
+
+// The player sloop's max hull / battery reload at an upgrade tier, and
+// the gold price of buying INTO a tier (tier 0 is free — the start ship).
+int32_t bw_up_hull_max(int32_t tier);
+int32_t bw_up_reload(int32_t tier);
+int32_t bw_up_price(int32_t tier);
+
+// Gold to repair the player hull to its tier max (0 = already sound).
+// Prices BW_REPAIR_PER_GOLD missing points per gold, rounded UP.
+int32_t bw_repair_cost(const BwDuel *d);
+
+// Pure port ledger: attempt to buy menu row `row` (BW_PORT_ROW_*) with
+// `gold` banked. Returns the gold actually spent — 0 means REFUSED
+// (unknown row, tier already maxed, hull already sound, or gold short of
+// the price; a refusal changes nothing). An upgrade row bumps the tier;
+// the repair row refills the hull to its tier max.
+int32_t bw_port_buy(BwDuel *d, int32_t row, int32_t gold);
 
 #endif // BW_SIM_H

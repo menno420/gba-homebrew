@@ -654,21 +654,27 @@ jobs:
             nds-oil-flask-stand.png
           if-no-files-found: error
           retention-days: 14
-  # Parallel NDS job #2 (Brineward arc — slice 3: loot + gold on the
-  # slice-2 walking skeleton).
+  # Parallel NDS job #2 (Brineward arc — slice 4: port + upgrades on the
+  # slice-3 loot/gold economy).
   # Deliberately a SEPARATE job shaped exactly like nds-rom-build so the
   # Gloamline job, its proofs, and the required GBA "ROM builds" gate are
   # untouched (concept-doc rail). Same pinned toolchain + cache key; the
   # host-mirror proof (tools/check-brine.py <-> bw_sim.c lockstep) runs
-  # first, then six headless py-desmume proofs against the ROM's
-  # bw_telemetry mailbox (EXTENDED 16 -> 20 words in slice 3; words 0-15
-  # are unchanged, so proofs 1-3 carry their slice-2 pins verbatim).
+  # first, then ten headless py-desmume proofs against the ROM's
+  # bw_telemetry mailbox (EXTENDED 20 -> 26 words in slice 4; words 0-19
+  # are unchanged, so proofs 1-4 carry their pins verbatim; proofs 5-6
+  # carry every pin EXCEPT the player-hull words the slice-4 hull-carry
+  # rule deliberately changes — putting out from salvage now keeps the
+  # damage, so t[7] rides at 47 where it used to refit to 100, and the
+  # proof-6 idle sink lands ~500 frames earlier; both re-derived from
+  # the mirror model and matched by the emulator exactly).
   # Every pinned number below was verified in a deterministic
   # in-container run (the ROM build is byte-deterministic, so drift =
   # regression). Frame mapping: telemetry at tool frame T shows T-A
   # completed duel steps for a START press spanning [A, A+5); a key held
   # at tool frame T drives duel frame T-(A+1); seed = A-2. The salvage
-  # phase continues the same step counter, so the law carries unchanged.
+  # phase continues the same step counter, and the PORT state (slice 4)
+  # freezes the water entirely, so the law carries unchanged.
   nds-brineward-build:
     name: NDS Brineward build
     runs-on: ubuntu-latest
@@ -678,10 +684,13 @@ jobs:
       # mirror of games/brineward-nds/source/bw_sim.c proves sine-table
       # identities, spawn determinism/safe-distance (4096 seeds), the
       # duel converges BOTH ways (idle player always sunk; the recorded
-      # policy always wins), 20k-frame adversarial containment, and the
-      # slice-3 loot rails: every win drops exactly 3 crates on the
-      # wreck ring, the salvage policy always scoops + banks, the hold
-      # cap and the pier window hold, salvage containment.
+      # policy always wins), 20k-frame adversarial containment, the
+      # slice-3 loot rails (loot drop / salvage policy / hold cap / pier
+      # window / salvage containment), and the slice-4 port rails:
+      # tier-0 tables ARE the slice-2 sloop (the recorded-route guard),
+      # the port ledger's exact prices/refusals/repair math for every
+      # reachable hull at every tier, upgraded duels still converge both
+      # ways, containment at max tiers with the raised speed cap.
       - name: Brineward host proof (bw_sim mirror)
         run: python3 tools/check-brine.py
       # Committed routes must be fresh recordings of the checked-in
@@ -721,7 +730,7 @@ jobs:
       # Proof 1 — boot: dual-screen title renders, telemetry mailbox is
       # live (magic words 'BRIN' 'WARD', frame counter running, title
       # state holds without input).
-      - name: 'proof 1/6 — boot + telemetry mailbox'
+      - name: 'proof 1/10 — boot + telemetry mailbox'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-boot-300.png \
@@ -737,7 +746,7 @@ jobs:
       # 100-frame RIGHT span turns exactly 400 heading units, UP/DOWN
       # edges walk the trim full -> battle, momentum eases the speed
       # (positions pinned from the mirror sim, matched to the unit).
-      - name: 'proof 2/6 — sail kinematics (heading/trim/momentum exact)'
+      - name: 'proof 2/10 — sail kinematics (heading/trim/momentum exact)'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-sail.png \
@@ -768,7 +777,7 @@ jobs:
       # (hull 100 -> 71 -> 42 -> 0, the enemy unscratched), the sunk
       # card holds, and START restarts instantly (fresh seed 1198, full
       # hull, sinks tally persists).
-      - name: 'proof 3/6 — idle player sunk, card, instant restart'
+      - name: 'proof 3/10 — idle player sunk, card, instant restart'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-loss.png \
@@ -803,7 +812,7 @@ jobs:
       # wreck drops exactly 3 crates (t[19]) that the post-win drift does
       # NOT accidentally scoop (t[16]=0, mirror-predicted). START starts
       # the next duel (fresh seed 378, wins tally persists, no crates).
-      - name: 'proof 4/6 — recorded route WINS the duel, wreck drops 3 crates, next duel starts'
+      - name: 'proof 4/10 — recorded route WINS the duel, wreck drops 3 crates, next duel starts'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-win.png \
@@ -847,7 +856,11 @@ jobs:
       # gold PERSISTING (t[18]=15, fresh seed 658). Every pinned value
       # below was predicted by the check-brine.py mirror model of
       # main.c's state machine and matched by the emulator exactly.
-      - name: 'proof 5/6 — crates scooped (hold cap economy), 15g banked at the pier, gold persists'
+      # SLICE-4 RE-PIN (deliberate, the only change): putting out from
+      # salvage now CARRIES the hull damage (repair at the port is the
+      # fix), so the fresh duel rides at t[7]=47 where slice 3 refit to
+      # 100. Everything else is verbatim slice 3.
+      - name: 'proof 5/10 — crates scooped (hold cap economy), 15g banked at the pier, gold persists'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-salvage.png \
@@ -882,18 +895,24 @@ jobs:
             --assert-watch 640:t:7:eq:47 \
             --assert-watch 700:t:3:eq:1 \
             --assert-watch 700:t:13:eq:658 \
-            --assert-watch 700:t:7:eq:100 \
+            --assert-watch 700:t:7:eq:47 \
             --assert-watch 700:t:16:eq:0 \
             --assert-watch 700:t:18:eq:15
       # Proof 6 — CARRY + SINK-FORFEITS-HOLD (slice 3, the greed bet):
       # same seed-127 win + scoop, but instead of banking, START sails
       # out again WITH the hold aboard (t[16]=3, t[17]=15 persist into
       # the fresh duel, seed 558) — then the idle player is raked down
-      # (hull 24 by 1000) and sunk (t[3]=2 by 1300) with the cargo still
-      # aboard on the card (hold lost 3 crates 15g; banked stays 0);
-      # the NEXT sail starts with an EMPTY hold (t[16]=0, t[17]=0 at
-      # 1760) — the brine kept it. Mirror-predicted, emulator-matched.
-      - name: 'proof 6/6 — hold carried into the next duel, sinking forfeits it'
+      # and sunk with the cargo still aboard on the card (hold lost 3
+      # crates 15g; banked stays 0); the NEXT sail starts with an EMPTY
+      # hold (t[16]=0, t[17]=0 at 1760) — the brine kept it, and the
+      # sunk respawn refits the hull free (t[7]=100: sinking pays with
+      # the hold, not with a repair bill). Mirror-predicted, emulator-
+      # matched. SLICE-4 RE-PINS (deliberate): the carried hull rides
+      # damaged (t[7]=47 at 570, was 100) so the same idle rakes sink
+      # the player before frame 800 (t[7]=22 at 700; sunk card by 800,
+      # was ~1200) — hull words re-derived from the mirror model, every
+      # other pin verbatim slice 3.
+      - name: 'proof 6/10 — hold carried into the next duel, sinking forfeits it'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-forfeit.png \
@@ -912,10 +931,13 @@ jobs:
             --assert-watch 500:t:18:eq:0 \
             --assert-watch 570:t:3:eq:1 \
             --assert-watch 570:t:13:eq:558 \
-            --assert-watch 570:t:7:eq:100 \
+            --assert-watch 570:t:7:eq:47 \
             --assert-watch 570:t:16:eq:3 \
             --assert-watch 570:t:17:eq:15 \
-            --assert-watch 1000:t:7:eq:24 \
+            --assert-watch 700:t:7:eq:22 \
+            --assert-watch 700:t:16:eq:3 \
+            --assert-watch 1000:t:3:eq:2 \
+            --assert-watch 1000:t:7:eq:0 \
             --assert-watch 1000:t:16:eq:3 \
             --assert-watch 1300:t:3:eq:2 \
             --assert-watch 1300:t:7:eq:0 \
@@ -928,6 +950,177 @@ jobs:
             --assert-watch 1760:t:16:eq:0 \
             --assert-watch 1760:t:17:eq:0 \
             --assert-watch 1760:t:7:eq:100
+      # Proof 7 — THE PORT (slice 4): after the proof-5 bank (15g), A
+      # alongside the pier opens the Graywake port (state 4) INSIDE the
+      # 617..683 berth window the mirror measured; the water FREEZES
+      # (position words pinned identical across the whole visit),
+      # UP/DOWN walk the cursor 0->1->2->1->0 (t[23]), A on HULL buys
+      # tier II — gold 15 -> 0 (t[18]), tier word flips (t[20]=1), max
+      # hull 100 -> 150 (t[24]) while the CURRENT hull stays 47 (buying
+      # raises the ceiling, repair fills it) — a second A with an empty
+      # purse is REFUSED (nothing moves), START walks back to the water
+      # (state 3), and the next duel (seed 748) sails with the tier
+      # PERSISTING and the damage still carried. The port keys hold at
+      # every alignment shift in [-6,+6] over the recorded story in the
+      # mirror model. Mirror-predicted, emulator-matched exactly.
+      - name: 'proof 7/10 — the Graywake port: menu, hull II bought, broke refused, tier persists'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-port.png \
+            --frames 790 $(cat games/brineward-nds/proof/salvage-duel-keys.txt) \
+            $(cat games/brineward-nds/proof/salvage-scoop-keys.txt) \
+            $(cat games/brineward-nds/proof/salvage-bank-keys.txt) \
+            --keys 650-655:A --keys 670-672:DOWN --keys 674-676:DOWN \
+            --keys 680-682:UP --keys 684-686:UP --keys 690-695:A \
+            --keys 710-715:A --keys 730-735:START --keys 750-755:START \
+            --shot 660:bw-port-menu.png --shot 705:bw-port-bought.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:26 \
+            --assert-watch 145:t:3:eq:1 \
+            --assert-watch 145:t:13:eq:127 \
+            --assert-watch 640:t:3:eq:3 \
+            --assert-watch 640:t:18:eq:15 \
+            --assert-watch 655:t:3:eq:4 \
+            --assert-watch 655:t:4:eq:32844 \
+            --assert-watch 655:t:5:eq:43699 \
+            --assert-watch 655:t:18:eq:15 \
+            --assert-watch 655:t:20:eq:0 \
+            --assert-watch 655:t:23:eq:0 \
+            --assert-watch 655:t:24:eq:100 \
+            --assert-watch 672:t:23:eq:1 \
+            --assert-watch 676:t:23:eq:2 \
+            --assert-watch 682:t:23:eq:1 \
+            --assert-watch 686:t:23:eq:0 \
+            --assert-watch 700:t:3:eq:4 \
+            --assert-watch 700:t:18:eq:0 \
+            --assert-watch 700:t:20:eq:1 \
+            --assert-watch 700:t:24:eq:150 \
+            --assert-watch 700:t:7:eq:47 \
+            --assert-watch 700:t:4:eq:32844 \
+            --assert-watch 700:t:5:eq:43699 \
+            --assert-watch 725:t:18:eq:0 \
+            --assert-watch 725:t:20:eq:1 \
+            --assert-watch 725:t:21:eq:0 \
+            --assert-watch 725:t:22:eq:0 \
+            --assert-watch 725:t:24:eq:150 \
+            --assert-watch 740:t:3:eq:3 \
+            --assert-watch 770:t:3:eq:1 \
+            --assert-watch 770:t:13:eq:748 \
+            --assert-watch 770:t:7:eq:47 \
+            --assert-watch 770:t:16:eq:0 \
+            --assert-watch 770:t:18:eq:0 \
+            --assert-watch 770:t:20:eq:1 \
+            --assert-watch 770:t:24:eq:150
+      # Proof 8 — REPAIR COSTS (slice 4): same bank (15g), same port,
+      # cursor to REPAIR (row 3); the hull came home at 47/100, so the
+      # bill is ceil(53/4) = 14g — A pays it: hull 47 -> 100 (t[7], a
+      # REAL heal in the emulator, not a tier word) and the purse keeps
+      # exactly 1g (t[18]); START out, START sails the next duel (seed
+      # 728) at full hull with the 1g still banked. Coming home hurt
+      # costs 14g; proof 6 shows sinking instead costs the whole hold.
+      - name: 'proof 8/10 — repair: 53 missing hull = 14g, heals to full, 1g change'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-repair.png \
+            --frames 780 $(cat games/brineward-nds/proof/salvage-duel-keys.txt) \
+            $(cat games/brineward-nds/proof/salvage-scoop-keys.txt) \
+            $(cat games/brineward-nds/proof/salvage-bank-keys.txt) \
+            --keys 650-655:A --keys 670-672:DOWN --keys 674-676:DOWN \
+            --keys 678-680:DOWN --keys 690-695:A --keys 710-715:START \
+            --keys 730-735:START \
+            --shot 685:bw-repair-menu.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:26 \
+            --assert-watch 145:t:3:eq:1 \
+            --assert-watch 145:t:13:eq:127 \
+            --assert-watch 660:t:3:eq:4 \
+            --assert-watch 660:t:7:eq:47 \
+            --assert-watch 660:t:18:eq:15 \
+            --assert-watch 660:t:23:eq:0 \
+            --assert-watch 682:t:23:eq:3 \
+            --assert-watch 700:t:3:eq:4 \
+            --assert-watch 700:t:7:eq:100 \
+            --assert-watch 700:t:18:eq:1 \
+            --assert-watch 700:t:20:eq:0 \
+            --assert-watch 700:t:24:eq:100 \
+            --assert-watch 720:t:3:eq:3 \
+            --assert-watch 720:t:7:eq:100 \
+            --assert-watch 740:t:3:eq:1 \
+            --assert-watch 740:t:13:eq:728 \
+            --assert-watch 740:t:5:eq:34240 \
+            --assert-watch 760:t:3:eq:1 \
+            --assert-watch 760:t:7:eq:100 \
+            --assert-watch 760:t:10:eq:100 \
+            --assert-watch 760:t:18:eq:1
+      # Proof 9 — SAILS CHANGE THE SHIP (slice 4): same bank, buy SAILS
+      # II (t[22]=1, 15g -> 0) and sail the next duel (SAME seed 728 and
+      # SAME idle inputs as proof 8, tier the only difference): the
+      # sloop rides the swell measurably faster — y at tool frame 740 is
+      # 34130 vs proof 8's tier-0 34240 ten frames in, and the gap grows
+      # to the unit exactly as the mirror integrates it (26772 at 780,
+      # 15732 at 840, vs 31040 at 760 tier-0). An upgrade that claims
+      # speed IS speed, proven against its own control run.
+      - name: 'proof 9/10 — sails II: same seed, same inputs, measurably faster ship'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-sails.png \
+            --frames 850 $(cat games/brineward-nds/proof/salvage-duel-keys.txt) \
+            $(cat games/brineward-nds/proof/salvage-scoop-keys.txt) \
+            $(cat games/brineward-nds/proof/salvage-bank-keys.txt) \
+            --keys 650-655:A --keys 670-672:DOWN --keys 674-676:DOWN \
+            --keys 690-695:A --keys 710-715:START --keys 730-735:START \
+            --shot 800:bw-sails-run.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:26 \
+            --assert-watch 145:t:3:eq:1 \
+            --assert-watch 145:t:13:eq:127 \
+            --assert-watch 686:t:3:eq:4 \
+            --assert-watch 686:t:23:eq:2 \
+            --assert-watch 700:t:3:eq:4 \
+            --assert-watch 700:t:22:eq:1 \
+            --assert-watch 700:t:18:eq:0 \
+            --assert-watch 740:t:3:eq:1 \
+            --assert-watch 740:t:13:eq:728 \
+            --assert-watch 740:t:22:eq:1 \
+            --assert-watch 740:t:5:eq:34130 \
+            --assert-watch 780:t:5:eq:26772 \
+            --assert-watch 840:t:3:eq:1 \
+            --assert-watch 840:t:5:eq:15732 \
+            --assert-watch 840:t:7:eq:47 \
+            --assert-watch 840:t:22:eq:1
+      # Proof 10 — CANNONS CHANGE THE GUNS (slice 4): same bank, buy
+      # CANNONS II (t[21]=1) and sail out (seed 728, damage still 47 —
+      # no repair money left); the port battery reads READY (t[25]=0 at
+      # 788), one L press fires, and the reload word comes back 70-DEEP,
+      # not 90 (t[25]=68 two tool frames after the press, 65 at 795) —
+      # the faster crew is IN the shipped dynamics, not just on the
+      # menu. (Tier III's 4-ball rake is host-proved in check-brine.py;
+      # 45g is two more banked wrecks than one proof story holds.)
+      - name: 'proof 10/10 — cannons II: battery reloads in 70, not 90'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-cannons.png \
+            --frames 800 $(cat games/brineward-nds/proof/salvage-duel-keys.txt) \
+            $(cat games/brineward-nds/proof/salvage-scoop-keys.txt) \
+            $(cat games/brineward-nds/proof/salvage-bank-keys.txt) \
+            --keys 650-655:A --keys 670-672:DOWN --keys 690-695:A \
+            --keys 710-715:START --keys 730-735:START --keys 790-792:L \
+            --shot 793:bw-cannons-fire.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:26 \
+            --assert-watch 145:t:3:eq:1 \
+            --assert-watch 145:t:13:eq:127 \
+            --assert-watch 700:t:3:eq:4 \
+            --assert-watch 700:t:21:eq:1 \
+            --assert-watch 700:t:18:eq:0 \
+            --assert-watch 700:t:23:eq:1 \
+            --assert-watch 740:t:3:eq:1 \
+            --assert-watch 740:t:13:eq:728 \
+            --assert-watch 740:t:21:eq:1 \
+            --assert-watch 740:t:7:eq:47 \
+            --assert-watch 788:t:25:eq:0 \
+            --assert-watch 792:t:25:eq:68 \
+            --assert-watch 795:t:25:eq:65
       - name: upload Brineward ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -950,5 +1143,14 @@ jobs:
             bw-forfeit.png
             bw-carry.png
             bw-forfeit-card.png
+            bw-port.png
+            bw-port-menu.png
+            bw-port-bought.png
+            bw-repair.png
+            bw-repair-menu.png
+            bw-sails.png
+            bw-sails-run.png
+            bw-cannons.png
+            bw-cannons-fire.png
           if-no-files-found: error
           retention-days: 14

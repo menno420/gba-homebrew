@@ -174,6 +174,31 @@ static void bw_balls_step(BwDuel *d)
         }
         // range falloff: damage eases from NEAR by FALL over the flight
         int32_t dmg = BW_DMG_NEAR - (ball->age * BW_DMG_FALL) / BW_BALL_LIFE;
+        // Slice 5: a player ball can wound the Maw while it is UP
+        // (surface/lunge; a shadow is under the water — balls pass
+        // over). Checked before the ship pass: the Maw is the live
+        // threat, the wreck is dead planking. In a duel the Maw is
+        // BW_MAW_DOWN, so this branch never runs — duel dynamics are
+        // bit-identical to slice 4 (routes and pins carry).
+        if (ball->owner == 0
+            && (d->maw.state == BW_MAW_SURFACE
+                || d->maw.state == BW_MAW_LUNGE)
+            && bw_chebyshev(ball->x, ball->y, d->maw.x, d->maw.y)
+                   < BW_MAW_HIT_RANGE)
+        {
+            d->maw.hull -= dmg;
+            if (d->maw.hull <= 0)
+            {
+                // Slain: it breaks up richer than any rum-runner.
+                d->maw.hull = 0;
+                d->maw.slain = 1;
+                d->maw.state = BW_MAW_DOWN;
+                bw_loot_spawn_at(d, d->maw.x, d->maw.y,
+                                 BW_MAW_LOOT_DROPS, BW_MAW_LOOT_VALUE);
+            }
+            ball->live = 0;
+            continue;
+        }
         BwShip *target = ball->owner == 0 ? &d->enemy : &d->player;
         if (bw_chebyshev(ball->x, ball->y, target->x, target->y)
                 < BW_HIT_RANGE)
@@ -190,30 +215,38 @@ static void bw_balls_step(BwDuel *d)
 
 // --- loot / gold (slice 3) ----------------------------------------------------
 
-// The wreck breaks up: BW_LOOT_DROPS crates on a BW_LOOT_RING around the
-// sunk ship at fixed third-of-circle angles (pure f(wreck position) —
-// deliberately not frame-hashed, so an input skew moves the crates only
-// as far as it moves the wreck). Crates are clamped into the sea.
-static void bw_loot_spawn(BwDuel *d)
+// A carcass breaks up: `drops` crates worth `value` each on a
+// BW_LOOT_RING around (wx, wy) at fixed third-of-circle angles (pure
+// f(wreck position) — deliberately not frame-hashed, so an input skew
+// moves the crates only as far as it moves the wreck). Crates are
+// clamped into the sea. Slice 5 generalized this from the rum-runner's
+// wreck so the slain Maw can use the same ring with richer crates.
+static void bw_loot_spawn_at(BwDuel *d, int32_t wx, int32_t wy,
+                             int32_t drops, int32_t value)
 {
-    static const int32_t BW_LOOT_ANGLE[BW_LOOT_DROPS] = { 0, 85, 171 };
-    for (int32_t k = 0; k < BW_LOOT_DROPS; k++)
+    static const int32_t BW_LOOT_ANGLE[3] = { 0, 85, 171 };
+    for (int32_t k = 0; k < drops; k++)
     {
         for (int32_t i = 0; i < BW_MAX_LOOT; i++)
         {
             BwLoot *c = &d->loot[i];
             if (c->live)
                 continue;
-            c->x = clamp32(d->enemy.x
-                               + BW_LOOT_RING * bw_sin(BW_LOOT_ANGLE[k]),
+            c->x = clamp32(wx + BW_LOOT_RING * bw_sin(BW_LOOT_ANGLE[k]),
                            BW_SEA_X_MIN, BW_SEA_X_MAX);
-            c->y = clamp32(d->enemy.y
-                               - BW_LOOT_RING * bw_cos(BW_LOOT_ANGLE[k]),
+            c->y = clamp32(wy - BW_LOOT_RING * bw_cos(BW_LOOT_ANGLE[k]),
                            BW_SEA_Y_MIN, BW_SEA_Y_MAX);
+            c->value = value;
             c->live = 1;
             break;
         }
     }
+}
+
+static void bw_loot_spawn(BwDuel *d)
+{
+    bw_loot_spawn_at(d, d->enemy.x, d->enemy.y,
+                     BW_LOOT_DROPS, BW_LOOT_VALUE);
 }
 
 // Scoop pass: sail within BW_SCOOP_RANGE of a crate and it comes aboard,
@@ -232,7 +265,7 @@ static void bw_loot_step(BwDuel *d)
         {
             c->live = 0;
             d->hold++;
-            d->hold_gold += BW_LOOT_VALUE;
+            d->hold_gold += c->value;    // slice 5: crates carry their worth
         }
     }
 }
@@ -248,6 +281,142 @@ int32_t bw_dock_step(BwDuel *d)
     d->hold = 0;
     d->hold_gold = 0;
     return banked;
+}
+
+// --- the Maw (slice 5) ----------------------------------------------------------
+
+static void bw_maw_sound(BwMaw *m, uint32_t frame)
+{
+    // Sound (dive): back beneath the water, stalk again later.
+    m->state = BW_MAW_DOWN;
+    m->timer = 0;
+    m->wake = frame + BW_MAW_RESTIR;
+}
+
+// One Maw frame, salvage water only (bw_duel_step never calls this —
+// the duel is ships' business; the Maw comes for the lingering victor).
+static void bw_maw_step(BwDuel *d)
+{
+    BwMaw *m = &d->maw;
+    if (m->slain)
+        return;
+
+    switch (m->state)
+    {
+    case BW_MAW_DOWN:
+        if (d->frame >= m->wake)
+        {
+            // The stir: the shadow rises at the wreck's blood (pure
+            // f(wreck position), like the crate ring). The pier is
+            // sanctuary — a wreck inside the harbor radius pushes the
+            // rise north of it.
+            m->state = BW_MAW_SHADOW;
+            m->timer = 0;
+            m->stirs++;
+            m->x = d->enemy.x;
+            m->y = d->enemy.y;
+            if (bw_chebyshev(m->x, m->y, BW_PIER_X, BW_PIER_Y)
+                    < BW_MAW_HARBOR)
+                m->y = BW_PIER_Y - BW_MAW_HARBOR;
+        }
+        break;
+
+    case BW_MAW_SHADOW:
+    {
+        // The telegraph: home under the player, one clamped step per
+        // axis (chebyshev homing, the lane's metric) — but never into
+        // the harbor sanctuary, and never out of the sea.
+        m->timer++;
+        // The shadow swims WHEREVER it likes (it is under the water —
+        // the harbor keeps the JAWS out, not the dark): one clamped
+        // step per axis toward the player (chebyshev homing, the
+        // lane's metric), held inside the sea.
+        m->x = clamp32(m->x + clamp32(d->player.x - m->x,
+                                      -BW_MAW_SHADOW_SPEED,
+                                      BW_MAW_SHADOW_SPEED),
+                       BW_SEA_X_MIN, BW_SEA_X_MAX);
+        m->y = clamp32(m->y + clamp32(d->player.y - m->y,
+                                      -BW_MAW_SHADOW_SPEED,
+                                      BW_MAW_SHADOW_SPEED),
+                       BW_SEA_Y_MIN, BW_SEA_Y_MAX);
+        if (m->timer >= BW_MAW_SHADOW_FRAMES)
+        {
+            // The pier is SANCTUARY: it never surfaces inside the
+            // harbor ring and never rises on a berthed player — it
+            // gives up, sounds, and stalks again later.
+            if (bw_chebyshev(d->player.x, d->player.y,
+                             BW_PIER_X, BW_PIER_Y) < BW_MAW_HARBOR
+                || bw_chebyshev(m->x, m->y,
+                                BW_PIER_X, BW_PIER_Y) < BW_MAW_HARBOR)
+                bw_maw_sound(m, d->frame);
+            else
+            {
+                m->state = BW_MAW_SURFACE;
+                m->timer = 0;
+            }
+        }
+        break;
+    }
+
+    case BW_MAW_SURFACE:
+        // Up and vulnerable: the windup IS the counterattack window.
+        m->timer++;
+        if (m->timer >= BW_MAW_SURFACE_FRAMES)
+        {
+            if (bw_chebyshev(d->player.x, d->player.y,
+                             BW_PIER_X, BW_PIER_Y) < BW_MAW_HARBOR)
+            {
+                // Never begin a lunge at a berthed player (sanctuary).
+                bw_maw_sound(m, d->frame);
+                break;
+            }
+            // Latch the lunge at the prey's bearing, chebyshev-
+            // normalized so the fast axis rides at full lunge speed.
+            // Positive/positive division only (signed-division rule):
+            // magnitudes are scaled, signs re-applied.
+            int32_t dx = d->player.x - m->x;
+            int32_t dy = d->player.y - m->y;
+            int32_t adx = dx < 0 ? -dx : dx;
+            int32_t ady = dy < 0 ? -dy : dy;
+            int32_t big = adx > ady ? adx : ady;
+            if (big == 0)
+            {
+                m->vx = 0;
+                m->vy = BW_MAW_LUNGE_SPEED;  // dead under the keel: due south
+            }
+            else
+            {
+                m->vx = adx * BW_MAW_LUNGE_SPEED / big;
+                m->vy = ady * BW_MAW_LUNGE_SPEED / big;
+                if (dx < 0)
+                    m->vx = -m->vx;
+                if (dy < 0)
+                    m->vy = -m->vy;
+            }
+            m->state = BW_MAW_LUNGE;
+            m->timer = 0;
+            m->bit = 0;
+        }
+        break;
+
+    case BW_MAW_LUNGE:
+        m->timer++;
+        m->x = clamp32(m->x + m->vx, BW_SEA_X_MIN, BW_SEA_X_MAX);
+        m->y = clamp32(m->y + m->vy, BW_SEA_Y_MIN, BW_SEA_Y_MAX);
+        if (!m->bit
+            && bw_chebyshev(m->x, m->y, d->player.x, d->player.y)
+                   < BW_MAW_BITE_RANGE)
+        {
+            d->player.hull -= BW_MAW_BITE;
+            if (d->player.hull < 0)
+                d->player.hull = 0;
+            m->bit = 1;
+            bw_maw_sound(m, d->frame);   // it got its bite: down it goes
+        }
+        else if (m->timer >= BW_MAW_LUNGE_FRAMES)
+            bw_maw_sound(m, d->frame);   // missed: sound and stalk again
+        break;
+    }
 }
 
 // --- port + upgrades (slice 4) --------------------------------------------------
@@ -363,6 +532,17 @@ void bw_duel_init(BwDuel *d, uint32_t seed)
         d->balls[i].live = 0;
     for (int32_t i = 0; i < BW_MAX_LOOT; i++)
         d->loot[i].live = 0;
+    d->maw.x = 0;                        // slice 5: fresh water, the Maw is
+    d->maw.y = 0;                        //   down and biding — the patience
+    d->maw.vx = 0;                       //   clock arms on the SINK frame
+    d->maw.vy = 0;                       //   (the wreck's blood, not the
+    d->maw.state = BW_MAW_DOWN;          //   duel, draws it)
+    d->maw.hull = BW_MAW_HULL;
+    d->maw.timer = 0;
+    d->maw.wake = 0;
+    d->maw.stirs = 0;
+    d->maw.slain = 0;
+    d->maw.bit = 0;
     d->hold = 0;                         // caller re-injects a carried hold
     d->hold_gold = 0;                    // (sinking forfeits: no re-inject)
     d->up_hull = 0;                      // caller re-injects the bought
@@ -413,7 +593,8 @@ void bw_duel_step(BwDuel *d, const BwInputs *in)
     {
         d->over = BW_DUEL_ENEMY_SUNK;
         bw_loot_spawn(d);                // the wreck breaks up into flotsam
-    }
+        d->maw.wake = d->frame + BW_MAW_PATIENCE;  // the blood is in the
+    }                                    // water: the Maw's clock starts
 
     d->frame++;
 }
@@ -424,6 +605,26 @@ void bw_salvage_step(BwDuel *d, const BwInputs *in)
         return;
 
     bw_ship_step(&d->player, in, d->up_sail);
+    bw_maw_step(d);                      // slice 5: the water is not empty
+
+    // The batteries WAKE while the Maw is up (any awake state — firing
+    // at a mere shadow wastes the rake over its back, which is the
+    // player's lesson to learn); they stay cold on quiet water, so
+    // every slice-3/4 story (Maw dormant throughout) is untouched.
+    if (d->maw.state != BW_MAW_DOWN)
+    {
+        if (in->fire_l && d->player.reload_l == 0)
+        {
+            bw_fire(d, &d->player, 0, -1);
+            d->player.reload_l = BW_UP_RELOAD_OF[d->up_cannon];
+        }
+        if (in->fire_r && d->player.reload_r == 0)
+        {
+            bw_fire(d, &d->player, 0, 1);
+            d->player.reload_r = BW_UP_RELOAD_OF[d->up_cannon];
+        }
+    }
+
     bw_balls_step(d);                    // a late rake can still strike
     bw_loot_step(d);
 

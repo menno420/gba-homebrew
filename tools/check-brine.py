@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Brineward host proof (stdlib-only, <5s) — arc slice 2 walking skeleton.
+"""Brineward host proof (stdlib-only, <5s) — pure-sim mirror + invariants.
 
 The check-gloam.py sibling for Brineward: a line-for-line Python mirror of
 the pure simulation layer in games/brineward-nds/source/bw_sim.c
@@ -33,8 +33,10 @@ instead of the handful a replay touches:
      BW_HOLD_CAP from any start fill, overflow crates stay afloat, gold
      is exactly BW_LOOT_VALUE per crate, and banking happens strictly
      inside the pier window, emptying the hold exactly once;
-  9. salvage containment (slice 3) — adversarial salvage frames keep the
-     ship and every crate inside the sea and the hold bounded;
+  9. salvage containment (slice 3; slice 5 re-arms it with the Maw
+     stalking and the fire keys live) — adversarial salvage frames keep
+     the ship, every crate, AND the Maw inside the sea, the hold and
+     both hulls bounded, and a slain Maw down for good;
  10. upgrade tables (slice 4) — tier 0 of every track IS the slice-2
      sloop (legacy-constant identity, the recorded-route guard), tiers
      strictly improve, prices at-least-triple per step, hull ladder is
@@ -50,7 +52,22 @@ instead of the handful a replay touches:
      three maxed, the policy player still wins and the idle player is
      still sunk (upgrades delay the loss, never annul it);
  13. upgraded containment (slice 4) — adversarial input at max tiers
-     keeps ship/balls in the sea with the raised speed bound.
+     keeps ship/balls in the sea with the raised speed bound;
+ 14. the Maw stalks (slice 5) — the whole telegraph contract, exact:
+     down exactly BW_MAW_PATIENCE frames from the sink, rises at the
+     wreck, every shadow exactly BW_MAW_SHADOW_FRAMES, every surfacing
+     outside the pier sanctuary and exactly BW_MAW_SURFACE_FRAMES,
+     then ONE bite of exactly BW_MAW_BITE hull per lunge and down
+     again re-armed — plus the tunable-relation rails (shadow slower
+     than full sail, lunge faster than any sail, monster crates
+     richer, drops fit pool and hold);
+ 15. sanctuary (slice 5) — a berthed player is never surfaced on,
+     lunged at, or bitten; the Maw keeps re-stirring; the pier still
+     banks mid-prowl (the port is always reachable);
+ 16. the Maw slain (slice 5) — the hunter policy (the exact brain
+     games/brineward-nds/tools/record-maw.py records routes from)
+     survives, slays it, banks wreck + monster crates together, and a
+     slain Maw NEVER stirs again.
 
 MIRROR RULE (keep in lockstep): every function and constant below mirrors
 games/brineward-nds/source/bw_sim.c. Any change to the C MUST land here
@@ -136,6 +153,24 @@ BW_UP_SPEED_OF = (0, 24, 48)
 BW_UP_TURN_OF = (0, 1, 2)
 BW_UP_COST = (0, 15, 45)
 
+# the Maw (slice 5) — shadow telegraph -> surface -> lunge; salvage
+# water only, pier sanctuary, richer crates when slain
+BW_MAW_PATIENCE = 600
+BW_MAW_RESTIR = 240
+BW_MAW_SHADOW_FRAMES = 150
+BW_MAW_SURFACE_FRAMES = 60
+BW_MAW_LUNGE_FRAMES = 55
+BW_MAW_SHADOW_SPEED = 140
+BW_MAW_LUNGE_SPEED = 520
+BW_MAW_HULL = 120
+BW_MAW_HIT_RANGE = 12 * BW_ONE
+BW_MAW_BITE_RANGE = 12 * BW_ONE
+BW_MAW_BITE = 35
+BW_MAW_HARBOR = 40 * BW_ONE
+BW_MAW_LOOT_DROPS = 3
+BW_MAW_LOOT_VALUE = 15
+BW_MAW_DOWN, BW_MAW_SHADOW, BW_MAW_SURFACE, BW_MAW_LUNGE = 0, 1, 2, 3
+
 U32 = 0xFFFFFFFF
 
 
@@ -208,23 +243,32 @@ class Ball:
 class Loot:
     """Mirror of BwLoot."""
 
-    __slots__ = ('x', 'y', 'live')
+    __slots__ = ('x', 'y', 'value', 'live')
 
     def __init__(self):
         self.live = 0
 
 
+class Maw:
+    """Mirror of BwMaw."""
+
+    __slots__ = ('x', 'y', 'vx', 'vy', 'state', 'hull', 'timer', 'wake',
+                 'stirs', 'slain', 'bit')
+
+
 class Duel:
     """Mirror of BwDuel."""
 
-    __slots__ = ('player', 'enemy', 'balls', 'loot', 'hold', 'hold_gold',
-                 'up_hull', 'up_cannon', 'up_sail', 'frame', 'over')
+    __slots__ = ('player', 'enemy', 'balls', 'loot', 'maw', 'hold',
+                 'hold_gold', 'up_hull', 'up_cannon', 'up_sail', 'frame',
+                 'over')
 
     def __init__(self):
         self.player = Ship()
         self.enemy = Ship()
         self.balls = [Ball() for _ in range(BW_MAX_BALLS)]
         self.loot = [Loot() for _ in range(BW_MAX_LOOT)]
+        self.maw = Maw()
 
 
 class Inputs:
@@ -300,6 +344,22 @@ def bw_balls_step(d):
             ball.live = 0
             continue
         dmg = BW_DMG_NEAR - (ball.age * BW_DMG_FALL) // BW_BALL_LIFE
+        # slice 5: a player ball can wound the Maw while it is UP
+        # (surface/lunge) — checked before the ship pass; in a duel the
+        # Maw is BW_MAW_DOWN so this branch never runs (bit-identical)
+        if (ball.owner == 0
+                and d.maw.state in (BW_MAW_SURFACE, BW_MAW_LUNGE)
+                and bw_chebyshev(ball.x, ball.y,
+                                 d.maw.x, d.maw.y) < BW_MAW_HIT_RANGE):
+            d.maw.hull -= dmg
+            if d.maw.hull <= 0:
+                d.maw.hull = 0
+                d.maw.slain = 1
+                d.maw.state = BW_MAW_DOWN
+                bw_loot_spawn_at(d, d.maw.x, d.maw.y,
+                                 BW_MAW_LOOT_DROPS, BW_MAW_LOOT_VALUE)
+            ball.live = 0
+            continue
         target = d.enemy if ball.owner == 0 else d.player
         if bw_chebyshev(ball.x, ball.y, target.x, target.y) < BW_HIT_RANGE:
             # dmg > 0 always, so floor at 0 — no upper clamp: an upgraded
@@ -313,18 +373,24 @@ def bw_balls_step(d):
 BW_LOOT_ANGLE = (0, 85, 171)             # fixed thirds of the crate ring
 
 
-def bw_loot_spawn(d):
-    """Mirror of bw_loot_spawn()."""
-    for k in range(BW_LOOT_DROPS):
+def bw_loot_spawn_at(d, wx, wy, drops, value):
+    """Mirror of bw_loot_spawn_at()."""
+    for k in range(drops):
         for c in d.loot:
             if c.live:
                 continue
-            c.x = _clamp(d.enemy.x + BW_LOOT_RING * bw_sin(BW_LOOT_ANGLE[k]),
+            c.x = _clamp(wx + BW_LOOT_RING * bw_sin(BW_LOOT_ANGLE[k]),
                          BW_SEA_X_MIN, BW_SEA_X_MAX)
-            c.y = _clamp(d.enemy.y - BW_LOOT_RING * bw_cos(BW_LOOT_ANGLE[k]),
+            c.y = _clamp(wy - BW_LOOT_RING * bw_cos(BW_LOOT_ANGLE[k]),
                          BW_SEA_Y_MIN, BW_SEA_Y_MAX)
+            c.value = value
             c.live = 1
             break
+
+
+def bw_loot_spawn(d):
+    """Mirror of bw_loot_spawn()."""
+    bw_loot_spawn_at(d, d.enemy.x, d.enemy.y, BW_LOOT_DROPS, BW_LOOT_VALUE)
 
 
 def bw_loot_step(d):
@@ -337,7 +403,7 @@ def bw_loot_step(d):
         if bw_chebyshev(c.x, c.y, d.player.x, d.player.y) < BW_SCOOP_RANGE:
             c.live = 0
             d.hold += 1
-            d.hold_gold += BW_LOOT_VALUE
+            d.hold_gold += c.value       # slice 5: crates carry their worth
 
 
 def bw_dock_step(d):
@@ -351,6 +417,95 @@ def bw_dock_step(d):
     d.hold = 0
     d.hold_gold = 0
     return banked
+
+
+def bw_maw_sound(m, frame):
+    """Mirror of bw_maw_sound()."""
+    m.state = BW_MAW_DOWN
+    m.timer = 0
+    m.wake = frame + BW_MAW_RESTIR
+
+
+def bw_maw_step(d):
+    """Mirror of bw_maw_step() — salvage water only."""
+    m = d.maw
+    if m.slain:
+        return
+
+    if m.state == BW_MAW_DOWN:
+        if d.frame >= m.wake:
+            m.state = BW_MAW_SHADOW
+            m.timer = 0
+            m.stirs += 1
+            m.x = d.enemy.x
+            m.y = d.enemy.y
+            if bw_chebyshev(m.x, m.y, BW_PIER_X, BW_PIER_Y) < BW_MAW_HARBOR:
+                m.y = BW_PIER_Y - BW_MAW_HARBOR
+
+    elif m.state == BW_MAW_SHADOW:
+        m.timer += 1
+        # the shadow swims wherever it likes (the harbor keeps the
+        # JAWS out, not the dark)
+        m.x = _clamp(m.x + _clamp(d.player.x - m.x,
+                                  -BW_MAW_SHADOW_SPEED,
+                                  BW_MAW_SHADOW_SPEED),
+                     BW_SEA_X_MIN, BW_SEA_X_MAX)
+        m.y = _clamp(m.y + _clamp(d.player.y - m.y,
+                                  -BW_MAW_SHADOW_SPEED,
+                                  BW_MAW_SHADOW_SPEED),
+                     BW_SEA_Y_MIN, BW_SEA_Y_MAX)
+        if m.timer >= BW_MAW_SHADOW_FRAMES:
+            # sanctuary: never surfaces inside the harbor ring, never
+            # rises on a berthed player — gives up and sounds instead
+            if (bw_chebyshev(d.player.x, d.player.y,
+                             BW_PIER_X, BW_PIER_Y) < BW_MAW_HARBOR
+                    or bw_chebyshev(m.x, m.y,
+                                    BW_PIER_X, BW_PIER_Y) < BW_MAW_HARBOR):
+                bw_maw_sound(m, d.frame)
+            else:
+                m.state = BW_MAW_SURFACE
+                m.timer = 0
+
+    elif m.state == BW_MAW_SURFACE:
+        m.timer += 1
+        if m.timer >= BW_MAW_SURFACE_FRAMES:
+            if bw_chebyshev(d.player.x, d.player.y,
+                            BW_PIER_X, BW_PIER_Y) < BW_MAW_HARBOR:
+                bw_maw_sound(m, d.frame)     # never lunge at the berth
+            else:
+                dx = d.player.x - m.x
+                dy = d.player.y - m.y
+                adx = -dx if dx < 0 else dx
+                ady = -dy if dy < 0 else dy
+                big = adx if adx > ady else ady
+                if big == 0:
+                    m.vx = 0
+                    m.vy = BW_MAW_LUNGE_SPEED
+                else:
+                    m.vx = adx * BW_MAW_LUNGE_SPEED // big
+                    m.vy = ady * BW_MAW_LUNGE_SPEED // big
+                    if dx < 0:
+                        m.vx = -m.vx
+                    if dy < 0:
+                        m.vy = -m.vy
+                m.state = BW_MAW_LUNGE
+                m.timer = 0
+                m.bit = 0
+
+    elif m.state == BW_MAW_LUNGE:
+        m.timer += 1
+        m.x = _clamp(m.x + m.vx, BW_SEA_X_MIN, BW_SEA_X_MAX)
+        m.y = _clamp(m.y + m.vy, BW_SEA_Y_MIN, BW_SEA_Y_MAX)
+        if (not m.bit
+                and bw_chebyshev(m.x, m.y, d.player.x, d.player.y)
+                < BW_MAW_BITE_RANGE):
+            d.player.hull -= BW_MAW_BITE
+            if d.player.hull < 0:
+                d.player.hull = 0
+            m.bit = 1
+            bw_maw_sound(m, d.frame)         # it got its bite
+        elif m.timer >= BW_MAW_LUNGE_FRAMES:
+            bw_maw_sound(m, d.frame)         # missed: stalk again
 
 
 def bw_up_hull_max(tier):
@@ -458,6 +613,15 @@ def bw_duel_init(d, seed):
         ball.live = 0
     for c in d.loot:
         c.live = 0
+    m = d.maw                            # slice 5: fresh water, the Maw is
+    m.x = m.y = m.vx = m.vy = 0          #   down and biding — the patience
+    m.state = BW_MAW_DOWN                #   clock arms on the SINK frame
+    m.hull = BW_MAW_HULL
+    m.timer = 0
+    m.wake = 0
+    m.stirs = 0
+    m.slain = 0
+    m.bit = 0
     d.hold = 0                           # caller re-injects a carried hold
     d.hold_gold = 0                      # (sinking forfeits: no re-inject)
     d.up_hull = 0                        # caller re-injects the bought
@@ -498,6 +662,8 @@ def bw_duel_step(d, inputs):
     elif d.enemy.hull <= 0:
         d.over = BW_DUEL_ENEMY_SUNK
         bw_loot_spawn(d)                 # the wreck breaks up into flotsam
+        d.maw.wake = d.frame + BW_MAW_PATIENCE   # the blood is in the
+        # water: the Maw's clock starts
 
     d.frame += 1
 
@@ -508,6 +674,17 @@ def bw_salvage_step(d, inputs):
         return
 
     bw_ship_step(d.player, inputs, d.up_sail)
+    bw_maw_step(d)                       # slice 5: the water is not empty
+
+    # the batteries WAKE while the Maw is up; cold on quiet water
+    if d.maw.state != BW_MAW_DOWN:
+        if inputs.fire_l and d.player.reload_l == 0:
+            bw_fire(d, d.player, 0, -1)
+            d.player.reload_l = BW_UP_RELOAD_OF[d.up_cannon]
+        if inputs.fire_r and d.player.reload_r == 0:
+            bw_fire(d, d.player, 0, 1)
+            d.player.reload_r = BW_UP_RELOAD_OF[d.up_cannon]
+
     bw_balls_step(d)                     # a late rake can still strike
     bw_loot_step(d)
 
@@ -603,6 +780,192 @@ def bw_salvage_policy(d):
     if best is not None:
         return bw_goto(p, best.x, best.y)
     return bw_goto(p, BW_PIER_X, BW_PIER_Y)
+
+
+# --- the Maw policies (the maw-route recorder's brains, slice 5) ----------------
+# NOT mirrors of any C — host-side player brains that record-maw.py
+# records and the Maw host proofs converge with. The BAIT sails at the
+# dark water like a fool and takes the bite (the omen/bite proof). The
+# HUNTER flees the shadow under full sail (it is slower than full sail
+# BY DESIGN), then holds the surfaced Maw on a beam and rakes it — the
+# same cross/dot gunnery bw_policy uses — until it is slain, then
+# scoops and banks like any salvage.
+
+BW_MUSTER_X = 128 * BW_ONE               # open water, well off the pier
+BW_MUSTER_Y = 85 * BW_ONE
+
+
+def bw_maw_bait_policy(d):
+    """The bait: sail straight at whatever is out there (and learn)."""
+    m = d.maw
+    if m.state != BW_MAW_DOWN:
+        return bw_goto(d.player, m.x, m.y)
+    return bw_goto(d.player, BW_MUSTER_X, BW_MUSTER_Y)
+
+
+def bw_run_to(p, tx, ty):
+    """Sail-to-point with WAY ON: come about hard at battle sail
+    (tightest helm), then sheet home to full once the bow is near
+    enough the bearing — full sail is the only trim the shadow cannot
+    hold onto, so the hunter never loiters slow."""
+    out = Inputs()
+    dx = tx - p.x
+    dy = ty - p.y
+    brad = p.heading >> 2
+    hx = bw_sin(brad)
+    hy = -bw_cos(brad)
+    dot = hx * dx + hy * dy
+    cross = hx * dy - hy * dx
+    adot = -dot if dot < 0 else dot
+    across = -cross if cross < 0 else cross
+    if dot > 0 and across <= (adot >> 1):        # within ~27 deg: run
+        out.trim_delta = 1 if p.trim < BW_TRIM_FULL else 0
+        if not (across <= (adot >> 3)):
+            out.turn = 1 if cross > 0 else (-1 if cross < 0 else 1)
+    else:                                        # come about first
+        out.trim_delta = -1 if p.trim > BW_TRIM_BATTLE else 0
+        out.turn = 1 if cross > 0 else (-1 if cross < 0 else 1)
+    return out
+
+
+def bw_flee_shadow(p, mx, my):
+    """Cardinal kite: run the axis with the most sea room that neither
+    closes on the threat nor bolts into the sanctuary. Cardinal
+    headings are the sloop's fastest chebyshev escape (the shadow homes
+    in chebyshev too), sea room DOMINATES fleeing pure-away (a cornered
+    sloop breaks out along the wall PAST the slow shadow instead of
+    pinning itself), and the kite never runs INTO the threat axis —
+    sailing at the shadow is how you get lunged head-on."""
+    room = {'E': BW_SEA_X_MAX - p.x, 'W': p.x - BW_SEA_X_MIN,
+            'S': BW_SEA_Y_MAX - p.y, 'N': p.y - BW_SEA_Y_MIN}
+    away = {'E': mx <= p.x, 'W': mx >= p.x,
+            'S': my <= p.y, 'N': my >= p.y}
+    # a direction pointing straight down the threat's throat is out
+    # unless it is the ONLY sea room left
+    adx = mx - p.x if mx > p.x else p.x - mx
+    ady = my - p.y if my > p.y else p.y - my
+    toward = {'E': mx > p.x and adx > 2 * ady,
+              'W': mx < p.x and adx > 2 * ady,
+              'S': my > p.y and ady > 2 * adx,
+              'N': my < p.y and ady > 2 * adx}
+    px_off_pier = p.x - BW_PIER_X
+    if -55 * BW_ONE < px_off_pier < 55 * BW_ONE:
+        room['S'] = 0                    # no bolting into the sanctuary
+    best = max(('E', 'W', 'S', 'N'),
+               key=lambda k: (room[k] > 35 * BW_ONE and not toward[k],
+                              room[k] > 35 * BW_ONE, away[k], room[k]))
+    tx, ty = {'E': (BW_SEA_X_MAX, p.y), 'W': (BW_SEA_X_MIN, p.y),
+              'S': (p.x, BW_SEA_Y_MAX), 'N': (p.x, BW_SEA_Y_MIN)}[best]
+    return bw_run_to(p, tx, ty)
+
+
+def bw_fight_maw(p, m, fire=1, hold=0):
+    """HALF sail, hold the risen Maw on a beam, rake when aligned.
+
+    Beam-on IS the dodge: a lunge is latched at the player's position,
+    so a hull moving perpendicular to the latch bearing at half-sail
+    speed clears the bite window of any lunge latched beyond ~40 px —
+    and the same heading is the one the batteries bear on. Gunnery and
+    evasion are one posture (fire=0 keeps it without wasting powder)."""
+    out = Inputs()
+    out.trim_delta = (1 if p.trim < BW_TRIM_HALF
+                      else (-1 if p.trim > BW_TRIM_HALF else 0))
+    dx = m.x - p.x
+    dy = m.y - p.y
+    brad = p.heading >> 2
+    hx = bw_sin(brad)
+    hy = -bw_cos(brad)
+    dot = hx * dx + hy * dy
+    cross = hx * dy - hy * dx
+    adot = -dot if dot < 0 else dot
+    across = -cross if cross < 0 else cross
+    dist = bw_chebyshev(p.x, p.y, m.x, m.y)
+    if BW_AI_TURN_ARC * adot >= across:
+        ds = 1 if dot > 0 else (-1 if dot < 0 else 1)
+        cs = 1 if cross > 0 else (-1 if cross < 0 else 1)
+        out.turn = -ds * cs
+    if hold:
+        # a latched lunge is a STRAIGHT line. Crossing lunge: hold
+        # course and the latch-time beam velocity carries the hull
+        # clear (turning to track it would curve back into its path).
+        # In-line lunge (head-on or astern — the jaws run down the
+        # keel axis): hard rudder instead, there is nothing to hold.
+        mvx, mvy = m.vx, m.vy
+        vdot = hx * mvx + hy * mvy
+        vcross = hx * mvy - hy * mvx
+        avdot = -vdot if vdot < 0 else vdot
+        avcross = -vcross if vcross < 0 else vcross
+        if avdot > avcross:
+            out.turn = 1 if vcross > 0 else -1   # break off the keel line
+        else:
+            out.turn = 0
+    # NEVER let the posture pin the hull on a wall: a clamped keel has
+    # zero dodge velocity. If the bow is close to running out of sea,
+    # steer for open water instead — the guns still fire on alignment.
+    vx = hx * (p.speed if p.speed > 0 else 1)
+    vy = hy * (p.speed if p.speed > 0 else 1)
+    tx = ty = 1 << 30
+    if vx > 0:
+        tx = ((BW_SEA_X_MAX - p.x) << 8) // vx
+    elif vx < 0:
+        tx = ((p.x - BW_SEA_X_MIN) << 8) // -vx
+    if vy > 0:
+        ty = ((BW_SEA_Y_MAX - p.y) << 8) // vy
+    elif vy < 0:
+        ty = ((p.y - BW_SEA_Y_MIN) << 8) // -vy
+    if min(tx, ty) < 70:
+        cx = ((BW_SEA_X_MIN + BW_SEA_X_MAX) >> 1) - p.x
+        cy = ((BW_SEA_Y_MIN + BW_SEA_Y_MAX) >> 1) - p.y
+        ccross = hx * cy - hy * cx
+        out.turn = 1 if ccross > 0 else -1
+    if fire and dist < POLICY_RANGE and POLICY_FIRE_ARC * adot < across:
+        if cross > 0:
+            out.fire_r = 1
+        else:
+            out.fire_l = 1
+    return out
+
+
+# inset corner stations for the quiet-water patrol (well off every
+# wall, outside the pier sanctuary even with the 28 px orbit)
+BW_HUNT_STATIONS = ((61 * BW_ONE, 77 * BW_ONE),
+                    (194 * BW_ONE, 77 * BW_ONE),
+                    (61 * BW_ONE, 128 * BW_ONE),
+                    (194 * BW_ONE, 128 * BW_ONE))
+
+BW_HUNT_COMFORT = 75 * BW_ONE            # shadow closer than this: run;
+                                         # farther: hold the gun posture
+BW_HUNT_STANDOFF = 55 * BW_ONE           # closer than this at the windup:
+                                         # sheet home and open the range
+
+
+def bw_maw_hunt_policy(d):
+    """The hunter: run from a close shadow, hold posture on a far one,
+    rake the windup, dodge the charge, then salvage the carcass.
+
+    The bite is dodged by GEOMETRY: fleeing keeps the sloop moving off
+    the lunge bearing, so a lunge latched from far enough away slides
+    past the stern — the standoff/comfort rules keep "far enough" true.
+    """
+    m = d.maw
+    if m.slain:
+        return bw_salvage_policy(d)      # the water is safe: scoop and bank
+    p = d.player
+    if m.state == BW_MAW_SHADOW:
+        return bw_flee_shadow(p, m.x, m.y)       # keep sea room
+    if m.state == BW_MAW_SURFACE:
+        return bw_fight_maw(p, m)        # beam-on: gunnery IS the dodge
+    if m.state == BW_MAW_LUNGE:
+        return bw_fight_maw(p, m, hold=1)        # dodge straight, guns talking
+    # quiet water: hold the inset corner station FARTHEST from the
+    # wreck (where the blood is), orbiting it with WAY ON — the
+    # rotating waypoint is a pure function of d.frame (recordable),
+    # so the stir never catches the sloop slow, close, or pinned
+    sx, sy = max(BW_HUNT_STATIONS,
+                 key=lambda st: bw_chebyshev(d.enemy.x, d.enemy.y,
+                                             st[0], st[1]))
+    a = (d.frame >> 1) & 255
+    return bw_run_to(p, sx + 28 * bw_cos(a), sy + 28 * bw_sin(a))
 
 
 # --- proofs -------------------------------------------------------------------
@@ -756,6 +1119,7 @@ def check_hold_cap():
         d.hold_gold = h * BW_LOOT_VALUE
         for c in d.loot:                 # 8 crates right on the hull
             c.x, c.y = d.player.x, d.player.y
+            c.value = BW_LOOT_VALUE
             c.live = 1
         bw_loot_step(d)
         scooped = BW_HOLD_CAP - h
@@ -786,31 +1150,59 @@ def check_dock():
 
 
 def check_salvage_containment():
+    # Slice 5: the salvage water now holds the Maw — the same adversarial
+    # sweep drives fire keys too (the batteries wake when it rises), the
+    # player hull is pinned back up each frame so bites can't end the run
+    # (check_containment's "never let it end" trick), and the Maw's own
+    # words are contained: position in the sea whenever it is up, state
+    # in range, hull in [0, BW_MAW_HULL], and a slain Maw STAYS down.
     d = Duel()
     bw_duel_init(d, 0x5A1)
     d.enemy.hull = 0
     d.over = BW_DUEL_ENEMY_SUNK
     bw_loot_spawn(d)
-    frames = 5000
+    d.maw.wake = d.frame + BW_MAW_PATIENCE
+    frames = 8000
+    stirs_after_slain = None
     for f in range(frames):
         h = bw_hash(0x10A7, f)
         inp = Inputs(turn=(h & 3) - 1 if (h & 3) < 3 else 0,
                      trim_delta=((h >> 2) & 3) - 1 if ((h >> 2) & 3) < 3
-                     else 0)
+                     else 0,
+                     fire_l=(h >> 4) & 1, fire_r=(h >> 5) & 1)
+        d.player.hull = BW_HULL_MAX      # adversarial: never let it end
+        d.over = BW_DUEL_ENEMY_SUNK
         bw_salvage_step(d, inp)
         bw_dock_step(d)
         s = d.player
         assert BW_SEA_X_MIN <= s.x <= BW_SEA_X_MAX, f
         assert BW_SEA_Y_MIN <= s.y <= BW_SEA_Y_MAX, f
         assert 0 <= d.hold <= BW_HOLD_CAP, f
-        assert d.hold_gold == d.hold * BW_LOOT_VALUE \
-            or d.hold_gold == 0, f
+        if d.hold == 0:
+            assert d.hold_gold == 0, f
+        else:
+            assert d.hold * BW_LOOT_VALUE <= d.hold_gold \
+                <= d.hold * BW_MAW_LOOT_VALUE, f
         for c in d.loot:
             if c.live:
                 assert BW_SEA_X_MIN <= c.x <= BW_SEA_X_MAX, f
                 assert BW_SEA_Y_MIN <= c.y <= BW_SEA_Y_MAX, f
-    print(f'salvage containment: {frames} adversarial salvage frames — '
-          'ship and crates stay in the sea, hold stays bounded')
+        m = d.maw
+        assert m.state in (BW_MAW_DOWN, BW_MAW_SHADOW, BW_MAW_SURFACE,
+                           BW_MAW_LUNGE), f
+        assert 0 <= m.hull <= BW_MAW_HULL, f
+        if m.state != BW_MAW_DOWN:
+            assert BW_SEA_X_MIN <= m.x <= BW_SEA_X_MAX, f
+            assert BW_SEA_Y_MIN <= m.y <= BW_SEA_Y_MAX, f
+        if m.slain:
+            assert m.state == BW_MAW_DOWN, f
+            if stirs_after_slain is None:
+                stirs_after_slain = m.stirs
+            assert m.stirs == stirs_after_slain, f
+    print(f'salvage containment: {frames} adversarial salvage frames '
+          '(fire keys live, the Maw stalking) — ship, crates, and Maw '
+          'stay in the sea, hold and hulls stay bounded, a slain Maw '
+          'stays down')
 
 
 def check_upgrade_tables():
@@ -851,11 +1243,14 @@ def _fresh_port_duel(hull=None, tiers=(0, 0, 0)):
 
 def _duel_fingerprint(d):
     """Everything bw_port_buy must NOT touch."""
+    m = d.maw
     return (d.player.x, d.player.y, d.player.heading, d.player.trim,
             d.player.speed, d.player.reload_l, d.player.reload_r,
             d.enemy.x, d.enemy.y, d.enemy.hull, d.hold, d.hold_gold,
             tuple((c.live) for c in d.loot),
-            tuple((b.live) for b in d.balls), d.frame, d.over)
+            tuple((b.live) for b in d.balls), d.frame, d.over,
+            (m.x, m.y, m.vx, m.vy, m.state, m.hull, m.timer, m.wake,
+             m.stirs, m.slain, m.bit))
 
 
 def check_port_buy():
@@ -977,6 +1372,155 @@ def check_upgraded_containment():
           f'speed cap ({speed_cap}) holds, the enemy keeps the stock one')
 
 
+def check_maw_stalks():
+    # The whole telegraph contract, exact: for 16 policy-win waters the
+    # Maw stays down for exactly BW_MAW_PATIENCE frames from the sink,
+    # rises AT the wreck, shadows for exactly BW_MAW_SHADOW_FRAMES,
+    # surfaces OUTSIDE the pier sanctuary for exactly
+    # BW_MAW_SURFACE_FRAMES, lunges, and a bait player who sails at the
+    # dark water takes EXACTLY ONE bite of exactly BW_MAW_BITE — then
+    # the water holds its breath again (down, re-armed).
+    # Tunable-relations rails ride here too: the shadow is slower than
+    # full sail (escapable BY DESIGN), the lunge is faster than even
+    # sails-III (the dodge is the turn, not the sprint), and the Maw's
+    # crates fit the pool and the hold next to the wreck's.
+    assert BW_MAW_SHADOW_SPEED < (BW_SPEED_OF[BW_TRIM_FULL] * 181) >> 8
+    assert BW_MAW_LUNGE_SPEED > BW_SPEED_OF[BW_TRIM_FULL] \
+        + BW_UP_SPEED_OF[BW_UP_TIERS - 1]
+    assert BW_MAW_LOOT_VALUE > BW_LOOT_VALUE          # monster drops more
+    assert BW_MAW_LOOT_DROPS <= len(BW_LOOT_ANGLE)    # ring table bound
+    assert BW_LOOT_DROPS + BW_MAW_LOOT_DROPS <= BW_MAX_LOOT
+    assert BW_LOOT_DROPS + BW_MAW_LOOT_DROPS <= BW_HOLD_CAP
+    assert BW_MAW_BITE < BW_HULL_MAX                  # one bite never
+    cycle = (BW_MAW_SHADOW_FRAMES + BW_MAW_SURFACE_FRAMES  # sinks a sound
+             + BW_MAW_LUNGE_FRAMES + BW_MAW_RESTIR)        # sloop
+    for seed in range(16):
+        d = _win_state(seed)
+        sink = d.frame - 1               # over was set before frame++
+        assert d.maw.wake == sink + BW_MAW_PATIENCE, seed
+        assert d.maw.state == BW_MAW_DOWN and d.maw.stirs == 0, seed
+        d.player.hull = BW_HULL_MAX      # a sound sloop takes the bite
+        first_stir = None
+        prev, since = BW_MAW_DOWN, None
+        bites = 0
+        last_hull = d.player.hull
+        for _ in range(BW_MAW_PATIENCE + 4 * cycle):
+            bw_salvage_step(d, bw_maw_bait_policy(d))
+            m = d.maw
+            now = d.frame - 1            # frame of the step just taken
+            if m.state != prev:
+                # every transition's dwell time is EXACT (give-ups too)
+                if prev == BW_MAW_SHADOW:
+                    assert now - since == BW_MAW_SHADOW_FRAMES, (seed, now)
+                    assert m.state in (BW_MAW_SURFACE, BW_MAW_DOWN), seed
+                elif prev == BW_MAW_SURFACE:
+                    assert now - since == BW_MAW_SURFACE_FRAMES, (seed, now)
+                    assert m.state in (BW_MAW_LUNGE, BW_MAW_DOWN), seed
+                elif prev == BW_MAW_LUNGE:
+                    assert now - since <= BW_MAW_LUNGE_FRAMES, (seed, now)
+                    assert m.state == BW_MAW_DOWN, seed
+                if m.state == BW_MAW_SHADOW and first_stir is None:
+                    first_stir = now
+                prev, since = m.state, now
+            if d.player.hull != last_hull:
+                assert last_hull - d.player.hull == BW_MAW_BITE, seed
+                assert m.bit == 1 and m.state == BW_MAW_DOWN, seed
+                bites += 1
+                last_hull = d.player.hull
+            if m.state == BW_MAW_SURFACE:
+                assert bw_chebyshev(m.x, m.y, BW_PIER_X, BW_PIER_Y) \
+                    >= BW_MAW_HARBOR, seed
+            if bites:
+                break
+        assert bites == 1, (seed, bites)
+        assert d.over == BW_DUEL_ENEMY_SUNK, seed    # bitten, not sunk
+        assert first_stir == sink + BW_MAW_PATIENCE, (seed, first_stir)
+        m = d.maw
+        assert m.state == BW_MAW_DOWN and m.bit == 1, seed
+        assert m.wake == (d.frame - 1) + BW_MAW_RESTIR, seed
+        assert 1 <= m.stirs <= 4 and m.slain == 0, seed
+    print(f'the Maw stalks: 16 wrecks — down exactly {BW_MAW_PATIENCE} '
+          f'frames from the sink, every shadow exactly '
+          f'{BW_MAW_SHADOW_FRAMES} frames, every surfacing (never in '
+          f'the sanctuary) exactly {BW_MAW_SURFACE_FRAMES}, then ONE '
+          f'bite of exactly {BW_MAW_BITE} hull and down again; '
+          'shadow < full sail < lunge, monster crates richer')
+
+
+def check_maw_sanctuary():
+    # The pier is sanctuary and the port stays reachable: a player who
+    # LIVES at the berth is never surfaced on, never lunged at, never
+    # bitten — the shadow may prowl the harbor water (the dark is
+    # atmosphere; the ring keeps the JAWS out), but it always gives up
+    # and sounds, the stir clock keeps running, and the pier still
+    # banks mid-prowl.
+    d = Duel()
+    bw_duel_init(d, 0xBEA7)
+    d.enemy.hull = 0
+    d.over = BW_DUEL_ENEMY_SUNK
+    bw_loot_spawn(d)
+    d.maw.wake = d.frame + BW_MAW_PATIENCE
+    idle = Inputs()
+    banked_mid_prowl = 0
+    for f in range(BW_MAW_PATIENCE + 6 * (BW_MAW_SHADOW_FRAMES
+                                          + BW_MAW_RESTIR)):
+        bw_salvage_step(d, idle)
+        d.player.x, d.player.y = BW_PIER_X, BW_PIER_Y   # parked at the berth
+        m = d.maw
+        assert m.state in (BW_MAW_DOWN, BW_MAW_SHADOW), f
+        assert m.bit == 0, f
+        if m.state == BW_MAW_SHADOW and banked_mid_prowl == 0:
+            d.hold, d.hold_gold = 1, BW_LOOT_VALUE
+            banked_mid_prowl = bw_dock_step(d)
+            assert banked_mid_prowl == BW_LOOT_VALUE, f
+    assert d.player.hull == BW_HULL_MAX      # never bitten
+    assert d.maw.stirs >= 3, d.maw.stirs     # it keeps trying
+    print(f'sanctuary: a berthed player is never surfaced on, lunged '
+          f'at, or bitten across {d.maw.stirs} prowls (the jaws stay '
+          f'out of the {BW_MAW_HARBOR // BW_ONE} px harbor ring), and '
+          'the pier still banks mid-prowl')
+
+
+def check_maw_slain():
+    # The counterattack converges: from 8 policy-win waters (hull
+    # repaired — the smart captain refits before picking THIS fight),
+    # the hunter policy flees the shadow, rakes the risen Maw, and
+    # slays it; the carcass drops exactly BW_MAW_LOOT_DROPS crates
+    # worth BW_MAW_LOOT_VALUE each on the ring, the salvage brain then
+    # banks wreck + monster crates together, and a slain Maw NEVER
+    # stirs again.
+    full = (BW_LOOT_DROPS * BW_LOOT_VALUE
+            + BW_MAW_LOOT_DROPS * BW_MAW_LOOT_VALUE)
+    worst_frames = 0
+    worst_hull = BW_HULL_MAX
+    for seed in range(8):
+        d = _win_state(seed)
+        d.player.hull = BW_HULL_MAX
+        banked = 0
+        for _ in range(12000):
+            bw_salvage_step(d, bw_maw_hunt_policy(d))
+            banked += bw_dock_step(d)
+            if banked >= full:           # a mid-hunt pass over the pier
+                break                    # may bank a stray crate early
+        assert d.over == BW_DUEL_ENEMY_SUNK, (seed, d.over)
+        assert d.maw.slain == 1 and d.maw.hull == 0, seed
+        assert d.maw.state == BW_MAW_DOWN, seed
+        assert banked == full, (seed, banked)
+        assert not any(c.live for c in d.loot), seed
+        assert d.hold == 0 and d.hold_gold == 0, seed
+        worst_frames = max(worst_frames, d.frame)
+        worst_hull = min(worst_hull, d.player.hull)
+        stirs = d.maw.stirs
+        for _ in range(BW_MAW_PATIENCE + BW_MAW_RESTIR + 100):
+            bw_salvage_step(d, bw_maw_hunt_policy(d))
+        assert d.maw.stirs == stirs, seed        # dead is dead
+        assert d.maw.state == BW_MAW_DOWN, seed
+    print(f'the Maw slain: 8 hunts — the hunter policy survives '
+          f'(worst hull {worst_hull}), slays it, and banks the full '
+          f'{full}g (wreck + richer monster crates) by frame '
+          f'{worst_frames}; a slain Maw never stirs again')
+
+
 def main():
     check_sine_table()
     check_spawns()
@@ -992,6 +1536,9 @@ def main():
     check_port_buy()
     check_upgraded_duels()
     check_upgraded_containment()
+    check_maw_stalks()
+    check_maw_sanctuary()
+    check_maw_slain()
     print('check-brine: ALL GREEN')
     return 0
 

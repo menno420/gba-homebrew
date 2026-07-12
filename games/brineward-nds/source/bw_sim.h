@@ -134,6 +134,49 @@
 #define BW_PORT_ROW_REPAIR 3
 #define BW_PORT_ROWS 4
 
+// --- the Maw (arc slice 5: roadmap item 3 — first sea monster) ----------------
+// The break-the-geometry enemy class (concept doc: "a maw that surfaces
+// under you (watch the shadow)"; roadmap: "shadow telegraph -> surface ->
+// lunge"). The wreck's blood draws it: BW_MAW_PATIENCE salvage frames
+// after the rum-runner goes under, a shadow rises AT THE WRECK (pure
+// f(wreck position), same rationale as the crate ring — no frame hash)
+// and homes under the player; after a fixed telegraph it SURFACES where
+// the shadow lies, winds up, then LUNGES at the player's latched bearing
+// — a bite costs BW_MAW_BITE hull, then it sounds and stalks again.
+// It has no batteries and no beam to keep: the broadside rules do not
+// apply to it — but they apply to YOU: while it is up (surface/lunge)
+// the salvage-water batteries wake and a rake can wound it. Slay it
+// (BW_MAW_HULL) and it breaks up like any wreck — richer: BW_MAW_LOOT_
+// DROPS crates worth BW_MAW_LOOT_VALUE each (the doc's "monster drops
+// more"). The pier is SANCTUARY (session-28 guard recipe): the shadow
+// never enters, it never surfaces, and it never begins a lunge at a
+// player inside BW_MAW_HARBOR of the berth — the port can always be
+// reached. The Maw exists only in the salvage water: bw_duel_init
+// resets it and bw_duel_step never steps it, so every duel-phase route
+// and pin is bit-identical to slice 4. All one-constant owner-tunables.
+#define BW_MAW_PATIENCE 600              // quiet salvage frames before the stir
+#define BW_MAW_RESTIR 240                // frames until it stalks again
+#define BW_MAW_SHADOW_FRAMES 150         // telegraph: the shadow homes this long
+#define BW_MAW_SURFACE_FRAMES 60         // windup on the surface before the lunge
+#define BW_MAW_LUNGE_FRAMES 55           // committed lunge: ~112 px of reach —
+                                         //   a full-sail beam dodge clears it
+#define BW_MAW_SHADOW_SPEED 140          // units/frame — full sail outruns it
+                                         //   even diagonally (224*sin45 ~ 158);
+                                         //   a battle-sail scooper (96) does not
+#define BW_MAW_LUNGE_SPEED 520           // units/frame — no sail outruns THIS
+#define BW_MAW_HULL 120                  // ~two clean rakes of the tier-0 battery
+#define BW_MAW_HIT_RANGE (12 * BW_ONE)   // it is a big target (ball chebyshev)
+#define BW_MAW_BITE_RANGE (12 * BW_ONE)  // jaws chebyshev
+#define BW_MAW_BITE 35                   // hull points a bite costs
+#define BW_MAW_HARBOR (40 * BW_ONE)      // pier sanctuary radius (chebyshev)
+#define BW_MAW_LOOT_DROPS 3
+#define BW_MAW_LOOT_VALUE 15             // per crate — monster salvage is richer
+// Maw lifecycle states
+#define BW_MAW_DOWN 0                    // beneath the water, biding
+#define BW_MAW_SHADOW 1                  // the telegraph: dark water, homing
+#define BW_MAW_SURFACE 2                 // up and vulnerable, winding up
+#define BW_MAW_LUNGE 3                   // committed charge at the latched bearing
+
 // --- state -----------------------------------------------------------------------
 typedef struct
 {
@@ -157,8 +200,22 @@ typedef struct
 typedef struct
 {
     int32_t x, y;                        // 8.8 fixed, crate center
-    int32_t live;
+    int32_t value;                       // gold when scooped (slice 5: the
+    int32_t live;                        //   Maw's crates are richer)
 } BwLoot;
+
+typedef struct
+{
+    int32_t x, y;                        // 8.8 fixed (shadow or surfaced body)
+    int32_t vx, vy;                      // latched lunge velocity, units/frame
+    int32_t state;                       // BW_MAW_*
+    int32_t hull;                        // 0..BW_MAW_HULL
+    int32_t timer;                       // frames in the current state
+    uint32_t wake;                       // d->frame at which the next stir fires
+    int32_t stirs;                       // times it has risen this water
+    int32_t slain;                       // 1: dead — never stirs again
+    int32_t bit;                         // this lunge already landed its bite
+} BwMaw;
 
 typedef struct
 {
@@ -166,6 +223,7 @@ typedef struct
     BwShip enemy;
     BwBall balls[BW_MAX_BALLS];
     BwLoot loot[BW_MAX_LOOT];            // flotsam afloat (slice 3)
+    BwMaw maw;                           // the salvage-water stalker (slice 5)
     int32_t hold;                        // crates aboard, 0..BW_HOLD_CAP
     int32_t hold_gold;                   // unbanked gold those crates are worth
     int32_t up_hull;                     // player upgrade tiers, 0..2
@@ -214,8 +272,12 @@ void bw_duel_step(BwDuel *d, const BwInputs *in);
 
 // One salvage frame (after the enemy went under): the player sails on,
 // lingering balls fly out (a late rake can still strike — sinking during
-// salvage flips d->over to BW_DUEL_PLAYER_SUNK), crates are scooped.
-// Batteries stay cold: no fire verb without a foe.
+// salvage flips d->over to BW_DUEL_PLAYER_SUNK), the Maw stalks (slice
+// 5: shadow telegraph -> surface -> lunge; a bite or a lingering rake
+// can drag the salvage down), crates are scooped. Batteries stay cold
+// while the water is quiet — they WAKE while the Maw is up (fire_l/
+// fire_r reach the guns only in BW_MAW_SURFACE / BW_MAW_LUNGE /
+// BW_MAW_SHADOW states; no fire verb without a foe).
 void bw_salvage_step(BwDuel *d, const BwInputs *in);
 
 // Pier pass, run once per live-water frame by the caller: if the player

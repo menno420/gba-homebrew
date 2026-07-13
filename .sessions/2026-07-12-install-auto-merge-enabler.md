@@ -36,6 +36,22 @@
   `python3 bootstrap.py check --strict` green apart from the designed
   born-red hold + a pre-existing claims-legacy-location advisory.
 
+## Live-run finding + fix (the enabler's first run was on this very PR)
+
+The workflow ran on its own PR (#76, synchronize) and FAILED in the
+rules-count guard — two facts surfaced:
+1. **main's "ROM builds" requirement is CLASSIC branch protection, not a
+   ruleset** — `rules/branches/main` reports zero contexts here (log:
+   "required contexts via rulesets (0): []", job 86707834443).
+2. **Capture bug in the fallback:** `gh api ... || echo '[]'` captures the
+   403 error body (which `gh api` prints to STDOUT) plus `[]`, crashing
+   the JSON length parse. Fixed: overwrite-on-failure assignment
+   (`|| var='[]'`), a defensive `count_json` parser (parse error → 0 →
+   refuse: fail-safe), and a third context source — the plain
+   `branches/<base>` endpoint, whose `protection` field is readable with
+   push access (the classic `/protection/required_status_checks` endpoint
+   needs admin, which the default `GITHUB_TOKEN` lacks).
+
 ## 💡 Session idea
 
 The refuse-to-arm guard reads required contexts from

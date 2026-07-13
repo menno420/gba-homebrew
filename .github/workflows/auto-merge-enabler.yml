@@ -66,24 +66,46 @@ jobs:
           # Count required check CONTEXTS, not rules: a
           # required_status_checks RULE with an empty context list
           # still lets an armed PR merge with nothing to wait for.
+          #
+          # HOST ADAPTATION (gba-homebrew, proven on this PR's own
+          # first run): main's "ROM builds" requirement is CLASSIC
+          # branch protection, not a ruleset — the rules/branches
+          # endpoint reports zero here. Three sources are consulted
+          # in order; the first nonzero count wins. CAPTURE BUG
+          # GUARD: `gh api` prints the ERROR BODY to stdout before
+          # exiting nonzero, so a plain `|| echo '[]'` would capture
+          # `<error-json>[]` — the failure branch must OVERWRITE the
+          # variable, and the length parse is defensive (any parse
+          # error counts as 0 → refuse: fail-safe).
+          count_json() {
+            python3 -c 'import json,sys
+          try: print(len(json.load(sys.stdin)))
+          except Exception: print(0)'
+          }
           contexts="$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/${{ github.base_ref }}" \
             --jq '[.[] | select(.type == "required_status_checks")
                    | .parameters.required_status_checks // [] | .[].context]' \
-            2>/dev/null || echo '[]')"
-          count="$(printf '%s' "$contexts" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+            2>/dev/null)" || contexts='[]'
+          count="$(printf '%s' "$contexts" | count_json)"
           echo "required contexts via rulesets ($count): $contexts"
           if [ "$count" = "0" ]; then
-            # HOST ADAPTATION (gba-homebrew): the rules/branches
-            # endpoint reports ruleset-sourced rules; on a repo whose
-            # required check is wired through CLASSIC branch
-            # protection it returns zero. Consult the classic endpoint
-            # before refusing. Any error (404 = no protection,
-            # 403 = token can't read it) falls through to '[]' —
-            # count stays 0 and we still refuse: fail-safe.
+            # Classic endpoint needs admin read — the default
+            # GITHUB_TOKEN 403s here (works with an admin ROUTINE_PAT).
             classic="$(gh api "repos/$GITHUB_REPOSITORY/branches/${{ github.base_ref }}/protection/required_status_checks" \
-              --jq '[.contexts // [] | .[]]' 2>/dev/null || echo '[]')"
-            count="$(printf '%s' "$classic" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+              --jq '[.contexts // [] | .[]]' 2>/dev/null)" || classic='[]'
+            count="$(printf '%s' "$classic" | count_json)"
             echo "required contexts via classic protection ($count): $classic"
+          fi
+          if [ "$count" = "0" ]; then
+            # The plain branches endpoint exposes classic protection's
+            # contexts too, and its `protection` field is readable
+            # with PUSH access — which GITHUB_TOKEN's Contents:write
+            # grants. This is the source expected to work here.
+            branch="$(gh api "repos/$GITHUB_REPOSITORY/branches/${{ github.base_ref }}" \
+              --jq '[.protection.required_status_checks.contexts // [] | .[]]' \
+              2>/dev/null)" || branch='[]'
+            count="$(printf '%s' "$branch" | count_json)"
+            echo "required contexts via branches endpoint ($count): $branch"
           fi
           echo "required=$count" >> "$GITHUB_OUTPUT"
           if [ "$count" = "0" ]; then

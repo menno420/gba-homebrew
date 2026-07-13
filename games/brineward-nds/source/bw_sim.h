@@ -214,6 +214,52 @@
 #define BW_WIND_DIR_SALT 0x57492881u     // base bearing = f(seed)
 #define BW_WIND_TURN_SHIFT 3             // 1 heading unit per 8 frames (slow box)
 
+// --- danger bands + reefs (arc slice 7: roadmap item 5) -------------------------
+// The concept doc's spatial-difficulty beat ("band spawn tables,
+// reefs/islands, deepest band = charted-waters score"), reframed for
+// the one-screen sea the arc has proven: a WATER carries a danger band
+// 0..2, and pressing SELECT in the salvage water puts out one band
+// DEEPER (carrying hold, dents, and tiers, exactly like START — the
+// doc's "one more fight or turn for home?" now has a third answer:
+// deeper). START from salvage stays in the same band; sinking respawns
+// at port in band 0. The deepest band ever sailed is the CHARTED score
+// (main.c's Score, on the HUD cards like wins/maws).
+//
+// Deeper water is richer and worse, all one-constant tables indexed by
+// band with band 0 == the slice-6 constants EXACTLY (the pin-carry
+// identity, asserted loudly in check-brine.py): the rum-runners run
+// heavier hulls and faster gun crews, crates are worth more (the doc's
+// ~5g band 0 -> ~25g band 2 shape), the seeded weather worsens one
+// level per band (min-clamped at gale — the doc's "the worse the
+// weather"; the slice-6 escape rails already hold at gale, so no new
+// speed constant is needed), and REEFS stud the water: fixed rocks at
+// pure f(seed) positions (hash + bounded rehash for anchorage/pier
+// clearance, then a fixed far-north fallback shelf — every water is
+// provably sailable out of the anchorage and into the berth). A reef
+// scrapes the PLAYER's keel only — the rum-runners and the Maw know
+// these waters (decide-and-flag: no AI change, the hazard is the
+// player's to chart) — costing BW_REEF_DMG hull ONCE per contact (a
+// latch clears when clear of the rock; groundings can sink you).
+//
+// THE GATE this slice (the time-gate's and seed-bucket's sibling):
+// the new mechanic sits behind a fresh input verb (SELECT) that NO
+// committed story presses, and behind band tables whose band-0 row is
+// the legacy constants — every slice-2..6 route and pin carries
+// verbatim (bw_water_init(d, seed, 0) is asserted state-identical to
+// bw_duel_init(d, seed) in the mirror).
+#define BW_BANDS 3
+#define BW_MAX_REEFS 5
+#define BW_REEF_SALT 0x8EEF5EEDu         // reef x stream = f(seed)
+#define BW_REEF_Y_SALT 0xB0A7B0A7u       // reef y draws its own hash off x's
+#define BW_REEF_TRIES 8                  // bounded rehash before the shelf
+#define BW_REEF_RANGE (8 * BW_ONE)       // chebyshev keel<->rock = a scrape
+#define BW_REEF_DMG 15                   // hull points one scrape costs
+#define BW_REEF_CLEAR (28 * BW_ONE)      // rocks keep off the anchorage
+                                         //   (pier clearance: BW_MAW_HARBOR)
+#define BW_REEF_SHELF_X 40               // fallback shelf, px: x = SHELF_X +
+#define BW_REEF_SHELF_STEP 40            //   k*STEP, y = SHELF_Y — far north,
+#define BW_REEF_SHELF_Y 44               //   provably clear of both rails
+
 // --- state -----------------------------------------------------------------------
 typedef struct
 {
@@ -256,11 +302,19 @@ typedef struct
 
 typedef struct
 {
+    int32_t x, y;                        // 8.8 fixed, rock center (slice 7)
+    int32_t live;
+    int32_t scraped;                     // this contact already took its toll
+} BwReef;
+
+typedef struct
+{
     BwShip player;
     BwShip enemy;
     BwBall balls[BW_MAX_BALLS];
     BwLoot loot[BW_MAX_LOOT];            // flotsam afloat (slice 3)
     BwMaw maw;                           // the salvage-water stalker (slice 5)
+    BwReef reefs[BW_MAX_REEFS];          // this water's rocks (slice 7)
     int32_t hold;                        // crates aboard, 0..BW_HOLD_CAP
     int32_t hold_gold;                   // unbanked gold those crates are worth
     int32_t up_hull;                     // player upgrade tiers, 0..2
@@ -268,6 +322,8 @@ typedef struct
     int32_t up_sail;                     //    caller re-injects, like hold)
     int32_t wind_level;                  // this water's weather, BW_WIND_*
     int32_t wind_base;                   //   (slice 6; both pure f(seed))
+    int32_t band;                        // this water's danger band, 0..2
+    int32_t groundings;                  //   (slice 7) reef scrapes this water
     uint32_t frame;                      // duel frames stepped so far
     int32_t over;                        // BW_DUEL_*
 } BwDuel;
@@ -305,7 +361,20 @@ int32_t bw_wind_push(const BwDuel *d);
 
 // Reset a duel: player sloop at the anchorage, enemy sloop on a
 // BW_SPAWN_DIST ring at hash angle f(seed), bow toward the player.
+// This IS the band-0 water: bw_water_init(d, seed, 0) is state-
+// identical (the slice-7 pin-carry identity).
 void bw_duel_init(BwDuel *d, uint32_t seed);
+
+// Reset a WATER: bw_duel_init plus the danger band (slice 7) — band
+// clamped to 0..BW_BANDS-1, the band tables applied to the rum-runner,
+// the seeded weather worsened one level per band (min-clamped at
+// gale), and the water's reefs laid at pure f(seed) positions.
+void bw_water_init(BwDuel *d, uint32_t seed, int32_t band);
+
+// The rum-runner of a band: hull and battery reload (band 0 = the
+// slice-2 sloop; main.c scales the ledger bar off the hull).
+int32_t bw_band_enemy_hull(int32_t band);
+int32_t bw_band_enemy_reload(int32_t band);
 
 // Enemy sail AI: pure f(enemy, player). Intercept beyond BW_ENGAGE_RANGE
 // (full sail, bow on), circle inside it (battle sail, hold the player

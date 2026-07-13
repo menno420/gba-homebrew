@@ -186,6 +186,27 @@ BW_MAW_LOOT_DROPS = 3
 BW_MAW_LOOT_VALUE = 15
 BW_MAW_DOWN, BW_MAW_SHADOW, BW_MAW_SURFACE, BW_MAW_LUNGE = 0, 1, 2, 3
 
+# danger bands + reefs (slice 7) — band tables whose band-0 row is the
+# legacy constants (check_band_tables asserts the identities: the
+# pin-carry rule, this slice's edition), plus the reef hazard laid at
+# pure f(seed) positions with anchorage/pier clearance rails
+BW_BANDS = 3
+BW_MAX_REEFS = 5
+BW_REEF_SALT = 0x8EEF5EED
+BW_REEF_Y_SALT = 0xB0A7B0A7
+BW_REEF_TRIES = 8
+BW_REEF_RANGE = 8 * BW_ONE
+BW_REEF_DMG = 15
+BW_REEF_CLEAR = 28 * BW_ONE
+BW_REEF_SHELF_X = 40
+BW_REEF_SHELF_STEP = 40
+BW_REEF_SHELF_Y = 44
+BW_BAND_EHULL_OF = (BW_HULL_MAX, 130, 160)
+BW_BAND_ERELOAD_OF = (BW_RELOAD_ENEMY, 120, 100)
+BW_BAND_LOOT_VALUE_OF = (BW_LOOT_VALUE, 12, 25)
+BW_BAND_MAW_VALUE_OF = (BW_MAW_LOOT_VALUE, 30, 50)
+BW_BAND_REEF_OF = (0, 3, 5)
+
 U32 = 0xFFFFFFFF
 
 
@@ -271,12 +292,22 @@ class Maw:
                  'stirs', 'slain', 'bit')
 
 
+class Reef:
+    """Mirror of BwReef."""
+
+    __slots__ = ('x', 'y', 'live', 'scraped')
+
+    def __init__(self):
+        self.live = 0
+
+
 class Duel:
     """Mirror of BwDuel."""
 
-    __slots__ = ('player', 'enemy', 'balls', 'loot', 'maw', 'hold',
-                 'hold_gold', 'up_hull', 'up_cannon', 'up_sail',
-                 'wind_level', 'wind_base', 'frame', 'over')
+    __slots__ = ('player', 'enemy', 'balls', 'loot', 'maw', 'reefs',
+                 'hold', 'hold_gold', 'up_hull', 'up_cannon', 'up_sail',
+                 'wind_level', 'wind_base', 'band', 'groundings',
+                 'frame', 'over')
 
     def __init__(self):
         self.player = Ship()
@@ -284,6 +315,7 @@ class Duel:
         self.balls = [Ball() for _ in range(BW_MAX_BALLS)]
         self.loot = [Loot() for _ in range(BW_MAX_LOOT)]
         self.maw = Maw()
+        self.reefs = [Reef() for _ in range(BW_MAX_REEFS)]
 
 
 class Inputs:
@@ -387,7 +419,8 @@ def bw_balls_step(d):
                 d.maw.slain = 1
                 d.maw.state = BW_MAW_DOWN
                 bw_loot_spawn_at(d, d.maw.x, d.maw.y,
-                                 BW_MAW_LOOT_DROPS, BW_MAW_LOOT_VALUE)
+                                 BW_MAW_LOOT_DROPS,
+                                 BW_BAND_MAW_VALUE_OF[d.band])
             ball.live = 0
             continue
         target = d.enemy if ball.owner == 0 else d.player
@@ -420,7 +453,8 @@ def bw_loot_spawn_at(d, wx, wy, drops, value):
 
 def bw_loot_spawn(d):
     """Mirror of bw_loot_spawn()."""
-    bw_loot_spawn_at(d, d.enemy.x, d.enemy.y, BW_LOOT_DROPS, BW_LOOT_VALUE)
+    bw_loot_spawn_at(d, d.enemy.x, d.enemy.y, BW_LOOT_DROPS,
+                     BW_BAND_LOOT_VALUE_OF[d.band])
 
 
 def bw_loot_step(d):
@@ -447,6 +481,46 @@ def bw_dock_step(d):
     d.hold = 0
     d.hold_gold = 0
     return banked
+
+
+def bw_reef_spawn(d, seed):
+    """Mirror of bw_reef_spawn() — this water's rocks, pure f(seed)."""
+    n = BW_BAND_REEF_OF[d.band]
+    for k in range(n):
+        r = d.reefs[k]
+        r.x = (BW_REEF_SHELF_X + BW_REEF_SHELF_STEP * k) * BW_ONE
+        r.y = BW_REEF_SHELF_Y * BW_ONE
+        for t in range(BW_REEF_TRIES):
+            hx = bw_hash(seed, (BW_REEF_SALT + k * BW_REEF_TRIES + t) & U32)
+            hy = bw_hash(hx, BW_REEF_Y_SALT)
+            x = BW_SEA_X_MIN + hx % (BW_SEA_X_MAX - BW_SEA_X_MIN + 1)
+            y = BW_SEA_Y_MIN + hy % (BW_SEA_Y_MAX - BW_SEA_Y_MIN + 1)
+            if bw_chebyshev(x, y, BW_PLAYER_START_X,
+                            BW_PLAYER_START_Y) < BW_REEF_CLEAR:
+                continue
+            if bw_chebyshev(x, y, BW_PIER_X, BW_PIER_Y) < BW_MAW_HARBOR:
+                continue
+            r.x = x
+            r.y = y
+            break
+        r.live = 1
+        r.scraped = 0
+
+
+def bw_reefs_step(d):
+    """Mirror of bw_reefs_step() — the player-only reef scrape."""
+    for r in d.reefs:
+        if not r.live:
+            continue
+        if bw_chebyshev(d.player.x, d.player.y, r.x, r.y) < BW_REEF_RANGE:
+            if not r.scraped:
+                d.player.hull -= BW_REEF_DMG
+                if d.player.hull < 0:
+                    d.player.hull = 0
+                r.scraped = 1
+                d.groundings += 1
+        else:
+            r.scraped = 0
 
 
 def bw_maw_sound(m, frame):
@@ -652,6 +726,10 @@ def bw_duel_init(d, seed):
     m.stirs = 0
     m.slain = 0
     m.bit = 0
+    for r in d.reefs:                    # slice 7: the band-0 water is
+        r.x = r.y = 0                    #   open sea — no rocks; deeper
+        r.live = 0                       #   waters lay theirs in
+        r.scraped = 0                    #   bw_water_init
     d.hold = 0                           # caller re-injects a carried hold
     d.hold_gold = 0                      # (sinking forfeits: no re-inject)
     d.up_hull = 0                        # caller re-injects the bought
@@ -660,8 +738,27 @@ def bw_duel_init(d, seed):
     # slice 6: this water's weather, pure f(seed) like the spawn ring
     d.wind_level = BW_WIND_LEVEL_OF[bw_hash(seed, BW_WIND_SALT) & 3]
     d.wind_base = bw_hash(seed, BW_WIND_DIR_SALT) & (BW_CIRCLE - 1)
+    d.band = 0                           # slice 7: this IS the band-0
+    d.groundings = 0                     #   water (bw_water_init deepens)
     d.frame = 0
     d.over = BW_DUEL_RUNNING
+
+
+def bw_water_init(d, seed, band):
+    """Mirror of bw_water_init() — a water one band deep."""
+    if band < 0:
+        band = 0
+    if band > BW_BANDS - 1:
+        band = BW_BANDS - 1
+    bw_duel_init(d, seed)
+    d.band = band
+    # one weather level worse per band, min-clamped at gale
+    d.wind_level = BW_WIND_GALE if d.wind_level + band > BW_WIND_GALE \
+        else d.wind_level + band
+    d.enemy.hull = BW_BAND_EHULL_OF[band]
+    d.enemy.reload_l = BW_BAND_ERELOAD_OF[band] // 2   # same grace rule
+    d.enemy.reload_r = BW_BAND_ERELOAD_OF[band] // 2
+    bw_reef_spawn(d, seed)
 
 
 def bw_duel_step(d, inputs):
@@ -675,6 +772,8 @@ def bw_duel_step(d, inputs):
     wind_push = bw_wind_push(d)          #   ships sail it
     bw_ship_step(d.player, inputs, d.up_sail, wind_hdg, wind_push)
     bw_ship_step(d.enemy, ai, 0, wind_hdg, wind_push)
+    bw_reefs_step(d)                     # slice 7: the rocks take their
+    #   toll where the keel just went
 
     if inputs.fire_l and d.player.reload_l == 0:
         bw_fire(d, d.player, 0, -1)
@@ -684,10 +783,10 @@ def bw_duel_step(d, inputs):
         d.player.reload_r = BW_UP_RELOAD_OF[d.up_cannon]
     if ai.fire_l and d.enemy.reload_l == 0:
         bw_fire(d, d.enemy, 1, -1)
-        d.enemy.reload_l = BW_RELOAD_ENEMY
+        d.enemy.reload_l = BW_BAND_ERELOAD_OF[d.band]
     if ai.fire_r and d.enemy.reload_r == 0:
         bw_fire(d, d.enemy, 1, 1)
-        d.enemy.reload_r = BW_RELOAD_ENEMY
+        d.enemy.reload_r = BW_BAND_ERELOAD_OF[d.band]
 
     bw_balls_step(d)
     bw_loot_step(d)                      # crates exist only after a sink
@@ -710,6 +809,7 @@ def bw_salvage_step(d, inputs):
 
     bw_ship_step(d.player, inputs, d.up_sail,
                  bw_wind_heading(d), bw_wind_push(d))
+    bw_reefs_step(d)                     # slice 7: rocks scrape salvage
     bw_maw_step(d)                       # slice 5: the water is not empty
 
     # the batteries WAKE while the Maw is up; cold on quiet water
@@ -1290,7 +1390,9 @@ def _duel_fingerprint(d):
             tuple((b.live) for b in d.balls), d.frame, d.over,
             (m.x, m.y, m.vx, m.vy, m.state, m.hull, m.timer, m.wake,
              m.stirs, m.slain, m.bit),
-            d.wind_level, d.wind_base)   # slice 6: no shopping the weather
+            d.wind_level, d.wind_base,   # slice 6: no shopping the weather
+            d.band, d.groundings,        # slice 7: nor the charts
+            tuple((r.x, r.y, r.live, r.scraped) for r in d.reefs))
 
 
 def check_port_buy():
@@ -1741,6 +1843,351 @@ def check_wind_containment():
           f'the sea, speed in (0, {cap}], a slain Maw stays down')
 
 
+def check_band_tables():
+    # Band-0 identity (the slice-7 pin-carry rule): every band-0 table
+    # row IS the legacy constant, and bw_water_init(d, seed, 0) is
+    # STATE-IDENTICAL to bw_duel_init(d, seed) — so every slice-2..6
+    # recorded route and emulator pin carries verbatim. A band-table
+    # retune fails HERE, loudly, before it silently re-times a story.
+    assert BW_BAND_EHULL_OF[0] == BW_HULL_MAX
+    assert BW_BAND_ERELOAD_OF[0] == BW_RELOAD_ENEMY
+    assert BW_BAND_LOOT_VALUE_OF[0] == BW_LOOT_VALUE
+    assert BW_BAND_MAW_VALUE_OF[0] == BW_MAW_LOOT_VALUE
+    assert BW_BAND_REEF_OF[0] == 0
+
+    def state(d):
+        p, e, m = d.player, d.enemy, d.maw
+        return (p.x, p.y, p.heading, p.trim, p.speed, p.hull,
+                p.reload_l, p.reload_r,
+                e.x, e.y, e.heading, e.trim, e.speed, e.hull,
+                e.reload_l, e.reload_r,
+                tuple(b.live for b in d.balls),
+                tuple(c.live for c in d.loot),
+                (m.x, m.y, m.vx, m.vy, m.state, m.hull, m.timer, m.wake,
+                 m.stirs, m.slain, m.bit),
+                tuple((r.x, r.y, r.live, r.scraped) for r in d.reefs),
+                d.hold, d.hold_gold, d.up_hull, d.up_cannon, d.up_sail,
+                d.wind_level, d.wind_base, d.band, d.groundings,
+                d.frame, d.over)
+
+    for seed in range(512):
+        a, b = Duel(), Duel()
+        bw_duel_init(a, seed)
+        bw_water_init(b, seed, 0)
+        assert state(a) == state(b), seed
+    # deeper is harder and richer, monotone: heavier hulls, faster
+    # crews, dearer crates (the doc's ~5g band 0 -> ~25g band 2 shape),
+    # monster salvage richer than the wreck's in every band, more rocks
+    for band in (1, 2):
+        assert BW_BAND_EHULL_OF[band] > BW_BAND_EHULL_OF[band - 1]
+        assert BW_BAND_ERELOAD_OF[band] < BW_BAND_ERELOAD_OF[band - 1]
+        assert BW_BAND_LOOT_VALUE_OF[band] > BW_BAND_LOOT_VALUE_OF[band - 1]
+        assert BW_BAND_MAW_VALUE_OF[band] > BW_BAND_MAW_VALUE_OF[band - 1]
+        assert BW_BAND_REEF_OF[band] > BW_BAND_REEF_OF[band - 1]
+        assert BW_BAND_MAW_VALUE_OF[band] > BW_BAND_LOOT_VALUE_OF[band]
+    assert BW_BAND_LOOT_VALUE_OF[2] == 5 * BW_BAND_LOOT_VALUE_OF[0]
+    assert all(n <= BW_MAX_REEFS for n in BW_BAND_REEF_OF)
+    # the weather worsens one level per band, min-clamped at gale — and
+    # NEVER exceeds the gale the slice-6 escape rails are proven at
+    for seed in range(256):
+        base = BW_WIND_LEVEL_OF[bw_hash(seed, BW_WIND_SALT) & 3]
+        for band in range(BW_BANDS):
+            d = Duel()
+            bw_water_init(d, seed, band)
+            want = min(BW_WIND_GALE, base + band)
+            assert d.wind_level == want, (seed, band)
+            assert d.wind_level <= BW_WIND_GALE
+    # band clamps: no shallower water than home, no deeper than band 2
+    lo, hi = Duel(), Duel()
+    bw_water_init(lo, 7, -3)
+    bw_water_init(hi, 7, 99)
+    assert lo.band == 0 and hi.band == BW_BANDS - 1
+    print('band tables: band-0 state-identical to bw_duel_init over 512 '
+          'seeds (the slice-7 pin-carry rule), deeper monotonically '
+          'harder + richer (crates 5g -> 25g, the doc shape), weather '
+          'worsens one level per band min-clamped at the proven gale, '
+          'band clamped to 0..2')
+
+
+def check_reef_spawns():
+    # Every water's rocks are pure f(seed): exact band counts, inside
+    # the sea, and clear of BOTH sailing rails — the anchorage the
+    # player starts on (BW_REEF_CLEAR) and the pier harbor
+    # (BW_MAW_HARBOR: the sanctuary ring is charted water) — across
+    # 4096 seeds x bands 1/2; band 0 lays none. Determinism: the same
+    # seed lays the same rocks twice. (Rock-rock spread is best-effort
+    # via the hash stream, deliberately NOT a rail.)
+    shelf = 0
+    for seed in range(4096):
+        for band in (0, 1, 2):
+            d = Duel()
+            bw_water_init(d, seed, band)
+            live = [r for r in d.reefs if r.live]
+            assert len(live) == BW_BAND_REEF_OF[band], (seed, band)
+            for r in live:
+                assert BW_SEA_X_MIN <= r.x <= BW_SEA_X_MAX, (seed, band)
+                assert BW_SEA_Y_MIN <= r.y <= BW_SEA_Y_MAX, (seed, band)
+                assert bw_chebyshev(r.x, r.y, BW_PLAYER_START_X,
+                                    BW_PLAYER_START_Y) >= BW_REEF_CLEAR, \
+                    (seed, band)
+                assert bw_chebyshev(r.x, r.y, BW_PIER_X,
+                                    BW_PIER_Y) >= BW_MAW_HARBOR, (seed, band)
+                assert not r.scraped
+                if r.y == BW_REEF_SHELF_Y * BW_ONE:
+                    shelf += 1
+        d2 = Duel()
+        bw_water_init(d2, seed, 2)
+        assert [(r.x, r.y) for r in d2.reefs] \
+            == [(r.x, r.y) for r in d.reefs], seed
+    # the fallback shelf itself is provably clear of both rails
+    for k in range(BW_MAX_REEFS):
+        x = (BW_REEF_SHELF_X + BW_REEF_SHELF_STEP * k) * BW_ONE
+        y = BW_REEF_SHELF_Y * BW_ONE
+        assert BW_SEA_X_MIN <= x <= BW_SEA_X_MAX
+        assert BW_SEA_Y_MIN <= y <= BW_SEA_Y_MAX
+        assert bw_chebyshev(x, y, BW_PLAYER_START_X,
+                            BW_PLAYER_START_Y) >= BW_REEF_CLEAR
+        assert bw_chebyshev(x, y, BW_PIER_X, BW_PIER_Y) >= BW_MAW_HARBOR
+    print('reef spawns: 4096 seeds x 3 bands — counts exact (0/3/5), '
+          'every rock in the sea and clear of the anchorage '
+          f'({BW_REEF_CLEAR >> 8} px) and the pier harbor '
+          f'({BW_MAW_HARBOR >> 8} px), deterministic; the fallback '
+          f'shelf holds both rails by construction ({shelf} shelf '
+          'landings in the sweep)')
+
+
+def check_reef_grounding():
+    # The scrape contract, frame-exact: sailing onto a rock costs
+    # exactly BW_REEF_DMG hull ONCE (the latch), sitting on it costs
+    # nothing more, clearing it re-arms the latch, and a second contact
+    # scrapes again; the groundings counter counts each scrape; the
+    # ENEMY parked on the same rock is untouched (the rum-runners know
+    # these waters); grounding a 1-hull sloop sinks it (over flips).
+    d = Duel()
+    bw_water_init(d, 11, 1)
+    r = d.reefs[0]
+    for other in d.reefs[1:]:            # isolate the rock under test
+        other.live = 0                   #   (pure-state surgery, the
+    idle = Inputs()                      #   containment checks' idiom)
+    d.enemy.hull = 999                   # keep the duel running; park the
+    d.enemy.x, d.enemy.y = r.x, r.y      #   enemy ON the rock, unharmed
+    d.enemy.speed = 0
+    ehull0 = d.enemy.hull
+    # teleport the player just clear of the rock, bow dead north, and
+    # freeze the enemy in place each frame (pure-state surgery, the
+    # containment checks' idiom)
+    d.player.x = r.x
+    d.player.y = r.y + BW_REEF_RANGE + 4 * BW_ONE
+    d.player.heading = 0
+    d.player.trim = BW_TRIM_BATTLE
+    d.player.speed = BW_SPEED_OF[BW_TRIM_BATTLE]
+    d.player.hull = BW_HULL_MAX
+    d.wind_level = BW_WIND_CALM          # kinematics under test, not wind
+    scrapes = []
+    for f in range(400):
+        ex, ey = d.enemy.x, d.enemy.y
+        hull_before = d.player.hull
+        ground_before = d.groundings
+        bw_duel_step(d, idle)            # due north: closes on the rock
+        d.enemy.x, d.enemy.y = ex, ey    # re-park (the AI would sail off)
+        d.enemy.speed = 0
+        d.enemy.hull = ehull0
+        if d.groundings != ground_before:
+            scrapes.append((f, hull_before - d.player.hull))
+        if d.player.y <= r.y:            # sailed past the rock: done
+            break
+    assert scrapes == [(scrapes[0][0], BW_REEF_DMG)], scrapes
+    assert d.groundings == 1
+    onto_frame = scrapes[0][0]
+    # dwell ON the rock: the latch holds, no second toll
+    d2 = Duel()
+    bw_water_init(d2, 11, 1)
+    r2 = d2.reefs[0]
+    for other in d2.reefs[1:]:
+        other.live = 0
+    d2.enemy.hull = 999
+    d2.enemy.x, d2.enemy.y = BW_SEA_X_MIN, BW_SEA_Y_MIN
+    d2.player.x, d2.player.y = r2.x, r2.y
+    d2.player.heading = 0
+    d2.player.trim = BW_TRIM_BATTLE
+    d2.player.speed = 0
+    d2.player.hull = BW_HULL_MAX
+    d2.wind_level = BW_WIND_CALM
+    still = Inputs(turn=1)               # spin in place-ish over the rock
+    d2.player.speed = 1
+    for _ in range(120):
+        ex, ey = d2.enemy.x, d2.enemy.y
+        bw_duel_step(d2, still)
+        d2.enemy.x, d2.enemy.y = ex, ey
+        d2.enemy.speed = 0
+        d2.enemy.hull = 999
+        d2.player.x, d2.player.y = r2.x, r2.y   # hold it on the rock
+        d2.player.speed = 1
+    assert d2.groundings == 1
+    assert d2.player.hull == BW_HULL_MAX - BW_REEF_DMG
+    # clear the rock, come back: the latch re-arms, a second scrape
+    d2.player.x = r2.x
+    d2.player.y = r2.y + BW_REEF_RANGE + 2 * BW_ONE
+    ex, ey = d2.enemy.x, d2.enemy.y
+    bw_duel_step(d2, Inputs())           # one clear frame drops the latch
+    d2.enemy.x, d2.enemy.y = ex, ey
+    d2.enemy.hull = 999
+    assert d2.groundings == 1 and not d2.reefs[0].scraped
+    d2.player.x, d2.player.y = r2.x, r2.y
+    bw_duel_step(d2, Inputs())
+    assert d2.groundings == 2
+    assert d2.player.hull == BW_HULL_MAX - 2 * BW_REEF_DMG
+    # a grounding can sink you: 1 hull + a rock = the brine takes her
+    d3 = Duel()
+    bw_water_init(d3, 11, 1)
+    for other in d3.reefs[1:]:
+        other.live = 0
+    d3.player.x, d3.player.y = d3.reefs[0].x, d3.reefs[0].y
+    d3.player.hull = 1
+    bw_duel_step(d3, Inputs())
+    assert d3.player.hull == 0 and d3.over == BW_DUEL_PLAYER_SUNK
+    # the parked enemy never grounded in run 1
+    assert ehull0 == 999
+    # and the scrape works in SALVAGE water too (the win state is live)
+    d4 = Duel()
+    bw_water_init(d4, 11, 1)
+    d4.reefs[0].live = 0                 # the salvage scrape probes rock 1
+    d4.reefs[2].live = 0
+    d4.enemy.hull = 0
+    d4.over = BW_DUEL_ENEMY_SUNK
+    d4.player.x, d4.player.y = d4.reefs[1].x, d4.reefs[1].y
+    d4.player.hull = BW_HULL_MAX
+    bw_salvage_step(d4, Inputs())
+    assert d4.player.hull == BW_HULL_MAX - BW_REEF_DMG
+    assert d4.groundings == 1
+    print(f'reef grounding: one scrape of exactly {BW_REEF_DMG} on '
+          f'contact (frame {onto_frame} of the approach), the latch '
+          'holds over a 120-frame dwell, clears off the rock and '
+          'scrapes again on re-entry (groundings 1 -> 2), a 1-hull '
+          'grounding SINKS, the parked enemy is untouched, and salvage '
+          'water scrapes too')
+
+
+def check_band_duels():
+    # Convergence survives the deeps, both ways: in REAL band-1 and
+    # band-2 waters (band tables + reefs + worsened weather, exactly as
+    # bw_water_init deals them), the idle player is still sunk on every
+    # probed seed, and the committed beam-holding policy brain still
+    # wins every probed band-1 water surviving. Band 2 is deliberately
+    # crueller: the same tier-0 brain wins 12 of the 16 probed waters —
+    # and every one of the four it loses (seeds 0/3/6/10) FLIPS to a
+    # win with the cannons-II battery aboard: the deeps are the
+    # treadmill's purpose, priced in gold, not a wall.
+    idle = Inputs()
+    for band in (1, 2):
+        for seed in range(8):
+            d = Duel()
+            bw_water_init(d, seed, band)
+            for _ in range(10800):
+                bw_duel_step(d, idle)
+                if d.over != BW_DUEL_RUNNING:
+                    break
+            assert d.over == BW_DUEL_PLAYER_SUNK, (band, seed, d.over)
+    for seed in range(8):
+        d = Duel()
+        bw_water_init(d, seed, 1)
+        for _ in range(5400):
+            bw_duel_step(d, bw_policy(d.player, d.enemy))
+            if d.over != BW_DUEL_RUNNING:
+                break
+        assert d.over == BW_DUEL_ENEMY_SUNK, (seed, d.over)
+        assert d.player.hull > 0, seed
+    tier0 = {}
+    for seed in range(16):
+        d = Duel()
+        bw_water_init(d, seed, 2)
+        for _ in range(5400):
+            bw_duel_step(d, bw_policy(d.player, d.enemy))
+            if d.over != BW_DUEL_RUNNING:
+                break
+        tier0[seed] = d.over
+    losses = sorted(s for s, o in tier0.items() if o != BW_DUEL_ENEMY_SUNK)
+    assert losses == [0, 3, 6, 10], losses
+    for seed in losses:
+        d = Duel()
+        bw_water_init(d, seed, 2)
+        d.up_cannon = 1                  # the port's answer to the deeps
+        for _ in range(5400):
+            bw_duel_step(d, bw_policy(d.player, d.enemy))
+            if d.over != BW_DUEL_RUNNING:
+                break
+        assert d.over == BW_DUEL_ENEMY_SUNK, seed
+        assert d.player.hull > 0, seed
+    print('band duels: idle player sunk in every probed band-1/2 water '
+          '(8 seeds each); the tier-0 policy brain wins all 8 probed '
+          'band-1 waters surviving; band 2 wins 12/16 at tier 0 and '
+          'every loss (seeds 0/3/6/10) flips to a win with cannons II '
+          '— the deeps are priced in gold, not walled')
+
+
+def check_band_containment():
+    # The deepest water stays contained: 8000 adversarial frames in a
+    # forced band-2 water (5 rocks, gale-or-worse weather, the Maw
+    # stalking, fire keys live) — ship, crates, Maw stay in the sea,
+    # speed respects the weathered ceiling, groundings only ever climb
+    # (and each costs exactly BW_REEF_DMG off an adversarially-refilled
+    # hull), and a slain Maw stays down. The slice-6 sweep, re-armed on
+    # the rocks.
+    d = Duel()
+    bw_water_init(d, 0x0007, 2)          # this water's adversarial drive
+    #   provably crosses its rocks
+    assert d.wind_level == BW_WIND_GALE  # band 2 never rolls milder
+    d.enemy.hull = 0
+    d.over = BW_DUEL_ENEMY_SUNK
+    bw_loot_spawn(d)
+    d.maw.wake = d.frame + BW_MAW_PATIENCE
+    cap = BW_SPEED_OF[BW_TRIM_FULL] + BW_WIND_PUSH_OF[BW_WIND_GALE]
+    frames = 8000
+    stirs_after_slain = None
+    groundings_prev = 0
+    scraped_total = 0
+    for f in range(frames):
+        h = bw_hash(0x0007, f)
+        inp = Inputs(turn=(h & 3) - 1 if (h & 3) < 3 else 0,
+                     trim_delta=((h >> 2) & 3) - 1 if ((h >> 2) & 3) < 3
+                     else 0,
+                     fire_l=(h >> 4) & 1, fire_r=(h >> 5) & 1)
+        d.player.hull = BW_HULL_MAX      # adversarial: never let it end
+        d.over = BW_DUEL_ENEMY_SUNK
+        bw_salvage_step(d, inp)
+        bw_dock_step(d)
+        s = d.player
+        assert BW_SEA_X_MIN <= s.x <= BW_SEA_X_MAX, f
+        assert BW_SEA_Y_MIN <= s.y <= BW_SEA_Y_MAX, f
+        assert 0 < s.speed <= cap, (f, s.speed)
+        assert d.groundings >= groundings_prev, f
+        if d.groundings > groundings_prev:
+            assert d.groundings == groundings_prev + 1, f
+            scraped_total += 1
+        groundings_prev = d.groundings
+        for c in d.loot:
+            if c.live:
+                assert BW_SEA_X_MIN <= c.x <= BW_SEA_X_MAX, f
+                assert BW_SEA_Y_MIN <= c.y <= BW_SEA_Y_MAX, f
+        m = d.maw
+        assert 0 <= m.hull <= BW_MAW_HULL, f
+        if m.state != BW_MAW_DOWN:
+            assert BW_SEA_X_MIN <= m.x <= BW_SEA_X_MAX, f
+            assert BW_SEA_Y_MIN <= m.y <= BW_SEA_Y_MAX, f
+        if m.slain:
+            assert m.state == BW_MAW_DOWN, f
+            if stirs_after_slain is None:
+                stirs_after_slain = m.stirs
+            assert m.stirs == stirs_after_slain, f
+    print(f'band containment: {frames} adversarial frames in a forced '
+          'band-2 gale water (5 rocks, fire keys live, the Maw '
+          'stalking) — ship, crates, and Maw stay in the sea, speed in '
+          f'(0, {cap}], groundings climb one scrape at a time '
+          f'({scraped_total} real scrapes taken), a slain Maw stays down')
+    assert scraped_total > 0             # the sweep provably found rock
+
+
+
 def main():
     check_sine_table()
     check_spawns()
@@ -1763,6 +2210,11 @@ def main():
     check_wind_pointofsail()
     check_wind_duels()
     check_wind_containment()
+    check_band_tables()
+    check_reef_spawns()
+    check_reef_grounding()
+    check_band_duels()
+    check_band_containment()
     print('check-brine: ALL GREEN')
     return 0
 

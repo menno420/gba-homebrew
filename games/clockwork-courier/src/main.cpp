@@ -62,6 +62,19 @@
  *   [18] parcels delivered this run (rush)   [19] chute window open
  *   [20] level index (0-2, tower levels only; 0 otherwise) — rung 3
  *
+ * AUDIO (growth rung 4, the concept's LAST cut): six original
+ * synthesized cues (audio/generate_audio.py — deterministic, no
+ * samples ever) via maxmod, fired as pure DECISIONS on events the sim
+ * already computed: run start (deferred one frame off the transition
+ * — the Shoal boot-lag rule), parcel pickup, rewind fired, the door
+ * opening, delivery, and the chute-window tick. Nothing feeds back
+ * into the sim. Every trigger bumps a cumulative gl_audio_hook slot:
+ *   [0] starts  [1] pickups  [2] rewinds  [3] door-openings
+ *   [4] deliveries  [5] window ticks  [6] mute state (B toggles;
+ *   gates play() ONLY — the counters always bump)
+ * so the harness pins the decisions and the mixer-memory nonzero
+ * watch proves the voicing (docs/capabilities.md).
+ *
  * Presentation is deliberately trivial (breadth-program slice): the
  * tower is glyph rows in Butano's common FIXED 8x8 sprite font; the
  * courier '@' and ghost 'g' are single-glyph pixel-positioned text
@@ -78,10 +91,13 @@
 #include "bn_display.h"
 #include "bn_bg_palettes.h"
 #include "bn_sprite_ptr.h"
+#include "bn_sound_items.h"
 #include "bn_sprite_text_generator.h"
 
 #include "common_fixed_8x8_sprite_font.h"
 #include "common_variable_8x8_sprite_font.h"
+
+#include "gl_audio_hook.h"
 
 extern "C"
 {
@@ -285,8 +301,8 @@ int main()
     constexpr int map_y0 = -56;          // row centers at -56, -48, ... 8
     text_line map_lines[map_h];
 
-    constexpr int ui_count = 8;
-    constexpr int ui_y[ui_count] = {-70, 24, 40, 52, 64, 76, 88, 100};
+    constexpr int ui_count = 9;
+    constexpr int ui_y[ui_count] = {-70, 24, 40, 52, 64, 76, 88, 100, 112};
     constexpr int ui_x = -110;
     text_line ui_lines[ui_count];
 
@@ -323,6 +339,9 @@ int main()
                                          // (SELECT) / 2 tower levels (L)
     unsigned level = 0;                  // tower-levels index (mode 2)
     const floor_def* cur = &base_classic;// the ONE current-floor view
+    bool muted = false;                  // B gates play() only
+    bool start_cue_pending = false;      // fires on the FIRST playing
+                                         // frame, never the transition
     bool door_open = false;
     bool switch_held = false;
     unsigned rewinds = 0;
@@ -417,6 +436,11 @@ int main()
         bool select = bn::keypad::select_pressed();
         bool lkey = bn::keypad::l_pressed();
 
+        if(bn::keypad::b_pressed())
+        {
+            muted = ! muted;
+        }
+
         switch(state)
         {
 
@@ -439,6 +463,7 @@ int main()
                     : mode == 1 ? &base_rush : &floor_defs[level];
                 reset_run();
                 clear_lines();
+                start_cue_pending = true;
                 state = st_playing;
             }
             break;
@@ -446,6 +471,18 @@ int main()
         case st_playing:
         {
             ++run_frames;
+
+            if(start_cue_pending)
+            {
+                start_cue_pending = false;
+
+                if(! muted)
+                {
+                    bn::sound_items::cc_start.play(bn::fixed(0.7));
+                }
+
+                gl::count_audio(0);      // starts
+            }
 
             // --- the ghost replays first (pure pose playback) --------------
             if(ghost_active)
@@ -481,6 +518,13 @@ int main()
                 buf_fill = 0;                 // the tape is spent too
                 buf_head = 0;
                 ++rewinds;
+
+                if(! muted)
+                {
+                    bn::sound_items::cc_rewind.play(bn::fixed(0.8));
+                }
+
+                gl::count_audio(2);      // rewinds
             }
 
             // --- ghost-as-platform, part 1: the ride (growth rung 1) ------
@@ -607,7 +651,18 @@ int main()
                     && top <= cur->d_y1 && cur->d_y0 <= bottom;
             }
 
+            bool door_was_open = door_open;
             door_open = switch_held || (door_open && player_in_door);
+
+            if(door_open && ! door_was_open)
+            {
+                if(! muted)
+                {
+                    bn::sound_items::cc_door.play(bn::fixed(0.8));
+                }
+
+                gl::count_audio(3);      // door openings
+            }
 
             // Parcel + chute (the delivery). Rung 2: the rush order
             // adds a second parcel and gives the chute HOURS — the
@@ -615,10 +670,28 @@ int main()
             bool window_open = (run_frames % window_period)
                                < window_open_frames;
 
+            if(cur->timed && window_open
+               && (run_frames % window_period) == 0)
+            {
+                if(! muted)
+                {
+                    bn::sound_items::cc_tick.play(bn::fixed(0.5));
+                }
+
+                gl::count_audio(5);      // window ticks
+            }
+
             if(! carried && feet_cell_x(px) == cur->p_x
                && feet_cell_y(py) == cur->p_y)
             {
                 carried = true;
+
+                if(! muted)
+                {
+                    bn::sound_items::cc_pickup.play(bn::fixed(0.6));
+                }
+
+                gl::count_audio(1);      // pickups
             }
 
             if(cur->p2_x >= 0 && ! p2_carried
@@ -626,6 +699,13 @@ int main()
                && feet_cell_y(py) == cur->p2_y)
             {
                 p2_carried = true;
+
+                if(! muted)
+                {
+                    bn::sound_items::cc_pickup.play(bn::fixed(0.6));
+                }
+
+                gl::count_audio(1);      // pickups
             }
 
             if(! cur->timed)
@@ -635,6 +715,13 @@ int main()
                 {
                     state = st_delivered;
                     clear_lines();
+
+                    if(! muted)
+                    {
+                        bn::sound_items::cc_deliver.play(bn::fixed(0.9));
+                    }
+
+                    gl::count_audio(4);  // deliveries
                 }
             }
             else if((carried || p2_carried) && window_open
@@ -644,6 +731,13 @@ int main()
                 delivered_n += unsigned(carried) + unsigned(p2_carried);
                 carried = false;
                 p2_carried = false;
+
+                if(! muted)
+                {
+                    bn::sound_items::cc_deliver.play(bn::fixed(0.9));
+                }
+
+                gl::count_audio(4);      // deliveries
 
                 unsigned need = cur->p2_x >= 0 ? 2u : 1u;
 
@@ -682,6 +776,7 @@ int main()
             ui_lines[5].set(ui_gen, ui_x, 24, "AND YOU CAN STAND ON IT");
             ui_lines[6].set(ui_gen, ui_x, 40, "SELECT: RUSH ORDER (2)");
             ui_lines[7].set(ui_gen, ui_x, 52, "L: THE TOWER SHIFTS (3)");
+            ui_lines[8].set(ui_gen, ui_x, 64, "B: MUTE");
             break;
 
         case st_playing:
@@ -838,6 +933,8 @@ int main()
                                < window_open_frames) ? 1u : 0u;
         // growth rung 3 (extension; words 0-19 stay pinned)
         cc_telemetry[20] = mode == 2 ? level : 0u;
+        // rung 4: the audio decision layer's mute flag rides the hook
+        gl_audio_hook[6] = muted ? 1u : 0u;
 
         bn::core::update();
     }

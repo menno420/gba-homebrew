@@ -35,7 +35,7 @@ Game Boy Advance (Butano, text-glyph presentation from the shared
 common fonts — no local assets). Runs in any GBA emulator; ships as
 `dist/clockwork-courier.gba`.
 
-## Prototype slice (PR #96) + growth rungs 1-3 (PRs #105-#107)
+## Prototype slice (PR #96) + growth rungs 1-4 (PRs #105-#108) — FULLY BUILT
 
 Movement (LEFT/RIGHT walk, A jump, fixed-point gravity + tile
 collision), ONE handcrafted single-screen level whose door DEMANDS the
@@ -74,8 +74,27 @@ delivery lands on rf 480, the window edge), **L3 THE FULL ROUND**
 (boost parcel + switch-standing ghost + timed window: two rewinds,
 delivery at rf 960). L on a win card advances (wraps after L3);
 jump_v/gravity and the 240/60 window are untouched; classic/rush
-verbs stay bit-identical by construction. Deliberately still cut:
-audio.
+verbs stay bit-identical by construction. **Growth rung 4 (AUDIO,
+PR #108) — the LAST cut, now built**: six original synthesized cues
+(`audio/generate_audio.py`, deterministic stdlib synthesis — no
+samples, ever) through maxmod, fired as pure DECISIONS on events the
+sim already computed — run start (deferred one frame off the
+transition, the Shoal boot-lag rule), parcel pickup, rewind fired,
+the door opening, delivery, and the chute-window tick — plus a
+B-mute that gates playback only. Nothing feeds back into the sim;
+every trigger rides a cumulative `gl_audio_hook` counter and the
+mixer-memory nonzero watch proves the voicing. Clock verdict:
+enabling the mixer moved NO clock on this engine (full-row cross-ROM
+diff vs the v0.4 dist: 0 differing rows at the same frame indices —
+Courier's transition frames are light, unlike Shoal's spawn spike);
+every carried literal stands verbatim.
+
+**With this rung the committed concept is FULLY BUILT**: movement,
+the rewind-ghost contract, the co-op door solve, ghost-as-platform,
+multiple parcels and timed chutes, three tuned tower floors, and
+audio — every named item of the pitch and its scope ladder is on
+cartridge, each behind committed headless proofs
+(`proofs.sh`: 8 proofs / 231 asserts).
 
 ## Determinism
 

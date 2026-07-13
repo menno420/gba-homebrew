@@ -1,6 +1,6 @@
 # Session — Drift Garden: playable slice on the mobile foundation (breadth program, night run)
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-13 (branch `claude/drift-garden`, started 03:02:49Z per `date -u`)
 - mission: game #5 of tonight's breadth program — evolve the `games/mobile-foundation/` skeleton (PR #78) into the playable game its own CONCEPT.md names: **Drift Garden**, a touch-first ambient garden with real stakes. Tap plants motes, drag currents herd them together, clustered mature motes cross-pollinate into rarer tiers, harvest for essence — beat the 90 s dusk quota while predator wisps eat the garden. Adds seeded determinism (mulberry32, `?seed=N` or daily UTC seed), a win/lose round structure, and a second headless smoke that proves win, lose, and byte-identical determinism. Original IP; zero deps, no build step; still an installable offline PWA.
@@ -56,11 +56,13 @@
    Honesty notes: the game smoke's win/lose/determinism rounds run on a page booted with visibility overridden to hidden before load, so the rAF loop never interleaves with the scripted `step()` clock — that is what makes byte-identical determinism assertable at all; the touch proof is a constructed `TouchEvent` dispatched on the canvas (the real `touchstart` handler runs), and `run.sh`'s tap is Playwright's `touchscreen.tap` as before.
 5. **Docs**: CONCEPT.md status → first playable slice shipped 2026-07-13 (+ one shipped-vs-growth-path line; sellability guess kept honest — one round loop deep, still foundation-value not a revenue bet); README.md "What works" + smoke section refreshed for the game and `game-smoke.mjs`.
 6. `python3 bootstrap.py check --strict` pre-flip: exits 1 solely on this card's designed in-progress badge (born-red HOLD) plus the pre-existing advisory claims-format warning on `control/claims/order-005-scribe.md` (not this session's to fix); re-run green expected at the close-out flip.
-7. Close-out: work committed and pushed (see PR #84 for the proof summary), CI conclusions recorded below, then this badge flipped complete as the final commit. Claim file left in place per tonight's precedent (morning sweep prunes).
+7. Close-out: work committed as adcf663 and pushed, PR #84 proof section updated, CI conclusions recorded below (03:21Z), then this badge flipped complete as the final commit. Claim file left in place per tonight's precedent (morning sweep prunes).
 
-## CI (branch claude/drift-garden, head = work commit)
+## CI (branch claude/drift-garden, head adcf663 pre-flip, recorded 2026-07-13T03:21Z per `date -u`)
 
-- recorded at close-out: see PR #84 checks — substrate-gate, ROM builds, headless boot proof; conclusions noted in the PR proof section update.
+- **substrate-gate** run 29221360922: completed/**failure** — the designed born-red hold on this card, verbatim from the job log: "HOLD (by design): session card .sessions/2026-07-13-drift-garden.md declares an in-progress Status — the born-red session gate holds the merge red until the card flips complete. This red is the designed hold, not a defect; nothing to investigate." Expected green on the flip head.
+- **ROM builds** run 29221360940: completed/**success** (jobs: ROM builds, NDS Brineward build, NDS ROM build — all success; no Makefile touched, web-only diff).
+- **auto-merge-enabler** run 29221360905 (job enable-auto-merge): completed/**success** — the repo's own sanctioned workflow; this session took no merge action, armed nothing, applied no labels (`headless boot proof` is workflow_dispatch-only, so not expected per-PR).
 
 ## 💡 Session idea
 

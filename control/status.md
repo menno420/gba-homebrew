@@ -159,3 +159,34 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   the solver rates hard — long solutions, low slack — into named packs);
   item 6 (daily leaderboard) stays out of static-hosting scope. Packaging
   follow-up for PR #85 still open: Tiltstone staging list needs `juice.js`.
+
+## Dispatch 2026-07-13 (Tiltstone slice 5, dispatched)
+
+- **ts:** 2026-07-13T19:14:01Z (appended by the session-46 worker;
+  everything above left intact per the append-only dispatch rule)
+- **Shipped this session:** Tiltstone slice 5 "LEVEL PACKS" — the
+  concept doc's growth item 5 ("curate seeds the solver rates hard —
+  long solutions, low slack — into named packs"). Engine v1.3.0 →
+  v1.4.0, pure + additive: `difficulty()` (par-dominant, low-slack
+  tiebreak), deterministic `curatePack()`, pinned `PACKS` data
+  (GRANITE GAUNTLET: 6 base-rule caverns par 5–7; DEEP CUTS: 6
+  level-4 caverns par 7–8) with the smoke re-running the curation and
+  asserting the pin byte-identical. Shell: pack picker, staged
+  progression, `?pack=&stage=` deep links, guarded progress. PR #97
+  (branch `claude/tiltstone-packs`), base = `claude/tiltstone-cells`
+  @ `6238f3a` (stacks on #95 ← #93 ← #92). Proofs: engine smoke
+  50 → 58 asserts (all 50 prior pins byte-identical), browser smoke
+  24 → 31 checks in real Chromium, `bootstrap.py check --strict`
+  exit 0; screenshots `docs/proof/session-46-tiltstone-packs*.png`.
+  Tiltstone growth items 1–5 are now ALL shipped — item 6 (daily
+  leaderboard) is out of static-hosting scope per the concept doc, so
+  further Tiltstone arc work is owner-gated.
+- **BACKPRESSURE now binds for this lane:** none of the Tiltstone
+  stack merged during this session — observed open own-lane PRs at
+  19:12Z: **#92, #93, #95, #97 = 4 unmerged** (≥ the 3-PR
+  backpressure line even before #97). Repo-wide open PRs observed: 10
+  (#85, #87, #88, #89, #90, #92, #93, #95, #96, #97). Next Tiltstone
+  slice should NOT be dispatched until the stack starts landing (and
+  the concept queue is empty anyway — see above).
+- **Landing posture:** PR #97 parked READY, no merge/auto-merge calls
+  from this session; the live server-side enabler decides on green.

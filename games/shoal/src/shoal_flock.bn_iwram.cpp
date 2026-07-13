@@ -173,7 +173,8 @@ SH_CODE_IWRAM int sh_flock_update(sh_fish* fish, int cursor_x,
 }
 
 SH_CODE_IWRAM int sh_pred_update(sh_fish* fish, sh_pred* preds,
-                                 unsigned run_frames)
+                                 unsigned run_frames, int straggle_r2,
+                                 int cooldown, int hunters)
 {
     // The flock centroid (whole px) — the straggler metric's anchor.
     int cen_x = 0, cen_y = 0, at_sea = 0;
@@ -202,7 +203,7 @@ SH_CODE_IWRAM int sh_pred_update(sh_fish* fish, sh_pred* preds,
     // fully deterministic.
     bool relock = (run_frames % sh_pred_relock) == 0;
 
-    for(int p = 0; p < sh_predators; ++p)
+    for(int p = 0; p < hunters; ++p)
     {
         int t = preds[p].target;
 
@@ -244,14 +245,14 @@ SH_CODE_IWRAM int sh_pred_update(sh_fish* fish, sh_pred* preds,
         }
 
         // The straggler threshold: a fish inside the school's
-        // sh_straggle_r2 ring is NOT prey — hunters starve on a tight
+        // straggle_r2 ring is NOT prey — hunters starve on a tight
         // school; only the abandoned are taken.
-        if(best >= 0 && best_d2 <= sh_straggle_r2)
+        if(best >= 0 && best_d2 <= straggle_r2)
         {
             best = -1;
         }
 
-        if(second >= 0 && second_d2 <= sh_straggle_r2)
+        if(second >= 0 && second_d2 <= straggle_r2)
         {
             second = -1;
         }
@@ -261,7 +262,7 @@ SH_CODE_IWRAM int sh_pred_update(sh_fish* fish, sh_pred* preds,
             preds[0].target = best;
         }
 
-        if(sh_predators > 1 && preds[1].cooldown == 0)
+        if(hunters > 1 && preds[1].cooldown == 0)
         {
             preds[1].target = second >= 0 ? second : -1;
         }
@@ -269,7 +270,7 @@ SH_CODE_IWRAM int sh_pred_update(sh_fish* fish, sh_pred* preds,
 
     int newly_eaten = 0;
 
-    for(int p = 0; p < sh_predators; ++p)
+    for(int p = 0; p < hunters; ++p)
     {
         sh_pred& pr = preds[p];
 
@@ -308,7 +309,7 @@ SH_CODE_IWRAM int sh_pred_update(sh_fish* fish, sh_pred* preds,
             ++newly_eaten;
             pr.x = sh_pred_den_x[p] * sh_fp;   // drag the kill home
             pr.y = sh_pred_den_y[p] * sh_fp;
-            pr.cooldown = sh_pred_cooldown;
+            pr.cooldown = cooldown;
             pr.target = -1;
         }
     }
@@ -316,7 +317,7 @@ SH_CODE_IWRAM int sh_pred_update(sh_fish* fish, sh_pred* preds,
     return newly_eaten;
 }
 
-SH_CODE_IWRAM int sh_gate_update(sh_fish* fish)
+SH_CODE_IWRAM int sh_gate_update(sh_fish* fish, int gates)
 {
     // STATIC GEOMETRY ONLY (the concept's "through gates"): no state,
     // no RNG — a pure position test per fish per wall, run AFTER the
@@ -340,7 +341,7 @@ SH_CODE_IWRAM int sh_gate_update(sh_fish* fish)
         int px = f.x / sh_fp;
         int py = f.y / sh_fp;
 
-        for(int g = 0; g < sh_gates; ++g)
+        for(int g = 0; g < gates; ++g)
         {
             if(px < sh_gate_x[g] - sh_gate_half
                || px > sh_gate_x[g] + sh_gate_half)

@@ -135,19 +135,27 @@ struct sh_pred
 SH_CODE_IWRAM int sh_flock_update(sh_fish* fish, int cursor_x,
                                   int cursor_y, bool pushing);
 
-// One deterministic predator frame (hungry water only; the caller
-// simply never calls it in calm water): re-lock on schedule, stalk,
+// One deterministic predator frame (hungry water and hunter levels;
+// calm/gated water simply never call it): re-lock on schedule, stalk,
 // eat, den up. Returns fish NEWLY eaten this frame. Same IWRAM
 // discipline (and the same map-address verification duty).
+// Rung 4 parameterized the knob (straggle_r2 / cooldown / hunters)
+// so tuned levels can carry their own triple; the hungry water passes
+// the shipped constants verbatim (sh_straggle_r2, sh_pred_cooldown,
+// sh_predators), so its sim is bit-identical by construction.
 SH_CODE_IWRAM int sh_pred_update(sh_fish* fish, sh_pred* preds,
-                                 unsigned run_frames);
+                                 unsigned run_frames, int straggle_r2,
+                                 int cooldown, int hunters);
 
-// One deterministic gate frame (THE GATED RUN only; the caller simply
-// never calls it in calm or hungry water). Pure static-geometry test:
+// One deterministic gate frame (THE GATED RUN and gated levels;
+// calm/hungry water simply never call it). Pure static-geometry test:
 // eject fish pressed into a wall band outside its gap, damp the
 // approach. Returns the number of fish blocked THIS frame (telemetry
 // evidence: the school visibly pooling against the coral). Same IWRAM
 // discipline (and the same map-address verification duty).
-SH_CODE_IWRAM int sh_gate_update(sh_fish* fish);
+// Rung 4 parameterized the wall COUNT (the first `gates` of the
+// committed geometry); the gated run passes sh_gates verbatim, so its
+// sim is bit-identical by construction.
+SH_CODE_IWRAM int sh_gate_update(sh_fish* fish, int gates);
 
 #endif // SHOAL_FLOCK_H

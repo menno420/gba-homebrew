@@ -39,8 +39,9 @@
  *     input script replays bit-identically.
  *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
- * --elf --watch sh:sh_telemetry:25), volatile, C-linkage, every frame
- * (words 0-15 FROZEN since #98, 16-23 since #99; the gates append 24):
+ * --elf --watch sh:sh_telemetry:26), volatile, C-linkage, every frame
+ * (words 0-15 FROZEN since #98, 16-23 since #99, 24 since #100; the
+ * levels append 25):
  *   [0] 0x53484F41 'SHOA' magic     [8]  flock centroid x (whole px)
  *   [1] 0x4C524546 'LREF' magic     [9]  flock centroid y (whole px)
  *   [2] state (0 title, 1 herding,  [10] fish[0] x (8.8 px)
@@ -53,10 +54,11 @@
  *   [6] fish still at sea
  *   [7] fish SAVED in the reef
  *   [16] mode (0 calm/1 hungry/  [20] pred1 x   [21] pred1 y
- *        2 gated)                [22] pred0 lock (fish idx+1, 0=none)
+ *        2 gated/3 tuned level)  [22] pred0 lock (fish idx+1, 0=none)
  *   [17] fish EATEN              [23] pred1 lock
  *   [18] pred0 x (whole px)      [24] fish blocked by a gate wall
- *   [19] pred0 y                      THIS frame (gated run only)
+ *   [19] pred0 y                      THIS frame (gated/level runs)
+ *   [25] level index (0-3, tuned levels only; 0 otherwise)
  *
  * Presentation is deliberately trivial (breadth-program slice): fish
  * are one-glyph text sprites ('>') moved per frame, the cursor is
@@ -84,7 +86,7 @@
 extern "C"
 {
     // Headless telemetry mailbox — layout in the header comment.
-    volatile unsigned sh_telemetry[25];
+    volatile unsigned sh_telemetry[26];
 }
 
 namespace
@@ -185,10 +187,8 @@ namespace
     // finally grade too — that is what makes the ratings PROPER: a
     // scattered shoal still banks its stars, and a goalless run reads
     // "-". Display-only: the sim never consults a star.
-    constexpr int stars_of(unsigned saved_count, unsigned mode_now)
+    constexpr int stars_of(unsigned saved_count, int goal)
     {
-        int goal = mode_now == 1 ? save_goal_hungry : save_goal;
-
         return int(saved_count) >= goal ? 3
              : int(saved_count) >= (goal * 2 + 2) / 3 ? 2
              : int(saved_count) >= (goal + 2) / 3 ? 1 : 0;
@@ -207,6 +207,33 @@ namespace
             text.append("*");
         }
     }
+
+    // --- multiple tuned levels (growth rung 4) ------------------------------
+    // The committed concept's S3 scope ("4 levels with tuned flock
+    // parameters"), on a fourth verb: L. Each level is a DISTINCT,
+    // deliberate parameter set over the shipped mechanics — hunter
+    // count + the coupled knob triple (straggler ring / den time /
+    // goal, retuned ALL THREE TOGETHER per level, the #99 rule) and
+    // gate geometry (the first N committed walls). The carried waters
+    // never read this table. Justifications live in the session card;
+    // every goal is priced by a committed win route in proofs.sh.
+    struct level_def
+    {
+        const char* name;
+        int hunters;
+        int straggle_r2;                 // knob 1 (0 when hunters = 0)
+        int cooldown;                    // knob 2
+        int gates;
+        int goal;                        // knob 3 (stars derive from it)
+    };
+
+    constexpr int level_count = 4;
+    constexpr level_def level_defs[level_count] = {
+        {"THE SHALLOWS", 0, 0, 0, 1, 40},
+        {"THE HUNT", 1, 44 * 44, 300, 0, 36},
+        {"THE NARROWS", 1, 52 * 52, 360, 2, 32},
+        {"DEEP WATER", 2, 52 * 52, 420, 2, 28},
+    };
 }
 
 int main()
@@ -222,7 +249,7 @@ int main()
     ui_gen.set_left_alignment();
 
     constexpr int ui_x = -110;
-    text_line ui_lines[8];
+    text_line ui_lines[9];
     text_line reef_marks[3];
     text_line cursor_glyph;
     text_line pred_glyphs[sh_predators]; // 'X' hunters (hungry water)
@@ -270,6 +297,7 @@ int main()
                                          // (SELECT) / 2 gated (R)
     unsigned eaten = 0;
     unsigned gate_blocked = 0;           // fish pressed into coral this frame
+    unsigned level = 0;                  // tuned-levels index (mode 3 only)
     int cursor_x = 40, cursor_y = 80;    // whole px
     bool pushing = false;
     unsigned saved = 0;
@@ -312,6 +340,7 @@ int main()
         bool start = bn::keypad::start_pressed();
         bool select = bn::keypad::select_pressed();
         bool rkey = bn::keypad::r_pressed();
+        bool lkey = bn::keypad::l_pressed();
 
         switch(state)
         {
@@ -319,10 +348,23 @@ int main()
         case st_title:
         case st_home:
         case st_scattered:
-            if(start || select || rkey)
+            if(start || select || rkey || lkey)
             {
-                mode = select ? 1 : (rkey ? 2 : 0); // SELECT: hungry /
-                reset_run();                        // R: the gated run
+                unsigned prev_mode = mode;          // SELECT: hungry /
+                mode = select ? 1                   // R: the gated run /
+                     : (rkey ? 2 : (lkey ? 3 : 0)); // L: tuned levels
+
+                if(mode == 3)
+                {
+                    // L from a level's WIN card advances, from its
+                    // SCATTERED card retries, from anywhere else
+                    // starts at level 1.
+                    level = prev_mode != 3 || state == st_title ? 0
+                          : state == st_home ? (level + 1) % level_count
+                          : level;
+                }
+
+                reset_run();
                 clear_lines();
 
                 bn::string<40> glyph(">");
@@ -334,13 +376,16 @@ int main()
                     fish_sprites.push_back(bn::move(out[0]));
                 }
 
-                if(mode == 2)
+                int gates_now = mode == 2 ? sh_gates
+                              : mode == 3 ? level_defs[level].gates : 0;
+
+                if(gates_now > 0)
                 {
                     // The coral walls, laid once (static geometry — the
                     // sprites never move; collision is the constants).
                     bn::string<40> coral("#");
 
-                    for(int g = 0; g < sh_gates; ++g)
+                    for(int g = 0; g < gates_now; ++g)
                     {
                         for(int y = water_y0 + 4; y <= water_y1 - 4;
                             y += 8)
@@ -395,29 +440,47 @@ int main()
             saved += unsigned(sh_flock_update(fish, cursor_x, cursor_y,
                                               pushing));
 
-            // --- the hunters (hungry water only — the SELECT verb;
-            // calm water never runs this, so every carried pin holds).
+            // --- the hunters (hungry water: the shipped knob verbatim,
+            // so every carried pin holds; tuned levels: the level's own
+            // triple; calm/gated water never runs this).
             if(mode == 1)
             {
-                eaten += unsigned(sh_pred_update(fish, preds,
-                                                 run_frames));
+                eaten += unsigned(sh_pred_update(fish, preds, run_frames,
+                                                 sh_straggle_r2,
+                                                 sh_pred_cooldown,
+                                                 sh_predators));
+            }
+            else if(mode == 3 && level_defs[level].hunters > 0)
+            {
+                eaten += unsigned(sh_pred_update(fish, preds, run_frames,
+                                       level_defs[level].straggle_r2,
+                                       level_defs[level].cooldown,
+                                       level_defs[level].hunters));
             }
 
-            // --- the gates (THE GATED RUN only — the R verb; calm and
-            // hungry water never run this, so every carried pin holds).
+            // --- the gates (gated run: all committed walls, so every
+            // carried pin holds; tuned levels: the level's first N;
+            // calm/hungry water never runs this).
             if(mode == 2)
             {
-                gate_blocked = unsigned(sh_gate_update(fish));
+                gate_blocked = unsigned(sh_gate_update(fish, sh_gates));
+            }
+            else if(mode == 3 && level_defs[level].gates > 0)
+            {
+                gate_blocked = unsigned(sh_gate_update(fish,
+                                            level_defs[level].gates));
             }
 
-            unsigned goal = mode == 1 ? save_goal_hungry : save_goal;
+            unsigned goal = mode == 1 ? save_goal_hungry
+                          : mode == 3 ? unsigned(level_defs[level].goal)
+                          : save_goal;
 
             if(saved >= goal)
             {
                 state = st_home;
                 clear_lines();
             }
-            else if(mode == 1
+            else if(eaten > 0
                     && fish_count - int(eaten) < int(goal))
             {
                 state = st_scattered;    // the goal died with the shoal
@@ -443,6 +506,7 @@ int main()
             ui_lines[5].set(ui_gen, ui_x, 24, "SELECT: HUNGRY WATER (35)");
             ui_lines[6].set(ui_gen, ui_x, 36, "R: THE GATED RUN (40)");
             ui_lines[7].set(ui_gen, ui_x, 48, "STARS = FISH SAVED");
+            ui_lines[8].set(ui_gen, ui_x, 60, "L: TUNED LEVELS (4)");
             break;
 
         case st_herding:
@@ -472,9 +536,12 @@ int main()
             cursor_glyph.set(map_gen, scr_x(cursor_x) - 4,
                              scr_y(cursor_y), cur);
 
+            int hunters_now = mode == 1 ? sh_predators
+                            : mode == 3 ? level_defs[level].hunters : 0;
+
             for(int p = 0; p < sh_predators; ++p)
             {
-                if(mode == 1)
+                if(p < hunters_now)
                 {
                     bn::string<40> jaws("X");
                     pred_glyphs[p].set(map_gen,
@@ -487,15 +554,26 @@ int main()
                 }
             }
 
-            bn::string<40> hud("SAVED ");
+            unsigned goal_now = mode == 1 ? save_goal_hungry
+                              : mode == 3 ? unsigned(level_defs[level].goal)
+                              : save_goal;
+            bn::string<40> hud;
+
+            if(mode == 3)
+            {
+                hud.append("L");
+                hud.append(bn::to_string<8>(level + 1));
+                hud.append(" ");
+            }
+
+            hud.append("SAVED ");
             hud.append(bn::to_string<8>(saved));
             hud.append("/");
-            hud.append(bn::to_string<8>(mode == 1 ? save_goal_hungry
-                                                  : save_goal));
+            hud.append(bn::to_string<8>(goal_now));
             hud.append(" ");
-            append_stars(hud, stars_of(saved, mode)); // rating, live
+            append_stars(hud, stars_of(saved, int(goal_now))); // live
 
-            if(mode == 1)
+            if(mode == 1 || hunters_now > 0)
             {
                 hud.append("  LOST ");
                 hud.append(bn::to_string<8>(eaten));
@@ -524,8 +602,21 @@ int main()
             ui_lines[3].set(ui_gen, ui_x, -16, "THE TIDE THANKS YOU");
             ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
             bn::string<40> stars_line("RATING ");
-            append_stars(stars_line, stars_of(saved, mode));
+            append_stars(stars_line, stars_of(saved,
+                mode == 1 ? save_goal_hungry
+              : mode == 3 ? level_defs[level].goal : save_goal));
             ui_lines[5].set(ui_gen, ui_x, 24, stars_line);
+
+            if(mode == 3)
+            {
+                bn::string<40> lv_line("L");
+                lv_line.append(bn::to_string<8>(level + 1));
+                lv_line.append(" ");
+                lv_line.append(level_defs[level].name);
+                lv_line.append(" - L: NEXT");
+                ui_lines[6].set(ui_gen, ui_x, 40, lv_line);
+            }
+
             break;
         }
 
@@ -546,8 +637,21 @@ int main()
             ui_lines[3].set(ui_gen, ui_x, -16, "KEEP THE SCHOOL TIGHT");
             ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
             bn::string<40> stars_line("RATING ");
-            append_stars(stars_line, stars_of(saved, mode));
+            append_stars(stars_line, stars_of(saved,
+                mode == 1 ? save_goal_hungry
+              : mode == 3 ? level_defs[level].goal : save_goal));
             ui_lines[5].set(ui_gen, ui_x, 24, stars_line);
+
+            if(mode == 3)
+            {
+                bn::string<40> lv_line("L");
+                lv_line.append(bn::to_string<8>(level + 1));
+                lv_line.append(" ");
+                lv_line.append(level_defs[level].name);
+                lv_line.append(" - L: RETRY");
+                ui_lines[6].set(ui_gen, ui_x, 40, lv_line);
+            }
+
             break;
         }
 
@@ -614,6 +718,8 @@ int main()
         sh_telemetry[23] = unsigned(preds[1].target + 1);
         // slice 3 (extension; words 0-23 stay pinned)
         sh_telemetry[24] = gate_blocked;
+        // slice 4 (extension; words 0-24 stay pinned)
+        sh_telemetry[25] = mode == 3 ? level : 0u;
 
         bn::core::update();
     }

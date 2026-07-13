@@ -204,3 +204,32 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   byte-deterministic.
 - PR #101 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-13 (Shoal levels, PR #102)
+
+- **ts:** 2026-07-13T21:45:47Z (appended by the session-49 worker; everything
+  above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time)
+- Shoal growth rung 4 = **multiple tuned levels** (CONCEPT.md's next
+  named cut; the concept's S3 "4 levels with tuned flock
+  parameters"), on branch `claude/shoal-levels` from main @
+  `b04be5a`. A fourth verb (L) starts a four-level campaign, each a
+  distinct deliberate parameter set: L1 THE SHALLOWS (1 gate, no
+  hunters, 40) · L2 THE HUNT (one 44px/300 hunter, 36) · L3 THE
+  NARROWS (2 gates + one 52px/360 hunter, 32) · L4 DEEP WATER
+  (2 gates + two 52px/420 hunters, 28). Per-level knob retunes were
+  coordinator-authorized and applied all-three-together with
+  justification (card); star lines derive from per-level goals.
+- Every level proven winnable by its own derived route in ONE
+  deterministic chain (proofs.sh P7, run-twice byte-identical):
+  40/0 lost @ rf 2881 · 36/3 @ 1050 · 32/5 @ 2955 · 28/7 @ 1707,
+  plus the L-wrap back to L1. Worst frame anywhere: 82.3%
+  (3369/4096, L4) — the t[5] < 4096 rail covers it.
+- Carried waters byte-identical cross-ROM vs the rebuilt v0.4 dist —
+  calm/gated 0 non-CPU diffs; hungry 0 diffs modulo a documented
+  one-hw-frame transition shift (vblank boundary), its P6 route
+  re-based +1 frame with every game-state pin passing unchanged.
+  7 proofs / 146 asserts green; `dist/shoal.gba` v0.5
+  byte-deterministic.
+- PR #102 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

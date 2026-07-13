@@ -39,8 +39,8 @@
  *     input script replays bit-identically.
  *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
- * --elf --watch sh:sh_telemetry:24), volatile, C-linkage, every frame
- * (words 0-15 FROZEN since #98; the predator pass appends 16-23):
+ * --elf --watch sh:sh_telemetry:25), volatile, C-linkage, every frame
+ * (words 0-15 FROZEN since #98, 16-23 since #99; the gates append 24):
  *   [0] 0x53484F41 'SHOA' magic     [8]  flock centroid x (whole px)
  *   [1] 0x4C524546 'LREF' magic     [9]  flock centroid y (whole px)
  *   [2] state (0 title, 1 herding,  [10] fish[0] x (8.8 px)
@@ -52,10 +52,11 @@
  *   [5] max cpu usage since boot         clock the reef stamps)
  *   [6] fish still at sea
  *   [7] fish SAVED in the reef
- *   [16] mode (0 calm/1 hungry)  [20] pred1 x   [21] pred1 y
- *   [17] fish EATEN              [22] pred0 lock (fish idx+1, 0=none)
- *   [18] pred0 x (whole px)      [23] pred1 lock
- *   [19] pred0 y
+ *   [16] mode (0 calm/1 hungry/  [20] pred1 x   [21] pred1 y
+ *        2 gated)                [22] pred0 lock (fish idx+1, 0=none)
+ *   [17] fish EATEN              [23] pred1 lock
+ *   [18] pred0 x (whole px)      [24] fish blocked by a gate wall
+ *   [19] pred0 y                      THIS frame (gated run only)
  *
  * Presentation is deliberately trivial (breadth-program slice): fish
  * are one-glyph text sprites ('>') moved per frame, the cursor is
@@ -83,7 +84,7 @@
 extern "C"
 {
     // Headless telemetry mailbox — layout in the header comment.
-    volatile unsigned sh_telemetry[24];
+    volatile unsigned sh_telemetry[25];
 }
 
 namespace
@@ -93,8 +94,8 @@ namespace
         st_title = 0,
         st_herding = 1,
         st_home = 2,
-        st_scattered = 3,            // hungry water only: the 40-fish
-    };                               //   goal became unreachable
+        st_scattered = 3,            // hungry water only: the goal
+    };                               //   became unreachable
 
     constexpr unsigned seed_constant = 0x510A17E5;  // fixed; init-only
 
@@ -188,10 +189,15 @@ int main()
     ui_gen.set_left_alignment();
 
     constexpr int ui_x = -110;
-    text_line ui_lines[6];
+    text_line ui_lines[7];
     text_line reef_marks[3];
     text_line cursor_glyph;
     text_line pred_glyphs[sh_predators]; // 'X' hunters (hungry water)
+
+    // The gate walls (THE GATED RUN only): '#' coral glyphs, generated
+    // ONCE at run start like the fish sprites (no per-frame text cost)
+    // — 8 px rows over the water column, skipping each wall's gap.
+    bn::vector<bn::sprite_ptr, 40> gate_sprites;
 
     // One '>' sprite per fish, generated once and MOVED per frame (the
     // no-assets trick without per-frame text regeneration). 50 fish +
@@ -218,6 +224,7 @@ int main()
         }
 
         fish_sprites.clear();
+        gate_sprites.clear();
     };
 
     // --- run state (reset_run() restores the exact boot school) ------------
@@ -226,8 +233,10 @@ int main()
     unsigned max_cpu = 0;                // worst last_cpu_usage.data() seen
     fish_t fish[fish_count];
     sh_pred preds[sh_predators];
-    unsigned mode = 0;                   // 0 calm (START) / 1 hungry (SELECT)
+    unsigned mode = 0;                   // 0 calm (START) / 1 hungry
+                                         // (SELECT) / 2 gated (R)
     unsigned eaten = 0;
+    unsigned gate_blocked = 0;           // fish pressed into coral this frame
     int cursor_x = 40, cursor_y = 80;    // whole px
     bool pushing = false;
     unsigned saved = 0;
@@ -257,6 +266,7 @@ int main()
         }
 
         eaten = 0;
+        gate_blocked = 0;
         cursor_x = 40;
         cursor_y = 80;
         pushing = false;
@@ -268,6 +278,7 @@ int main()
     {
         bool start = bn::keypad::start_pressed();
         bool select = bn::keypad::select_pressed();
+        bool rkey = bn::keypad::r_pressed();
 
         switch(state)
         {
@@ -275,10 +286,10 @@ int main()
         case st_title:
         case st_home:
         case st_scattered:
-            if(start || select)
+            if(start || select || rkey)
             {
-                mode = select ? 1 : 0;   // SELECT: the hungry water
-                reset_run();
+                mode = select ? 1 : (rkey ? 2 : 0); // SELECT: hungry /
+                reset_run();                        // R: the gated run
                 clear_lines();
 
                 bn::string<40> glyph(">");
@@ -288,6 +299,31 @@ int main()
                     bn::vector<bn::sprite_ptr, 4> out;
                     map_gen.generate(0, 0, glyph, out);
                     fish_sprites.push_back(bn::move(out[0]));
+                }
+
+                if(mode == 2)
+                {
+                    // The coral walls, laid once (static geometry — the
+                    // sprites never move; collision is the constants).
+                    bn::string<40> coral("#");
+
+                    for(int g = 0; g < sh_gates; ++g)
+                    {
+                        for(int y = water_y0 + 4; y <= water_y1 - 4;
+                            y += 8)
+                        {
+                            if(y >= sh_gate_gap_y0[g]
+                               && y <= sh_gate_gap_y1[g])
+                            {
+                                continue;
+                            }
+
+                            bn::vector<bn::sprite_ptr, 4> out;
+                            map_gen.generate(scr_x(sh_gate_x[g]) - 4,
+                                             scr_y(y), coral, out);
+                            gate_sprites.push_back(bn::move(out[0]));
+                        }
+                    }
                 }
 
                 state = st_herding;
@@ -334,6 +370,13 @@ int main()
                                                  run_frames));
             }
 
+            // --- the gates (THE GATED RUN only — the R verb; calm and
+            // hungry water never run this, so every carried pin holds).
+            if(mode == 2)
+            {
+                gate_blocked = unsigned(sh_gate_update(fish));
+            }
+
             unsigned goal = mode == 1 ? save_goal_hungry : save_goal;
 
             if(saved >= goal)
@@ -365,6 +408,7 @@ int main()
             ui_lines[3].set(ui_gen, ui_x, -16, "HERD 40 FISH TO THE REEF");
             ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
             ui_lines[5].set(ui_gen, ui_x, 24, "SELECT: HUNGRY WATER (35)");
+            ui_lines[6].set(ui_gen, ui_x, 36, "R: THE GATED RUN (40)");
             break;
 
         case st_herding:
@@ -526,6 +570,8 @@ int main()
         sh_telemetry[21] = unsigned(preds[1].y / fp);
         sh_telemetry[22] = unsigned(preds[0].target + 1);
         sh_telemetry[23] = unsigned(preds[1].target + 1);
+        // slice 3 (extension; words 0-23 stay pinned)
+        sh_telemetry[24] = gate_blocked;
 
         bn::core::update();
     }

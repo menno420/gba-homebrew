@@ -87,6 +87,28 @@ constexpr int sh_pred_cooldown = 300;// den time after a kill (tuned:
 constexpr int sh_pred_den_x[sh_predators] = {176, 176};
 constexpr int sh_pred_den_y[sh_predators] = {40, 120};
 
+// The gates (growth rung 2 — the committed concept's "past predators,
+// through gates, into the safe reef"; CONCEPT.md's next named cut).
+// STATIC GEOMETRY ONLY: two coral walls with offset gaps stand between
+// the school and the reef, and they exist only in THE GATED RUN (the
+// R verb; calm START water and hungry SELECT water never run the gate
+// pass, so every carried pin holds by construction — and the hungry
+// water's coupled difficulty knob, straggler 44 px + den 300 + goal
+// 35, is untouched). A fish pressed into the coral is ejected to the
+// side it came from with its approach damped; the school must be
+// FUNNELED — gap 0 sits high, gap 1 sits low, so the herd snakes.
+// No tunneling by construction: per-axis speed is clamped to 1.5 px/f
+// (sh_speed_max) and the wall band is 5 px wide, checked every frame.
+constexpr int sh_gates = 2;
+constexpr int sh_gate_x[sh_gates] = {104, 156};  // clear of the spawn
+                                     //   box (x <= 95) and the reef
+constexpr int sh_gate_half = 2;      // wall band = gate_x +/- 2 px
+constexpr int sh_gate_gap_y0[sh_gates] = {28, 92};   // gap 0 HIGH,
+constexpr int sh_gate_gap_y1[sh_gates] = {68, 132};  // gap 1 LOW —
+                                     //   44 px tall each: one school
+                                     //   width, offset so a straight
+                                     //   push cannot bank the shoal
+
 // sh_fish.saved: 0 = at sea, 1 = SAVED in the reef, 2 = EATEN.
 struct sh_fish
 {
@@ -119,5 +141,13 @@ SH_CODE_IWRAM int sh_flock_update(sh_fish* fish, int cursor_x,
 // discipline (and the same map-address verification duty).
 SH_CODE_IWRAM int sh_pred_update(sh_fish* fish, sh_pred* preds,
                                  unsigned run_frames);
+
+// One deterministic gate frame (THE GATED RUN only; the caller simply
+// never calls it in calm or hungry water). Pure static-geometry test:
+// eject fish pressed into a wall band outside its gap, damp the
+// approach. Returns the number of fish blocked THIS frame (telemetry
+// evidence: the school visibly pooling against the coral). Same IWRAM
+// discipline (and the same map-address verification duty).
+SH_CODE_IWRAM int sh_gate_update(sh_fish* fish);
 
 #endif // SHOAL_FLOCK_H

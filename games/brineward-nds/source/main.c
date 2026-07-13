@@ -16,6 +16,10 @@
 // keel (the telegraph), surfaces, and lunges; a bite costs real hull.
 // The batteries wake while it is up: rake it (it breaks up richer than
 // any rum-runner), dodge it, run for the pier sanctuary, or put out.
+// Slice 7 gives the brine its DEPTH: SELECT in the salvage water puts
+// out one danger band deeper — richer crates, worse weather, heavier
+// rum-runners with faster crews, and reefs that scrape the keel; the
+// deepest band sailed is the charted-waters score on the cards.
 // All game rules live in the pure layer (bw_sim.h/.c, mirrored by
 // tools/check-brine.py); this file is input, state machine, rendering,
 // and the telemetry mailbox.
@@ -32,7 +36,8 @@
 // (tools/nds-headless-check.py --elf/--watch) can assert game state
 // numerically. Layout below at BW_T_* — slice 5 EXTENDED the mailbox
 // 26 -> 31 (session-20 guard recipe: words 0-25 are pinned by the
-// existing proofs; extend, never re-map).
+// existing proofs; extend, never re-map), slice 6 31 -> 34, slice 7
+// 34 -> 38.
 //
 // 100% original content: code, text, and the code-authored sprites.
 
@@ -77,8 +82,17 @@
 #define BW_T_MAWY 28    // Maw y
 #define BW_T_MAWHULL 29 // Maw hull, 0..BW_MAW_HULL (0 = slain)
 #define BW_T_MAWS 30    // Maws slain this power-on
+// slice 6 (extension; words 0-30 stay pinned)
+#define BW_T_WINDLVL 31 // this water's weather: 0 calm / 1 breeze / 2 gale
+#define BW_T_WINDHDG 32 // wind heading (blowing TOWARD), 0..1023, rotating
+#define BW_T_PSPEED 33  // player speed, units/frame (the point-of-sail word)
+// slice 7 (extension; words 0-33 stay pinned)
+#define BW_T_BAND 34    // this water's danger band, 0..2
+#define BW_T_BEST 35    // deepest band charted this power-on (the score)
+#define BW_T_REEFS 36   // rocks in this water (0 in band 0)
+#define BW_T_GROUND 37  // reef scrapes taken this water
 
-volatile uint32_t bw_telemetry[31];
+volatile uint32_t bw_telemetry[38];
 
 enum
 {
@@ -230,6 +244,27 @@ static const char CRATE_ART[8][9] = {
     "........",
 };
 
+// Reef rock, 16x16 (slice 7): d = wet rock, e = foam ring where the
+// swell breaks over it (the tell the player charts by).
+static const char REEF_ART[16][17] = {
+    "................",
+    "......e..e......",
+    "....e.dddd.e....",
+    "...eddddddde....",
+    "..e.dddddddd.e..",
+    "..eddddddddde...",
+    ".e.dddddddddd.e.",
+    "..dddddddddddd..",
+    ".edddddddddddde.",
+    "..dddddddddddd..",
+    ".e.dddddddddd.e.",
+    "..eddddddddde...",
+    "..e.dddddddd.e..",
+    "...eddddddde....",
+    "....e.dddd.e....",
+    "......e..e......",
+};
+
 // Pack WxH character art into 4bpp tiles (8x8 tile raster order).
 static void load_sprite_gfx(u16 *gfx, const char *art, int w, int h,
                             int stride)
@@ -271,6 +306,8 @@ static void load_palette(void)
     SPRITE_PALETTE[10] = RGB15(1, 3, 5);     // the shadow / the gullet
     SPRITE_PALETTE[11] = RGB15(8, 6, 10);    // abyssal flesh
     SPRITE_PALETTE[12] = RGB15(28, 29, 26);  // bone teeth
+    SPRITE_PALETTE[13] = RGB15(7, 8, 7);     // wet reef rock (slice 7)
+    SPRITE_PALETTE[14] = RGB15(24, 27, 28);  // foam breaking over it
     // slate sea on both backdrops
     BG_PALETTE[0] = RGB15(2, 5, 9);
     BG_PALETTE_SUB[0] = RGB15(2, 4, 7);
@@ -284,6 +321,7 @@ typedef struct
     uint32_t wins;
     uint32_t gold;                       // banked at Graywake — safe forever
     uint32_t maws;                       // Maws slain this power-on (slice 5)
+    uint32_t best_band;                  // deepest band charted (slice 7)
     int32_t up_hull;                     // upgrade tiers — bought with
     int32_t up_cannon;                   //   banked gold, NEVER lost
     int32_t up_sail;                     //   (concept-doc rule)
@@ -321,7 +359,8 @@ static void draw_title(void)
     printf("\x1b[13;4Hbroadsides: L port, R stbd\n");
     printf("\x1b[14;4Hsink her, scoop the crates,\n");
     printf("\x1b[15;4Hbank gold at the pier\n");
-    printf("\x1b[17;9HPRESS START\n");
+    printf("\x1b[16;4Hafter a win SELECT: deeper\n");
+    printf("\x1b[18;9HPRESS START\n");
 }
 
 static void draw_sunk_card(const Score *sc, const BwDuel *d)
@@ -339,10 +378,46 @@ static void draw_sunk_card(const Score *sc, const BwDuel *d)
            (unsigned long)sc->gold);
     if (sc->maws > 0)
         printf("\x1b[15;7Hmaws slain %lu", (unsigned long)sc->maws);
-    printf("\x1b[17;4HPRESS START: put out again\n");
+    printf("\x1b[16;7Hcharted: band %lu waters",
+           (unsigned long)sc->best_band);
+    printf("\x1b[18;4HPRESS START: put out again\n");
 }
 
 static const char *const TRIM_NAME[3] = { "BTL", "HLF", "FUL" };
+
+// --- the weather gauge (slice 6) -----------------------------------------------
+// Sailors name the wind by where it comes FROM: the sim's wind heading
+// points TOWARD, so the gauge shows the opposite bearing, folded onto
+// the 8-point compass. "NE~" = a breeze out of the northeast, "NE!" =
+// a gale; a calm water shows "calm". Pure render of sim state.
+static const char *const WIND_FROM[8] = {
+    "N", "NE", "E", "SE", "S", "SW", "W", "NW",
+};
+
+static const char *wind_from_name(const BwDuel *d)
+{
+    int32_t from = (bw_wind_heading(d) + BW_CIRCLE / 2) & (BW_CIRCLE - 1);
+    return WIND_FROM[((from + 64) & (BW_CIRCLE - 1)) >> 7];
+}
+
+static void wind_gauge(const BwDuel *d, char *out /* >= 8 bytes */)
+{
+    if (d->wind_level == BW_WIND_CALM)
+    {
+        out[0] = 'c'; out[1] = 'a'; out[2] = 'l'; out[3] = 'm';
+        out[4] = 0;
+        return;
+    }
+    const char *n = wind_from_name(d);
+    int i = 0;
+    while (n[i])
+    {
+        out[i] = n[i];
+        i++;
+    }
+    out[i++] = d->wind_level == BW_WIND_GALE ? '!' : '~';
+    out[i] = 0;
+}
 
 // Render-only bank flash: how many frames the "BANKED" line still shows.
 static int bank_flash;
@@ -350,11 +425,13 @@ static uint32_t bank_amount;
 
 static void draw_hud_row0(const BwDuel *d)
 {
-    printf("\x1b[0;1HHULL %3d  L%2d R%2d  %s\x1b[K",
+    char wind[8];
+    wind_gauge(d, wind);                 // slice 6: read the weather
+    printf("\x1b[0;1HHULL %3d  L%2d R%2d  %s %s\x1b[K",
            (int)d->player.hull,
            (int)((d->player.reload_l + 9) / 10),
            (int)((d->player.reload_r + 9) / 10),
-           TRIM_NAME[d->player.trim]);
+           TRIM_NAME[d->player.trim], wind);
 }
 
 static void draw_hud(const BwDuel *d, const Score *sc)
@@ -477,6 +554,8 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
     int32_t hull_max = bw_up_hull_max(d->up_hull);
     int32_t reload_max = bw_up_reload(d->up_cannon);
     consoleSelect(&bottom_console);
+    printf("\x1b[3;1Hband %d water   charted %lu\x1b[K",
+           (int)d->band, (unsigned long)sc->best_band);
     draw_bar(4, "HULL", d->player.hull, hull_max);
     draw_bar(6, "PORT", reload_max - d->player.reload_l, reload_max);
     draw_bar(8, "STBD", reload_max - d->player.reload_r, reload_max);
@@ -490,10 +569,18 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
     printf("\x1b[13;1Hhold %d/%d crates %3dg\x1b[K",
            (int)d->hold, BW_HOLD_CAP, (int)d->hold_gold);
     printf("\x1b[14;1HGOLD BANKED %lug\x1b[K", (unsigned long)sc->gold);
-    draw_bar(17, "HULL", d->enemy.hull, BW_HULL_MAX);
+    draw_bar(17, "HULL", d->enemy.hull, bw_band_enemy_hull(d->band));
     printf("\x1b[19;1Hrange %3d yd\x1b[K",
            (int)(bw_chebyshev(d->player.x, d->player.y,
                               d->enemy.x, d->enemy.y) / BW_ONE));
+    // slice 6: the chart table reads the sky too (pure render of the
+    // seeded weather — the watch-map rule, as ever)
+    if (d->wind_level == BW_WIND_CALM)
+        printf("\x1b[20;1Hdead calm on the water\x1b[K");
+    else
+        printf("\x1b[20;1Hwind out of the %-2s  %s\x1b[K",
+               wind_from_name(d),
+               d->wind_level == BW_WIND_GALE ? "GALE" : "breeze");
     // slice 5: the chart table reads the water (a pure render of maw
     // state — the watch-map rule, as ever)
     if (d->maw.state == BW_MAW_SHADOW)
@@ -513,11 +600,13 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
 #define OAM_BALL0 2
 #define OAM_LOOT0 (OAM_BALL0 + BW_MAX_BALLS)
 #define OAM_MAW (OAM_LOOT0 + BW_MAX_LOOT)
+#define OAM_REEF0 (OAM_MAW + 1)
 
 static void draw_ships_and_balls(const BwDuel *d,
                                  u16 *player_gfx, u16 *enemy_gfx,
                                  u16 *ball_gfx, u16 *crate_gfx,
                                  u16 *maw_shadow_gfx, u16 *maw_risen_gfx,
+                                 u16 *reef_gfx,
                                  int state, uint32_t frame)
 {
     // The survivor sails the salvage water; the sunk ship is gone.
@@ -576,6 +665,16 @@ static void draw_ships_and_balls(const BwDuel *d,
            2, 0, SpriteSize_32x32, SpriteColorFormat_16Color,
            d->maw.state == BW_MAW_SHADOW ? maw_shadow_gfx : maw_risen_gfx,
            -1, false, !maw_shown, false, false, false);
+    // Reefs (slice 7): fixed rocks, REGULAR sprites (plain hide works).
+    for (int i = 0; i < BW_MAX_REEFS; i++)
+    {
+        const BwReef *r = &d->reefs[i];
+        oamSet(&oamMain, OAM_REEF0 + i,
+               r->x / BW_ONE - 8, r->y / BW_ONE - 8,
+               1, 0, SpriteSize_16x16, SpriteColorFormat_16Color,
+               reef_gfx, -1, false,
+               !(r->live && water_live), false, false, false);
+    }
 }
 
 // Begin a duel: latch the frame-counter seed, reset the sim, and re-inject
@@ -588,10 +687,12 @@ static void draw_ships_and_balls(const BwDuel *d,
 // "respawn at port with full (repaired) hull").
 static void begin_duel(BwDuel *duel, Score *sc, uint32_t frame,
                        int32_t carry_hold, int32_t carry_gold,
-                       int32_t carry_hull)
+                       int32_t carry_hull, int32_t band)
 {
     sc->seed = frame;
-    bw_duel_init(duel, sc->seed);
+    bw_water_init(duel, sc->seed, band);
+    if ((uint32_t)duel->band > sc->best_band)
+        sc->best_band = (uint32_t)duel->band;   // charted when you sail it
     duel->hold = carry_hold;
     duel->hold_gold = carry_gold;
     duel->up_hull = sc->up_hull;
@@ -634,12 +735,15 @@ int main(void)
                                          SpriteColorFormat_16Color);
     u16 *maw_risen_gfx = oamAllocateGfx(&oamMain, SpriteSize_32x32,
                                         SpriteColorFormat_16Color);
+    u16 *reef_gfx = oamAllocateGfx(&oamMain, SpriteSize_16x16,
+                                   SpriteColorFormat_16Color);
     load_sprite_gfx(player_gfx, &PLAYER_SHIP_ART[0][0], 16, 16, 17);
     load_sprite_gfx(enemy_gfx, &ENEMY_SHIP_ART[0][0], 16, 16, 17);
     load_sprite_gfx(ball_gfx, &BALL_ART[0][0], 8, 8, 9);
     load_sprite_gfx(crate_gfx, &CRATE_ART[0][0], 8, 8, 9);
     load_sprite_gfx(maw_shadow_gfx, &MAW_SHADOW_ART[0][0], 32, 32, 33);
     load_sprite_gfx(maw_risen_gfx, &MAW_RISEN_ART[0][0], 32, 32, 33);
+    load_sprite_gfx(reef_gfx, &REEF_ART[0][0], 16, 16, 17);
 
     BwDuel duel = {0};
     bw_duel_init(&duel, 0);              // idle telemetry before first START
@@ -680,7 +784,8 @@ int main(void)
         case STATE_SUNK:
             if (start)                   // fresh sail: no hold carried (a
             {                            // sunk hold was forfeited), free
-                begin_duel(&duel, &score, frame, 0, 0, 0);  // full refit
+                begin_duel(&duel, &score, frame, 0, 0, 0,   // full refit,
+                           0);           // home water: band 0 off the port
                 maw_counted = false;     // fresh water, fresh teeth
                 state = STATE_DUEL;
             }
@@ -729,10 +834,24 @@ int main(void)
         case STATE_SALVAGE:
         {
             if (start)                   // put out again WITH the hold —
-            {                            // and the dents (slice 4)
-                begin_duel(&duel, &score, frame,
-                           duel.hold, duel.hold_gold, duel.player.hull);
+            {                            // and the dents (slice 4), on the
+                begin_duel(&duel, &score, frame,       // SAME waters
+                           duel.hold, duel.hold_gold, duel.player.hull,
+                           duel.band);
                 maw_counted = false;     // fresh water, fresh teeth
+                state = STATE_DUEL;
+                break;
+            }
+            // SELECT presses DEEPER brineward (slice 7): same carry
+            // rules as START, one band down — richer wrecks, worse
+            // weather, heavier foes, rocks. bw_water_init clamps at
+            // band 2 (there is no deeper water than the deeps).
+            if (pad_seen_idle && (down & KEY_SELECT))
+            {
+                begin_duel(&duel, &score, frame,
+                           duel.hold, duel.hold_gold, duel.player.hull,
+                           duel.band + 1);
+                maw_counted = false;     // deeper water, fresh teeth
                 state = STATE_DUEL;
                 break;
             }
@@ -829,7 +948,7 @@ int main(void)
 
         draw_ships_and_balls(&duel, player_gfx, enemy_gfx, ball_gfx,
                              crate_gfx, maw_shadow_gfx, maw_risen_gfx,
-                             state, frame);
+                             reef_gfx, state, frame);
         oamUpdate(&oamMain);
         draw_status(&duel, &score, state);
 
@@ -869,6 +988,17 @@ int main(void)
         bw_telemetry[BW_T_MAWY] = (uint32_t)duel.maw.y;
         bw_telemetry[BW_T_MAWHULL] = (uint32_t)duel.maw.hull;
         bw_telemetry[BW_T_MAWS] = score.maws;
+        bw_telemetry[BW_T_WINDLVL] = (uint32_t)duel.wind_level;
+        bw_telemetry[BW_T_WINDHDG] = (uint32_t)bw_wind_heading(&duel);
+        bw_telemetry[BW_T_PSPEED] = (uint32_t)duel.player.speed;
+        bw_telemetry[BW_T_BAND] = (uint32_t)duel.band;
+        bw_telemetry[BW_T_BEST] = score.best_band;
+        uint32_t rocks = 0;
+        for (int i = 0; i < BW_MAX_REEFS; i++)
+            if (duel.reefs[i].live)
+                rocks++;
+        bw_telemetry[BW_T_REEFS] = rocks;
+        bw_telemetry[BW_T_GROUND] = (uint32_t)duel.groundings;
     }
 
     return 0;

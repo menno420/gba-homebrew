@@ -1,18 +1,21 @@
-# Playing Brineward (Nintendo DS) — the Maw
+# Playing Brineward (Nintendo DS) — danger bands + reefs
 
-> **Status:** `owner-guidance` — arc slice 5 (the first sea monster on
-> the slice-4 port/upgrades economy). Broadside duels off the Graywake
-> breakwater: sail, out-turn the rum-runner, sink her, scoop the
-> flotsam, bank and SPEND the gold at the Graywake port — but don't
-> linger over the wreck's blood, because the water goes dark and THE
-> MAW comes up under your keel. Concept + roadmap:
+> **Status:** `owner-guidance` — arc slice 7 (the deeps under the
+> slice-6 weather). Broadside duels off the Graywake breakwater: sail,
+> out-turn the rum-runner, sink her, scoop the flotsam, bank and SPEND
+> the gold at the Graywake port — don't linger over the wreck's blood
+> (the Maw comes up under your keel), read the sky before you commit —
+> and now the brine has DEPTH: after a win, SELECT presses one danger
+> band deeper. Richer wrecks, worse weather, heavier rum-runners with
+> faster crews, and rocks that scrape your keel; the deepest band you
+> dare is the charted-waters score. Concept + roadmap:
 > [`concepts/brineward-concept.md`](concepts/brineward-concept.md).
 
 ## Get the ROM
 
 - **Download and play:** [`dist/brineward.nds`](../dist/brineward.nds)
-  (116,224 bytes, sha256
-  `6e571941c4d286e76d1a05b18cb1c498b0ccfc20da5c62c95bc2d22a26d2af7c`)
+  (118,272 bytes, sha256
+  `91ac3eff823593c6ef5f0f743f696562ba13ec76111d84afcd44cc401fe0531f`)
   in any DS emulator — melonDS and DeSmuME both work; no BIOS files
   needed for homebrew. The build is byte-deterministic and CI re-builds
   it from source on every PR, printing both hashes side by side.
@@ -30,12 +33,63 @@
 | R | fire the STARBOARD (right) battery — own reload |
 | L / R | in the salvage water: the batteries WAKE while the Maw is up |
 | A | dock: open the Graywake port (alongside the pier, no foe afloat) |
+| SELECT | in the salvage water: put out one danger band DEEPER |
 | START | begin / restart after sinking / put out again / leave port |
 | UP / DOWN / A / B | in port: pick a row / buy / walk back out |
 
 **Sail trim is the whole helm:** full sail is fast but turns wide;
 battle sail is slow but turns tight. Speed eases toward the trim target
 (momentum), so plan your turns a second early.
+
+## The weather (new in slice 6)
+
+- **Each water rolls its weather from the seed** (printed like the
+  seed, reproducible like the seed): about a quarter of waters are
+  **dead calm**, half carry a **breeze**, a quarter blow a **GALE**.
+- **The wind vector turns slowly all run long** — a full box of the
+  compass in about two minutes. The HUD's top row carries the gauge:
+  `NE~` is a breeze out of the northeast, `NE!` is a gale, `calm` is
+  a millpond; the chart table spells it out (`wind out of the NE
+  GALE`).
+- **Your point of sail is real speed:** running with the wind fills
+  the canvas (up to +24 speed units in a gale), beating into it
+  fights the hull (up to -24), abeam is neutral — and **the more
+  canvas you set, the more the weather matters**: full sail catches
+  all of it, half sail half, battle sail a quarter. Shortening sail
+  is now also the storm verb.
+- **Both ships sail the same weather** — the rum-runner's intercept
+  is downwind-fast and upwind-slow exactly like you, so the weather
+  is a broadside-geometry knob: force the beat on them, keep the run
+  for yourself.
+- **The Maw doesn't care.** It swims UNDER the water: gale or calm,
+  the shadow homes at the same pace and full sail still outruns it
+  (verified even beating diagonally into a gale — barely; read the
+  sky before you scoop). Iron doesn't care either: cannonballs fly
+  the same in any weather.
+
+## The deeps (new in slice 7)
+
+- **Three danger bands, 0..2.** A fresh sail from the title (or after
+  sinking) is band 0 — the home water, exactly the game you knew.
+  After a win, **SELECT** puts out one band deeper (carrying hold,
+  dents, and tiers, exactly like START — which now re-sails the SAME
+  band). There is no deeper water than band 2.
+- **Deeper is richer:** crates are worth 5g / 12g / 25g by band, and
+  monster salvage climbs too (15g / 30g / 50g a crate). One banked
+  band-2 wreck is 75g — half a tier-III purchase in one stand.
+- **Deeper is worse:** the deep-water rum-runners run heavier hulls
+  (100 / 130 / 160) with faster gun crews (reload 150 / 120 / 100),
+  and the seeded weather blows **one level worse per band** (band 2
+  never rolls milder than a gale).
+- **Rocks.** Bands 1 and 2 lay 3 and 5 reefs at seeded spots (clear of
+  the anchorage and the harbor — you can always put out and always
+  come home). A reef scrapes YOUR keel for 15 hull, once per contact —
+  sitting on the rock costs nothing more, but leave and touch it again
+  and it tolls again. Groundings can sink you. The rum-runners and the
+  Maw know these waters: the rocks are yours alone to chart.
+- **The chart is the score:** the deepest band you have sailed rides
+  the ledger (`charted`) and the sunk card — the concept doc's
+  "waters charted", alive.
 
 **Broadsides fire square off your sides, never forward.** The entire
 fight is positional: bring your side to bear while staying off theirs.
@@ -47,8 +101,8 @@ your edge is cadence, if you can hold the angle.
 
 - **Sink her and the wreck breaks up:** 3 flotsam crates bob on a ring
   around the wreck. Sail through a crate to scoop it — 5 gold each in
-  these home waters. The hold carries at most 8 crates; overflow stays
-  afloat.
+  the home waters, 12g one band down, 25g in the deeps (slice 7). The
+  hold carries at most 8 crates; overflow stays afloat.
 - **Bank at the Graywake pier** (the marked berth on the south
   breakwater): lie alongside and the hold empties into banked gold.
   **Banked gold is safe forever.**
@@ -132,28 +186,39 @@ your edge is cadence, if you can hold the angle.
 
 ## Honest gaps (deliberate, roadmap-ordered)
 
-- **Crate value is flat 5g** — danger bands, which scale loot with
-  distance from home, are roadmap slice 5; until then the upgrade
-  treadmill is a grind of home-water wrecks by design.
+- **The weather is machine-proven, not taste-tested** — the concept
+  doc calls this slice "owner-taste, hand-feel gated". Every number
+  (breeze push 12 / gale push 24, canvas quarters 1/2/4, rotation one
+  unit per 8 frames, the calm/breeze/gale seed mix) is a one-constant
+  owner-tunable in `bw_sim.{h,c}`; whether a gale FEELS like weather
+  on real hands is the owner's call, and the feel gate is open.
 - **Economy numbers are decide-and-flag owner-tunables** — 3 crates per
   wreck, 5g each, hold cap 8, 10 px scoop reach, 12 px pier berth,
   upgrade prices 15g/45g, repair at 4 hull per gold, and every tier
   table (hull 100/150/220, reload 90/70/55, rake 3/3/4, sail bonuses):
   all one-constant changes in `bw_sim.{h,c}`, machine-proven but not
   taste-tested.
-- **One enemy, one fight at a time** — one rum-runner and one Maw; no
-  danger bands yet (the Maw's numbers — patience 600 frames, telegraph
-  150, windup 60, lunge 55 at speed 520, bite 35, hull 120, 40 px
-  sanctuary, 15g crates — are all one-constant owner-tunables in
-  `bw_sim.h`, machine-proven but not taste-tested).
+- **One enemy, one fight at a time** — one rum-runner and one Maw per
+  water, whatever the band (the Maw's numbers — patience 600 frames,
+  telegraph 150, windup 60, lunge 55 at speed 520, bite 35, hull 120,
+  40 px sanctuary — are all one-constant owner-tunables in `bw_sim.h`,
+  machine-proven but not taste-tested; the Maw itself does not yet
+  scale with the band).
+- **Band numbers are decide-and-flag owner-tunables** — enemy hulls
+  130/160, reloads 120/100, crate values 12/25 (monster 30/50), reef
+  counts 3/5, scrape 15, the one-level weather worsening: all
+  one-constant tables in `bw_sim.c`, machine-proven, feel-gated on
+  the owner like the wind. Reefs are player-only hazards by deliberate
+  call ("the rum-runners know these waters") — flagged, not hidden.
 - **You can sail away forever** — both ships top out at the same speed,
   so fleeing beyond the enemy's engage range stalls the duel instead of
   ending it. The pier now gives "home" a meaning; the run economy will
   close the loop.
 - **No audio** (synthesized pipeline is a later slice, like Gloamline).
-- **No saves** — tallies and banked gold reset at power-off; NDS save
-  persistence is still an unprobed question for both arcs (roadmap
-  slice 7).
+- **No saves** — tallies, banked gold, and the charted-waters score
+  reset at power-off (Gloamline's slice 9 has since proven the NDS
+  battery-save path in this repo; Brineward's saves are the roadmap's
+  last slice, after audio).
 - **No touch input** — buttons only, per the concept's buttons-first
   rule; the chart-table bottom screen is a status panel, not yet the
   concept's tap-able sea chart.
@@ -179,7 +244,24 @@ reachable hull value at every tier; upgraded duels still converge both
 ways; containment at max tiers), and the slice-5 Maw rails (the whole
 telegraph contract frame-exact; ONE bite of exactly 35 per lunge; the
 pier sanctuary; the hunter policy slays it and banks the richer crates;
-a slain Maw never stirs again). Then TWELVE headless DeSmuME proofs
+a slain Maw never stirs again), and the slice-6 wind rails (the calm
+wind term is identically zero and every committed anchor seed is CALM,
+so every earlier route and pin carries verbatim; point-of-sail speed
+deltas exact at every bearing, trim, and weather; duels still converge
+both ways under forced breeze AND gale; the gale-armed salvage water
+stays contained; the escape rails survive the weather — a gale-beating
+full sail still outruns the shadow, a gale-running battle-sail scooper
+still does not), and the slice-7 band rails (band 0 is STATE-IDENTICAL
+to the un-banded water over 512 seeds, so every earlier route and pin
+carries verbatim; deeper is monotonically harder and richer with the
+doc's 5g -> 25g crate shape; 4096 seeds x 3 bands of reefs all land in
+the sea and clear of the anchorage and pier; the scrape contract is
+frame-exact — one 15-hull toll per contact, latch held on the rock,
+re-armed off it, a 1-hull grounding sinks, the parked enemy untouched;
+band duels converge both ways, and the four band-2 waters the tier-0
+brain loses all flip to wins with cannons II — the deeps are priced in
+gold, not walled; the band-2 rock water survives 8000 adversarial
+frames). Then SIXTEEN headless DeSmuME proofs
 assert the ROM's `bw_telemetry` mailbox numerically: boot, exact sail
 kinematics, an idle player sunk + instant restart, a recorded route
 (from `games/brineward-nds/tools/record-duel-win.py`) that WINS the
@@ -202,5 +284,29 @@ and the HUNTER rakes the risen Maw (its hull words drop mid-windup IN
 the emulator), watches it give up over the sanctuary, slays it on its
 second rising, scoops wreck + monster crates, and banks 60g with the
 hunter's own hull untouched.
+Slice 6 adds two wind proofs: a scripted gale sail that walks the whole
+point-of-sail table in the emulator — the new speed telemetry word
+settles at exactly the mirror's predicted value on every leg (downwind
+half sail 171 vs the calm 160, upwind half 149, upwind full 202,
+upwind battle 90) while the wind-heading word ticks its slow rotation
+on camera — and a recorded gale story
+(`games/brineward-nds/tools/record-wind.py`, robust at every alignment
+shift in [-6,+6]): the committed duel brain WINS a broadside fight
+with both ships sailing the same gale, scoops the wreck, banks 15g
+before the Maw ever stirs, and puts out into a fresh water that rolls
+DIFFERENT weather.
+Slice 7 adds two deeper-water stories on the committed duel-win anchor
+(`games/brineward-nds/tools/record-bands.py`, water-2 skeletons robust
+at every alignment shift in [-6,+6]): SELECT sails DEEPER — the band-1
+water arrives charted (the score word flips), lays 3 rocks, rolls
+worsened weather, and fields the heavier 130-hull rum-runner; the
+unchanged duel brain beats it, scoops the 12g crates, and banks
+exactly 36g with no grounding before the Maw stirs, and the final
+START proves the depth STICKS across waters — and THE ROCKS ARE REAL:
+a deliberate grounding costs exactly 15 hull ONCE for a whole ~33-frame
+crossing (the latch on camera at three pinned frames), re-arms in
+clear water, and tolls again on re-entry. Every pinned value in both
+stories is a row lookup in a mirror-of-main.c vs emulator watch-log
+diff (140,562 values, zero mismatches).
 Proof screenshots:
 [`games/brineward-nds/proof/`](../games/brineward-nds/proof/).

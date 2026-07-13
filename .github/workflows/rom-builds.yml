@@ -1294,7 +1294,19 @@ jobs:
       # BW_MAW_BITE per lunge), pier sanctuary (a berthed player is
       # never surfaced on or bitten and the port stays reachable), and
       # the hunt converges (the hunter policy slays it, banks wreck +
-      # richer monster crates, and a slain Maw never stirs again).
+      # richer monster crates, and a slain Maw never stirs again), and
+      # the slice-6 wind rails: the calm wind term is identically zero
+      # and every committed anchor seed is CALM (the pin-carry rule),
+      # point-of-sail speed deltas exact at every bearing/trim/weather,
+      # duels converge both ways under forced breeze AND gale, and the
+      # gale-armed salvage water stays contained — plus the slice-7
+      # band rails: band-0 state-identical to bw_duel_init (the
+      # pin-carry rule), deeper monotonically harder + richer, reefs
+      # laid clear of the anchorage and pier across 4096 seeds, the
+      # scrape latch frame-exact (player-only; groundings can sink),
+      # band duels converge both ways (band-2 tier-0 losses flip to
+      # wins with cannons II), and the band-2 rock water stays
+      # contained under adversarial input.
       - name: Brineward host proof (bw_sim mirror)
         run: python3 tools/check-brine.py
       # Committed routes must be fresh recordings of the checked-in
@@ -1315,6 +1327,16 @@ jobs:
           diff /tmp/maw/maw-duel-keys.txt games/brineward-nds/proof/maw-duel-keys.txt
           diff /tmp/maw/maw-bite-keys.txt games/brineward-nds/proof/maw-bite-keys.txt
           diff /tmp/maw/maw-kill-keys.txt games/brineward-nds/proof/maw-kill-keys.txt
+          mkdir -p /tmp/wind
+          python3 games/brineward-nds/tools/record-wind.py --outdir /tmp/wind
+          diff /tmp/wind/wind-duel-keys.txt games/brineward-nds/proof/wind-duel-keys.txt
+          diff /tmp/wind/wind-bank-keys.txt games/brineward-nds/proof/wind-bank-keys.txt
+          mkdir -p /tmp/bands
+          python3 games/brineward-nds/tools/record-bands.py --outdir /tmp/bands
+          diff /tmp/bands/bands-deep-keys.txt games/brineward-nds/proof/bands-deep-keys.txt
+          diff /tmp/bands/bands-bank-keys.txt games/brineward-nds/proof/bands-bank-keys.txt
+          diff /tmp/bands/bands-reef-deep-keys.txt games/brineward-nds/proof/bands-reef-deep-keys.txt
+          diff /tmp/bands/bands-reef-keys.txt games/brineward-nds/proof/bands-reef-keys.txt
       - name: make /opt/wonderful runner-writable
         run: sudo mkdir -p /opt/wonderful && sudo chown "$(id -u):$(id -g)" /opt/wonderful
       - name: cache NDS toolchain (BlocksDS 1.21.1 + Wonderful GCC pins)
@@ -1339,7 +1361,7 @@ jobs:
       # Proof 1 — boot: dual-screen title renders, telemetry mailbox is
       # live (magic words 'BRIN' 'WARD', frame counter running, title
       # state holds without input).
-      - name: 'proof 1/12 — boot + telemetry mailbox'
+      - name: 'proof 1/16 — boot + telemetry mailbox'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-boot-300.png \
@@ -1355,7 +1377,7 @@ jobs:
       # 100-frame RIGHT span turns exactly 400 heading units, UP/DOWN
       # edges walk the trim full -> battle, momentum eases the speed
       # (positions pinned from the mirror sim, matched to the unit).
-      - name: 'proof 2/12 — sail kinematics (heading/trim/momentum exact)'
+      - name: 'proof 2/16 — sail kinematics (heading/trim/momentum exact)'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-sail.png \
@@ -1386,7 +1408,7 @@ jobs:
       # (hull 100 -> 71 -> 42 -> 0, the enemy unscratched), the sunk
       # card holds, and START restarts instantly (fresh seed 1198, full
       # hull, sinks tally persists).
-      - name: 'proof 3/12 — idle player sunk, card, instant restart'
+      - name: 'proof 3/16 — idle player sunk, card, instant restart'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-loss.png \
@@ -1421,7 +1443,7 @@ jobs:
       # wreck drops exactly 3 crates (t[19]) that the post-win drift does
       # NOT accidentally scoop (t[16]=0, mirror-predicted). START starts
       # the next duel (fresh seed 378, wins tally persists, no crates).
-      - name: 'proof 4/12 — recorded route WINS the duel, wreck drops 3 crates, next duel starts'
+      - name: 'proof 4/16 — recorded route WINS the duel, wreck drops 3 crates, next duel starts'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-win.png \
@@ -1469,7 +1491,7 @@ jobs:
       # salvage now CARRIES the hull damage (repair at the port is the
       # fix), so the fresh duel rides at t[7]=47 where slice 3 refit to
       # 100. Everything else is verbatim slice 3.
-      - name: 'proof 5/12 — crates scooped (hold cap economy), 15g banked at the pier, gold persists'
+      - name: 'proof 5/16 — crates scooped (hold cap economy), 15g banked at the pier, gold persists'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-salvage.png \
@@ -1521,7 +1543,7 @@ jobs:
       # the player before frame 800 (t[7]=22 at 700; sunk card by 800,
       # was ~1200) — hull words re-derived from the mirror model, every
       # other pin verbatim slice 3.
-      - name: 'proof 6/12 — hold carried into the next duel, sinking forfeits it'
+      - name: 'proof 6/16 — hold carried into the next duel, sinking forfeits it'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-forfeit.png \
@@ -1572,7 +1594,7 @@ jobs:
       # PERSISTING and the damage still carried. The port keys hold at
       # every alignment shift in [-6,+6] over the recorded story in the
       # mirror model. Mirror-predicted, emulator-matched exactly.
-      - name: 'proof 7/12 — the Graywake port: menu, hull II bought, broke refused, tier persists'
+      - name: 'proof 7/16 — the Graywake port: menu, hull II bought, broke refused, tier persists'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-port.png \
@@ -1627,7 +1649,7 @@ jobs:
       # exactly 1g (t[18]); START out, START sails the next duel (seed
       # 728) at full hull with the 1g still banked. Coming home hurt
       # costs 14g; proof 6 shows sinking instead costs the whole hold.
-      - name: 'proof 8/12 — repair: 53 missing hull = 14g, heals to full, 1g change'
+      - name: 'proof 8/16 — repair: 53 missing hull = 14g, heals to full, 1g change'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-repair.png \
@@ -1669,7 +1691,7 @@ jobs:
       # to the unit exactly as the mirror integrates it (26772 at 780,
       # 15732 at 840, vs 31040 at 760 tier-0). An upgrade that claims
       # speed IS speed, proven against its own control run.
-      - name: 'proof 9/12 — sails II: same seed, same inputs, measurably faster ship'
+      - name: 'proof 9/16 — sails II: same seed, same inputs, measurably faster ship'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-sails.png \
@@ -1705,7 +1727,7 @@ jobs:
       # the faster crew is IN the shipped dynamics, not just on the
       # menu. (Tier III's 4-ball rake is host-proved in check-brine.py;
       # 45g is two more banked wrecks than one proof story holds.)
-      - name: 'proof 10/12 — cannons II: battery reloads in 70, not 90'
+      - name: 'proof 10/16 — cannons II: battery reloads in 70, not 90'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-cannons.png \
@@ -1746,7 +1768,7 @@ jobs:
       # bitten hull CARRIED (t[7]=19 into seed 1468) — the Maw's teeth
       # obey the slice-4 hull-carry rule like any other dents. Every
       # pinned value mirror-predicted and emulator-matched exactly.
-      - name: 'proof 11/12 — the Maw stirs: shadow telegraph, surface, lunge, ONE bite'
+      - name: 'proof 11/16 — the Maw stirs: shadow telegraph, surface, lunge, ONE bite'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-maw-bite.png \
@@ -1801,7 +1823,7 @@ jobs:
       # finish — the dodge is real). START sails on: gold and the maws-
       # slain tally persist (t[18]=60, t[30]=1, fresh Maw hull 120 in
       # the new water). Mirror-predicted, emulator-matched exactly.
-      - name: 'proof 12/12 — the Maw slain: rakes land, sanctuary give-up, richer crates, 60g banked'
+      - name: 'proof 12/16 — the Maw slain: rakes land, sanctuary give-up, richer crates, 60g banked'
         run: |
           python3 tools/nds-headless-check.py \
             games/brineward-nds/brineward-nds.nds bw-maw-kill.png \
@@ -1846,6 +1868,235 @@ jobs:
             --assert-watch 3090:t:30:eq:1 \
             --assert-watch 3090:t:7:eq:54 \
             --assert-watch 3090:t:29:eq:120
+      # Proof 13 — THE WEATHER IN THE RIGGING (slice 6): a scripted sail
+      # on seed 128 — a GALE water (t[31]=2) whose wind blows toward
+      # ~north — walks the whole point-of-sail table in the emulator.
+      # Running NORTH at half sail the swell fills the canvas: speed
+      # settles at 171, not the calm 160 (t[33], the new speed word).
+      # A half-sail come-about to SOUTH beats into it: 149. Sheeting
+      # home to full catches 4/4 of the gale: 202 (calm full is 224 —
+      # beating costs real way). Shortening to battle sail shows the
+      # canvas quarters: 90 vs the calm 96 — and two pins apart the
+      # beat eases 90 -> 91 as the vector ROTATES (t[32] pinned
+      # advancing 27 -> 46 -> 79: one heading unit per 8 frames, on
+      # camera). Positions pinned to the unit mid-story. Every pin a
+      # row lookup in a mirror-vs-emulator watch-log diff over the
+      # whole story (23,086 values, zero mismatches).
+      - name: 'proof 13/16 — the weather in the rigging: gale point-of-sail speeds exact'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-wind-sail.png \
+            --frames 690 --keys 130-135:START --keys 300-428:RIGHT \
+            --keys 480-482:UP --keys 570-572:DOWN --keys 576-578:DOWN \
+            --shot 470:bw-wind-run.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:34 \
+            --assert-watch 145:t:3:eq:1 \
+            --assert-watch 145:t:13:eq:128 \
+            --assert-watch 145:t:31:eq:2 \
+            --assert-watch 145:t:15:eq:1 \
+            --assert-watch 145:t:32:eq:27 \
+            --assert-watch 145:t:33:eq:171 \
+            --assert-watch 145:t:4:eq:32768 \
+            --assert-watch 145:t:5:eq:33300 \
+            --assert-watch 290:t:33:eq:171 \
+            --assert-watch 290:t:32:eq:46 \
+            --assert-watch 290:t:5:eq:8505 \
+            --assert-watch 290:t:6:eq:0 \
+            --assert-watch 470:t:6:eq:512 \
+            --assert-watch 470:t:15:eq:1 \
+            --assert-watch 470:t:33:eq:149 \
+            --assert-watch 470:t:4:eq:45964 \
+            --assert-watch 470:t:5:eq:20860 \
+            --assert-watch 558:t:15:eq:2 \
+            --assert-watch 558:t:33:eq:202 \
+            --assert-watch 558:t:32:eq:79 \
+            --assert-watch 558:t:5:eq:37483 \
+            --assert-watch 640:t:15:eq:0 \
+            --assert-watch 640:t:33:eq:90 \
+            --assert-watch 685:t:33:eq:91
+      # Proof 14 — A GALE RUN (slice 6, the loop in weather): the
+      # recorded seed-161 story (wind-duel + wind-bank key files; the
+      # whole story holds at every alignment shift in [-6,+6] in the
+      # mirror) fights and WINS a broadside duel with BOTH ships
+      # sailing the same rotating gale (t[31]=2 all through; the
+      # committed beam-holding brain, unchanged, wins it at hull 73),
+      # the wreck drops 3 crates, the salvage brain scoops them
+      # (hold 2/10g pinned mid-scoop) and banks 15g at the pier —
+      # all before the Maw's patience runs out (t[26]=0 the whole
+      # story: wind never pokes the slice-5 telegraph). START sails
+      # on: the gold persists, the dents carry (t[7]=73), and the NEW
+      # water (seed 898) rolls DIFFERENT weather — a breeze, t[31]=1 —
+      # per-water weather on camera. Every pin a row lookup in a
+      # mirror-vs-emulator watch-log diff over the whole story
+      # (32,232 values, zero mismatches).
+      - name: 'proof 14/16 — a gale run: the duel won, 15g banked, weather rolls per water'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-wind-story.png \
+            --frames 960 $(cat games/brineward-nds/proof/wind-duel-keys.txt) \
+            $(cat games/brineward-nds/proof/wind-bank-keys.txt) \
+            --keys 900-905:START \
+            --shot 250:bw-wind-duel.png --shot 800:bw-wind-banked.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:34 \
+            --assert-watch 180:t:3:eq:1 \
+            --assert-watch 180:t:13:eq:161 \
+            --assert-watch 180:t:31:eq:2 \
+            --assert-watch 180:t:32:eq:25 \
+            --assert-watch 180:t:33:eq:169 \
+            --assert-watch 180:t:7:eq:100 \
+            --assert-watch 250:t:7:eq:73 \
+            --assert-watch 250:t:10:eq:47 \
+            --assert-watch 330:t:3:eq:3 \
+            --assert-watch 330:t:10:eq:0 \
+            --assert-watch 330:t:12:eq:1 \
+            --assert-watch 330:t:19:eq:3 \
+            --assert-watch 330:t:7:eq:73 \
+            --assert-watch 330:t:31:eq:2 \
+            --assert-watch 500:t:16:eq:2 \
+            --assert-watch 500:t:17:eq:10 \
+            --assert-watch 500:t:19:eq:1 \
+            --assert-watch 800:t:3:eq:3 \
+            --assert-watch 800:t:16:eq:0 \
+            --assert-watch 800:t:17:eq:0 \
+            --assert-watch 800:t:18:eq:15 \
+            --assert-watch 800:t:26:eq:0 \
+            --assert-watch 800:t:32:eq:102 \
+            --assert-watch 930:t:3:eq:1 \
+            --assert-watch 930:t:13:eq:898 \
+            --assert-watch 930:t:18:eq:15 \
+            --assert-watch 930:t:7:eq:73 \
+            --assert-watch 930:t:31:eq:1 \
+            --assert-watch 930:t:33:eq:154
+      # Proof 15 — SELECT SAILS DEEPER (slice 7, the whole new loop):
+      # the committed seed-126 win (proof 4's water — a HOME water:
+      # t[34]=0, no rocks, calm) drifts the salvage quiet, then SELECT
+      # puts out ONE BAND DEEPER: the new water (seed 511) is band 1
+      # (t[34]=1) and CHARTED (t[35]=1, the score), lays 3 rocks
+      # (t[36]=3), rolls worsened weather (t[31]=2), and its rum-runner
+      # is the heavier deep-water breed (t[10]=130) — while the hull
+      # carries (t[7]=100, the slice-4 rule through the new verb). The
+      # UNCHANGED policy brain wins the deeper duel (mid-duel position
+      # + partial damage pinned to the unit), the wreck breaks up into
+      # the deeper water's RICHER crates — 12g each, scooped one by one
+      # (t[17] = 12 -> 36) and banked for exactly 36g (t[18]) with no
+      # grounding (t[37]=0) before the Maw ever stirs (t[26]=0) — and
+      # the final START proves the depth STICKS: the next water (seed
+      # 1478) is still band 1, still 3 rocks, gold persisting. Every
+      # pinned value below is a row lookup in a mirror-of-main.c vs
+      # emulator watch-log diff over the whole story (59,052 values,
+      # zero mismatches; slipped rows excluded per the session-34
+      # rule).
+      - name: 'proof 15/16 — SELECT sails deeper: band-1 charted, heavier foe, 36g banked, START keeps the depth'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-bands-deep.png \
+            --frames 1560 $(cat games/brineward-nds/proof/duel-win-keys.txt) \
+            $(cat games/brineward-nds/proof/bands-deep-keys.txt) \
+            $(cat games/brineward-nds/proof/bands-bank-keys.txt) \
+            --keys 1480-1485:START \
+            --shot 700:bw-bands-duel.png --shot 1410:bw-bands-banked.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:38 \
+            --assert-watch 145:t:3:eq:1 \
+            --assert-watch 145:t:13:eq:126 \
+            --assert-watch 145:t:31:eq:0 \
+            --assert-watch 145:t:34:eq:0 \
+            --assert-watch 145:t:35:eq:0 \
+            --assert-watch 145:t:36:eq:0 \
+            --assert-watch 350:t:3:eq:3 \
+            --assert-watch 350:t:12:eq:1 \
+            --assert-watch 350:t:7:eq:100 \
+            --assert-watch 350:t:19:eq:3 \
+            --assert-watch 520:t:3:eq:1 \
+            --assert-watch 520:t:13:eq:511 \
+            --assert-watch 520:t:34:eq:1 \
+            --assert-watch 520:t:35:eq:1 \
+            --assert-watch 520:t:36:eq:3 \
+            --assert-watch 520:t:10:eq:130 \
+            --assert-watch 520:t:7:eq:100 \
+            --assert-watch 520:t:31:eq:2 \
+            --assert-watch 700:t:4:eq:49212 \
+            --assert-watch 700:t:5:eq:11984 \
+            --assert-watch 700:t:10:eq:67 \
+            --assert-watch 700:t:34:eq:1 \
+            --assert-watch 915:t:3:eq:3 \
+            --assert-watch 915:t:12:eq:2 \
+            --assert-watch 915:t:7:eq:77 \
+            --assert-watch 915:t:19:eq:3 \
+            --assert-watch 1010:t:16:eq:1 \
+            --assert-watch 1010:t:17:eq:12 \
+            --assert-watch 1010:t:19:eq:2 \
+            --assert-watch 1110:t:16:eq:3 \
+            --assert-watch 1110:t:17:eq:36 \
+            --assert-watch 1110:t:19:eq:0 \
+            --assert-watch 1110:t:18:eq:0 \
+            --assert-watch 1410:t:16:eq:0 \
+            --assert-watch 1410:t:17:eq:0 \
+            --assert-watch 1410:t:18:eq:36 \
+            --assert-watch 1410:t:26:eq:0 \
+            --assert-watch 1410:t:37:eq:0 \
+            --assert-watch 1410:t:34:eq:1 \
+            --assert-watch 1500:t:3:eq:1 \
+            --assert-watch 1500:t:13:eq:1478 \
+            --assert-watch 1500:t:34:eq:1 \
+            --assert-watch 1500:t:35:eq:1 \
+            --assert-watch 1500:t:36:eq:3 \
+            --assert-watch 1500:t:18:eq:36 \
+            --assert-watch 1500:t:7:eq:77 \
+            --assert-watch 1500:t:10:eq:130
+      # Proof 16 — THE ROCKS ARE REAL (slice 7, the scrape contract in
+      # the emulator): same committed win, its own SELECT (seed 390,
+      # band 1, 3 rocks, t[10]=130), the deeper duel won UNTOUCHED
+      # (t[7]=100, t[37]=0) — then the sloop is sailed deliberately
+      # onto a rock: the scrape lands exactly BW_REEF_DMG (t[7]
+      # 100 -> 85, t[37] 0 -> 1), the latch HOLDS while the keel
+      # crosses the rock (~33 contact frames — pins at 1900/1920 show
+      # groundings still 1, hull still 85) and through the clear-water
+      # leg (2000), and the second crossing scrapes again (t[37]=2,
+      # t[7]=70) with the Maw never stirring (t[26]=0 end to end).
+      # Every pin a row lookup in the same watch-log diff method
+      # (81,510 values, zero mismatches).
+      - name: 'proof 16/16 — the rocks are real: one scrape per contact, the latch holds, re-entry scrapes again'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-bands-reef.png \
+            --frames 2150 $(cat games/brineward-nds/proof/duel-win-keys.txt) \
+            $(cat games/brineward-nds/proof/bands-reef-deep-keys.txt) \
+            $(cat games/brineward-nds/proof/bands-reef-keys.txt) \
+            --shot 1900:bw-bands-scrape.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:38 \
+            --assert-watch 145:t:3:eq:1 \
+            --assert-watch 145:t:13:eq:126 \
+            --assert-watch 145:t:37:eq:0 \
+            --assert-watch 400:t:3:eq:1 \
+            --assert-watch 400:t:13:eq:390 \
+            --assert-watch 400:t:34:eq:1 \
+            --assert-watch 400:t:35:eq:1 \
+            --assert-watch 400:t:36:eq:3 \
+            --assert-watch 400:t:10:eq:130 \
+            --assert-watch 400:t:7:eq:100 \
+            --assert-watch 900:t:4:eq:30382 \
+            --assert-watch 900:t:5:eq:32007 \
+            --assert-watch 900:t:10:eq:66 \
+            --assert-watch 1670:t:3:eq:3 \
+            --assert-watch 1670:t:12:eq:2 \
+            --assert-watch 1670:t:7:eq:100 \
+            --assert-watch 1670:t:37:eq:0 \
+            --assert-watch 1900:t:37:eq:1 \
+            --assert-watch 1900:t:7:eq:85 \
+            --assert-watch 1920:t:37:eq:1 \
+            --assert-watch 1920:t:7:eq:85 \
+            --assert-watch 2000:t:37:eq:1 \
+            --assert-watch 2000:t:7:eq:85 \
+            --assert-watch 2130:t:37:eq:2 \
+            --assert-watch 2130:t:7:eq:70 \
+            --assert-watch 2145:t:3:eq:3 \
+            --assert-watch 2145:t:26:eq:0 \
+            --assert-watch 2145:t:37:eq:2 \
+            --assert-watch 2145:t:34:eq:1
       - name: upload Brineward ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -1884,5 +2135,15 @@ jobs:
             bw-maw-fight.png
             bw-maw-slain.png
             bw-maw-banked.png
+            bw-wind-sail.png
+            bw-wind-run.png
+            bw-wind-story.png
+            bw-wind-duel.png
+            bw-wind-banked.png
+            bw-bands-deep.png
+            bw-bands-duel.png
+            bw-bands-banked.png
+            bw-bands-reef.png
+            bw-bands-scrape.png
           if-no-files-found: error
           retention-days: 14

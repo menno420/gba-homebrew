@@ -1,21 +1,22 @@
-# Playing Brineward (Nintendo DS) — danger bands + reefs
+# Playing Brineward (Nintendo DS) — the brine gets a voice
 
-> **Status:** `owner-guidance` — arc slice 7 (the deeps under the
-> slice-6 weather). Broadside duels off the Graywake breakwater: sail,
+> **Status:** `owner-guidance` — arc slice 8 (synthesized audio on the
+> slice-7 deeps). Broadside duels off the Graywake breakwater: sail,
 > out-turn the rum-runner, sink her, scoop the flotsam, bank and SPEND
 > the gold at the Graywake port — don't linger over the wreck's blood
-> (the Maw comes up under your keel), read the sky before you commit —
-> and now the brine has DEPTH: after a win, SELECT presses one danger
-> band deeper. Richer wrecks, worse weather, heavier rum-runners with
-> faster crews, and rocks that scrape your keel; the deepest band you
-> dare is the charted-waters score. Concept + roadmap:
+> (the Maw comes up under your keel), read the sky before you commit,
+> SELECT presses one danger band deeper for richer wrecks and worse
+> water — and now you can HEAR all of it: the weather in the rigging,
+> the guns, the two-note Graywake chime, and the throb of dark water
+> under your keel. 100% code-synthesized on the DS hardware channels;
+> no sampled or licensed audio, ever. Concept + roadmap:
 > [`concepts/brineward-concept.md`](concepts/brineward-concept.md).
 
 ## Get the ROM
 
 - **Download and play:** [`dist/brineward.nds`](../dist/brineward.nds)
-  (118,272 bytes, sha256
-  `91ac3eff823593c6ef5f0f743f696562ba13ec76111d84afcd44cc401fe0531f`)
+  (120,320 bytes, sha256
+  `cb78bf51ff693a6d6773dac4ab3193417a9b5e30b907e311be9941284f257590`)
   in any DS emulator — melonDS and DeSmuME both work; no BIOS files
   needed for homebrew. The build is byte-deterministic and CI re-builds
   it from source on every PR, printing both hashes side by side.
@@ -90,6 +91,28 @@ battle sail is slow but turns tight. Speed eases toward the trim target
 - **The chart is the score:** the deepest band you have sailed rides
   the ledger (`charted`) and the sunk card — the concept doc's
   "waters charted", alive.
+
+## The sound (new in slice 8 — turn your volume up)
+
+- **The weather sings in the rigging.** Live water carries a low
+  drone that follows the sky: a barely-there swell hum in a calm, a
+  fuller note in a breeze, a wide howl in a gale. The title, the sunk
+  card and the port are silent — dying silences the sea.
+- **Dark water has a pulse.** The moment the Maw stirs — shadow
+  included — the drone flips to a deeper throb. You will HEAR the
+  telegraph before you see the shadow if your eyes are on the hold.
+- **Everything that happens, sounds:** cannon thump (yours and
+  theirs), the hiss of a spent rake, the thud of a crate coming
+  aboard, timber cracking when a ball lands, the grate of a reef
+  against the keel, the long roll of a ship going under, the Maw
+  breaking the surface, the bite — and the sinking rattle when it is
+  your own ship. Banking at the pier rings the two-note Graywake
+  chime.
+- **All of it is synthesized in code** on the DS's own square-wave and
+  noise channels (the Gloamline pipeline) — there is no sampled or
+  licensed audio anywhere in this repo, and the sound feeds nothing
+  back into the game: every run plays out identically with the volume
+  at zero.
 
 **Broadsides fire square off your sides, never forward.** The entire
 fight is positional: bring your side to bear while staying off theirs.

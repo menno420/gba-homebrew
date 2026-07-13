@@ -25,3 +25,6 @@ What the arcade needs to serve this game:
 - `?seed=N` — integer seed; the level chain is a pure function of it. No
   seed = today's UTC daily seed (`YYYYMMDD` as a number), same for everyone.
 - `?level=L` — start at level index L of the seed's chain (default 0).
+
+Packaged: this game ships in `dist/web/tiltstone/` with a versioned zip in
+`dist/releases/` — see `docs/RELEASES.md`.

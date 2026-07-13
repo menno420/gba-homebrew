@@ -53,3 +53,6 @@ pause on hidden, resume on visible. Exits nonzero on any failure.
 | `manifest.webmanifest` | install metadata (standalone, portrait) |
 | `sw.js` | cache-first service worker, versioned cache |
 | `icon-192.png` / `icon-512.png` | generated placeholder icons (python3, <3 KB) |
+
+Packaged: this PWA (foundation build) ships in `dist/web/drift-garden/`
+with a versioned zip in `dist/releases/` — see `docs/RELEASES.md`.

@@ -63,6 +63,15 @@ Brineward pirate arc in its own dirs.)
 
 ## Recently shipped (newest first)
 
+- **Session 40 — release packaging: web arcade bundle + one-click
+  versioned zips** (2026-07-13, ORDER 005 item 4): `dist/web/` is a
+  single host-ready static dir serving all three finished web
+  deliverables behind an arcade landing page; `dist/releases/` holds
+  four deterministic versioned zips whose sha256s are pinned in the
+  release ledger [`RELEASES.md`](RELEASES.md); owner one-click publish
+  steps per channel (static host / itch.io / GitHub Release) in
+  [`RELEASE-HOWTO.md`](RELEASE-HOWTO.md). All regenerable
+  byte-identically via `tools/package-web-arcade.sh`.
 - **Session 2026-07-13-gloamline-rematch — Gloamline slice 11:
   BEST-NIGHT REMATCH** (2026-07-13): the first cut past the completed
   concept tree (owner night-run continue order), paying off the save

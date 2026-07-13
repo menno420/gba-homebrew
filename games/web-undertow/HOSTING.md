@@ -22,3 +22,6 @@ What the arcade needs to serve this game:
   the same seed + same inputs is the identical run (daily-challenge ready).
 - `?headless=1` — does not start the render loop; exposes the sim to
   `window.UNDERTOW` for automated tests. Not intended for players.
+
+Packaged: this game ships in `dist/web/undertow/` with a versioned zip in
+`dist/releases/` — see `docs/RELEASES.md`.

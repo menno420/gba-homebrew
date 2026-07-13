@@ -194,7 +194,8 @@
       for (var m2 = 0; m2 < ph.moves.length; m2++) {
         var mv = ph.moves[m2];
         var y = (mv.from[0] + (mv.to[0] - mv.from[0]) * q) * TILE;
-        drawCellTo(ctx, mv.from[1] * TILE, y, mv.v);
+        var x2 = (mv.from[1] + (mv.to[1] - mv.from[1]) * q) * TILE; // slipping ice moves columns
+        drawCellTo(ctx, x2, y, mv.v);
       }
     } else {                                           // collect: the group pops out
       drawBoardTo(ctx, ph.grid);                       // board with the group already gone
@@ -209,6 +210,16 @@
         ctx.arc(x + TILE / 2, y2 + TILE / 2, (TILE * 0.2) + (TILE * 0.45) * p, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
+      }
+      if (ph.unlocked) {                               // slice 4: cages springing open
+        for (var u = 0; u < ph.unlocked.length; u++) {
+          var uc = ph.unlocked[u];
+          ctx.save();
+          ctx.globalAlpha = 1 - p;
+          ctx.strokeStyle = "#ffe9a8"; ctx.lineWidth = 3;
+          ctx.strokeRect(uc[1] * TILE + 3, uc[0] * TILE + 3, TILE - 6, TILE - 6);
+          ctx.restore();
+        }
       }
     }
   }
@@ -250,7 +261,7 @@
     g2d.beginPath(); g2d.arc(cx - s * 0.15, cy - s * 0.15, s * 0.09, 0, Math.PI * 2); g2d.fill();
   }
 
-  // One cell's content at pixel (x, y) — y may be fractional mid-tween.
+  // One cell's content at pixel (x, y) — x/y may be fractional mid-tween.
   function drawCellTo(g2d, x, y, v) {
     if (v === E.WALL) {
       g2d.fillStyle = "#4a3b28"; g2d.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
@@ -260,6 +271,45 @@
       g2d.fillStyle = "#7d746a"; g2d.strokeStyle = "#4d463e"; g2d.lineWidth = 2;
       g2d.beginPath(); g2d.arc(x + TILE / 2, y + TILE / 2 + 2, TILE * 0.34, 0, Math.PI * 2);
       g2d.fill(); g2d.stroke();
+    } else if (v === E.ICE) {                        // slice 4: slippery block
+      var ip = TILE * 0.14;
+      g2d.fillStyle = "rgba(150,205,235,0.82)"; g2d.strokeStyle = "#7db6d6"; g2d.lineWidth = 2;
+      g2d.beginPath();
+      g2d.roundRect ? g2d.roundRect(x + ip, y + ip, TILE - ip * 2, TILE - ip * 2, 5)
+                    : g2d.rect(x + ip, y + ip, TILE - ip * 2, TILE - ip * 2);
+      g2d.fill(); g2d.stroke();
+      g2d.strokeStyle = "rgba(255,255,255,0.7)"; g2d.lineWidth = 1.5;
+      g2d.beginPath(); g2d.moveTo(x + TILE * 0.3, y + TILE * 0.62); g2d.lineTo(x + TILE * 0.62, y + TILE * 0.3); g2d.stroke();
+    } else if (E.isLocked(v)) {                      // slice 4: caged gem
+      var spec = GEMS[(v - E.LOCK0) % GEMS.length];
+      g2d.save(); g2d.globalAlpha *= 0.55;
+      drawGemTo(g2d, x, y, spec);
+      g2d.restore();
+      g2d.strokeStyle = "#c9c2b4"; g2d.lineWidth = 2;
+      var bp = TILE * 0.12;
+      g2d.strokeRect(x + bp, y + bp, TILE - bp * 2, TILE - bp * 2);
+      g2d.beginPath();
+      g2d.moveTo(x + TILE / 3, y + bp); g2d.lineTo(x + TILE / 3, y + TILE - bp);
+      g2d.moveTo(x + TILE * 2 / 3, y + bp); g2d.lineTo(x + TILE * 2 / 3, y + TILE - bp);
+      g2d.stroke();
+    } else if (E.isGrate(v)) {                       // slice 4: one-way grate
+      var o = v - E.GRATE0;                          // 0=up 1=right 2=down 3=left
+      g2d.fillStyle = "#3a4148"; g2d.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
+      g2d.strokeStyle = o === 2 ? "#9fd6a8" : "#8a939c"; g2d.lineWidth = 2;
+      g2d.beginPath();
+      for (var s = 1; s <= 3; s++) {
+        if (o === 1 || o === 3) { g2d.moveTo(x + (TILE * s) / 4, y + 5); g2d.lineTo(x + (TILE * s) / 4, y + TILE - 5); }
+        else { g2d.moveTo(x + 5, y + (TILE * s) / 4); g2d.lineTo(x + TILE - 5, y + (TILE * s) / 4); }
+      }
+      g2d.stroke();
+      var cx = x + TILE / 2, cy = y + TILE / 2, a = TILE * 0.16;   // orientation arrow
+      g2d.fillStyle = o === 2 ? "#9fd6a8" : "#c9c2b4";
+      g2d.beginPath();
+      if (o === 0)      { g2d.moveTo(cx, cy - a); g2d.lineTo(cx + a, cy + a); g2d.lineTo(cx - a, cy + a); }
+      else if (o === 1) { g2d.moveTo(cx + a, cy); g2d.lineTo(cx - a, cy + a); g2d.lineTo(cx - a, cy - a); }
+      else if (o === 2) { g2d.moveTo(cx, cy + a); g2d.lineTo(cx + a, cy - a); g2d.lineTo(cx - a, cy - a); }
+      else              { g2d.moveTo(cx - a, cy); g2d.lineTo(cx + a, cy + a); g2d.lineTo(cx + a, cy - a); }
+      g2d.closePath(); g2d.fill();
     } else if (v >= E.GEM0) {
       drawGemTo(g2d, x, y, GEMS[(v - E.GEM0) % GEMS.length]);
     }

@@ -57,3 +57,27 @@ do: quick self-review of this lane covering roughly the last 24h (2026-07-10 ~20
 why: owner-requested fleet-wide self-review (2026-07-11), relayed by the fleet-manager coordinator on the owner's in-session instruction.
 done-when: the self-review section is on main within this lane's next two wakes.
 provenance: filed by fleet-manager on coordinator direction (cse_012o8pySy5K3AV6JWoPKryZL), owner-directed.
+
+## ORDER 005 · 2026-07-13T00:47:05Z · status: new
+priority: P1
+executor: gba-homebrew seat (tonight's night run)
+do: execute the owner night-run directive quoted verbatim below (everything from "DIRECT ORDER" to the end of this section is the owner's text, unaltered by the scribe).
+why: direct owner order, received live 2026-07-13 (night run), landed verbatim per top-precedence owner turn; these header fields were added by the scribe to satisfy the inbox order grammar — the order text itself is untouched.
+done-when: the directive's MORNING clause is met — by ~06:00Z the tally (slices landed or opened / new game starts with concept+prototype / sellables routed) is posted in heartbeat + outbox.
+
+DIRECT ORDER — GAME LAB (owner, 2026-07-13, night run). Land this verbatim in your inbox (top-precedence owner turn), then execute all night.
+
+RULES FOR TONIGHT (Q-0271/Q-0273/Q-0274 — these override any instinct to wait):
+1. I am away until morning; that is the system's normal state. Silence = consent = done. Never hold or re-confirm finished work.
+2. OPEN PRs STAY OPEN — new rule for tonight: land on green where auto-merge arms; where it doesn't (your enabler arm-step is a known open diagnosis), leave the PR OPEN and take the next slice. That includes your pre-built queue: PUSH Brineward 6 as a new PR now and keep pushing finished slices as open PRs — do not hold work behind unmerged parents; branch from the open head and note the base in the PR body. I sweep them all in the morning.
+3. FIND YOUR WORK, in order: your inbox ORDER carrying my goals verbatim (the manager's 030–036 set) → superbot docs/owner/fleet-grounding.md §9 → your track plans at HEAD → your generative rung. An empty queue means GENERATE, never idle.
+4. NO STALLS UNDER ANY CIRCUMSTANCES: probe before declaring a wall (attempt once, verbatim error; PLATFORM-LIMITS.md is your walls file); genuinely-owner-only item → six-field owner-queue entry → CONTINUE same turn; design uncertainty → SIM-REQUEST via outbox → CONTINUE.
+5. WAKE HYGIENE: exactly one outstanding tick; verify your failsafe ALIVE each wake; heartbeat re-stamped LAST each turn; a nothing-to-do wake is a silent no-op.
+6. QUALITY FLOOR: proofs/asserts green per slice; pokemon visibility check every wake (private, patches-not-ROMs, never public).
+MORNING: by ~06:00Z post your tally (slices landed or opened / new game starts with concept+prototype / sellables routed) in your heartbeat + outbox.
+
+YOUR SEAT TONIGHT (mass production — beyond GBA/NDS):
+1. Current tracks keep shipping: next Gloamline + Brineward slices as open PRs (rule 2); pokemon private-track slice behind its playtest gate.
+2. THE BREADTH PROGRAM starts now: multiple NEW small games tonight — each a playable prototype slice + a one-page concept (genre, loop, platform, sellability guess).
+3. Platforms deliberately mixed: at least one WEB BROWSER game (target the arcade — route a hosting note to Websites via the manager) and at least one MOBILE-GAME foundation (framework pick + build pipeline + running skeleton, or the evidenced wall).
+4. Sellability candidates → Venture Lab marker; keep the release-to-one-click packaging habit for everything finished.

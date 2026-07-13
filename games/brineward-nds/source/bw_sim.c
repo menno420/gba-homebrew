@@ -903,3 +903,65 @@ uint32_t bw_cue_freq2(uint32_t cue)
 {
     return BW_CUE_ROWS[cue < BW_CUE_COUNT ? cue : 0][4];
 }
+
+// --- the Graywake ledger save (slice 9) ------------------------------------------
+
+uint32_t bw_save_checksum(const uint32_t words[BW_SAVE_WORDS])
+{
+    uint32_t h = BW_SAVE_SALT;
+    for (int i = 0; i < BW_SAVE_WORDS - 1; i++)
+        h = bw_hash(h, words[i]);
+    return h;
+}
+
+void bw_save_encode(uint32_t gold, int32_t up_hull, int32_t up_cannon,
+                    int32_t up_sail, uint32_t best_band,
+                    uint8_t out[BW_SAVE_BYTES])
+{
+    uint32_t w[BW_SAVE_WORDS] = {
+        BW_SAVE_MAGIC, BW_SAVE_VERSION, gold,
+        (uint32_t)up_hull | ((uint32_t)up_cannon << 8)
+                          | ((uint32_t)up_sail << 16),
+        best_band, 0, 0, 0,
+    };
+    w[BW_SAVE_WORDS - 1] = bw_save_checksum(w);
+    for (int i = 0; i < BW_SAVE_WORDS; i++)          // little-endian words
+    {
+        out[4 * i + 0] = (uint8_t)(w[i] & 0xFFu);
+        out[4 * i + 1] = (uint8_t)((w[i] >> 8) & 0xFFu);
+        out[4 * i + 2] = (uint8_t)((w[i] >> 16) & 0xFFu);
+        out[4 * i + 3] = (uint8_t)((w[i] >> 24) & 0xFFu);
+    }
+}
+
+int bw_save_decode(const uint8_t in[BW_SAVE_BYTES], uint32_t *gold,
+                   int32_t *up_hull, int32_t *up_cannon,
+                   int32_t *up_sail, uint32_t *best_band)
+{
+    uint32_t w[BW_SAVE_WORDS];
+    for (int i = 0; i < BW_SAVE_WORDS; i++)
+        w[i] = (uint32_t)in[4 * i + 0]
+             | ((uint32_t)in[4 * i + 1] << 8)
+             | ((uint32_t)in[4 * i + 2] << 16)
+             | ((uint32_t)in[4 * i + 3] << 24);
+    if (w[0] != BW_SAVE_MAGIC)
+        return 0;                                    // blank/garbage chip
+    if (w[1] != BW_SAVE_VERSION)
+        return 0;                                    // layout changed: reset
+    if (w[BW_SAVE_WORDS - 1] != bw_save_checksum(w))
+        return 0;                                    // corrupt: reset
+    uint32_t hull = w[3] & 0xFFu;
+    uint32_t cannon = (w[3] >> 8) & 0xFFu;
+    uint32_t sail = (w[3] >> 16) & 0xFFu;
+    if (hull >= BW_UP_TIERS || cannon >= BW_UP_TIERS
+        || sail >= BW_UP_TIERS || (w[3] >> 24) != 0)
+        return 0;                                    // impossible tiers: reset
+    if (w[4] >= BW_BANDS)
+        return 0;                                    // impossible chart: reset
+    *gold = w[2];
+    *up_hull = (int32_t)hull;
+    *up_cannon = (int32_t)cannon;
+    *up_sail = (int32_t)sail;
+    *best_band = w[4];
+    return 1;
+}

@@ -248,6 +248,16 @@ BW_CUE_ROWS = (
     (200, 60, BW_CUE_ON_NOISE, 116, 0),  # SUNK: the long cold rattle
 )
 
+# the Graywake ledger save (slice 9) — one fixed 32-byte blob of 8 LE
+# u32 words {magic, version, gold, hull|cannon<<8|sail<<16, best_band,
+# 0, 0, checksum-of-0..6}; decode-to-zero on ANY bad blob
+BW_SAVE_MAGIC = 0x42525356               # 'BRSV'
+BW_SAVE_VERSION = 1
+BW_SAVE_WORDS = 8
+BW_SAVE_BYTES = 32
+BW_SAVE_ADDR = 0
+BW_SAVE_SALT = 0x4C454447                # 'LEDG' checksum stream
+
 U32 = 0xFFFFFFFF
 
 
@@ -747,6 +757,46 @@ def bw_cue_vol(cue):
 def bw_cue_freq2(cue):
     """Mirror of bw_cue_freq2()."""
     return BW_CUE_ROWS[cue if 0 <= cue < BW_CUE_COUNT else 0][4]
+
+
+def bw_save_checksum(words):
+    """Mirror of bw_save_checksum()."""
+    h = BW_SAVE_SALT
+    for i in range(BW_SAVE_WORDS - 1):
+        h = bw_hash(h, words[i])
+    return h
+
+
+def bw_save_encode(gold, up_hull, up_cannon, up_sail, best_band):
+    """Mirror of bw_save_encode() -> BW_SAVE_BYTES bytes."""
+    w = [BW_SAVE_MAGIC, BW_SAVE_VERSION, gold & U32,
+         (up_hull | (up_cannon << 8) | (up_sail << 16)) & U32,
+         best_band & U32, 0, 0, 0]
+    w[BW_SAVE_WORDS - 1] = bw_save_checksum(w)
+    return b''.join(x.to_bytes(4, 'little') for x in w)
+
+
+def bw_save_decode(blob):
+    """Mirror of bw_save_decode() -> (ok, gold, hull, cannon, sail,
+    band); ok = 0 leaves the fresh ledger standing."""
+    w = [int.from_bytes(blob[4 * i:4 * i + 4], 'little')
+         for i in range(BW_SAVE_WORDS)]
+    fresh = (0, 0, 0, 0, 0, 0)
+    if w[0] != BW_SAVE_MAGIC:
+        return fresh                         # blank/garbage chip
+    if w[1] != BW_SAVE_VERSION:
+        return fresh                         # layout changed: reset
+    if w[BW_SAVE_WORDS - 1] != bw_save_checksum(w):
+        return fresh                         # corrupt: reset
+    hull = w[3] & 0xFF
+    cannon = (w[3] >> 8) & 0xFF
+    sail = (w[3] >> 16) & 0xFF
+    if (hull >= BW_UP_TIERS or cannon >= BW_UP_TIERS
+            or sail >= BW_UP_TIERS or (w[3] >> 24) != 0):
+        return fresh                         # impossible tiers: reset
+    if w[4] >= BW_BANDS:
+        return fresh                         # impossible chart: reset
+    return (1, w[2], hull, cannon, sail, w[4])
 
 
 class AudioGlue:
@@ -2579,6 +2629,79 @@ def check_audio_maw_story():
           'the ship')
 
 
+def check_save_roundtrip():
+    # The ledger blob is deterministic and lossless over the whole
+    # legal domain shape: every tier combo x band x a gold ladder
+    # (incl. 0 and the u32 ceiling) encodes to 32 bytes and decodes
+    # back to itself, twice-encoded byte-identical. The fresh ledger
+    # (all zeros) round-trips too — a written fresh ledger is a VALID
+    # record, distinct from a blank chip.
+    count = 0
+    for gold in (0, 1, 15, 45, 999999, U32):
+        for hull in range(BW_UP_TIERS):
+            for cannon in range(BW_UP_TIERS):
+                for sail in range(BW_UP_TIERS):
+                    for band in range(BW_BANDS):
+                        blob = bw_save_encode(gold, hull, cannon, sail,
+                                              band)
+                        assert len(blob) == BW_SAVE_BYTES
+                        assert blob == bw_save_encode(gold, hull,
+                                                      cannon, sail, band)
+                        got = bw_save_decode(blob)
+                        assert got == (1, gold, hull, cannon, sail,
+                                       band), got
+                        count += 1
+    print(f'save roundtrip: {count} ledgers (gold ladder x every tier '
+          'combo x every band) encode/decode losslessly, '
+          'deterministically, 32 bytes each')
+
+
+def check_save_rejects():
+    # Decode-to-zero on EVERYTHING malformed: a blank 0xFF chip, an
+    # all-zero chip, a wrong magic, a future version even with a VALID
+    # recomputed checksum (the version gate rejects on its own),
+    # out-of-range tiers/band under a valid checksum (the range gates
+    # reject on their own), and EVERY single-bit flip of a valid blob
+    # (256 flips — any one bit of damage anywhere is caught; the
+    # record can reset, never lie).
+    good = bw_save_encode(15, 1, 0, 0, 1)
+    assert bw_save_decode(good)[0] == 1
+    assert bw_save_decode(b'\xff' * BW_SAVE_BYTES)[0] == 0
+    assert bw_save_decode(b'\x00' * BW_SAVE_BYTES)[0] == 0
+
+    def crafted(mutate):
+        w = [int.from_bytes(good[4 * i:4 * i + 4], 'little')
+             for i in range(BW_SAVE_WORDS)]
+        mutate(w)
+        w[BW_SAVE_WORDS - 1] = bw_save_checksum(w)
+        return b''.join(x.to_bytes(4, 'little') for x in w)
+
+    def setw(idx, val):
+        def m(w):
+            w[idx] = val
+        return m
+
+    assert bw_save_decode(crafted(setw(0, 0x12345678)))[0] == 0
+    assert bw_save_decode(crafted(setw(1, BW_SAVE_VERSION + 1)))[0] == 0
+    assert bw_save_decode(crafted(setw(3, BW_UP_TIERS)))[0] == 0
+    assert bw_save_decode(crafted(setw(3, BW_UP_TIERS << 8)))[0] == 0
+    assert bw_save_decode(crafted(setw(3, BW_UP_TIERS << 16)))[0] == 0
+    assert bw_save_decode(crafted(setw(3, 1 << 24)))[0] == 0
+    assert bw_save_decode(crafted(setw(4, BW_BANDS)))[0] == 0
+
+    flips = 0
+    for byte in range(BW_SAVE_BYTES):
+        for bit in range(8):
+            bad = bytearray(good)
+            bad[byte] ^= 1 << bit
+            assert bw_save_decode(bytes(bad))[0] == 0, (byte, bit)
+            flips += 1
+    print(f'save rejects: blank/zero chips, wrong magic, future version '
+          f'(valid checksum), out-of-range tiers/band (valid checksum), '
+          f'and all {flips} single-bit flips of a valid record decode '
+          'to the fresh ledger — reset, never a lie, never a crash')
+
+
 def main():
     check_sine_table()
     check_spawns()
@@ -2610,6 +2733,8 @@ def main():
     check_audio_tier()
     check_audio_duel_story()
     check_audio_maw_story()
+    check_save_roundtrip()
+    check_save_rejects()
     print('check-brine: ALL GREEN')
     return 0
 

@@ -1,7 +1,9 @@
-# Playing Brineward (Nintendo DS) — the brine gets a voice
+# Playing Brineward (Nintendo DS) — the ledger survives
 
-> **Status:** `owner-guidance` — arc slice 8 (synthesized audio on the
-> slice-7 deeps). Broadside duels off the Graywake breakwater: sail,
+> **Status:** `owner-guidance` — arc slice 9 (saves, on the slice-8
+> audio): banked gold, bought upgrades and your charted waters now
+> persist on the cartridge's own battery chip — power off, come back,
+> the harbormaster remembers. Broadside duels off the Graywake breakwater: sail,
 > out-turn the rum-runner, sink her, scoop the flotsam, bank and SPEND
 > the gold at the Graywake port — don't linger over the wreck's blood
 > (the Maw comes up under your keel), read the sky before you commit,
@@ -15,8 +17,8 @@
 ## Get the ROM
 
 - **Download and play:** [`dist/brineward.nds`](../dist/brineward.nds)
-  (120,320 bytes, sha256
-  `cb78bf51ff693a6d6773dac4ab3193417a9b5e30b907e311be9941284f257590`)
+  (121,344 bytes, sha256
+  `39c5adcb1ecc65e8c79b27e6917a742282d16a9e77c701682b5c5d4ad653aa8f`)
   in any DS emulator — melonDS and DeSmuME both work; no BIOS files
   needed for homebrew. The build is byte-deterministic and CI re-builds
   it from source on every PR, printing both hashes side by side.
@@ -91,6 +93,24 @@ battle sail is slow but turns tight. Speed eases toward the trim target
 - **The chart is the score:** the deepest band you have sailed rides
   the ledger (`charted`) and the sunk card — the concept doc's
   "waters charted", alive.
+
+## The ledger survives (new in slice 9)
+
+- **What persists:** gold banked at Graywake, the three upgrade
+  tracks, and the deepest band you have charted — written to the
+  cartridge's battery-backed save chip (emulators keep it as a `.dsv`
+  / `.sav` file next to your save states). The title screen greets a
+  returning captain: `ledger: Ng banked, charted M`.
+- **When it writes:** only when the ledger actually changes — a bank
+  at the pier, a purchase or repair in port, a deeper band charted.
+  Sinking writes nothing: the brine takes your hold, never your bank.
+- **What does NOT persist:** the hold (unbanked crates die with the
+  power switch exactly like they die with the ship), wins/sinks
+  tallies, and the water itself — every power-on starts at the title,
+  band 0 off the port, like the concept doc's arcade loop demands.
+- **A damaged save is safe:** any corrupt, blank or future-format
+  chip simply resets the ledger to zero and the game plays on — never
+  a crash, never a hang.
 
 ## The sound (new in slice 8 — turn your volume up)
 

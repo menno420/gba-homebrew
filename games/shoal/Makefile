@@ -9,7 +9,8 @@
 #---------------------------------------------------------------------------------------------------------------------
 ROMTITLE    	:=  SHOAL
 ROMCODE     	:=  GLSH
-INCLUDES    	:=  ../../third_party/butano/common/include
+AUDIO       	:=  audio
+INCLUDES    	:=  ../common/include ../../third_party/butano/common/include
 GRAPHICS    	:=  ../../third_party/butano/common/graphics
 
 # Butano re-invokes make from the build dir, so resolve the shared fragment

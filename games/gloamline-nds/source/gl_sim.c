@@ -300,3 +300,113 @@ uint32_t gl_cue_vol(uint32_t cue)
 {
     return GL_CUE_ROWS[cue < GL_CUE_COUNT ? cue : 0][3];
 }
+
+uint32_t gl_save_checksum(const uint32_t words[GL_SAVE_WORDS])
+{
+    uint32_t h = GL_SAVE_SALT;
+    for (int i = 0; i < GL_SAVE_WORDS - 1; i++)
+        h = gl_hash(h, words[i]);
+    return h;
+}
+
+void gl_save_encode(uint32_t best_nights, uint32_t best_seed,
+                    uint8_t out[GL_SAVE_BYTES])
+{
+    uint32_t w[GL_SAVE_WORDS] = {
+        GL_SAVE_MAGIC, GL_SAVE_VERSION, best_nights, best_seed, 0, 0, 0, 0,
+    };
+    w[GL_SAVE_WORDS - 1] = gl_save_checksum(w);
+    for (int i = 0; i < GL_SAVE_WORDS; i++)          // little-endian words
+    {
+        out[4 * i + 0] = (uint8_t)(w[i] & 0xFFu);
+        out[4 * i + 1] = (uint8_t)((w[i] >> 8) & 0xFFu);
+        out[4 * i + 2] = (uint8_t)((w[i] >> 16) & 0xFFu);
+        out[4 * i + 3] = (uint8_t)((w[i] >> 24) & 0xFFu);
+    }
+}
+
+int gl_save_decode(const uint8_t in[GL_SAVE_BYTES],
+                   uint32_t *best_nights, uint32_t *best_seed)
+{
+    uint32_t w[GL_SAVE_WORDS];
+    for (int i = 0; i < GL_SAVE_WORDS; i++)
+        w[i] = (uint32_t)in[4 * i + 0]
+             | ((uint32_t)in[4 * i + 1] << 8)
+             | ((uint32_t)in[4 * i + 2] << 16)
+             | ((uint32_t)in[4 * i + 3] << 24);
+    if (w[0] != GL_SAVE_MAGIC)
+        return 0;                                    // blank/garbage chip
+    if (w[1] != GL_SAVE_VERSION)
+        return 0;                                    // layout changed: reset
+    if (w[GL_SAVE_WORDS - 1] != gl_save_checksum(w))
+        return 0;                                    // corrupt: reset
+    *best_nights = w[2];
+    *best_seed = w[3];
+    return 1;
+}
+
+int gl_record_improves(uint32_t best_nights, uint32_t nights)
+{
+    return nights > best_nights;                     // strictly better only
+}
+
+int gl_map_col(int32_t x)
+{
+    // Moved VERBATIM from main.c's map_col_of (slice 3): yard pixel
+    // 16..239 -> plot column, clamped.
+    int px = x / GL_ONE;                     // 16..239
+    int col = GL_MAP_COL0 + (px - 16) * GL_MAP_COLS / 224;
+    if (col < GL_MAP_COL0) col = GL_MAP_COL0;
+    if (col > GL_MAP_COL0 + GL_MAP_COLS - 1) col = GL_MAP_COL0 + GL_MAP_COLS - 1;
+    return col;
+}
+
+int gl_map_row(int32_t y)
+{
+    // Moved VERBATIM from main.c's map_row_of (slice 3): yard pixel
+    // 32..175 -> plot row, clamped.
+    int py = y / GL_ONE;                     // 32..175
+    int row = GL_MAP_ROW0 + (py - 32) * GL_MAP_ROWS / 144;
+    if (row < GL_MAP_ROW0) row = GL_MAP_ROW0;
+    if (row > GL_MAP_ROW0 + GL_MAP_ROWS - 1) row = GL_MAP_ROW0 + GL_MAP_ROWS - 1;
+    return row;
+}
+
+int gl_mark_of_cell(int col, int row, int32_t *x, int32_t *y)
+{
+    if (col < GL_MAP_COL0 || col >= GL_MAP_COL0 + GL_MAP_COLS
+        || row < GL_MAP_ROW0 || row >= GL_MAP_ROW0 + GL_MAP_ROWS)
+        return 0;                            // off the plot: no chalk
+    // Mid-span inverse of gl_map_col/gl_map_row: the midpoint of the
+    // cell's yard-pixel preimage, so the forward map returns EXACTLY
+    // (col, row) again (proved for every plot cell in check-gloam).
+    *x = (16 + ((col - GL_MAP_COL0) * 224 + 224 / 2) / GL_MAP_COLS)
+         * GL_ONE;
+    *y = (32 + ((row - GL_MAP_ROW0) * 144 + 144 / 2) / GL_MAP_ROWS)
+         * GL_ONE;
+    return 1;
+}
+
+int gl_mark_of_touch(int tx, int ty, int32_t *x, int32_t *y)
+{
+    if (tx < 0 || ty < 0)
+        return 0;                            // defensive: no negative cell
+    return gl_mark_of_cell(tx / GL_MAP_CELL_PX, ty / GL_MAP_CELL_PX, x, y);
+}
+
+uint32_t gl_gloam_out(uint32_t wave_total, uint32_t spawned)
+{
+    return spawned < wave_total ? wave_total - spawned : 0;
+}
+
+int gl_rematch_available(uint32_t best_nights)
+{
+    return best_nights > 0;                  // no record, no rematch —
+}                                            // the moor keeps no empty boasts
+
+uint32_t gl_run_seed(int rematch, uint32_t best_nights,
+                     uint32_t best_seed, uint32_t latched)
+{
+    return (rematch && gl_rematch_available(best_nights)) ? best_seed
+                                                          : latched;
+}

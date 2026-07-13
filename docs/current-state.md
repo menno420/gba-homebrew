@@ -48,16 +48,156 @@
 
 ## In flight
 
-(Nothing — the **Gloamline arc** (owner-picked original NDS zombie
+(The **Gloamline arc** (owner-picked original NDS zombie
 horde-defense) is the active track: concept (PR #50) → toolchain
 feasibility (PR #51) → walking skeleton (PR #52) → shove + waves
 (PR #54) → barricades (PR #56) → scavenge interlude (PR #62) →
-lantern-oil light pressure (PR #64) → **synthesized audio (session 30,
-this ledger entry) SHIPPED**. Next slices per the concept doc:
-best-nights saves, watch-map polish. A parallel sibling session runs
-the Brineward pirate arc in its own dirs.)
+lantern-oil light pressure (PR #64) → synthesized audio (PR #68) →
+save-file best-nights (PR #74) → watch-map polish (PR #75, parked
+READY — the concept doc's LATER-SLICES list went COMPLETE there) →
+**best-night rematch (session 2026-07-13-gloamline-rematch, this
+ledger entry) — the first slice PAST the concept tree, on the owner's
+2026-07-13 night-run continue order**, branched from the open PR #75
+head so nothing waits on a merge. A parallel sibling session runs the
+Brineward pirate arc in its own dirs.)
 
 ## Recently shipped (newest first)
+
+- **Session 2026-07-13-gloamline-rematch — Gloamline slice 11:
+  BEST-NIGHT REMATCH** (2026-07-13): the first cut past the completed
+  concept tree (owner night-run continue order), paying off the save
+  slice's own player-facing promise ("the recorded seed means your
+  best night is *literally replayable* — start a run when the frame
+  counter matches..." — a wink, since no human can time a frame
+  counter). **SELECT at the title screen or the death card — when a
+  record exists — starts a run on the RECORDED best seed** instead of
+  the frame-counter latch, so the very night the record was set
+  replays spawn for spawn; with no record the verb is completely
+  inert on both screens (no empty boasts — the BEST-line rule). The
+  death card is the natural seat (TITLE is unreachable after the
+  first START); a rematch run wears a `*` after its SEED on the HUD
+  and the cards (render-only — one character inside a line the HUD
+  already reprints every frame); START keeps the fresh-latch path
+  bit-identical everywhere, and beating the record ON a rematch
+  improves it the normal strictly-better way (wear discipline
+  untouched). Pure layer: `gl_rematch_available` + `gl_run_seed` in
+  three-way lockstep (gl_sim ↔ `check-gloam.py` proof 16: 32 gate
+  cases, 128 seed-choice truth-table cases, 132 spawn-for-spawn
+  replay checks ↔ `gloam-route.py`, which gained the SELECT rematch
+  edges, `--best/--best-seed/--save-ok` power-on record flags and
+  `--run-through` for designed-death probe scripts — all 7 committed
+  routes verify byte-identical old-mirror-vs-new, zero drift).
+  Telemetry appends slots 72-79 (REMATCH flag, REMATCHES count, 6
+  spares) with 0-71 frozen (mailbox 72 → 80 words). **All 464
+  pre-slice-11 asserts re-ran UNCHANGED in-container, zero re-pins
+  (the trick's NINTH hold)** — no committed route presses SELECT at
+  the title or the death card. **Two new pinned proofs (28 proofs /
+  517 asserts total)**: proof 27 the rematch chain on proof 20's
+  EARNED battery record (best 1 seed 118 — the emulated chip's own
+  dawn write, not a crafted fixture): SELECT at the title starts seed
+  118 while the nightfall-cue timestamp pins what the latch WOULD
+  have read (128), proof 3's own chase pins land ten frames later
+  (17501 → 15077 → the same cold hands at 2405), dying writes
+  nothing (t[59] = 0), SELECT at the death card rematches AGAIN (the
+  same death at the same 2405 a second time — the replay replays),
+  and START takes the star off (fresh seed 468, flag 0); proof 28
+  no-empty-boasts on a factory-fresh chip (20 frames of title SELECT
+  move nothing, the normal run latches seed 158, death-card SELECT
+  is inert with no record, START restarts plain at seed 598). Every
+  pinned value mirror-predicted FIRST and emulator-matched exactly
+  on the first run. No save-format change, no new audio cue (the
+  nightfall toll already rings every path into a night). Ships as
+  **`dist/gloamline.nds`** (118,272 B, byte-deterministic: two clean
+  builds + an independent fresh-worktree build identical) +
+  [`PLAYING-GLOAMLINE.md`](PLAYING-GLOAMLINE.md) rematch notes.
+  Screenshots:
+  `games/gloamline-nds/proof/slice11-rematch-{offer,run,card}.png`.
+
+- **Session 37 — Gloamline slice 10: WATCH-MAP POLISH** (2026-07-12):
+  the concept doc's LAST later-slice item, honoring its own watch-map
+  words ("tap the map to drop a marker at most; the game is 100%
+  playable on buttons"). The bottom screen becomes a watch
+  *instrument*: (1) a **chalk mark** — X chalks `!` on the map at the
+  lamplighter's position / wipes it again (buttons-first, BINDING);
+  tapping the map plot is the optional stylus alias that drops or
+  moves the mark to the tapped cell. The map cell geometry moved
+  VERBATIM from `main.c` into the pure layer (`gl_map_col`/
+  `gl_map_row`) and the tap placement is pure
+  (`gl_mark_of_cell`/`gl_mark_of_touch`) — a mid-span inverse with an
+  **EXACT cell round-trip**, host-proved for every plot cell (392) and
+  every bottom-LCD pixel (49,152). The mark is chalk ON THE MAP, not a
+  thing in the yard: nothing in the sim reads it, it persists across
+  nights within a run and wipes on a fresh one. (2) the **watch
+  line** — `OUT n` counts tonight's dead still out in the gloam (pure
+  `gl_gloam_out`), plus `! MARK n` (the mark's range in map cells)
+  while the chalk is down; flip-only redraws, with a measured
+  digits-only partial reprint (the full-line reprint cost the 71-line
+  vblank budget its last scanline at full stress — 72; the digits
+  alone hold **steady max 70, mean 57.3, worst spike 153 < 263** with
+  the mark live and the player moving; the idle stress pin is
+  untouched). (3) the **record on the map header** (`BEST n`, the
+  slice-9 state, render-only). **All 399 pre-slice-10 asserts re-ran
+  UNCHANGED, zero re-pins (the trick's EIGHTH hold)** — telemetry
+  appends slots 64-71 (mailbox 64 → 72 words) with 0-63 frozen.
+  **Three new pinned proofs (26 proofs / 464 asserts total)**: mark by
+  buttons (place at feet, range 23040 after the proof-2 movement pin,
+  X wipes, the mark stands on the death card, the instant restart
+  wipes it), the touch alias (off-plot tap rejected; taps place/move
+  the mark at the EXACT pure mid-cell points 25600/27904 → 58368/40960
+  with the proof-3 control death landing on schedule — the stylus
+  feeds nothing back), and the watch line + persistence (OUT counts
+  night 2's wave down the pure spawn schedule 2 → 1 → 0 on the
+  committed night-2 route while the mark survives dawn → START →
+  night 2 to dawn 2). Every pinned value mirror-predicted by the
+  extended `tools/gloam-route.py` (mark state + `--touch` spans) FIRST
+  and emulator-matched exactly; `tools/nds-headless-check.py` gained
+  `--touch START-END:X,Y` (py-desmume `touch_set_pos`/`touch_release`
+  — DeSmuME's pen emulation drives the real `KEY_TOUCH`+`touchRead`
+  path in the ROM). No save-format change; no new audio cue (chalk is
+  silent — a new id would renumber the pinned priority ranking). Ships
+  as **`dist/gloamline.nds`** (118,272 B, byte-deterministic: two
+  clean builds + an independent fresh-worktree build identical) +
+  [`PLAYING-GLOAMLINE.md`](PLAYING-GLOAMLINE.md) chalk-mark/watch-line
+  notes. **The Gloamline concept tree is complete** — every LATER
+  SLICES item has shipped.
+
+- **Session 33 — Gloamline slice 9: SAVE-FILE BEST-NIGHTS** (2026-07-12):
+  the concept doc's "save-file best-nights" — the lamplighter's best
+  run (most nights survived + the seed of that run, so the best night
+  is literally replayable) now **persists across power cycles** on the
+  cartridge backup chip (SPI EEPROM; the battery save DeSmuME emulates).
+  The record is one 32-byte blob — magic, format version, nights, seed,
+  checksum — with everything that can be pure in `gl_sim.h/.c` and
+  mirrored three ways: deterministic byte-exact serialization
+  (`gl_save_encode`), a decode that returns the fresh table on ANY bad
+  blob (blank/corrupt/wrong-magic/future-version — **never a crash**),
+  and a strictly-better-only update rule (`gl_record_improves`): the
+  backup is written ONLY on a dawn that beats the record — never per
+  frame, never at death, never on an equal run (EEPROM wear
+  discipline). The I/O glue is two bounded routines in `main.c` on
+  state-edge frames; **libnds's own cardRead/WriteEeprom demonstrably
+  hangs and loses writes under DeSmuME** (it never drops the AUXSPI
+  HOLD bit before a command's last byte, so DeSmuME never sees a
+  chip-select edge — measured in-slice: the ROM froze on the first
+  dawn write, then wrote bytes that landed nowhere), so the routines
+  speak the protocol-correct flow with every wait bounded by
+  GL_SAVE_POLL_BOUND. **All 353 pre-slice-9 asserts re-ran UNCHANGED,
+  zero re-pins (the trick's SEVENTH hold)** — saves feed nothing back
+  into the night, and the dawn-frame page write costs no frame slip
+  (the ROM frame counter is pinned on the post-dawn probe). Telemetry
+  56 → 64 (slots 0-55 frozen). **Four new pinned proofs (23 proofs /
+  399 asserts total)**: fresh-chip roundtrip with the exported battery
+  bytes byte-identical to the mirror's encode (golden bytes also
+  pinned host-side), power-cycle persistence + equal-run-writes-
+  nothing (battery cmp-identical), the record climbing over two dawns
+  with death moving nothing (all values save-mirror-predicted exactly),
+  and corrupt-save recovery + future-version reset (fixtures crafted
+  by the new `tools/gloam-save.py` through the check-gloam mirror).
+  `tools/nds-headless-check.py` gained `--battery-in/--battery-out`.
+  Honest rail: CI proves the DeSmuME battery path — a real cartridge's
+  backup chip (type, size, wear) is owner-hardware-only. Ships as
+  **`dist/gloamline.nds`** (117,248 B, byte-deterministic) +
+  [`PLAYING-GLOAMLINE.md`](PLAYING-GLOAMLINE.md) save notes.
 
 - **Session 30 — Gloamline slice 8: SYNTHESIZED AUDIO** (2026-07-12):
   the concept doc's "synthesized audio set", built the way session

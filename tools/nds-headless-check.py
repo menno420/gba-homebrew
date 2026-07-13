@@ -15,10 +15,39 @@ Deps (pinned recipe — docs/BUILDING.md):
 
 Usage:
     python3 tools/nds-headless-check.py ROM.nds OUT.png [--frames N]
-        [--keys START-END:NAME ...] [--shot FRAME:PATH ...]
+        [--keys START-END:NAME ...] [--touch START-END:X,Y ...]
+        [--shot FRAME:PATH ...]
         [--require-distinct]
         [--elf ELF] [--watch NAME:ADDR:NWORDS ...] [--watch-log PATH]
         [--assert-watch FRAME:NAME:IDX:OP:VALUE ...]
+        [--battery-in PATH[:SIZE]] [--battery-out PATH]
+
+Touch scripting (Gloamline slice 10 — the watch-map chalk mark's
+optional stylus alias):
+    --touch 150-160:100,100 hold the stylus at bottom-LCD pixel
+                            (100, 100) during frames [150, 160); the
+                            pen lifts (touch_release) on the first
+                            frame after a span ends. Repeatable;
+                            overlapping spans: the last one listed
+                            wins the position.
+
+Battery saves (Gloamline slice 9 — the best-nights record):
+    --battery-in save.sav[:8192]
+                            import a RAW battery image into the emulated
+                            cartridge backup BEFORE the first frame (the
+                            "the cart has this chip with these bytes on
+                            it" fixture; SIZE forces the chip size,
+                            default 8192 = the 64Kbit-class EEPROM the
+                            ROM assumes). Without this fixture DeSmuME's
+                            backup is in its autodetect state and a
+                            homebrew save write is NOT faithfully
+                            emulated — always seed save-path proofs
+                            with a sized image (a blank chip is 8192
+                            bytes of 0xFF).
+    --battery-out save.sav  export the backup as a RAW image after the
+                            last frame (py-desmume 0.0.9 quirk: raw
+                            .sav export works; .dsv export returns
+                            False — use .sav).
 
 Input scripting (subset of headless-screenshot.py's interface):
     --keys 240-420:A        hold the A button during frames [240, 420)
@@ -93,6 +122,17 @@ def parse_shot(spec):
     """'FRAME:PATH' -> (frame, path)."""
     frame, _, path = spec.partition(':')
     return int(frame), path
+
+
+def parse_touch(spec):
+    """'START-END:X,Y' -> (start, end, x, y). Stylus held in [start, end)."""
+    span, _, pos = spec.partition(':')
+    start, _, end = span.partition('-')
+    x, _, y = pos.partition(',')
+    try:
+        return int(start), int(end), int(x), int(y)
+    except ValueError:
+        sys.exit(f'FAIL: bad --touch {spec!r} (want START-END:X,Y)')
 
 
 # --- ELF-resolved memory watches (ported from tools/headless-screenshot.py) --
@@ -230,6 +270,10 @@ def main():
                         metavar='START-END:NAME',
                         help='hold a button during frames [START, END); '
                              'repeatable')
+    parser.add_argument('--touch', action='append', default=[],
+                        metavar='START-END:X,Y',
+                        help='hold the stylus at bottom-LCD pixel (X, Y) '
+                             'during frames [START, END); repeatable')
     parser.add_argument('--shot', action='append', default=[],
                         metavar='FRAME:PATH',
                         help='dump an extra verified both-screens PNG at '
@@ -252,9 +296,17 @@ def main():
                         help='assert watch NAME word [IDX] against VALUE at '
                              f'FRAME (OPs: {", ".join(sorted(WATCH_OPS))}); '
                              'repeatable')
+    parser.add_argument('--battery-in', metavar='PATH[:SIZE]',
+                        help='import a RAW battery image into the emulated '
+                             'cartridge backup before frame 0 (SIZE forces '
+                             'the chip size; default 8192)')
+    parser.add_argument('--battery-out', metavar='PATH',
+                        help='export the cartridge backup as a RAW image '
+                             '(.sav) after the last frame')
     args = parser.parse_args()
 
     key_spans = [parse_keys(spec) for spec in args.keys]
+    touch_spans = [parse_touch(spec) for spec in args.touch]
     shots = sorted(parse_shot(spec) for spec in args.shot)
     if any(frame >= args.frames for frame, _ in shots):
         sys.exit('FAIL: --shot frame beyond --frames')
@@ -276,6 +328,11 @@ def main():
 
     emu = DeSmuME()
     emu.open(args.rom)
+    if args.battery_in:
+        path, _, size = args.battery_in.partition(':')
+        if not emu.backup.import_file(path, int(size) if size else 8192):
+            sys.exit(f'FAIL: battery import of {path!r} failed')
+        print(f'battery in: {path} ({size or 8192} bytes)')
     emu.volume_set(0)
     # BlocksDS-vs-DeSmuME boot quirk: latch "no keys pressed" BEFORE the
     # first frame (see module docstring / docs/PLATFORM-LIMITS.md).
@@ -293,12 +350,23 @@ def main():
     asserts_checked = 0
     saved = []  # (path, frame_number, rgbx-bytes) in capture order
     shot_index = 0
+    touching = False
     for frame_number in range(args.frames):
         mask = 0
         for start, end, key in key_spans:
             if start <= frame_number < end:
                 mask |= key
         emu.input.keypad_update(mask)
+        pen = None
+        for start, end, x, y in touch_spans:
+            if start <= frame_number < end:
+                pen = (x, y)
+        if pen is not None:
+            emu.input.touch_set_pos(*pen)
+            touching = True
+        elif touching:
+            emu.input.touch_release()
+            touching = False
         emu.cycle()
 
         if watches:
@@ -340,6 +408,12 @@ def main():
     rgbx = bytes(emu.display_buffer_as_rgbx())
     write_png(args.out_png, SCREEN_WIDTH, SCREEN_HEIGHT * 2, rgbx)
     saved.append((args.out_png, args.frames - 1, rgbx))
+
+    if args.battery_out:
+        if not emu.backup.export_file(args.battery_out):
+            sys.exit(f'FAIL: battery export to {args.battery_out!r} failed '
+                     '(py-desmume 0.0.9 exports RAW .sav only)')
+        print(f'battery out: {args.battery_out}')
 
     held = ', '.join(args.keys) or 'none'
     print(f'ran {args.frames} frames (keys: {held}), saved {len(saved)} '

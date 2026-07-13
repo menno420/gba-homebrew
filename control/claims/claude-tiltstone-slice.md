@@ -1,0 +1,1 @@
+- `claude/tiltstone-slice` · **web-arcade breadth: Tiltstone prototype (game #3)** — new turn-based gravity-puzzle browser game games/web-tiltstone/ + headless smokes · games/web-tiltstone/**, tools/web-smoke-tiltstone.mjs, .sessions/2026-07-13-web-tiltstone.md · 2026-07-13

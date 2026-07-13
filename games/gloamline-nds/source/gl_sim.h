@@ -182,6 +182,48 @@
 // the value is the libnds DutyCycle register code (0..7).
 #define GL_CUE_ON_NOISE 255
 
+// --- best-nights save (slice 9) ------------------------------------------------
+// The concept doc's "save-file best-nights": the lamplighter's best-run
+// record persists across power cycles on the cartridge backup chip
+// (EEPROM over the card SPI bus — the battery save DeSmuME emulates as
+// a .dsv file). The record is one fixed 32-byte blob: 8 little-endian
+// u32 words { magic, version, best nights survived, seed of that run,
+// 3 spares (0), checksum-of-words-0..6 }, so serialization is fully
+// deterministic and one word 4 = one type-2 EEPROM page write.
+// SAFETY BY CONSTRUCTION: gl_save_decode returns 0 (and the caller
+// keeps the fresh all-zero table) on ANY bad blob — wrong magic, wrong
+// version, bad checksum, blank/0xFF chip — a corrupt save can reset
+// the record, NEVER crash or hang the game. Writes are wear-disciplined:
+// the ARM9 writes the blob ONLY on a dawn that strictly improves the
+// record (gl_record_improves) — never per frame, never at death (a
+// death cannot improve a best-nights record). All constants are
+// decide-and-flag owner-tunables; GL_SAVE_EEPROM_TYPE is the libnds
+// addrtype the ROM ASSUMES (64Kbit-class EEPROM, 2-byte addressing) —
+// a fixed constant, not a boot-time chip probe.
+#define GL_SAVE_MAGIC 0x474C5356u            // 'GLSV'
+#define GL_SAVE_VERSION 1u                   // bump on any layout change
+#define GL_SAVE_WORDS 8
+#define GL_SAVE_BYTES 32                     // one type-2 EEPROM page
+#define GL_SAVE_ADDR 0                       // blob offset in the backup
+#define GL_SAVE_EEPROM_TYPE 2                // libnds addrtype (see card.h)
+#define GL_SAVE_SALT 0x53415645u             // 'SAVE' checksum stream
+// Iteration cap on every card-SPI wait in the write path (main.c's
+// save_write_backup): libnds's cardWriteEeprom polls the chip's status
+// register UNBOUNDEDLY and hangs forever under DeSmuME's backup
+// emulation (measured in this slice: the ROM froze on the first dawn
+// write). Every wait in our write flow gives up after this many
+// iterations instead. Sizing (both rails measured in this slice):
+// big enough that ~4096 RDSR polls outlast a real EEPROM's ~5 ms page
+// program with margin, small enough that a chip/emulator that NEVER
+// answers (DeSmuME reads the status as busy forever) costs only a
+// bounded sub-frame stall on the one dawn-card frame — at 65536 the
+// expired poll ate 2 whole emulated frames and every post-dawn pin
+// would have shifted. An expired poll is harmless by construction:
+// the page data commits on chip-deselect and the chip finishes
+// programming internally; the next backup command is minutes away
+// (the next improving dawn) or next power-on.
+#define GL_SAVE_POLL_BOUND 4096u
+
 // --- night clock -------------------------------------------------------------
 // One night = 60 s at 60 fps. Headless DeSmuME runs ~800 fps in CI, so the
 // survive-to-dawn proof replays a FULL night on the shipped ROM — no
@@ -330,5 +372,104 @@ uint32_t gl_cue_freq(uint32_t cue);
 uint32_t gl_cue_len(uint32_t cue);
 uint32_t gl_cue_duty(uint32_t cue);
 uint32_t gl_cue_vol(uint32_t cue);
+
+// Checksum of a save blob's words 0..GL_SAVE_WORDS-2 (a gl_hash fold on
+// the GL_SAVE_SALT stream). Pure; word GL_SAVE_WORDS-1 is not read.
+uint32_t gl_save_checksum(const uint32_t words[GL_SAVE_WORDS]);
+
+// Serialize the best-run record into a GL_SAVE_BYTES blob (slice 9):
+// { GL_SAVE_MAGIC, GL_SAVE_VERSION, best_nights, best_seed, 0, 0, 0,
+// checksum } as little-endian u32 words. Deterministic: equal records
+// encode to identical bytes.
+void gl_save_encode(uint32_t best_nights, uint32_t best_seed,
+                    uint8_t out[GL_SAVE_BYTES]);
+
+// Parse a blob read back from the backup: returns 1 and fills the
+// record ONLY if magic, version AND checksum all match; returns 0 on
+// any other input (corrupt, blank, 0xFF, future version) WITHOUT
+// touching the outputs — the caller's fresh table stands. Never
+// crashes on any 32-byte input. Pure.
+int gl_save_decode(const uint8_t in[GL_SAVE_BYTES],
+                   uint32_t *best_nights, uint32_t *best_seed);
+
+// 1 if a run of `nights` beats the record — STRICTLY better only
+// (equal runs write nothing: EEPROM wear discipline). Pure.
+int gl_record_improves(uint32_t best_nights, uint32_t nights);
+
+// --- watch-map geometry + the chalk mark (slice 10) --------------------------
+// The concept doc's LAST later-slice cut, "watch-map polish", honoring
+// its own watch-map words: "Touch optional, never required (tap the
+// map to drop a marker at most); the game is 100% playable on
+// buttons." The lamplighter chalks ONE mark on the watch-map: X
+// places it at the player's own position / clears it again
+// (buttons-first — BINDING), and tapping the map plot is the optional
+// alias that drops or moves the mark to the tapped cell. The mark is
+// chalk ON THE MAP, not a thing in the yard: nothing in the sim reads
+// it (the dead ignore chalk), so every pre-slice-10 pin holds
+// bit-identically. It persists across nights within a run (chalk
+// doesn't wash off at dawn) and wipes on a fresh run.
+//
+// The map plot geometry (previously main.c statics, moved here
+// VERBATIM so the render is bit-identical and the inverse is
+// provable): a GL_MAP_COLS x GL_MAP_ROWS console-cell plot at
+// (GL_MAP_COL0, GL_MAP_ROW0), each cell GL_MAP_CELL_PX x
+// GL_MAP_CELL_PX LCD pixels; yard pixel spans x 16..239 / y 32..175
+// (the sprite-center arena) map linearly onto it.
+#define GL_MAP_COL0 2
+#define GL_MAP_ROW0 5
+#define GL_MAP_COLS 28
+#define GL_MAP_ROWS 14
+#define GL_MAP_CELL_PX 8                     // console cell = 8x8 LCD px
+
+// Yard position (8.8 fixed) -> watch-map plot column/row (clamped to
+// the plot). Pure; the exact math main.c has rendered with since
+// slice 3.
+int gl_map_col(int32_t x);
+int gl_map_row(int32_t y);
+
+// Chalk-mark placement from a map plot cell: returns 1 and fills the
+// yard position (8.8 fixed) of the CELL's mid-span iff (col, row) is
+// inside the plot; returns 0 (outputs untouched) for any cell off the
+// plot — a tap on the border/header/gauges drops nothing. EXACT
+// ROUND-TRIP BY CONSTRUCTION (proved host-side for every plot cell):
+// gl_map_col/gl_map_row of the returned position give back exactly
+// (col, row) — the mark renders in the very cell you tapped. The
+// returned point is strictly interior to the arena. Pure.
+int gl_mark_of_cell(int col, int row, int32_t *x, int32_t *y);
+
+// The optional touch alias, fully pure: bottom-screen LCD pixel
+// (tx, ty) -> the plot cell under the stylus -> gl_mark_of_cell.
+// Same contract (1 + yard position inside the plot, else 0).
+int gl_mark_of_touch(int tx, int ty, int32_t *x, int32_t *y);
+
+// The watch line's count (slice 10): how many of tonight's dead are
+// still OUT in the gloam — scheduled but not yet over the fence.
+// Pure f(wave_total, spawned), floored at 0 (never underflows).
+uint32_t gl_gloam_out(uint32_t wave_total, uint32_t spawned);
+
+// --- best-night rematch (slice 11) -------------------------------------------
+// Slice 9 wrote the promise into its own player text ("the recorded
+// seed means your best night is *literally replayable* — start a run
+// when the frame counter matches...") and left it a wink: a human
+// cannot time a frame counter. The rematch makes it a verb: SELECT at
+// the title screen or the death card — when a record exists — starts
+// a run on the RECORDED best seed instead of the frame-counter latch,
+// so the very night the record was set replays spawn for spawn
+// (determinism is the feature, now on a button). With no record the
+// verb is completely inert (the moor keeps no empty boasts — the same
+// rule as the title/card BEST lines). START keeps the old fresh-latch
+// path bit-identical everywhere, so every pre-slice-11 pin holds; the
+// rematch feeds nothing new into the sim — the seed is just a seed.
+
+// 1 if a rematch can be offered at all: a record exists. Pure.
+int gl_rematch_available(uint32_t best_nights);
+
+// The seed a new run starts on: the RECORDED seed iff this start is a
+// rematch AND a record exists (a rematch without a record falls back
+// to the latch — defense in depth; main.c also gates the verb), else
+// the frame-counter latch. Pure f(rematch, best_nights, best_seed,
+// latched).
+uint32_t gl_run_seed(int rematch, uint32_t best_nights,
+                     uint32_t best_seed, uint32_t latched);
 
 #endif // GL_SIM_H

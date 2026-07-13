@@ -99,6 +99,18 @@
   telemetry, never hue) — fixing the byte order in the shared tool would
   only re-tint committed proof PNGs; do it deliberately, both arcs at once,
   or not at all.
+- **Native Android SDK + Godot are absent from this container** — recorded
+  2026-07-13T00:51:30Z (mobile-foundation session) so nobody re-probes.
+  Single probe, observed verbatim: `which gradle sdkmanager godot java` →
+  `/opt/gradle/bin/gradle` and `/usr/bin/java` found, `sdkmanager` and
+  `godot` print nothing (exit 1); `godot --version` → `/bin/bash: line 1:
+  godot: command not found` (exit 127). Implication: Gradle+JDK alone cannot
+  produce an APK/AAB without the Android SDK (`sdkmanager`, platforms,
+  build-tools — a multi-hundred-MB owner-approved download), and there is no
+  Godot editor or export-template path here — so mobile work in this
+  container targets **browser-runnable output (static PWA)**; native store
+  packaging (TWA/Bubblewrap) is a later owner-action step, not a
+  this-container build.
 - **NDS OAM rotate/scale sprites have NO hide bit** — hardware fact worth
   one line (burned Brineward slice 2 for an hour: both ships ghosted over
   the title screen). Attr0 bit 9 means "double-size" when rotation is on,

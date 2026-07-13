@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gloamline host proof (stdlib-only, <2s) — arc slice 8: synthesized audio.
+"""Gloamline host proof (stdlib-only, <2s) — arc slice 10: watch-map polish.
 
 The check-cave.py sibling for Gloamline: a line-for-line Python mirror of
 the pure simulation layer in games/gloamline-nds/source/gl_sim.c
@@ -8,9 +8,11 @@ gl_shambler_stride / gl_shambler_step / gl_chebyshev / gl_contact /
 gl_wave_count / gl_spawn_frame / gl_shove / gl_barricade_blocks /
 gl_planks_at_dawn / gl_cache_of_interlude / gl_cache_grab /
 gl_planks_after_grab / gl_oil_burn / gl_light_radius / gl_dark_press /
-gl_flask_of_interlude / gl_oil_after_flask), proving the meaningful
-invariants for EVERY reachable input instead of the handful a replay
-touches:
+gl_flask_of_interlude / gl_oil_after_flask / gl_save_checksum /
+gl_save_encode / gl_save_decode / gl_record_improves / gl_map_col /
+gl_map_row / gl_mark_of_cell / gl_mark_of_touch / gl_gloam_out), proving
+the meaningful invariants for EVERY reachable input instead of the
+handful a replay touches:
 
   1. spawn schedule — for seeds 0..255 x nights 1..8 (index 0) PLUS every
      scheduled index of seeds 0..127 x nights 1..13: the spawn is a pure
@@ -103,7 +105,26 @@ touches:
      8 one-shot cue rows are PSG-legal (freq 50..4000 Hz), bounded
      (hold 1..90 frames — no cue hogs the channel), audible, and the
      cue ids are exactly the documented priority ranking that main.c
-     and the mirror resolve a multi-event frame with.
+     and the mirror resolve a multi-event frame with;
+ 14. best-nights save record (slice 9) — gl_save_encode/gl_save_decode
+     roundtrip byte-deterministically over a value grid incl. extremes
+     (golden bytes pinned for the CI battery cross-check; the blob is
+     exactly one type-2 EEPROM page); EVERY bad blob decodes to the
+     fresh table and never anything else — blank chips (all-00 /
+     all-FF), every single-byte corruption of a valid blob, and
+     wrong-magic / future-version blobs each carrying a VALID
+     recomputed checksum (so magic and version reject on their own);
+     and gl_record_improves is strictly-better-only over its truth
+     table (equal runs write nothing — EEPROM wear discipline);
+ 15. watch-map chalk mark + watch line (slice 10) — gl_mark_of_cell is
+     deterministic, places a strictly-interior yard point for EVERY
+     plot cell, and round-trips EXACTLY (gl_map_col/gl_map_row of the
+     mark = the very cell — no +-1 smear); every off-plot cell rejects;
+     gl_mark_of_touch aliases the cell placement for every pixel of the
+     256x192 bottom LCD (no second geometry) and rejects negatives; the
+     forward map (moved verbatim from main.c) lands the arena extremes
+     on the plot edges; gl_gloam_out matches max(total - spawned, 0)
+     over its full reachable truth table.
 
 MIRROR RULE (keep in lockstep): every function and constant below mirrors
 games/gloamline-nds/source/gl_sim.c. Any change to the C MUST land here in
@@ -171,6 +192,19 @@ GL_CUE_DAWN = 7
 GL_CUE_DEATH = 8
 GL_CUE_COUNT = 9
 GL_CUE_ON_NOISE = 255
+GL_SAVE_MAGIC = 0x474C5356
+GL_SAVE_VERSION = 1
+GL_SAVE_WORDS = 8
+GL_SAVE_BYTES = 32
+GL_SAVE_ADDR = 0
+GL_SAVE_EEPROM_TYPE = 2
+GL_SAVE_SALT = 0x53415645
+GL_SAVE_POLL_BOUND = 4096
+GL_MAP_COL0 = 2
+GL_MAP_ROW0 = 5
+GL_MAP_COLS = 28
+GL_MAP_ROWS = 14
+GL_MAP_CELL_PX = 8
 GL_NIGHT_FRAMES = 3600
 
 U32 = 0xFFFFFFFF
@@ -424,6 +458,105 @@ def gl_cue_duty(cue):
 def gl_cue_vol(cue):
     """Mirror of gl_cue_vol()."""
     return GL_CUE_ROWS[cue if cue < GL_CUE_COUNT else 0][3]
+
+
+def gl_save_checksum(words):
+    """Mirror of gl_save_checksum()."""
+    h = GL_SAVE_SALT
+    for i in range(GL_SAVE_WORDS - 1):
+        h = gl_hash(h, words[i])
+    return h
+
+
+def gl_save_encode(best_nights, best_seed):
+    """Mirror of gl_save_encode() (returns the blob as bytes)."""
+    w = [GL_SAVE_MAGIC, GL_SAVE_VERSION, best_nights & U32, best_seed & U32,
+         0, 0, 0, 0]
+    w[GL_SAVE_WORDS - 1] = gl_save_checksum(w)
+    return b''.join(x.to_bytes(4, 'little') for x in w)
+
+
+def gl_save_decode(blob):
+    """Mirror of gl_save_decode() (returns (ok, best_nights, best_seed);
+    on ok == 0 the C leaves its outputs untouched — callers keep the
+    fresh table)."""
+    w = [int.from_bytes(blob[4 * i:4 * i + 4], 'little')
+         for i in range(GL_SAVE_WORDS)]
+    if w[0] != GL_SAVE_MAGIC:
+        return 0, 0, 0
+    if w[1] != GL_SAVE_VERSION:
+        return 0, 0, 0
+    if w[GL_SAVE_WORDS - 1] != gl_save_checksum(w):
+        return 0, 0, 0
+    return 1, w[2], w[3]
+
+
+def gl_record_improves(best_nights, nights):
+    """Mirror of gl_record_improves()."""
+    return 1 if nights > best_nights else 0
+
+
+def _div_toward_zero(a, b):
+    """C integer division truncates toward zero; Python floors."""
+    q = abs(a) // abs(b)
+    return q if (a >= 0) == (b >= 0) else -q
+
+
+def gl_map_col(x):
+    """Mirror of gl_map_col()."""
+    px = _div_toward_zero(x, GL_ONE)                     # 16..239
+    col = GL_MAP_COL0 + _div_toward_zero((px - 16) * GL_MAP_COLS, 224)
+    if col < GL_MAP_COL0:
+        col = GL_MAP_COL0
+    if col > GL_MAP_COL0 + GL_MAP_COLS - 1:
+        col = GL_MAP_COL0 + GL_MAP_COLS - 1
+    return col
+
+
+def gl_map_row(y):
+    """Mirror of gl_map_row()."""
+    py = _div_toward_zero(y, GL_ONE)                     # 32..175
+    row = GL_MAP_ROW0 + _div_toward_zero((py - 32) * GL_MAP_ROWS, 144)
+    if row < GL_MAP_ROW0:
+        row = GL_MAP_ROW0
+    if row > GL_MAP_ROW0 + GL_MAP_ROWS - 1:
+        row = GL_MAP_ROW0 + GL_MAP_ROWS - 1
+    return row
+
+
+def gl_mark_of_cell(col, row):
+    """Mirror of gl_mark_of_cell() -> (ok, x, y)."""
+    if (col < GL_MAP_COL0 or col >= GL_MAP_COL0 + GL_MAP_COLS
+            or row < GL_MAP_ROW0 or row >= GL_MAP_ROW0 + GL_MAP_ROWS):
+        return 0, 0, 0                       # off the plot: no chalk
+    x = (16 + ((col - GL_MAP_COL0) * 224 + 224 // 2) // GL_MAP_COLS) \
+        * GL_ONE
+    y = (32 + ((row - GL_MAP_ROW0) * 144 + 144 // 2) // GL_MAP_ROWS) \
+        * GL_ONE
+    return 1, x, y
+
+
+def gl_mark_of_touch(tx, ty):
+    """Mirror of gl_mark_of_touch() -> (ok, x, y)."""
+    if tx < 0 or ty < 0:
+        return 0, 0, 0                       # defensive: no negative cell
+    return gl_mark_of_cell(tx // GL_MAP_CELL_PX, ty // GL_MAP_CELL_PX)
+
+
+def gl_gloam_out(wave_total, spawned):
+    """Mirror of gl_gloam_out()."""
+    return wave_total - spawned if spawned < wave_total else 0
+
+
+def gl_rematch_available(best_nights):
+    """Mirror of gl_rematch_available()."""
+    return 1 if best_nights > 0 else 0
+
+
+def gl_run_seed(rematch, best_nights, best_seed, latched):
+    """Mirror of gl_run_seed()."""
+    return (best_seed if rematch and gl_rematch_available(best_nights)
+            else latched)
 
 
 # --- proofs ------------------------------------------------------------------
@@ -1112,6 +1245,223 @@ def main():
         failures += 1
         print('FAIL cue out-of-range: bad id must fall back to the no-op')
 
+    # 14. best-nights save record (slice 9).
+    # 14a. encode/decode roundtrip over a value grid incl. extremes:
+    # deterministic byte-identical encoding, exact blob size, and the
+    # decode returns exactly what was encoded.
+    save_cases = 0
+    for best in (0, 1, 2, 3, 13, 999, 0xFFFFFFFF):
+        for seed in (0, 118, 348, 0xDEADBEEF, 0xFFFFFFFF):
+            blob = gl_save_encode(best, seed)
+            save_cases += 1
+            if blob != gl_save_encode(best, seed):
+                failures += 1
+                print(f'FAIL save determinism: ({best},{seed})')
+            if len(blob) != GL_SAVE_BYTES:
+                failures += 1
+                print(f'FAIL save size: ({best},{seed}): {len(blob)}')
+            if gl_save_decode(blob) != (1, best, seed):
+                failures += 1
+                print(f'FAIL save roundtrip: ({best},{seed}) -> '
+                      f'{gl_save_decode(blob)}')
+    # Golden-bytes pin: the "survived night 1, seed 118" record that the
+    # CI battery-roundtrip proof reads back out of the DeSmuME battery
+    # file — C encoder <-> this mirror drift is caught at byte level.
+    if gl_save_encode(1, 118).hex() != ('56534c47' '01000000' '01000000'
+                                        '76000000' '00000000' '00000000'
+                                        '00000000' '75ed83cd'):
+        failures += 1
+        print('FAIL save golden bytes: encode(1, 118) drifted')
+    # One-page invariants: the blob is exactly the 8 words it claims and
+    # sits page-aligned inside one 32-byte type-2 EEPROM page (main.c's
+    # save_write_backup relies on never crossing a page boundary).
+    if GL_SAVE_BYTES != GL_SAVE_WORDS * 4 or GL_SAVE_BYTES > 32 \
+            or GL_SAVE_ADDR % 32 != 0:
+        failures += 1
+        print('FAIL save layout: blob does not fit one EEPROM page')
+    # 14b. rejection = fresh table, never a crash: blank chips (all-00 /
+    # all-FF), EVERY single-byte corruption of a valid blob (the spares
+    # are inside the checksum too), a wrong-magic blob and a
+    # future-version blob EACH WITH A RECOMPUTED (valid) checksum — so
+    # magic and version are proven to reject on their own — all decode
+    # to (0, _, _).
+    rejects = 0
+    for label, blob in (('all-00', b'\x00' * GL_SAVE_BYTES),
+                        ('all-FF', b'\xff' * GL_SAVE_BYTES)):
+        if gl_save_decode(blob)[0] != 0:
+            failures += 1
+            print(f'FAIL save reject {label}: accepted')
+        rejects += 1
+    valid = gl_save_encode(3, 12345)
+    for i in range(GL_SAVE_BYTES):
+        mut = bytearray(valid)
+        mut[i] ^= 0xFF
+        rejects += 1
+        if gl_save_decode(bytes(mut))[0] != 0:
+            failures += 1
+            print(f'FAIL save reject: byte {i} corruption accepted')
+    for label, w0, w1 in (('future-version', GL_SAVE_MAGIC,
+                           GL_SAVE_VERSION + 1),
+                          ('wrong-magic', gl_hash(GL_SAVE_MAGIC, 1) & U32,
+                           GL_SAVE_VERSION)):
+        w = [w0, w1, 3, 12345, 0, 0, 0, 0]
+        w[GL_SAVE_WORDS - 1] = gl_save_checksum(w)
+        crafted = b''.join(x.to_bytes(4, 'little') for x in w)
+        rejects += 1
+        if gl_save_decode(crafted)[0] != 0:
+            failures += 1
+            print(f'FAIL save reject {label}: accepted despite a valid '
+                  'checksum')
+    # 14c. the record moves on STRICTLY better runs only (equal runs
+    # write nothing — EEPROM wear discipline), full truth table.
+    improve_cases = 0
+    for best in list(range(30)) + [0xFFFFFFFE, 0xFFFFFFFF]:
+        for nights in list(range(30)) + [0xFFFFFFFE, 0xFFFFFFFF]:
+            improve_cases += 1
+            if gl_record_improves(best, nights) != (1 if nights > best
+                                                    else 0):
+                failures += 1
+                print(f'FAIL record improves: ({best},{nights})')
+
+    # 15. watch-map chalk mark + watch line (slice 10).
+    # 15a. every plot cell places: gl_mark_of_cell is deterministic,
+    # returns a strictly-interior arena point (chalk marks a yard spot,
+    # never the fence), and ROUND-TRIPS EXACTLY — gl_map_col/gl_map_row
+    # of the placed mark give back the very cell (the mark renders in
+    # the cell you tapped, no +-1 smear).
+    mark_cells = 0
+    for col in range(GL_MAP_COL0, GL_MAP_COL0 + GL_MAP_COLS):
+        for row in range(GL_MAP_ROW0, GL_MAP_ROW0 + GL_MAP_ROWS):
+            ok, mx, my = gl_mark_of_cell(col, row)
+            mark_cells += 1
+            if (ok, mx, my) != gl_mark_of_cell(col, row):
+                failures += 1
+                print(f'FAIL mark determinism: cell ({col},{row})')
+            if not ok:
+                failures += 1
+                print(f'FAIL mark placement: plot cell ({col},{row}) '
+                      'rejected')
+                continue
+            if not (GL_ARENA_X_MIN < mx < GL_ARENA_X_MAX
+                    and GL_ARENA_Y_MIN < my < GL_ARENA_Y_MAX):
+                failures += 1
+                print(f'FAIL mark interior: cell ({col},{row}) -> '
+                      f'({mx},{my}) not strictly inside the arena')
+            if on_perimeter(mx, my):
+                failures += 1
+                print(f'FAIL mark on fence: cell ({col},{row})')
+            if (gl_map_col(mx), gl_map_row(my)) != (col, row):
+                failures += 1
+                print(f'FAIL mark round-trip: cell ({col},{row}) -> '
+                      f'({mx},{my}) -> cell '
+                      f'({gl_map_col(mx)},{gl_map_row(my)})')
+    # 15b. everything OFF the plot rejects: the border/header/gauge
+    # cells around the plot (one full ring plus the console's edges).
+    off_cells = 0
+    for col in range(-1, 33):
+        for row in range(-1, 25):
+            inside = (GL_MAP_COL0 <= col < GL_MAP_COL0 + GL_MAP_COLS
+                      and GL_MAP_ROW0 <= row < GL_MAP_ROW0 + GL_MAP_ROWS)
+            if inside:
+                continue
+            off_cells += 1
+            if gl_mark_of_cell(col, row)[0] != 0:
+                failures += 1
+                print(f'FAIL mark off-plot: cell ({col},{row}) accepted')
+    # 15c. the touch alias covers the WHOLE bottom LCD: every pixel of
+    # the 256x192 screen either lands in the plot (and equals the
+    # cell's own placement — the alias adds no second geometry) or
+    # rejects; negative coordinates reject defensively.
+    touch_px = 0
+    for ty in range(192):
+        for tx in range(256):
+            touch_px += 1
+            got = gl_mark_of_touch(tx, ty)
+            want = gl_mark_of_cell(tx // GL_MAP_CELL_PX,
+                                   ty // GL_MAP_CELL_PX)
+            if got != want:
+                failures += 1
+                print(f'FAIL touch alias: ({tx},{ty}): {got} != {want}')
+    for tx, ty in ((-1, 100), (100, -1), (-8, -8)):
+        if gl_mark_of_touch(tx, ty)[0] != 0:
+            failures += 1
+            print(f'FAIL touch negative: ({tx},{ty}) accepted')
+    # 15d. the map geometry mirrors main.c's render VERBATIM: spot
+    # checks of the forward map (arena corners + center land inside
+    # the plot, clamped), and gl_gloam_out's full truth table over
+    # every reachable (wave_total, spawned) pair.
+    if (gl_map_col(GL_ARENA_X_MIN) != GL_MAP_COL0
+            or gl_map_col(GL_ARENA_X_MAX) != GL_MAP_COL0 + GL_MAP_COLS - 1
+            or gl_map_row(GL_ARENA_Y_MIN) != GL_MAP_ROW0
+            or gl_map_row(GL_ARENA_Y_MAX) != GL_MAP_ROW0 + GL_MAP_ROWS - 1):
+        failures += 1
+        print('FAIL map corners: arena extremes do not land on the plot '
+              'edges')
+    out_cases = 0
+    for total in range(GL_ZOMBIE_CAP + 1):
+        for spawned in range(GL_ZOMBIE_CAP + 8):
+            out_cases += 1
+            got = gl_gloam_out(total, spawned)
+            if got != gl_gloam_out(total, spawned):
+                failures += 1
+                print(f'FAIL gloam-out determinism: ({total},{spawned})')
+            if got != max(total - spawned, 0):
+                failures += 1
+                print(f'FAIL gloam-out: ({total},{spawned}) -> {got}')
+
+    # 16. best-night rematch (slice 11).
+    # 16a. the offer gate: a rematch is available IFF a record exists —
+    # exactly the "no empty boasts" rule the title/card BEST lines use.
+    rematch_cases = 0
+    for best in list(range(30)) + [0xFFFFFFFE, 0xFFFFFFFF]:
+        rematch_cases += 1
+        got = gl_rematch_available(best)
+        if got != gl_rematch_available(best):
+            failures += 1
+            print(f'FAIL rematch determinism: best {best}')
+        if got != (1 if best > 0 else 0):
+            failures += 1
+            print(f'FAIL rematch gate: best {best} -> {got}')
+    # 16b. seed choice truth table: the RECORDED seed iff rematch AND a
+    # record exists; the frame-counter latch otherwise (a rematch call
+    # without a record falls back to the latch — defense in depth over
+    # the main.c verb gate). Extremes included: seed words are opaque
+    # u32s, never arithmetic.
+    seed_cases = 0
+    for rematch in (0, 1):
+        for best in (0, 1, 13, 0xFFFFFFFF):
+            for best_seed in (0, 118, 0xDEADBEEF, 0xFFFFFFFF):
+                for latched in (1, 118, 428, 0xFFFFFFFF):
+                    seed_cases += 1
+                    got = gl_run_seed(rematch, best, best_seed, latched)
+                    want = (best_seed if rematch and best > 0
+                            else latched)
+                    if got != gl_run_seed(rematch, best, best_seed,
+                                          latched):
+                        failures += 1
+                        print(f'FAIL run-seed determinism: '
+                              f'({rematch},{best},{best_seed},{latched})')
+                    if got != want:
+                        failures += 1
+                        print(f'FAIL run-seed: ({rematch},{best},'
+                              f'{best_seed},{latched}) -> {got}')
+    # 16c. the replay contract: a rematch run's ENTIRE spawn schedule is
+    # the record run's, spawn for spawn — because gl_run_seed returns
+    # the recorded seed verbatim and the schedule is pure f(seed, night,
+    # index). Checked explicitly over sample records so the contract
+    # survives any future seed-derivation cleverness.
+    replay_checks = 0
+    for best_seed in (0, 118, 348, 0xDEADBEEF):
+        seed = gl_run_seed(1, 2, best_seed, 999)
+        for night in (1, 2, 3, 13):
+            for index in range(gl_wave_count(night)):
+                replay_checks += 1
+                if (gl_spawn_of_night(seed, night, index)
+                        != gl_spawn_of_night(best_seed, night, index)):
+                    failures += 1
+                    print(f'FAIL rematch replay: seed {best_seed} '
+                          f'night {night} index {index} drifted')
+
     if failures:
         print(f'check-gloam: {failures} failure(s)')
         return 1
@@ -1146,8 +1496,23 @@ def main():
           'interlude of flasks out-earns one night of burn, '
           f'{tier_cases} ambience-tier cases truth-table-exact (always '
           'NIGHT at healthy oil, always DAY in daylight), drone rows '
-          'climb/legal, and all 8 cue rows PSG-legal/bounded with the '
-          'id order = the documented priority ranking')
+          'climb/legal, all 8 cue rows PSG-legal/bounded with the '
+          'id order = the documented priority ranking, '
+          f'{save_cases} save-record roundtrips byte-deterministic '
+          f'(golden bytes pinned, one-page layout), {rejects} bad-blob '
+          'decodes ALL reject to the fresh table (blank chips, every '
+          'single-byte corruption, wrong-magic + future-version each '
+          f'with a valid checksum), {improve_cases} record-update '
+          f'cases strictly-better-only, {mark_cells} chalk-mark plot '
+          'cells place strictly-interior with EXACT cell round-trips '
+          f'({off_cells} off-plot cells all reject), {touch_px} touch '
+          'pixels alias the cell placement exactly (negatives reject), '
+          f'map corners land on the plot edges, {out_cases} '
+          'gloam-out cases match max(total - spawned, 0), '
+          f'{rematch_cases} rematch-gate cases record-iff-available, '
+          f'{seed_cases} run-seed cases truth-table-exact (recorded '
+          f'seed iff rematch and a record), and {replay_checks} '
+          'rematch spawn checks replay the record run spawn for spawn')
     return 0
 
 

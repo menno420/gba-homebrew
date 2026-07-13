@@ -6,13 +6,21 @@
 > date for arc slice 4 — shove + waves — and slice 5 — barricades; refreshed
 > 2026-07-12 for arc slice 6 — the scavenge interlude — and slice 7 —
 > lantern-oil light pressure; refreshed same date for slice 8 —
-> synthesized audio).
+> synthesized audio — and slice 10 — watch-map polish).
 
 **Download → open in a DS emulator → play.** No build step needed. Slice 8
 gives the night a voice: a low moor-drone that climbs as your lantern
 fails and the dark presses, and chiptune cues for everything you do —
 all synthesized on the DS's own square-wave and noise channels, no
-samples of anything. Turn the sound on.
+samples of anything. Turn the sound on. Slice 9 makes the moor remember:
+your best run — most nights survived, and the seed that made it — now
+persists across power cycles in the cartridge's battery save. Slice 10
+finishes the concept's watch-map: chalk a mark on it (X, or just tap the
+map), read how many of tonight's dead are still out in the gloam, and
+see your record while you play. Slice 11 puts your best night on a
+button: with a record standing, SELECT at the title or after a death
+starts a **rematch** — the very night your record was set, spawn for
+spawn.
 
 ## 1. Get the ROM
 
@@ -32,8 +40,16 @@ like: the sha256 is pinned in [`dist/README.md`](../dist/README.md).
   DS). Copy the file to the device (or download it straight from GitHub)
   and open it from the emulator's file picker.
 - **Real hardware:** runs from any DS flashcart that takes homebrew
-  `.nds` files. No save file is used yet (best-nights persistence is a
-  later slice), so there is nothing to configure.
+  `.nds` files. Since slice 9 the game keeps a tiny battery save (one
+  32-byte record — your best run) via standard SPI-EEPROM commands on
+  the cartridge backup; most flashcarts map this to an ordinary `.sav`
+  file automatically. If your cart exposes a save-size choice, any size
+  works (the game assumes the common 64Kbit-class EEPROM addressing).
+  Honest note: CI verifies this persistence in DeSmuME's emulated
+  battery only — on real carts it is untested; if the save doesn't
+  stick, the game still plays perfectly (a missing/odd save just reads
+  as "no record yet"). In desktop emulators there is nothing to
+  configure — melonDS/DeSmuME create the battery file themselves.
 
 ## 3. How to play
 
@@ -50,19 +66,26 @@ counter for how many are up, an `O` percentage for your lantern oil, a
 interlude the top line becomes the SCAVENGE clock and remaining-cache
 count). The BOTTOM screen is the watch-map: your position (`P`), every
 Shambler (`Z`), every barricade (`#`), every plank cache (`*`), every
-oil flask (`o`), the dawn bar filling left to right and the OIL gauge
-draining under it. Buttons only — no touch needed.
+oil flask (`o`), your chalk mark (`!`), the watch line (`OUT` — how
+many of tonight's dead are still out in the gloam — plus your mark's
+range), your best-night record in the header, the dawn bar filling
+left to right and the OIL gauge draining under it. Buttons always
+suffice — the only touch in the game is an optional shortcut for the
+chalk mark.
 
 **Controls**
 
 | Button | Action |
 |---|---|
 | START (title / after death / at dawn) | Start — retry — next night |
+| SELECT (title / after death) | **Rematch** your best night (record required) |
 | SELECT (at dawn) | **Scavenge** the yard before the next night |
 | START (while scavenging) | Leave early — the night begins |
 | D-pad | Move, 8 directions |
 | A | **Shove** the nearest Shambler in reach |
 | B | **Barricade**: place at your feet — or repair the one in reach |
+| X | **Chalk mark** on the watch-map at your position — X again wipes it |
+| Stylus (optional) | Tap the watch-map to drop/move the mark to that spot |
 
 **Goal:** stay out of reach for the 60 seconds of the night. The HUD
 counts down to dawn (`DAWN 0:58`); the moment it hits zero, dawn breaks
@@ -143,9 +166,49 @@ fence-line spawn. **NTS** (nights survived) on the HUD is your score.
 - **One touch kills.** A cold-hands card shows your night, your seed and
   your death count; START restarts instantly. Dying while scavenging
   counts all the same — greed has a price on the moor.
+- **The moor remembers your best night.** Your record — the most nights
+  survived in a single run, and the seed of that run — is written to
+  the cartridge's battery save the moment a dawn beats it, and greets
+  you on the title screen (`best N night(s) seed S`) every time you
+  power on. The dawn and death cards show it too, so you always know
+  what you're chasing. Only a strictly better dawn moves it; deaths
+  and equal runs touch nothing. And because every run is seed-
+  deterministic, the recorded seed means your best night is *literally
+  replayable* — start a run when the frame counter matches... or just
+  accept the moor's challenge. A corrupt or foreign save can never
+  crash the game — it simply reads as a fresh record.
+- **The watch-map is now a watch instrument.** Chalk a `!` mark on it —
+  press X to mark the spot you're standing on (a barricade line to fall
+  back to, a corner you swore you'd never get pinned in), press X again
+  to wipe it; or, if you like the stylus, just tap the map and the mark
+  lands in that very square (tap somewhere else to move it — the border
+  and gauges ignore taps). The mark is chalk, not a thing in the yard:
+  the dead ignore it completely, it stays through dawns and interludes
+  for the whole run, and a fresh run starts with a clean map. While
+  your chalk is down the watch line reads `! MARK n` — how many map
+  squares between you and it. Next to that, `OUT n` counts how many of
+  tonight's dead are still out in the gloam — `OUT 0` means everything
+  the night will send is already inside the fence, so what you see is
+  what you fight. And your best-night record rides the map header
+  (`BEST n`) — what you're chasing, visible where you're looking.
+- **Rematch the moor's best night.** With a record standing, the title
+  screen and the death card both offer `PRESS SELECT: rematch` — SELECT
+  starts a run on the RECORDED seed instead of a fresh one, so the very
+  night your record was set comes back spawn for spawn: same fence
+  climbs, same schedule, your inputs against your own ghost of a night.
+  A rematch run wears a `*` after its seed on the HUD and the cards so
+  you always know which fight you're in; START anywhere still deals a
+  fresh night, and beating your record ON the rematch counts like any
+  other dawn. No record, no offer — the moor keeps no empty boasts.
 - Every run is **reproducible**: the SEED on the HUD fully determines
   every spawn of every night (and everything after it, given your
-  inputs). Same seed + same moves = same night, every time.
+  inputs). Same seed + same moves = same night, every time. (The
+  rematch is this promise on a button — no frame-counter timing
+  required.)
 
-Next slices per the [concept](concepts/gloamline-concept.md):
-best-nights saves and watch-map polish.
+The concept doc's slice list is complete: skeleton → shove + waves →
+barricades → scavenge interlude → lantern oil → synthesized audio →
+best-nights saves → watch-map polish. Slice 11 (the best-night
+rematch) is the first cut past that tree, on the owner's
+continue-the-arc order: it pays off the save slice's own promise that
+the recorded seed makes your best night literally replayable.

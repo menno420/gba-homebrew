@@ -22,8 +22,19 @@ burns nothing and presses nobody — and the slice-8 synthesized-audio
 DECISION mirror: which one-shot cue fires each frame (counter deltas +
 state flips, highest cue id wins) and which ambience tier the drone
 plays, so audio telemetry pins are mirror-predicted like everything
-else), driven by the same `--keys START-END:NAME` spans
-tools/nds-headless-check.py replays.
+else — and the slice-9 best-nights record: the power-on save state is
+a constructor argument, a strictly-better dawn moves the record and
+counts one backup write, equal/worse dawns and deaths move nothing —
+and the slice-10 watch-map chalk mark: X chalks/clears a mark at the
+player's position, a stylus tap (`--touch START-END:X,Y`, the pure
+gl_mark_of_touch cell placement) drops or moves it, it persists
+across nights and wipes on a fresh run, and the dead ignore it
+entirely — and the slice-11 best-night rematch: SELECT at the title
+or the death card, when a record exists (`--best/--best-seed/
+--save-ok` mirror the power-on backup read), starts the run on the
+RECORDED seed via gl_run_seed instead of the frame-counter latch;
+with no record the verb is inert), driven by the same
+`--keys START-END:NAME` spans tools/nds-headless-check.py replays.
 
 Emulator/ROM alignment (session-17 guard): the py-desmume frontend's frame
 N sets input that the ROM's loop iteration sees ~2 frames later (ROM frame
@@ -88,10 +99,20 @@ def keys_line(spans):
 
 
 class GloamSim:
-    """Line-faithful mirror of games/gloamline-nds/source/main.c."""
+    """Line-faithful mirror of games/gloamline-nds/source/main.c.
 
-    def __init__(self, spans, offset=NOMINAL_OFFSET):
+    Slice 9: the constructor takes the power-on save state (what the
+    boot-time backup read decoded — best_nights/best_seed/save_ok; the
+    fresh table by default), and the dawn edge mirrors main.c's record
+    update: a STRICTLY better dawn moves the record and counts one
+    backup write. The backup I/O itself is hardware glue and mirrors
+    nothing back — the record feeds no night rule.
+    """
+
+    def __init__(self, spans, offset=NOMINAL_OFFSET,
+                 best_nights=0, best_seed=0, save_ok=0, touch_spans=()):
         self.spans = spans
+        self.touch_spans = list(touch_spans)  # (start, end, x, y) emu frames
         self.offset = offset
         self.state = STATE_TITLE
         self.frame = 0                       # mirrors main.c `frame`
@@ -142,6 +163,26 @@ class GloamSim:
         self.last_cue = 0
         self.cues = 0
         self.cue_frame = 0
+        # best-nights save record (slice 9): power-on state + the
+        # writes-this-power-on counter
+        self.best_nights = best_nights
+        self.best_seed = best_seed
+        self.save_ok = save_ok
+        self.save_writes = 0
+        # watch-map chalk mark (slice 10): map state only — the dead
+        # ignore chalk (nothing in the sim reads it). Persists across
+        # nights within a run; start_run wipes it.
+        self.mark_on = 0
+        self.mark_x = 0
+        self.mark_y = 0
+        self.marks = 0
+        self.prev_touch = False              # stylus-down edge detect
+        # best-night rematch (slice 11): SELECT at the title or the
+        # death card — when a record exists — starts a run on the
+        # RECORDED seed instead of the frame-counter latch. Display
+        # state only past the seed choice: the sim never reads it.
+        self.rematch_on = 0
+        self.rematches = 0
         # evidence
         self.min_dist = None                 # over PLAYING+SCAVENGE frames
         self.dawn_emu_frames = []            # emu frame of each dawn flip
@@ -200,7 +241,40 @@ class GloamSim:
         self.planks = cg.GL_PLANK_STOCK
         self.oil = cg.GL_OIL_MAX                 # a fresh lantern
         self.bhp = [0] * cg.GL_BARRICADE_CAP     # fresh run: bare yard
+        self.mark_on = 0                         # chalk wipes on a fresh run
+        self.mark_x = 0
+        self.mark_y = 0
         self.start_night()
+
+    def touch_edge(self, emu):
+        """Stylus-down edge at this emu frame -> (tx, ty) or None
+        (mirrors main.c's keysDown() & KEY_TOUCH read)."""
+        now = None
+        for start, end, tx, ty in self.touch_spans:
+            if start <= emu < end:
+                now = (tx, ty)
+        edge = now if (now is not None and not self.prev_touch) else None
+        self.prev_touch = now is not None
+        return edge
+
+    def mark_verb(self, down, touch_down):
+        """Mirror of main.c do_mark_verb(): the touch alias places or
+        moves the mark to the tapped cell (off-plot taps do nothing);
+        X clears a standing mark, else chalks one at the player's own
+        position. Runs in PLAYING and SCAVENGE."""
+        if touch_down is not None:
+            ok, mx, my = cg.gl_mark_of_touch(touch_down[0], touch_down[1])
+            if ok:
+                self.mark_x, self.mark_y = mx, my
+                self.mark_on = 1
+                self.marks += 1
+        elif self.pad_seen_idle and 'X' in down:
+            if self.mark_on:
+                self.mark_on = 0
+            else:
+                self.mark_x, self.mark_y = self.px, self.py
+                self.mark_on = 1
+                self.marks += 1
 
     def nearest(self):
         best, best_i = None, 0
@@ -343,6 +417,7 @@ class GloamSim:
         self.frame += 1
         down = held - self.prev_held
         self.prev_held = held
+        touch_down = self.touch_edge(emu_frame)
         if not held:
             self.pad_seen_idle = True
         start = self.pad_seen_idle and 'START' in down
@@ -350,9 +425,19 @@ class GloamSim:
         prev_counts = (self.shoves, self.places, self.repairs,
                        self.breaches, self.scavenged, self.oil_grabs)
 
+        select = self.pad_seen_idle and 'SELECT' in down
+
         if self.state == STATE_TITLE:
             if start:
+                self.rematch_on = 0
                 self.start_run(self.frame)
+                self.state = STATE_PLAYING
+            elif select and cg.gl_rematch_available(self.best_nights):
+                # slice 11: the rematch — the recorded seed, on a button
+                self.rematch_on = 1
+                self.rematches += 1
+                self.start_run(cg.gl_run_seed(1, self.best_nights,
+                                              self.best_seed, self.frame))
                 self.state = STATE_PLAYING
         elif self.state == STATE_PLAYING:
             self.oil = cg.gl_oil_burn(self.oil)   # the lantern burns
@@ -362,6 +447,7 @@ class GloamSim:
                 'LEFT' in held, 'RIGHT' in held)
             self.shove_verb(down)
             self.barricade_verb(down)
+            self.mark_verb(down, touch_down)
             self.step_the_dead(self.oil)
             if self.the_cold_hands():
                 self.deaths += 1
@@ -370,6 +456,14 @@ class GloamSim:
                 self.dawn_left -= 1
                 if self.dawn_left == 0:
                     self.nights_survived = self.night
+                    # slice 9: a strictly better dawn moves the record
+                    # (one backup page write; equal/worse dawns and
+                    # deaths write nothing)
+                    if cg.gl_record_improves(self.best_nights,
+                                             self.nights_survived):
+                        self.best_nights = self.nights_survived
+                        self.best_seed = self.seed
+                        self.save_writes += 1
                     self.state = STATE_DAWN
                     self.dawn_emu_frames.append(emu_frame)
         elif self.state == STATE_SCAVENGE:
@@ -383,6 +477,7 @@ class GloamSim:
                     'LEFT' in held, 'RIGHT' in held)
                 self.shove_verb(down)
                 self.barricade_verb(down)
+                self.mark_verb(down, touch_down)
                 for i in range(cg.GL_CACHE_COUNT):
                     if (self.cache_up[i]
                             and self.planks < cg.GL_PLANK_MAX
@@ -412,7 +507,17 @@ class GloamSim:
                         self.state = STATE_PLAYING
         elif self.state == STATE_DEAD:
             if start:
+                self.rematch_on = 0
                 self.start_run(self.frame)
+                self.state = STATE_PLAYING
+            elif select and cg.gl_rematch_available(self.best_nights):
+                # slice 11: chase it again right now (TITLE is
+                # unreachable after the first START — the death card
+                # is the rematch's natural seat)
+                self.rematch_on = 1
+                self.rematches += 1
+                self.start_run(cg.gl_run_seed(1, self.best_nights,
+                                              self.best_seed, self.frame))
                 self.state = STATE_PLAYING
         elif self.state == STATE_DAWN:
             if start:
@@ -478,7 +583,15 @@ class GloamSim:
               f'acue {self.last_cue} acues {self.cues} '
               f'acuefr {self.cue_frame} '
               f'adrone {cg.gl_amb_freq(self.amb_tier) if self.amb_on else 0} '
-              f'aflips {self.amb_flips} asfxl {self.cue_left}')
+              f'aflips {self.amb_flips} asfxl {self.cue_left} '
+              f'best {self.best_nights} bestseed {self.best_seed} '
+              f'saveok {self.save_ok} savewr {self.save_writes} '
+              f'markon {self.mark_on} markx {self.mark_x} '
+              f'marky {self.mark_y} '
+              f'markdist {cg.gl_chebyshev(self.px, self.py, self.mark_x, self.mark_y) if self.mark_on else 0} '
+              f'marks {self.marks} '
+              f'out {cg.gl_gloam_out(self.wave_total, len(self.zx))} '
+              f'rematch {self.rematch_on} rematches {self.rematches}')
 
 
 def skewed(spans, delta):
@@ -488,13 +601,42 @@ def skewed(spans, delta):
             for start, end, name in spans]
 
 
-def verify(spans, nights, end, skew, min_dist_px, probes=()):
-    """Simulate every movement skew in +-skew; return (ok, report_lines)."""
+def parse_touch_specs(specs):
+    """['START-END:X,Y', ...] -> [(start, end, x, y), ...] (emu frames)."""
+    spans = []
+    for spec in specs:
+        span, _, pos = spec.partition(':')
+        start, _, end = span.partition('-')
+        x, _, y = pos.partition(',')
+        spans.append((int(start), int(end), int(x), int(y)))
+    return spans
+
+
+def verify(spans, nights, end, skew, min_dist_px, probes=(),
+           touch_spans=(), best_nights=0, best_seed=0, save_ok=0,
+           run_through=False):
+    """Simulate every movement skew in +-skew; return (ok, report_lines).
+
+    touch_spans ride UNSKEWED (they anchor to the map like the START
+    presses; no committed survive-route uses them — they exist so a
+    touch proof's pins can be mirror-predicted at nominal alignment).
+    best_nights/best_seed/save_ok mirror the power-on backup read
+    (slice 9 constructor state) so a rematch proof's pins (slice 11)
+    can be mirror-predicted against the same record the CI battery
+    fixture carries; committed survive-routes all run the fresh table.
+    run_through keeps simulating past deaths (designed-death probe
+    scripts pin restart/rematch values on the far side of a card —
+    such scripts always "FAIL" the survive verdict by design; their
+    evidence is the probes).
+    """
     lines = []
     ok = True
     for delta in range(-skew, skew + 1):
-        sim = GloamSim(skewed(spans, delta), NOMINAL_OFFSET)
-        sim.run(end + skew, probes=probes if delta == 0 else ())
+        sim = GloamSim(skewed(spans, delta), NOMINAL_OFFSET,
+                       best_nights=best_nights, best_seed=best_seed,
+                       save_ok=save_ok, touch_spans=touch_spans)
+        sim.run(end + skew, probes=probes if delta == 0 else (),
+                stop_on_death=not run_through)
         survived = (sim.deaths == 0 and sim.nights_survived >= nights)
         dist_px = (sim.min_dist or 0) / cg.GL_ONE
         verdict = 'ok' if survived and dist_px >= min_dist_px else 'FAIL'
@@ -677,6 +819,22 @@ def main():
                         metavar='EMUFRAME',
                         help='print predicted telemetry after this emu '
                              'frame (nominal alignment); repeatable')
+    parser.add_argument('--touch', action='append', default=[],
+                        metavar='START-END:X,Y',
+                        help='hold the stylus at bottom-LCD (X, Y) during '
+                             'emu frames [START, END) — the slice-10 '
+                             'chalk-mark alias; repeatable, unskewed')
+    parser.add_argument('--best', type=int, default=0,
+                        help='power-on record: best nights (slice-11 '
+                             'rematch probes; default 0 = fresh table)')
+    parser.add_argument('--best-seed', type=int, default=0,
+                        help='power-on record: seed of the best run')
+    parser.add_argument('--save-ok', action='store_true',
+                        help='power-on backup read decoded a valid blob')
+    parser.add_argument('--run-through', action='store_true',
+                        help='keep simulating past deaths (designed-death '
+                             'probe scripts pin values beyond the card; '
+                             'their survive verdict FAILs by design)')
     parser.add_argument('--out', help='derive: write the route file here')
     args = parser.parse_args()
 
@@ -700,7 +858,11 @@ def main():
     spans = parse_keys_specs(specs)
     end = args.end or max(end for _s, end, _n in spans) + 400
     ok, lines = verify(spans, args.nights, end, args.skew, args.min_dist,
-                       probes=args.probe)
+                       probes=args.probe,
+                       touch_spans=parse_touch_specs(args.touch),
+                       best_nights=args.best, best_seed=args.best_seed,
+                       save_ok=1 if args.save_ok else 0,
+                       run_through=args.run_through)
     for line in lines:
         print(line)
     if not ok:

@@ -260,6 +260,67 @@
 #define BW_REEF_SHELF_STEP 40            //   k*STEP, y = SHELF_Y — far north,
 #define BW_REEF_SHELF_Y 44               //   provably clear of both rails
 
+// --- synthesized audio (arc slice 8: roadmap item 6) ---------------------------
+// The concept doc's "synthesized audio set" ("cannon thump (noise burst
+// + low sine), hull crack, splash hiss, a two-note dock chime. No
+// sampled or licensed audio, ever"), on the Gloamline slice-8 proven
+// pattern: playback lives on the NDS hardware PSG channels (square +
+// noise generators, serviced by the default BlocksDS ARM7 core over
+// the libnds sound FIFO) — every sound is synthesized in code from the
+// pure parameters below; NO sampled or binary audio asset exists
+// anywhere in this repo. The DECISION layer is pure and mirrored
+// (check-brine.py, lockstep as ever): bw_amb_tier says which ambience
+// the water wants this frame, bw_cue_* say what each one-shot cue
+// sounds like, and the cue ids double as the priority order (on a
+// frame with several events the HIGHEST id wins the one SFX channel).
+// Playback itself (FIFO writes) is render-like ARM9 glue in main.c —
+// audio feeds NOTHING back into the sim, so every pre-slice-8 route
+// and pin holds bit-identically (zero re-pins by construction). All
+// numbers are decide-and-flag owner-tunables (one table row per sound
+// in bw_sim.c). Session-38 guard-recipe rail honored: the reef cue
+// fires off the player-only groundings counter, never off enemy
+// positions.
+//
+// Ambience tiers: the WEATHER sings in the rigging (the slice-6 wind
+// level IS the drone ladder — calm swell, a breeze in the canvas, the
+// gale's howl), and the Maw's presence overrides the lot: while
+// anything is up or under the keel (shadow included — hearing the
+// telegraph matters), the deep throbs. Drone only on live water;
+// the title, the sunk card and the port berth are silent (dying
+// silences the sea; the tavern keeps its own counsel).
+#define BW_AMB_CALM 0                    // calm water: the low swell hum
+#define BW_AMB_BREEZE 1                  // a breeze fills the canvas
+#define BW_AMB_GALE 2                    // the gale howls in the rigging
+#define BW_AMB_MAW 3                     // dark water: it is beneath you
+#define BW_AMB_TIERS 4
+//
+// One-shot cue ids (0 = none). ID ORDER IS PRIORITY: sinking > bite >
+// the Maw rising > the dock chime > a wreck going under > the keel
+// scraping > a hull cracking > a crate scooped > a spent rake's
+// splash > the guns' own thump.
+#define BW_CUE_NONE 0
+#define BW_CUE_CANNON 1                  // a broadside thumps (either ship)
+#define BW_CUE_SPLASH 2                  // a spent rake hisses into the swell
+#define BW_CUE_SCOOP 3                   // a crate thuds aboard
+#define BW_CUE_CRACK 4                   // a ball cracks a hull (any hull)
+#define BW_CUE_SCRAPE 5                  // a reef grates the keel (player-only
+                                         //   groundings counter, per the rail)
+#define BW_CUE_WRECK 6                   // a ship or the Maw goes under
+#define BW_CUE_DOCK 7                    // the two-note Graywake chime
+#define BW_CUE_MAWRISE 8                 // the Maw breaks the surface
+#define BW_CUE_BITE 9                    // the jaws close on the hull
+#define BW_CUE_SUNK 10                   // your own ship goes down
+#define BW_CUE_COUNT 11                  // ids 0..10
+//
+// bw_cue_duty(cue) == BW_CUE_ON_NOISE routes the cue to the hardware
+// noise channel (soundPlayNoise) instead of a square wave; otherwise
+// the value is the libnds DutyCycle register code (0..7). A nonzero
+// bw_cue_freq2(cue) makes the cue TWO-NOTE: the channel re-tunes to
+// freq2 after the first half of bw_cue_len (the dock chime — a noise
+// cue has no pitch to re-tune, so freq2 cues are square by contract,
+// asserted in the mirror).
+#define BW_CUE_ON_NOISE 255
+
 // --- state -----------------------------------------------------------------------
 typedef struct
 {
@@ -419,5 +480,31 @@ int32_t bw_repair_cost(const BwDuel *d);
 // the price; a refusal changes nothing). An upgrade row bumps the tier;
 // the repair row refills the hull to its tier max.
 int32_t bw_port_buy(BwDuel *d, int32_t row, int32_t gold);
+
+// --- synthesized audio (slice 8) -----------------------------------------------
+
+// Which ambience the water wants this frame: the Maw up (or shadowing)
+// overrides everything; otherwise the weather is the drone ladder
+// (wind_level clamped to 0..2). The caller gates on live water — the
+// title/cards/port are silent and never ask.
+uint32_t bw_amb_tier(int32_t maw_up, int32_t wind_level);
+
+// Ambience drone row of a tier: frequency (Hz), duty (DutyCycle code
+// 0..7), volume (0..127). Out-of-range tiers return the CALM row.
+uint32_t bw_amb_freq(uint32_t tier);
+uint32_t bw_amb_duty(uint32_t tier);
+uint32_t bw_amb_vol(uint32_t tier);
+
+// One-shot cue row of a cue id: frequency (Hz — the noise-generator
+// rate for BW_CUE_ON_NOISE cues), length (frames the ARM9 holds the
+// channel open), duty (DutyCycle code 0..7, or BW_CUE_ON_NOISE for the
+// noise channel), volume (0..127), and freq2 (nonzero = the two-note
+// contract: re-tune to this after len/2 frames — the dock chime).
+// Pure lookups; BW_CUE_NONE and out-of-range ids are the all-zero row.
+uint32_t bw_cue_freq(uint32_t cue);
+uint32_t bw_cue_len(uint32_t cue);
+uint32_t bw_cue_duty(uint32_t cue);
+uint32_t bw_cue_vol(uint32_t cue);
+uint32_t bw_cue_freq2(uint32_t cue);
 
 #endif // BW_SIM_H

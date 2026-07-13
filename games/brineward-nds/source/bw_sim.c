@@ -820,3 +820,86 @@ void bw_salvage_step(BwDuel *d, const BwInputs *in)
 
     d->frame++;
 }
+
+// --- synthesized audio (slice 8) -----------------------------------------------
+
+uint32_t bw_amb_tier(int32_t maw_up, int32_t wind_level)
+{
+    if (maw_up)
+        return BW_AMB_MAW;               // the deep overrides the weather
+    if (wind_level <= BW_WIND_CALM)
+        return BW_AMB_CALM;
+    if (wind_level >= BW_WIND_GALE)
+        return BW_AMB_GALE;
+    return BW_AMB_BREEZE;
+}
+
+// Ambience drone rows, indexed by tier: { freq Hz, duty code, vol }.
+// One row per tier — the owner-tunable table. The drone is a low
+// square wave: the calm swell is a barely-there hum, the canvas fills
+// as the weather rises (pitch/duty/volume climb), and the Maw's throb
+// sits above the lot — dark water has a pulse.
+static const uint16_t BW_AMB_ROWS[BW_AMB_TIERS][3] = {
+    { 49, 0, 8 },                        // CALM: the swell against the hull
+    { 62, 1, 16 },                       // BREEZE: the canvas fills
+    { 78, 3, 30 },                       // GALE: the rigging howls
+    { 104, 4, 42 },                      // MAW: the deep has a pulse
+};
+
+uint32_t bw_amb_freq(uint32_t tier)
+{
+    return BW_AMB_ROWS[tier < BW_AMB_TIERS ? tier : 0][0];
+}
+
+uint32_t bw_amb_duty(uint32_t tier)
+{
+    return BW_AMB_ROWS[tier < BW_AMB_TIERS ? tier : 0][1];
+}
+
+uint32_t bw_amb_vol(uint32_t tier)
+{
+    return BW_AMB_ROWS[tier < BW_AMB_TIERS ? tier : 0][2];
+}
+
+// One-shot cue rows, indexed by cue id: { freq Hz, len frames, duty
+// code or BW_CUE_ON_NOISE, vol, freq2 }. One row per sound — the
+// owner-tunable table. Row 0 (BW_CUE_NONE) is all zeros: a no-op cue.
+// The dock chime is the one two-note row (C5 -> G5, freq2 nonzero).
+static const uint16_t BW_CUE_ROWS[BW_CUE_COUNT][5] = {
+    { 0, 0, 0, 0, 0 },                       // NONE
+    { 700, 7, BW_CUE_ON_NOISE, 96, 0 },      // CANNON: the thump
+    { 1800, 10, BW_CUE_ON_NOISE, 40, 0 },    // SPLASH: a spent rake hisses
+    { 587, 9, 4, 70, 0 },                    // SCOOP: D5, a crate aboard
+    { 240, 12, BW_CUE_ON_NOISE, 90, 0 },     // CRACK: timber gives
+    { 120, 26, BW_CUE_ON_NOISE, 84, 0 },     // SCRAPE: the keel grates
+    { 90, 36, BW_CUE_ON_NOISE, 100, 0 },     // WRECK: she goes under
+    { 523, 28, 4, 88, 784 },                 // DOCK: C5 -> G5, the chime
+    { 73, 30, 6, 104, 0 },                   // MAWRISE: D2, the deep speaks
+    { 160, 22, BW_CUE_ON_NOISE, 112, 0 },    // BITE: the jaws close
+    { 200, 60, BW_CUE_ON_NOISE, 116, 0 },    // SUNK: the long cold rattle
+};
+
+uint32_t bw_cue_freq(uint32_t cue)
+{
+    return BW_CUE_ROWS[cue < BW_CUE_COUNT ? cue : 0][0];
+}
+
+uint32_t bw_cue_len(uint32_t cue)
+{
+    return BW_CUE_ROWS[cue < BW_CUE_COUNT ? cue : 0][1];
+}
+
+uint32_t bw_cue_duty(uint32_t cue)
+{
+    return BW_CUE_ROWS[cue < BW_CUE_COUNT ? cue : 0][2];
+}
+
+uint32_t bw_cue_vol(uint32_t cue)
+{
+    return BW_CUE_ROWS[cue < BW_CUE_COUNT ? cue : 0][3];
+}
+
+uint32_t bw_cue_freq2(uint32_t cue)
+{
+    return BW_CUE_ROWS[cue < BW_CUE_COUNT ? cue : 0][4];
+}

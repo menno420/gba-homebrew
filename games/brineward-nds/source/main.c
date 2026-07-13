@@ -1,3 +1,37 @@
+// Brineward — arc slice 8: SYNTHESIZED AUDIO (on the slice-7 danger
+// bands + reefs).
+//
+// The concept doc's "synthesized audio set" ("cannon thump (noise
+// burst + low sine), hull crack, splash hiss, a two-note dock chime.
+// No sampled or licensed audio, ever") — the brine gets a voice, 100%
+// synthesized in code on the Gloamline slice-8 proven pattern: no
+// sampled or binary audio asset exists anywhere in this repo.
+// Playback is the NDS hardware PSG channels (square + noise
+// generators) driven by the default BlocksDS ARM7 core over the
+// libnds sound FIFO; the ARM9 spends a handful of integer compares
+// per frame. Two voices: (1) an AMBIENCE DRONE — the WEATHER sings in
+// the rigging via the pure bw_amb_tier (calm swell / breeze / gale,
+// the slice-6 wind level as the drone ladder), and the Maw's presence
+// overrides it (shadow included: hearing the telegraph matters); the
+// FIFO is touched ONLY when the tier flips (the channel free-runs
+// between flips), and the drone is silent on the title, the sunk card
+// and in port — dying silences the sea. (2) a CUE channel for
+// one-shot chiptune SFX: cannon thump, splash hiss, crate scoop, hull
+// crack, reef scrape, wreck, the two-note Graywake dock chime (the
+// channel re-tunes mid-cue — bw_cue_freq2), the Maw surfacing, the
+// bite, and your own sinking — parameters are pure bw_cue_* table
+// rows, and on a frame with several events the highest cue id wins
+// the channel (id order IS the priority order, mirrored). Audio feeds
+// NOTHING back into the sim — it is render-like output, so every
+// pre-slice-8 pin holds bit-identically. Telemetry appends slots
+// 38-45 (tier, drone freq, last cue, cue count, ...) with slots 0-37
+// frozen; headless CI proves the DECISION chain exactly and honestly
+// cannot hear the result (owner playtest for the mix). Session-38
+// guard-recipe rail: the scrape cue fires off the player-only
+// groundings counter, never off enemy positions.
+//
+// Below this line the slice-5..7 story still applies verbatim:
+//
 // Brineward — arc slice 5: THE MAW (roadmap item 3 — the first sea
 // monster, on the slice-4 port/upgrades economy).
 //
@@ -37,7 +71,7 @@
 // numerically. Layout below at BW_T_* — slice 5 EXTENDED the mailbox
 // 26 -> 31 (session-20 guard recipe: words 0-25 are pinned by the
 // existing proofs; extend, never re-map), slice 6 31 -> 34, slice 7
-// 34 -> 38.
+// 34 -> 38, slice 8 38 -> 46.
 //
 // 100% original content: code, text, and the code-authored sprites.
 
@@ -91,8 +125,18 @@
 #define BW_T_BEST 35    // deepest band charted this power-on (the score)
 #define BW_T_REEFS 36   // rocks in this water (0 in band 0)
 #define BW_T_GROUND 37  // reef scrapes taken this water
+// slice 8 (extension; words 0-37 stay pinned)
+#define BW_T_ATIER 38   // ambience tier the drone plays (BW_AMB_*)
+#define BW_T_ACUE 39    // last one-shot cue id fired (0 = none yet)
+#define BW_T_ACUES 40   // one-shot cues fired this power-on
+#define BW_T_ACUEFR 41  // global frame the last cue fired on
+#define BW_T_ADRONE 42  // drone frequency now, Hz (0 = drone silent)
+#define BW_T_AFLIPS 43  // drone restarts/stops (tier flips) this power-on
+#define BW_T_ASFXL 44   // frames left on the one-shot cue channel
+#define BW_T_ACFREQ 45  // cue channel frequency now, Hz (0 = closed;
+                        //   the two-note dock chime flips this mid-cue)
 
-volatile uint32_t bw_telemetry[38];
+volatile uint32_t bw_telemetry[46];
 
 enum
 {
@@ -745,6 +789,11 @@ int main(void)
     load_sprite_gfx(maw_risen_gfx, &MAW_RISEN_ART[0][0], 32, 32, 33);
     load_sprite_gfx(reef_gfx, &REEF_ART[0][0], 16, 16, 17);
 
+    // Slice 8: power the sound block. Every voice below is a hardware
+    // PSG/noise channel serviced by the default ARM7 core — synthesized
+    // square waves and noise, no sample data anywhere.
+    soundEnable();
+
     BwDuel duel = {0};
     bw_duel_init(&duel, 0);              // idle telemetry before first START
     Score score = {0};
@@ -753,6 +802,22 @@ int main(void)
     bool maw_counted = false;      // this water's kill already tallied
     uint32_t frame = 0;
     bool pad_seen_idle = false;    // KEYINPUT boot-trap guard (PLATFORM-LIMITS)
+
+    // Slice-8 audio state (ARM9 bookkeeping only — the sound itself
+    // runs on the ARM7/hardware channels). The drone free-runs on its
+    // channel between tier flips; the cue channel is opened for
+    // bw_cue_len frames then killed (re-tuned once mid-cue when the
+    // row carries a second note — the dock chime).
+    int amb_ch = -1;               // drone channel handle (-1 = silent)
+    uint32_t amb_tier = 0;         // tier the drone is playing
+    uint32_t amb_flips = 0;        // drone restarts/stops this power-on
+    int cue_ch = -1;               // one-shot cue channel handle
+    uint32_t cue_left = 0;         // frames left on the cue channel
+    uint32_t cue_flip_at = 0;      // cue_left value at which note 2 starts
+    uint32_t cue_freq_now = 0;     // what the cue channel plays right now
+    uint32_t last_cue = 0;         // last cue id fired
+    uint32_t cues = 0;             // cues fired this power-on
+    uint32_t cue_frame = 0;        // global frame of the last cue
 
     draw_title();
     draw_status_frame();
@@ -777,6 +842,29 @@ int main(void)
 
         if (bank_flash > 0)
             bank_flash--;
+
+        // Slice-8 audio event capture: remember where the frame began,
+        // so the counter/hull deltas + state flips below say which
+        // cues fire. Pure reads — nothing here feeds the sim.
+        int prev_state = state;
+        int32_t prev_phull = duel.player.hull;
+        int32_t prev_ehull = duel.enemy.hull;
+        int32_t prev_mawhull = duel.maw.hull;
+        int32_t prev_mawstate = duel.maw.state;
+        int32_t prev_mawbit = duel.maw.bit;
+        int32_t prev_hold = duel.hold;
+        int32_t prev_ground = duel.groundings;
+        uint32_t prev_wins = score.wins;
+        uint32_t prev_maws = score.maws;
+        int32_t prev_rel_pl = duel.player.reload_l;
+        int32_t prev_rel_pr = duel.player.reload_r;
+        int32_t prev_rel_el = duel.enemy.reload_l;
+        int32_t prev_rel_er = duel.enemy.reload_r;
+        uint32_t prev_balls = 0;
+        for (int i = 0; i < BW_MAX_BALLS; i++)
+            if (duel.balls[i].live)
+                prev_balls++;
+        uint32_t banked_frame = 0;   // gold banked THIS frame (chime)
 
         switch (state)
         {
@@ -810,6 +898,7 @@ int main(void)
                 score.gold += banked;
                 bank_flash = 120;
                 bank_amount = banked;
+                banked_frame = banked;   // slice 8: the chime rings
             }
 
             if (duel.over == BW_DUEL_PLAYER_SUNK)
@@ -888,6 +977,7 @@ int main(void)
                 score.gold += banked;
                 bank_flash = 120;
                 bank_amount = banked;
+                banked_frame = banked;   // slice 8: the chime rings
             }
 
             if (duel.maw.slain && !maw_counted)
@@ -946,6 +1036,114 @@ int main(void)
         }
         }
 
+        // --- slice-8 audio (decision layer pure + mirrored; playback =
+        // hardware channels via the ARM7 sound FIFO; nothing feeds back
+        // into the sim) -------------------------------------------------
+
+        // One-shot cue channel: re-tune to the second note halfway
+        // through a two-note cue (the dock chime), close it when its
+        // frames run out.
+        if (cue_left > 0)
+        {
+            cue_left--;
+            if (cue_left == 0)
+            {
+                soundKill(cue_ch);
+                cue_ch = -1;
+                cue_freq_now = 0;
+            }
+            else if (cue_flip_at != 0 && cue_left == cue_flip_at)
+            {
+                soundKill(cue_ch);
+                cue_freq_now = bw_cue_freq2(last_cue);
+                cue_ch = soundPlayPSG((DutyCycle)bw_cue_duty(last_cue),
+                                      (u16)cue_freq_now,
+                                      (u8)bw_cue_vol(last_cue), 64);
+            }
+        }
+
+        // Which cue does this frame want? Highest id wins the channel
+        // (the id order IS the priority order — bw_sim.h). Every test
+        // below is a delta against the frame-start snapshot.
+        uint32_t cue = BW_CUE_NONE;
+        if (duel.player.reload_l > prev_rel_pl
+            || duel.player.reload_r > prev_rel_pr
+            || duel.enemy.reload_l > prev_rel_el
+            || duel.enemy.reload_r > prev_rel_er)
+            cue = BW_CUE_CANNON;         // a reload only ever jumps UP
+                                         //   on the frame a battery fires
+        uint32_t balls_now = 0;
+        for (int i = 0; i < BW_MAX_BALLS; i++)
+            if (duel.balls[i].live)
+                balls_now++;
+        if (balls_now < prev_balls)
+            cue = BW_CUE_SPLASH;         // a rake left the water (a hit
+                                         //   on the same frame outranks
+                                         //   this below)
+        if (duel.hold > prev_hold)
+            cue = BW_CUE_SCOOP;
+        if (duel.enemy.hull < prev_ehull || duel.maw.hull < prev_mawhull
+            || duel.player.hull < prev_phull)
+            cue = BW_CUE_CRACK;          // scrape/bite outrank it below
+        if (duel.groundings > prev_ground)
+            cue = BW_CUE_SCRAPE;         // player-only counter (the rail)
+        if (score.wins > prev_wins || score.maws > prev_maws)
+            cue = BW_CUE_WRECK;
+        if (banked_frame > 0)
+            cue = BW_CUE_DOCK;
+        if (duel.maw.state == BW_MAW_SURFACE
+            && prev_mawstate != BW_MAW_SURFACE)
+            cue = BW_CUE_MAWRISE;
+        if (duel.maw.bit && !prev_mawbit)
+            cue = BW_CUE_BITE;
+        if (state == STATE_SUNK && prev_state != STATE_SUNK)
+            cue = BW_CUE_SUNK;
+        if (cue != BW_CUE_NONE)
+        {
+            if (cue_ch >= 0)
+                soundKill(cue_ch);       // a new cue preempts
+            cue_freq_now = bw_cue_freq(cue);
+            cue_ch = (bw_cue_duty(cue) == BW_CUE_ON_NOISE)
+                ? soundPlayNoise((u16)cue_freq_now,
+                                 (u8)bw_cue_vol(cue), 64)
+                : soundPlayPSG((DutyCycle)bw_cue_duty(cue),
+                               (u16)cue_freq_now,
+                               (u8)bw_cue_vol(cue), 64);
+            cue_left = bw_cue_len(cue);
+            cue_flip_at = bw_cue_freq2(cue) != 0
+                ? cue_left - cue_left / 2 : 0;
+            last_cue = cue;
+            cues++;
+            cue_frame = frame;
+        }
+
+        // Ambience drone: on over live water (the duel and the salvage),
+        // off on the title, the sunk card and in port — dying silences
+        // the sea. The FIFO is touched ONLY when the wanted tier flips
+        // or the drone starts/stops — between flips the hardware channel
+        // free-runs at zero ARM9 cost.
+        if (state == STATE_DUEL || state == STATE_SALVAGE)
+        {
+            uint32_t tier = bw_amb_tier(duel.maw.state != BW_MAW_DOWN,
+                                        duel.wind_level);
+            if (amb_ch < 0 || tier != amb_tier)
+            {
+                if (amb_ch >= 0)
+                    soundKill(amb_ch);
+                amb_ch = soundPlayPSG((DutyCycle)bw_amb_duty(tier),
+                                      (u16)bw_amb_freq(tier),
+                                      (u8)bw_amb_vol(tier), 64);
+                amb_tier = tier;
+                amb_flips++;
+            }
+        }
+        else if (amb_ch >= 0)
+        {
+            soundKill(amb_ch);
+            amb_ch = -1;
+            amb_flips++;
+        }
+
         draw_ships_and_balls(&duel, player_gfx, enemy_gfx, ball_gfx,
                              crate_gfx, maw_shadow_gfx, maw_risen_gfx,
                              reef_gfx, state, frame);
@@ -999,6 +1197,14 @@ int main(void)
                 rocks++;
         bw_telemetry[BW_T_REEFS] = rocks;
         bw_telemetry[BW_T_GROUND] = (uint32_t)duel.groundings;
+        bw_telemetry[BW_T_ATIER] = amb_tier;
+        bw_telemetry[BW_T_ACUE] = last_cue;
+        bw_telemetry[BW_T_ACUES] = cues;
+        bw_telemetry[BW_T_ACUEFR] = cue_frame;
+        bw_telemetry[BW_T_ADRONE] = amb_ch >= 0 ? bw_amb_freq(amb_tier) : 0;
+        bw_telemetry[BW_T_AFLIPS] = amb_flips;
+        bw_telemetry[BW_T_ASFXL] = cue_left;
+        bw_telemetry[BW_T_ACFREQ] = cue_freq_now;
     }
 
     return 0;

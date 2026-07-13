@@ -17,7 +17,7 @@ changes its game, with provenance:
 |---|---|---|---|---|
 | [`lumen-drift.gba`](lumen-drift.gba) | **v1.3** · session 8 slice 6 · 2026-07-11 | 167,996 bytes | source tree of the v1.3 pause/mute + graze-flash micro-polish commit (`games/lumen-drift/` at the same tree as this file) | `195a86795e57e2fa0059a96782f1ac7a147cbcebc0cb28a96f353e5d9babae94` |
 | [`gloamline.nds`](gloamline.nds) | **best-night rematch** (arc slice 11) · session 2026-07-13-gloamline-rematch | 118,272 bytes | source tree of the slice-11 rematch commit (`games/gloamline-nds/` at the same tree as this file); build is byte-deterministic (two clean builds + an independent fresh-worktree build, identical hash) | `3bab5544c03d01e358fd1f8898df47031bb3f48107fb1469551ab7ed794ec061` |
-| [`brineward.nds`](brineward.nds) | **danger bands + reefs** (arc slice 7, carrying slice 6 wind) · session 38 · 2026-07-13 | 118,272 bytes | source tree of the slice-7 bands commit (`games/brineward-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `91ac3eff823593c6ef5f0f743f696562ba13ec76111d84afcd44cc401fe0531f` |
+| [`brineward.nds`](brineward.nds) | **synthesized audio set** (arc slice 8, carrying slices 6+7 wind/bands) · session 42 · 2026-07-13 | 120,320 bytes | source tree of the slice-8 audio commit (`games/brineward-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `cb78bf51ff693a6d6773dac4ab3193417a9b5e30b907e311be9941284f257590` |
 
 **How they were built:** GBA — `tools/setup-toolchain.sh` (pinned
 devkitARM r68 + Butano) then `tools/build.sh`; NDS —

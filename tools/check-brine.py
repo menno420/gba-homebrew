@@ -207,6 +207,47 @@ BW_BAND_LOOT_VALUE_OF = (BW_LOOT_VALUE, 12, 25)
 BW_BAND_MAW_VALUE_OF = (BW_MAW_LOOT_VALUE, 30, 50)
 BW_BAND_REEF_OF = (0, 3, 5)
 
+# synthesized audio (slice 8) — the pure DECISION layer: ambience tiers
+# (the weather is the drone ladder, the Maw overrides) + one-shot cue
+# tables (id order IS the priority order). Playback is main.c ARM9 glue
+# over the sound FIFO and feeds NOTHING back into the sim.
+BW_AMB_CALM, BW_AMB_BREEZE, BW_AMB_GALE, BW_AMB_MAW = 0, 1, 2, 3
+BW_AMB_TIERS = 4
+BW_CUE_NONE = 0
+BW_CUE_CANNON = 1
+BW_CUE_SPLASH = 2
+BW_CUE_SCOOP = 3
+BW_CUE_CRACK = 4
+BW_CUE_SCRAPE = 5
+BW_CUE_WRECK = 6
+BW_CUE_DOCK = 7
+BW_CUE_MAWRISE = 8
+BW_CUE_BITE = 9
+BW_CUE_SUNK = 10
+BW_CUE_COUNT = 11
+BW_CUE_ON_NOISE = 255
+# { freq Hz, duty code, vol } per ambience tier (mirror of BW_AMB_ROWS)
+BW_AMB_ROWS = (
+    (49, 0, 8),                          # CALM: the swell against the hull
+    (62, 1, 16),                         # BREEZE: the canvas fills
+    (78, 3, 30),                         # GALE: the rigging howls
+    (104, 4, 42),                        # MAW: the deep has a pulse
+)
+# { freq, len, duty|NOISE, vol, freq2 } per cue id (mirror of BW_CUE_ROWS)
+BW_CUE_ROWS = (
+    (0, 0, 0, 0, 0),                     # NONE
+    (700, 7, BW_CUE_ON_NOISE, 96, 0),    # CANNON: the thump
+    (1800, 10, BW_CUE_ON_NOISE, 40, 0),  # SPLASH: a spent rake hisses
+    (587, 9, 4, 70, 0),                  # SCOOP: D5, a crate aboard
+    (240, 12, BW_CUE_ON_NOISE, 90, 0),   # CRACK: timber gives
+    (120, 26, BW_CUE_ON_NOISE, 84, 0),   # SCRAPE: the keel grates
+    (90, 36, BW_CUE_ON_NOISE, 100, 0),   # WRECK: she goes under
+    (523, 28, 4, 88, 784),               # DOCK: C5 -> G5, the chime
+    (73, 30, 6, 104, 0),                 # MAWRISE: D2, the deep speaks
+    (160, 22, BW_CUE_ON_NOISE, 112, 0),  # BITE: the jaws close
+    (200, 60, BW_CUE_ON_NOISE, 116, 0),  # SUNK: the long cold rattle
+)
+
 U32 = 0xFFFFFFFF
 
 
@@ -655,6 +696,151 @@ def bw_port_buy(d, row, gold):
         return 0
     setattr(d, attr, getattr(d, attr) + 1)   # buying != healing: REPAIR
     return cost                              # fills the raised ceiling
+
+
+def bw_amb_tier(maw_up, wind_level):
+    """Mirror of bw_amb_tier()."""
+    if maw_up:
+        return BW_AMB_MAW
+    if wind_level <= BW_WIND_CALM:
+        return BW_AMB_CALM
+    if wind_level >= BW_WIND_GALE:
+        return BW_AMB_GALE
+    return BW_AMB_BREEZE
+
+
+def bw_amb_freq(tier):
+    """Mirror of bw_amb_freq()."""
+    return BW_AMB_ROWS[tier if 0 <= tier < BW_AMB_TIERS else 0][0]
+
+
+def bw_amb_duty(tier):
+    """Mirror of bw_amb_duty()."""
+    return BW_AMB_ROWS[tier if 0 <= tier < BW_AMB_TIERS else 0][1]
+
+
+def bw_amb_vol(tier):
+    """Mirror of bw_amb_vol()."""
+    return BW_AMB_ROWS[tier if 0 <= tier < BW_AMB_TIERS else 0][2]
+
+
+def bw_cue_freq(cue):
+    """Mirror of bw_cue_freq()."""
+    return BW_CUE_ROWS[cue if 0 <= cue < BW_CUE_COUNT else 0][0]
+
+
+def bw_cue_len(cue):
+    """Mirror of bw_cue_len()."""
+    return BW_CUE_ROWS[cue if 0 <= cue < BW_CUE_COUNT else 0][1]
+
+
+def bw_cue_duty(cue):
+    """Mirror of bw_cue_duty()."""
+    return BW_CUE_ROWS[cue if 0 <= cue < BW_CUE_COUNT else 0][2]
+
+
+def bw_cue_vol(cue):
+    """Mirror of bw_cue_vol()."""
+    return BW_CUE_ROWS[cue if 0 <= cue < BW_CUE_COUNT else 0][3]
+
+
+def bw_cue_freq2(cue):
+    """Mirror of bw_cue_freq2()."""
+    return BW_CUE_ROWS[cue if 0 <= cue < BW_CUE_COUNT else 0][4]
+
+
+class AudioGlue:
+    """Line-for-line model of main.c's slice-8 audio glue: the frame-
+    start snapshot, the cue-priority ladder, the cue channel countdown
+    (with the two-note re-tune), and the ambience drone flips. Drives
+    the audio-slice host checks AND the emulator watch-log prediction
+    (slots 38-45), so a drift between this model and main.c fails the
+    mirror before it silently re-times a pin."""
+
+    def __init__(self):
+        self.amb_on = False
+        self.amb_tier = 0
+        self.amb_flips = 0
+        self.cue_left = 0
+        self.cue_flip_at = 0
+        self.cue_freq_now = 0
+        self.last_cue = 0
+        self.cues = 0
+        self.cue_frame = 0
+
+    def snapshot(self, d, wins, maws):
+        """The frame-start capture (main.c's prev_* block)."""
+        return (d.player.hull, d.enemy.hull, d.maw.hull, d.maw.state,
+                d.maw.bit, d.hold, d.groundings, wins, maws,
+                d.player.reload_l, d.player.reload_r,
+                d.enemy.reload_l, d.enemy.reload_r,
+                sum(1 for b in d.balls if b.live))
+
+    def frame(self, snap, d, wins, maws, banked, state, prev_state,
+              frame, state_sunk):
+        """One post-state-machine audio pass. `state`/`prev_state` are
+        main.c states; `state_sunk` is the STATE_SUNK constant (2)."""
+        (p_ph, p_eh, p_mh, p_ms, p_mb, p_hold, p_gnd, p_wins, p_maws,
+         p_rpl, p_rpr, p_rel, p_rer, p_balls) = snap
+
+        if self.cue_left > 0:
+            self.cue_left -= 1
+            if self.cue_left == 0:
+                self.cue_freq_now = 0
+            elif self.cue_flip_at != 0 and self.cue_left == self.cue_flip_at:
+                self.cue_freq_now = bw_cue_freq2(self.last_cue)
+
+        cue = BW_CUE_NONE
+        if (d.player.reload_l > p_rpl or d.player.reload_r > p_rpr
+                or d.enemy.reload_l > p_rel or d.enemy.reload_r > p_rer):
+            cue = BW_CUE_CANNON
+        balls_now = sum(1 for b in d.balls if b.live)
+        if balls_now < p_balls:
+            cue = BW_CUE_SPLASH
+        if d.hold > p_hold:
+            cue = BW_CUE_SCOOP
+        if (d.enemy.hull < p_eh or d.maw.hull < p_mh
+                or d.player.hull < p_ph):
+            cue = BW_CUE_CRACK
+        if d.groundings > p_gnd:
+            cue = BW_CUE_SCRAPE
+        if wins > p_wins or maws > p_maws:
+            cue = BW_CUE_WRECK
+        if banked > 0:
+            cue = BW_CUE_DOCK
+        if d.maw.state == BW_MAW_SURFACE and p_ms != BW_MAW_SURFACE:
+            cue = BW_CUE_MAWRISE
+        if d.maw.bit and not p_mb:
+            cue = BW_CUE_BITE
+        if state == state_sunk and prev_state != state_sunk:
+            cue = BW_CUE_SUNK
+        if cue != BW_CUE_NONE:
+            self.cue_freq_now = bw_cue_freq(cue)
+            self.cue_left = bw_cue_len(cue)
+            self.cue_flip_at = (self.cue_left - self.cue_left // 2
+                                if bw_cue_freq2(cue) != 0 else 0)
+            self.last_cue = cue
+            self.cues += 1
+            self.cue_frame = frame
+
+        at_sea = state in (1, 3)         # STATE_DUEL / STATE_SALVAGE
+        if at_sea:
+            tier = bw_amb_tier(1 if d.maw.state != BW_MAW_DOWN else 0,
+                               d.wind_level)
+            if not self.amb_on or tier != self.amb_tier:
+                self.amb_on = True
+                self.amb_tier = tier
+                self.amb_flips += 1
+        elif self.amb_on:
+            self.amb_on = False
+            self.amb_flips += 1
+        return cue
+
+    def words(self):
+        """Telemetry slots 38-45 exactly as main.c writes them."""
+        return (self.amb_tier, self.last_cue, self.cues, self.cue_frame,
+                bw_amb_freq(self.amb_tier) if self.amb_on else 0,
+                self.amb_flips, self.cue_left, self.cue_freq_now)
 
 
 def bw_ai(e, p):
@@ -2188,6 +2374,211 @@ def check_band_containment():
 
 
 
+def check_audio_tables():
+    # The slice-8 sound tables hold their contracts: row 0 is the no-op
+    # cue, every real cue has a length/volume/valid routing, exactly one
+    # row (the dock chime) is two-note — and a two-note cue is square by
+    # contract (a noise channel has no pitch to re-tune). The ambience
+    # ladder climbs monotonically calm -> breeze -> gale -> Maw in both
+    # pitch and volume (the weather must be HEARD to worsen), and the
+    # accessors clamp out-of-range ids to row 0 (never index off the
+    # table) — the same clamp main.c relies on.
+    assert len(BW_AMB_ROWS) == BW_AMB_TIERS
+    assert len(BW_CUE_ROWS) == BW_CUE_COUNT
+    assert BW_CUE_ROWS[BW_CUE_NONE] == (0, 0, 0, 0, 0)
+    two_note = []
+    for cue in range(1, BW_CUE_COUNT):
+        freq, length, duty, vol, freq2 = BW_CUE_ROWS[cue]
+        assert freq > 0 and length > 0, cue
+        assert 1 <= vol <= 127, cue
+        assert duty == BW_CUE_ON_NOISE or 0 <= duty <= 7, cue
+        if freq2:
+            two_note.append(cue)
+            assert duty != BW_CUE_ON_NOISE, cue   # square by contract
+            assert freq2 != freq, cue             # TWO notes
+    assert two_note == [BW_CUE_DOCK], two_note
+    for a, b in zip(BW_AMB_ROWS, BW_AMB_ROWS[1:]):
+        assert a[0] < b[0] and a[2] < b[2], (a, b)
+    for row in BW_AMB_ROWS:
+        assert 0 <= row[1] <= 7 and 1 <= row[2] <= 127, row
+    for bad in (-1, BW_CUE_COUNT, BW_CUE_COUNT + 7):
+        assert (bw_cue_freq(bad), bw_cue_len(bad), bw_cue_duty(bad),
+                bw_cue_vol(bad), bw_cue_freq2(bad)) == (0, 0, 0, 0, 0), bad
+    for bad in (-1, BW_AMB_TIERS, BW_AMB_TIERS + 7):
+        assert (bw_amb_freq(bad), bw_amb_duty(bad),
+                bw_amb_vol(bad)) == BW_AMB_ROWS[0], bad
+    print(f'audio tables: {BW_CUE_COUNT - 1} cue rows valid (one two-note '
+          f'chime, square by contract), {BW_AMB_TIERS} drone rows '
+          'monotone in pitch and volume, accessors clamp')
+
+
+def check_audio_tier():
+    # bw_amb_tier exhaustively: the Maw overrides every weather; without
+    # it the wind level IS the ladder (out-of-range clamped to its end).
+    for wind in range(-1, 5):
+        assert bw_amb_tier(1, wind) == BW_AMB_MAW, wind
+    assert bw_amb_tier(0, BW_WIND_CALM) == BW_AMB_CALM
+    assert bw_amb_tier(0, BW_WIND_BREEZE) == BW_AMB_BREEZE
+    assert bw_amb_tier(0, BW_WIND_GALE) == BW_AMB_GALE
+    assert bw_amb_tier(0, -1) == BW_AMB_CALM
+    assert bw_amb_tier(0, 3) == BW_AMB_GALE
+    print('ambience tier: exhaustive — the Maw overrides all weather, '
+          'the wind level is the ladder, ends clamped')
+
+
+def check_audio_duel_story():
+    # The whole ship-fight cue ladder on the committed win anchor's
+    # water (seed 126 — CALM, so the drone must hold ONE tier end to
+    # end): both ships' batteries thump, rakes crack hulls and spend
+    # themselves in hisses, the wreck cue fires on the sink step
+    # exactly, the salvage brain's three scoops each thud, the pier
+    # bank rings the chime ONCE — and the chime is provably two-note
+    # (C5 for the front half of the cue, G5 for the back). No scrape,
+    # no Maw cue, no sinking cue anywhere in a story that ends banked.
+    glue = AudioGlue()
+    d = Duel()
+    bw_duel_init(d, 126)
+    assert d.wind_level == BW_WIND_CALM  # the pin-carry anchor rule
+    wins = maws = 0
+    state = 1                            # STATE_DUEL
+    counts = [0] * BW_CUE_COUNT
+    player_thumps = enemy_thumps = 0
+    wreck_step = sink_step = None
+    dock_step = None
+    chime_notes = []
+    step = 0
+    for _ in range(7200):
+        snap = glue.snapshot(d, wins, maws)
+        prev_state = state
+        if state == 1:
+            bw_duel_step(d, bw_policy(d.player, d.enemy))
+            if d.over == BW_DUEL_ENEMY_SUNK:
+                wins += 1
+                state = 3                # STATE_SALVAGE
+                sink_step = step
+        else:
+            bw_salvage_step(d, bw_salvage_policy(d))
+        banked = bw_dock_step(d)
+        fired_p = (d.player.reload_l > snap[9]
+                   or d.player.reload_r > snap[10])
+        fired_e = (d.enemy.reload_l > snap[11]
+                   or d.enemy.reload_r > snap[12])
+        cue = glue.frame(snap, d, wins, maws, banked, state, prev_state,
+                         step, 2)
+        counts[cue] += 1
+        if cue == BW_CUE_CANNON:
+            player_thumps += 1 if fired_p else 0
+            enemy_thumps += 1 if fired_e else 0
+        if cue == BW_CUE_WRECK:
+            wreck_step = step
+        if dock_step is not None and step <= dock_step + 30:
+            chime_notes.append(glue.cue_freq_now)
+        if cue == BW_CUE_DOCK:
+            dock_step = step
+            chime_notes.append(glue.cue_freq_now)
+        assert glue.amb_tier == BW_AMB_CALM and glue.amb_flips == 1, step
+        step += 1
+        if dock_step is not None and step > dock_step + 30:
+            break
+    assert counts[BW_CUE_CANNON] > 0
+    assert player_thumps > 0 and enemy_thumps > 0
+    assert counts[BW_CUE_CRACK] > 0 and counts[BW_CUE_SPLASH] > 0
+    assert counts[BW_CUE_WRECK] == 1 and wreck_step == sink_step
+    assert counts[BW_CUE_SCOOP] == BW_LOOT_DROPS
+    assert counts[BW_CUE_DOCK] == 1 and dock_step is not None
+    for c in (BW_CUE_SCRAPE, BW_CUE_MAWRISE, BW_CUE_BITE, BW_CUE_SUNK):
+        assert counts[c] == 0, c
+    assert glue.cues == sum(counts[1:])
+    # the two-note contract, frame-exact: len 28 -> 14 frames of C5
+    # (the fire frame + 13 countdowns), 14 of G5, then the channel
+    # closes (freq 0 from the 29th frame on)
+    length = bw_cue_len(BW_CUE_DOCK)
+    front = length - length // 2
+    want = ([bw_cue_freq(BW_CUE_DOCK)] * front
+            + [bw_cue_freq2(BW_CUE_DOCK)] * (length // 2)
+            + [0] * (31 - length))
+    assert chime_notes == want, chime_notes
+    print(f'audio, the fight heard (seed 126): {counts[BW_CUE_CANNON]} '
+          f'thumps (both ships), {counts[BW_CUE_CRACK]} cracks, '
+          f'{counts[BW_CUE_SPLASH]} splashes, wreck on the sink step, '
+          f'{counts[BW_CUE_SCOOP]} scoops, ONE two-note chime '
+          f'({bw_cue_freq(BW_CUE_DOCK)} -> {bw_cue_freq2(BW_CUE_DOCK)} Hz '
+          'frame-exact), drone one CALM tier end to end')
+
+
+def check_audio_maw_story():
+    # The Maw's voice on the bait pattern (check_maw_stalks' water):
+    # the drone flips CALM -> MAW the frame the shadow stirs (hearing
+    # the telegraph), MAWRISE fires the frame it surfaces, the BITE
+    # cue fires on the bite frame (outranking the same frame's hull
+    # crack), and the water going quiet flips the drone home. Then the
+    # sinking rattle: an idle band-0 player is raked down — the SUNK
+    # cue fires once on the card frame and the drone STOPS (dying
+    # silences the sea).
+    glue = AudioGlue()
+    d = _win_state(0)
+    d.player.hull = BW_HULL_MAX
+    wins, maws = 1, 0
+    counts = [0] * BW_CUE_COUNT
+    rise_ok = bite_ok = flip_up = flip_home = False
+    step = 0
+    for _ in range(BW_MAW_PATIENCE + 2000):
+        snap = glue.snapshot(d, wins, maws)
+        prev_tier_on = (glue.amb_on, glue.amb_tier)
+        bw_salvage_step(d, bw_maw_bait_policy(d))
+        banked = bw_dock_step(d)
+        cue = glue.frame(snap, d, wins, maws, banked, 3, 3, step, 2)
+        counts[cue] += 1
+        if cue == BW_CUE_MAWRISE:
+            rise_ok = (d.maw.state == BW_MAW_SURFACE
+                       and snap[3] == BW_MAW_SHADOW)
+        if cue == BW_CUE_BITE:
+            bite_ok = (snap[0] - d.player.hull == BW_MAW_BITE)
+        if (prev_tier_on[1] != BW_AMB_MAW and glue.amb_tier == BW_AMB_MAW):
+            flip_up = d.maw.state != BW_MAW_DOWN
+        if (prev_tier_on[1] == BW_AMB_MAW and glue.amb_tier != BW_AMB_MAW):
+            flip_home = d.maw.state == BW_MAW_DOWN
+        step += 1
+        if counts[BW_CUE_BITE]:
+            break
+    assert counts[BW_CUE_MAWRISE] >= 1 and rise_ok
+    assert counts[BW_CUE_BITE] == 1 and bite_ok
+    assert flip_up and flip_home is not False
+    assert counts[BW_CUE_SUNK] == 0 and counts[BW_CUE_DOCK] == 0
+
+    # the sinking rattle (fresh idle water, the proof-3 shape)
+    glue = AudioGlue()
+    d = Duel()
+    bw_duel_init(d, 118)                 # the committed loss anchor
+    wins = maws = 0
+    state, idle = 1, Inputs()
+    sunk_at = drone_at_card = None
+    step = 0
+    for _ in range(3600):
+        snap = glue.snapshot(d, wins, maws)
+        prev_state = state
+        if state == 1:
+            bw_duel_step(d, idle)
+            if d.over == BW_DUEL_PLAYER_SUNK:
+                state = 2                # STATE_SUNK: the card
+        banked = bw_dock_step(d) if state != 2 else 0
+        cue = glue.frame(snap, d, wins, maws, banked, state, prev_state,
+                         step, 2)
+        if cue == BW_CUE_SUNK:
+            sunk_at = step
+        if sunk_at is not None and step == sunk_at + 2:
+            drone_at_card = glue.words()[4]
+            break
+        step += 1
+    assert sunk_at is not None
+    assert drone_at_card == 0            # dying silences the sea
+    print('audio, the Maw heard then the rattle: drone CALM -> MAW on '
+          'the stir and home on the quiet, MAWRISE on the surface '
+          'frame, ONE bite cue outranking its own hull crack; the '
+          'idle loss fires the SUNK rattle and the drone dies with '
+          'the ship')
+
+
 def main():
     check_sine_table()
     check_spawns()
@@ -2215,6 +2606,10 @@ def main():
     check_reef_grounding()
     check_band_duels()
     check_band_containment()
+    check_audio_tables()
+    check_audio_tier()
+    check_audio_duel_story()
+    check_audio_maw_story()
     print('check-brine: ALL GREEN')
     return 0
 

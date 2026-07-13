@@ -64,6 +64,12 @@
 #                             its solution is proven solvable, not proven
 #                             to be a puzzle.
 #
+# RUNG-4 AUDIO + CLOCK VERDICT: enabling maxmod did NOT move any clock
+# on this engine (full-row cross-ROM diff vs the v0.4 dist: 0 differing
+# rows over 700 frames at the SAME frame indices — Courier's transition
+# frames are light, unlike Shoal's 50-sprite spawn spike). Every carried
+# literal stands verbatim; the audio asserts are pure additions.
+#
 # CROSS-ROM CARRY (rung 2): the classic run lives on START and the rush
 # order on SELECT, so P1-P6 carry by construction — re-proven by
 # replaying P4's script on the v0.2 dist (sha256 689bc792…6f00) and the
@@ -84,9 +90,15 @@ mkdir -p "$OUT"
 
 H() { python3 tools/headless-screenshot.py "$ROM" "$@"; }
 W='--elf games/clockwork-courier/clockwork-courier.elf --watch t:cc_telemetry:21'
+# Rung 4 audio evidence (docs/capabilities.md): cumulative decision
+# counters + the maxmod mixer-memory activity word (count of nonzero
+# u32 words — 0 exactly when the mixer is silent; one voice ~ 264).
+WA='--watch h:gl_audio_hook:8 --watch-nonzero mix:maxmod_mixing_buffer:0x420'
 
 echo "== P1: boot + title =="
-H "$OUT/p1.png" --frames 70 $W \
+H "$OUT/p1.png" --frames 70 $W $WA --keys 30-32:B \
+  --assert-watch 60:h:6:eq:1 \
+  --assert-watch 60:mix:0:eq:0 \
   --assert-watch 60:t:0:eq:1129073495 \
   --assert-watch 60:t:1:eq:1129272658 \
   --assert-watch 60:t:2:eq:0 \
@@ -140,6 +152,15 @@ H "$OUT/p3.png" --frames 700 $W \
 DELIVERY_ROUTE='--keys 10-12:START --keys 20-26:LEFT --keys 28-30:A --keys 34-46:LEFT --keys 70-72:A --keys 70-96:LEFT --keys 110-140:LEFT --keys 160-184:RIGHT --keys 196-210:LEFT --keys 530-532:R --keys 540-614:RIGHT --keys 660-662:START'
 
 P4_ASSERTS=(
+  --assert-watch 60:h:0:eq:1
+  --assert-watch 150:h:1:eq:1
+  --assert-watch 540:h:2:eq:1
+  --assert-watch 540:h:3:eq:1
+  --assert-watch 540:mix:0:gt:0
+  --assert-watch 620:h:4:eq:1
+  --assert-watch 620:mix:0:gt:0
+  --assert-watch 650:mix:0:eq:0
+  --assert-watch 680:h:0:eq:2
   --assert-watch 58:t:4:eq:14208
   --assert-watch 58:t:5:eq:10240
   --assert-watch 100:t:4:eq:5888
@@ -166,12 +187,12 @@ P4_ASSERTS=(
 )
 
 echo "== P4: the delivery — the co-op solve (run 1) =="
-H "$OUT/p4.png" --frames 700 $W $DELIVERY_ROUTE \
+H "$OUT/p4.png" --frames 700 $W $WA $DELIVERY_ROUTE \
   --watch-log "$OUT/p4-run1.csv" --shot "640:$OUT/p4-card.png" \
   "${P4_ASSERTS[@]}"
 
 echo "== P4: run 2 (must be byte-identical) =="
-H "$OUT/p4b.png" --frames 700 $W $DELIVERY_ROUTE \
+H "$OUT/p4b.png" --frames 700 $W $WA $DELIVERY_ROUTE \
   --watch-log "$OUT/p4-run2.csv" \
   "${P4_ASSERTS[@]}"
 cmp "$OUT/p4-run1.csv" "$OUT/p4-run2.csv"
@@ -246,6 +267,18 @@ H "$OUT/p6.png" --frames 900 $W \
 RUSH_ROUTE='--keys 10-12:SELECT --keys 20-26:LEFT --keys 28-30:A --keys 34-46:LEFT --keys 70-72:A --keys 70-96:LEFT --keys 110-140:LEFT --keys 160-184:RIGHT --keys 196-210:LEFT --keys 530-532:R --keys 540-614:RIGHT --keys 800-802:START'
 
 P7_ASSERTS=(
+  --assert-watch 60:h:1:eq:1
+  --assert-watch 150:h:1:eq:2
+  --assert-watch 260:h:3:eq:1
+  --assert-watch 260:h:5:eq:1
+  --assert-watch 540:h:2:eq:1
+  --assert-watch 540:h:5:eq:2
+  --assert-watch 540:mix:0:gt:0
+  --assert-watch 735:h:4:eq:1
+  --assert-watch 735:h:5:eq:3
+  --assert-watch 735:mix:0:gt:0
+  --assert-watch 830:h:0:eq:2
+  --assert-watch 830:mix:0:eq:0
   --assert-watch 20:t:17:eq:1
   --assert-watch 20:t:19:eq:1
   --assert-watch 75:t:19:eq:0
@@ -281,12 +314,12 @@ P7_ASSERTS=(
 )
 
 echo "== P7: THE RUSH ORDER — catch the window, or wait for it (run 1) =="
-H "$OUT/p7.png" --frames 850 $W $RUSH_ROUTE \
+H "$OUT/p7.png" --frames 850 $W $WA $RUSH_ROUTE \
   --watch-log "$OUT/p7-run1.csv" --shot "700:$OUT/p7-shut.png" \
   "${P7_ASSERTS[@]}"
 
 echo "== P7: run 2 (must be byte-identical) =="
-H "$OUT/p7b.png" --frames 850 $W $RUSH_ROUTE \
+H "$OUT/p7b.png" --frames 850 $W $WA $RUSH_ROUTE \
   --watch-log "$OUT/p7-run2.csv" \
   "${P7_ASSERTS[@]}"
 cmp "$OUT/p7-run1.csv" "$OUT/p7-run2.csv"
@@ -298,6 +331,29 @@ echo "P7 run-twice: byte-identical"
 TOWER_ROUTE='--keys 10-12:L --keys 20-22:A --keys 60-62:A --keys 64-74:LEFT --keys 420-422:R --keys 430-432:A --keys 480-482:A --keys 490-497:LEFT --keys 510-514:LEFT --keys 540-560:RIGHT --keys 580-645:RIGHT --keys 660-662:L --keys 672-710:LEFT --keys 714-716:A --keys 718-728:LEFT --keys 745-762:RIGHT --keys 1010-1012:R --keys 1020-1096:RIGHT --keys 1180-1182:L --keys 1191-1221:LEFT --keys 1225-1227:A --keys 1501-1503:R --keys 1511-1529:LEFT --keys 1541-1543:A --keys 1591-1593:A --keys 1601-1608:LEFT --keys 1621-1625:LEFT --keys 1641-1657:RIGHT --keys 1821-1823:R --keys 1831-1989:RIGHT --keys 2171-2173:L'
 
 P8_ASSERTS=(
+  --assert-watch 60:h:0:eq:1
+  --assert-watch 520:h:1:eq:1
+  --assert-watch 520:h:2:eq:1
+  --assert-watch 620:h:4:eq:1
+  --assert-watch 620:h:3:eq:0
+  --assert-watch 620:mix:0:gt:0
+  --assert-watch 655:mix:0:eq:0
+  --assert-watch 1080:h:0:eq:2
+  --assert-watch 1080:h:1:eq:2
+  --assert-watch 1080:h:2:eq:2
+  --assert-watch 1080:h:3:eq:3
+  --assert-watch 1080:h:5:eq:1
+  --assert-watch 1150:h:4:eq:2
+  --assert-watch 1150:h:5:eq:2
+  --assert-watch 1201:h:0:eq:3
+  --assert-watch 1830:h:2:eq:4
+  --assert-watch 1830:h:3:eq:7
+  --assert-watch 2146:h:4:eq:3
+  --assert-watch 2146:h:5:eq:6
+  --assert-watch 2146:h:3:eq:8
+  --assert-watch 2200:h:0:eq:4
+  --assert-watch 2200:mix:0:eq:0
+  --assert-watch 2290:h:6:eq:0
   --assert-watch 20:t:17:eq:2
   --assert-watch 20:t:20:eq:0
   --assert-watch 37:t:5:eq:9922
@@ -359,12 +415,12 @@ P8_ASSERTS=(
 )
 
 echo "== P8: THE TOWER SHIFTS — three floors, one chain (run 1) =="
-H "$OUT/p8.png" --frames 2300 $W $TOWER_ROUTE \
+H "$OUT/p8.png" --frames 2300 $W $WA $TOWER_ROUTE \
   --watch-log "$OUT/p8-run1.csv" --shot "2160:$OUT/p8-lv3-card.png" \
   "${P8_ASSERTS[@]}"
 
 echo "== P8: run 2 (must be byte-identical) =="
-H "$OUT/p8b.png" --frames 2300 $W $TOWER_ROUTE \
+H "$OUT/p8b.png" --frames 2300 $W $WA $TOWER_ROUTE \
   --watch-log "$OUT/p8-run2.csv" \
   "${P8_ASSERTS[@]}"
 cmp "$OUT/p8-run1.csv" "$OUT/p8-run2.csv"

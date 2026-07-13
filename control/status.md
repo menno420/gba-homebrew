@@ -351,3 +351,32 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   likewise). `dist/clockwork-courier.gba` v0.4 byte-deterministic.
 - PR #107 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (Courier audio, PR #108)
+
+- **ts:** 2026-07-13T23:52:27Z (appended by the session-54 worker; everything
+  above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Clockwork Courier growth rung 4 = **AUDIO, the concept's LAST
+  named cut** — on branch `claude/courier-audio` from main @
+  `47985ab`. Six original synthesized cues (deterministic
+  `audio/generate_audio.py`, no samples ever) via maxmod, fired as
+  pure decisions on events the sim already computed (start deferred
+  one frame / pickup / rewind / door / delivery / window tick) +
+  B-mute gating playback only; every trigger rides `gl_audio_hook`,
+  voicing proven by the mixer-memory watch.
+- Clock verdict (rail front-loaded): **NO SHIFT** — full-row
+  cross-ROM diff vs the rebuilt v0.4 dist: 0 differing rows over 700
+  frames at the SAME frame indices (Courier's transitions are light;
+  the Shoal spawn-spike trap did not fire). Every carried literal
+  stands verbatim; zero re-pins, zero re-bases.
+- 8 proofs / 231 asserts green (the audio decision ledger pinned
+  across all four chains — 4 starts / 3 pickups / 4 rewinds / 8 door
+  edges / 3 deliveries / 6 window ticks on the tower chain alone;
+  mixer voicing at rewind+delivery, silence pinned between);
+  P4/P5/P7/P8 run-twice byte-identical.
+  `dist/clockwork-courier.gba` **v1.0 CONCEPT COMPLETE**,
+  byte-deterministic. **The Courier concept is FULLY BUILT** —
+  further gba breadth is owner-routed.
+- PR #108 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

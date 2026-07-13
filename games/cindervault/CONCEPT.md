@@ -1,0 +1,78 @@
+# Cindervault — concept
+
+> **Status:** `reference`
+
+## Pitch
+
+Five floors down, one torch. Every step you take burns a little more of
+the light you are carrying, and the vault at the bottom does not care
+how brave you were when it goes out. Step, bump, wait — the dungeon only
+moves when you do — grab embers to feed the torch, put down the things
+in the dark by walking into them, and find the stairs before the
+arithmetic finds you. Reach the bottom and the vault opens: your score
+is everything you carried through it.
+
+## Genre
+
+Turn-based dungeon-dive roguelike (single-resource descent: the classic
+roguelike food-clock promoted to being the entire game, with bump
+combat and one-step monster chase). Deliberately NOT a reflex, gravity,
+survival, naval, fishing or garden game — it is distinct from all seven
+siblings in this repo: Lumen Drift (GBA one-button gravity drifter),
+Gloamline (NDS zombie horde survival), Brineward (NDS pirate naval
+action), Undertow (web endless-diver reflex), Tiltstone (web turn-based
+gravity puzzle — shares turns, shares nothing else: no dungeon, no
+resources, no combat), Drift Garden (mobile ambient idle-garden) and
+Deepcast (GBA fishing tension arcade). Nothing else in the lane is a
+dungeon crawl.
+
+## Core loop
+
+Read the floor (walls, embers, monsters, stairs are all visible — the
+tension is arithmetic, not surprise) → decide what the torch can afford:
+detour for embers and kills, or rush the stairs → step/bump/wait, one
+turn at a time, while every monster steps back at you → descend →
+floors get meaner (more monsters, a 3-HP brute from floor 3) while the
+same torch keeps burning → descend floor 5 to open the vault, or die to
+DARKNESS (torch 0) or SLAIN (HP 0). Score = 100 x floors cleared + 25 x
+embers + 10 x kills + remaining torch on a win — greed and speed are
+the same currency. The whole run is one fixed seed (shown on the title
+screen) and turns advance only on input, so a score is a claim someone
+else can replay and check.
+
+## Target platform
+
+Game Boy Advance (Butano). It fits the repo's identity, the required
+"ROM builds" CI job auto-discovers the Makefile with zero workflow
+edits, and the proven headless proof harness (mGBA + telemetry mailbox
+`cv_telemetry` + font-pixel text asserts) makes every build's win path,
+lose path and determinism checkable in CI. A turn-based core is the
+best possible match for that harness: input edges are turns, so proofs
+are exact transcriptions.
+
+## Sellability guess (honest)
+
+Near-zero as a paid standalone — a glyph-rendered 5-floor roguelike is
+a tech-sketch next to free genre giants. Its realistic market is the
+flash-cart / itch.io homebrew niche: a free or pay-what-you-want curio,
+or one game in a bundled original-homebrew compilation cart. What the
+prototype actually proves is the part that IS worth money in the genre:
+a fully deterministic, replay-checkable descent with a single readable
+resource clock — daily-seed score attack ("same vault, same monsters")
+is free to build on top, and that loop is what retains roguelike
+players. The presentation is placeholder by design.
+
+## Growth path
+
+- Real art pass: tile sprites for walls/floor, a torch-radius light
+  fade (the mechanic made diegetic — the screen literally darkens as
+  the torch burns down).
+- Item layer: one inventory slot (a lantern that halves burn for 20
+  turns, a blade that bumps for 3) picked up like embers — one more
+  decision, zero new verbs.
+- Named monster species per depth with distinct chase quirks (the
+  greedy step is a plug-in policy).
+- Daily seed + score-attack leaderboard: the deterministic core makes
+  "same vault, same monsters" a shareable challenge for free.
+- Depth banding past floor 5 for an endless mode; the vault becomes
+  the first milestone instead of the end.

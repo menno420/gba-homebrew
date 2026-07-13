@@ -46,20 +46,44 @@
   `docs/proof/session-8-tier-run-keys.txt` line **byte-identically**.
   Future feature proofs record a route instead of rebuilding the pilot.
 
+## Night-run close-out (as of 2026-07-13T10:50:11Z)
+
+The 2026-07-12/13 owner night run (ORDER 005) is CLOSED OUT — full
+retrospective: [`retro/2026-07-13-night-run.md`](retro/2026-07-13-night-run.md).
+Outcomes, live-verified at close-out:
+
+- **Merged (owner hand-sweep ~01:44Z):** PR #75 Gloamline slice 10
+  (merge `92d4f03`), #77 ORDER 005 scribe (`d87f9ad`), #78 mobile PWA
+  foundation (`27f040a`), #79 Undertow (`f7a54b7`), #80 Gloamline
+  slice 11 (`2c8be27`), #81 Tiltstone (`f8540b1`).
+- **Parked OPEN + green, landing by owner click:** #82 Brineward
+  slices 6+7 (`20f4bfa`), #83 Deepcast (`55e0a3b`), #84 Drift Garden
+  (`35dc162`), #85 release packaging (`d8f1049`), #86 Cindervault
+  (`76884fb`), #87 morning tally (`b57221a`), #88 ORDER 006 scribe
+  (`7480178`), #89 night report (`a84933b`) — plus this close-out's
+  own branch `claude/seat-ender-20260713`.
+- **5 new games** with concept + playable prototype: Undertow (web),
+  Tiltstone (web), Drift Garden (mobile PWA), Deepcast (GBA),
+  Cindervault (GBA).
+- **Web arcade:** `dist/web/` (landing page + undertow/ + tiltstone/ +
+  drift-garden/, zero-build static) plus 4 sha256-pinned versioned
+  zips — lands on main when PR #85 merges.
+- **Gloamline arc: SCOPE-COMPLETE** — concept (PR #50) → feasibility
+  (#51) → skeleton (#52) → shove + waves (#54) → barricades (#56) →
+  scavenge interlude (#62) → lantern oil (#64) → audio (#68) → saves
+  (#74) → watch-map polish (#75, completed the concept tree) →
+  best-night rematch (#80, the owner-ordered slice past the tree).
+  Both slice-10 and slice-11 are MERGED; further Gloamline work is
+  owner-gated.
+- **Brineward:** sessions 6 (wind + sailing feel) and 7 (danger bands
+  + reefs) are PARKED on PR #82 — the arc's next slice branches from
+  its merge.
+
 ## In flight
 
-(The **Gloamline arc** (owner-picked original NDS zombie
-horde-defense) is the active track: concept (PR #50) → toolchain
-feasibility (PR #51) → walking skeleton (PR #52) → shove + waves
-(PR #54) → barricades (PR #56) → scavenge interlude (PR #62) →
-lantern-oil light pressure (PR #64) → synthesized audio (PR #68) →
-save-file best-nights (PR #74) → watch-map polish (PR #75, parked
-READY — the concept doc's LATER-SLICES list went COMPLETE there) →
-**best-night rematch (session 2026-07-13-gloamline-rematch, this
-ledger entry) — the first slice PAST the concept tree, on the owner's
-2026-07-13 night-run continue order**, branched from the open PR #75
-head so nothing waits on a merge. A parallel sibling session runs the
-Brineward pirate arc in its own dirs.)
+Nothing — the seat is closed out; everything remaining is owner-gated
+(the parked-PR sweep above and the required-status-checks setting; see
+`control/status.md` ⚑ asks).
 
 ## Recently shipped (newest first)
 

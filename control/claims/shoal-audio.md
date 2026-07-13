@@ -1,1 +1,0 @@
-- `claude/shoal-audio` · **Shoal growth rung 5: AUDIO** — the LAST named cut in games/shoal/CONCEPT.md (synthesized set via the proven generate_audio.py pipeline + gl_audio_hook proofs; zero sim feedback; the L4 82.3% worst frame prices the mixer) · games/shoal/**, dist/shoal.gba, dist/README.md, .sessions/2026-07-13-shoal-audio.md · 2026-07-13

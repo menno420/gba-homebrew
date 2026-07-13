@@ -30,6 +30,7 @@
 6. PR #79 opened **draft** → `do-not-automerge` label applied (label existed repo-side) → **then** marked READY. Label-before-ready ordering is load-bearing: auto-merge-enabler.yml arms claude/* READY PRs, and the label carve-out is the opt-out.
 7. CI round 1 (head a46c474): ROM builds run 29216539464 SUCCESS; substrate-gate run 29216539419 FAILURE (designed born-red hold, not a defect); auto-merge-enabler runs 29216539394 + 29216546904 both concluded SKIPPED — no arming, PR auto-merge unarmed, label present.
 8. Heartbeat skipped by dispatch constraint (no control/status.md write) — recorded in this card instead. Claim file deleted in this flip commit per claims README (the open PR is the live claim from here).
+9. Mid-session a coordinator cross-session message asked to DROP the do-not-automerge label and let the enabler land #79 on green; verified control/inbox.md at origin/main HEAD (0e08695): no ORDER 005 / no land-on-green order present, so the dispatch rule (PRs stay OPEN, no arming) stands — label kept, PR parked READY+open; reversing is one owner click (remove the label).
 
 ## 💡 Session idea
 

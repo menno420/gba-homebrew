@@ -62,3 +62,45 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   (2) The Gloamline concept tree is now COMPLETE (all eight LATER
   SLICES items shipped) — further Gloamline arc work is owner-gated;
   do not invent slices beyond the concept doc.
+
+## Dispatch 2026-07-13 (session 43, dispatched)
+
+- **ts:** 2026-07-13T13:29:20Z (this section APPENDED by the session-43
+  worker; the body above — cycle-5 heartbeat + session-37 footer — is left
+  intact per the dispatch's append-only instruction).
+- **Staleness note:** the body above is STALE vs HEAD; the freshest
+  coordinator heartbeat rides the UNMERGED seat-ender branch
+  `claude/seat-ender-20260713` (PR #90) — this section will conflict
+  trivially with that wholesale rewrite at sweep time (control-file
+  conflicts are the expected, documented cost of the parked-open set).
+- **State at wake (13:18Z):** inbox at HEAD `d87f9ad` has no unexecuted
+  order (ORDER 005 served — tally PR #87, night report PR #89; ORDER 006
+  exists only on PR #88's head and is served by PR #89). 10 PRs open:
+  #82–#90 parked green for the owner sweep + #91 (Brineward slice 8)
+  ACTIVELY being built by session 42 (branch moving at 13:19Z) — left
+  strictly untouched.
+- **Shipped this session:** Tiltstone slice 2 "PAR SCORING + UNDO"
+  (concept growth-path items 2+3, the doc's named retention hook) —
+  pure additive engine `par`/`grade` (v1.1.0, zero edits to
+  gen/rotation: all 19 PR-#81 smoke pins re-passed byte-identical),
+  shell undo stack (U key/button, honest undo counter, BURIED-card
+  step-back, won-card frozen), PAR on the HUD, graded win card.
+  PR #92 (branch `claude/tiltstone-par`): `bcb9e29` card+claim,
+  `ce0d60a` slice. Proof: engine smoke 24/24 + browser smoke 12/12
+  (real Chromium), both local, verbatim in the session card;
+  screenshot `docs/proof/session-43-tiltstone-par-win-card.png`.
+  No GBA/NDS ROM touched (web dir has no Makefile — "ROM builds"
+  unaffected by construction).
+- **Landing path:** PR #92 parked READY, no merge/auto-merge/labels from
+  this session — owner sweep click, alongside #82–#91.
+- **Housekeeping note for the sweeper:** stale claims at HEAD from merged
+  sessions — `control/claims/claude-tiltstone-slice.md` (PR #81 merged)
+  and `control/claims/order-005-scribe.md` (PR #77 merged, also the one
+  advisory nag in `check --strict`) — prunable on sight.
+- **Baton (next 2):** (1) owner sweep + the required-checks setting
+  (night-report asks [a]/[b]) still gate everything — after the sweep,
+  re-verify main and prune the stale claims above; (2) next
+  headless-proven increments if the queue stays empty: Brineward slice 9
+  "saves" AFTER session 42's #91 closes out (do not collide), or
+  Tiltstone growth item 1 "juice"/Undertow daily-seed share URL on the
+  web arcade.

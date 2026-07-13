@@ -13,7 +13,7 @@
 #     bash games/clockwork-courier/proofs.sh
 # Artifacts land in $CC_PROOF_OUT (default /tmp/courier-proofs).
 #
-# The six proofs:
+# The seven proofs:
 #   P1 boot/title           — magics, title state, every title line (incl.
 #                             rung 1's "AND YOU CAN STAND ON IT").
 #   P2 kinematics + refusal — walk clamp at the closed door (23808),
@@ -40,6 +40,20 @@
 #                             P2's apex proves unreachable from ground),
 #                             then delivers with REWINDS 2. RUN TWICE —
 #                             byte-identical.
+#   P7 THE RUSH ORDER       — rung 2 ("multiple parcels/chutes with
+#                             timing windows"): SELECT re-runs P4's exact
+#                             route with a second parcel waiting on the
+#                             step and a chute that keeps hours (open 60
+#                             frames in every 240, pure run_frames
+#                             arithmetic). Both parcels are picked
+#                             (carried word 2), the courier stands at the
+#                             chute through the SHUT window for 100+
+#                             pinned frames delivering NOTHING (the
+#                             refusal: missing the window is a wait, not
+#                             a shortcut), then rf 720 — the first open
+#                             frame — delivers both at once. RUN TWICE —
+#                             byte-identical. START from the rush card
+#                             restarts the CLASSIC run (mode word 0).
 #   P6 the counter-solve    — the strongest scripted cheats FAIL: a
 #                             max-jump+drift at the ledge peaks at 9922
 #                             (38.76 px, short of 32 px) with the flank
@@ -49,6 +63,11 @@
 #                             run never ends. A puzzle proven only along
 #                             its solution is proven solvable, not proven
 #                             to be a puzzle.
+#
+# CROSS-ROM CARRY (rung 2): the classic run lives on START and the rush
+# order on SELECT, so P1-P6 carry by construction — re-proven by
+# replaying P4's script on the v0.2 dist (sha256 689bc792…6f00) and the
+# rung-2 build: 0 differing rows over 700 frames, all 17 rung-1 words.
 #
 # CROSS-ROM CARRY (rung 1): P2/P3/P4's scripts replay on the v0.1 dist
 # (sha256 ed877798…40a8) and this build with IDENTICAL telemetry — 0
@@ -64,7 +83,7 @@ OUT="${CC_PROOF_OUT:-/tmp/courier-proofs}"
 mkdir -p "$OUT"
 
 H() { python3 tools/headless-screenshot.py "$ROM" "$@"; }
-W='--elf games/clockwork-courier/clockwork-courier.elf --watch t:cc_telemetry:17'
+W='--elf games/clockwork-courier/clockwork-courier.elf --watch t:cc_telemetry:20'
 
 echo "== P1: boot + title =="
 H "$OUT/p1.png" --frames 70 $W \
@@ -222,5 +241,55 @@ H "$OUT/p6.png" --frames 900 $W \
   --assert-watch 880:t:5:eq:16384 \
   --assert-watch 880:t:2:eq:1 \
   --assert-watch 880:t:16:eq:0
+
+
+RUSH_ROUTE='--keys 10-12:SELECT --keys 20-26:LEFT --keys 28-30:A --keys 34-46:LEFT --keys 70-72:A --keys 70-96:LEFT --keys 110-140:LEFT --keys 160-184:RIGHT --keys 196-210:LEFT --keys 530-532:R --keys 540-614:RIGHT --keys 800-802:START'
+
+P7_ASSERTS=(
+  --assert-watch 20:t:17:eq:1
+  --assert-watch 20:t:19:eq:1
+  --assert-watch 75:t:19:eq:0
+  --assert-watch 58:t:13:eq:1
+  --assert-watch 58:t:4:eq:14208
+  --assert-watch 58:t:5:eq:10240
+  --assert-watch 142:t:13:eq:2
+  --assert-watch 142:t:4:eq:3008
+  --assert-watch 220:t:4:eq:6208
+  --assert-watch 531:t:14:eq:1
+  --assert-watch 640:t:4:eq:29888
+  --assert-watch 640:t:19:eq:0
+  --assert-watch 640:t:18:eq:0
+  --assert-watch 640:t:2:eq:1
+  --assert-watch 700:t:19:eq:0
+  --assert-watch 700:t:18:eq:0
+  --assert-watch 700:t:2:eq:1
+  --assert-watch 700:t:13:eq:2
+  --assert-watch 725:t:18:eq:0
+  --assert-watch 725:t:2:eq:1
+  --assert-text "700:GHOST OUT 2 HELD SHUT"
+  --assert-watch 735:t:2:eq:2
+  --assert-watch 735:t:18:eq:2
+  --assert-watch 735:t:15:eq:720
+  --assert-watch 735:t:14:eq:1
+  --assert-watch 735:t:13:eq:0
+  --assert-text "760:PARCEL DELIVERED"
+  --assert-text "760:CLOCK 12s (720 FRAMES)"
+  --assert-text "760:REWINDS 1"
+  --assert-text "760:RUSH ORDER: 2 PARCELS"
+  --assert-watch 830:t:2:eq:1
+  --assert-watch 830:t:17:eq:0
+)
+
+echo "== P7: THE RUSH ORDER — catch the window, or wait for it (run 1) =="
+H "$OUT/p7.png" --frames 850 $W $RUSH_ROUTE \
+  --watch-log "$OUT/p7-run1.csv" --shot "700:$OUT/p7-shut.png" \
+  "${P7_ASSERTS[@]}"
+
+echo "== P7: run 2 (must be byte-identical) =="
+H "$OUT/p7b.png" --frames 850 $W $RUSH_ROUTE \
+  --watch-log "$OUT/p7-run2.csv" \
+  "${P7_ASSERTS[@]}"
+cmp "$OUT/p7-run1.csv" "$OUT/p7-run2.csv"
+echo "P7 run-twice: byte-identical"
 
 echo "ALL COURIER PROOFS PASS"

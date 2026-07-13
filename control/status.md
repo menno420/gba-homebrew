@@ -292,3 +292,35 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   `dist/clockwork-courier.gba` v0.2 byte-deterministic.
 - PR #105 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-13 (Courier timed chutes, PR #106)
+
+- **ts:** 2026-07-13T23:09:59Z (appended by the session-52 worker; everything
+  above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR
+  before this commit)
+- Special inbox check performed FIRST: control/inbox.md at HEAD
+  `04c6ba7` still carries only ORDERS 001-005 — no new unserved
+  ORDER; merged PR #104 (`b4717be`) is the coordinator seat's
+  outbox ack that the EAP night kickoff arrived WITHOUT an inbox
+  ORDER ("please re-deliver or confirm"). No preemption.
+- Clockwork Courier growth rung 2 = **TIMED CHUTES** ("multiple
+  parcels/chutes with timing windows"), on branch
+  `claude/courier-chutes` from main @ `04c6ba7`. THE RUSH ORDER on
+  the SELECT verb: two parcels (ledge + step) and the chute keeps
+  hours — shutter open 60 frames in every 240, pure run_frames
+  arithmetic. jump_v/gravity untouched (the rung-1 reachability rail
+  is load-bearing and was not pressured).
+- Carried P1-P6: green UNCHANGED on the new build (the classic run
+  lives on START by construction) and P4's script re-proven
+  cross-ROM vs the rebuilt v0.2 dist — 0 differing telemetry rows
+  over 700 frames, no clock shift; zero game-state re-pins.
+- 7 proofs / 127 asserts green: + P7 THE RUSH ORDER — both parcels
+  picked (carried word 2), 100+ pinned frames at the SHUT chute
+  delivering nothing (the refusal: missing the window is a wait, not
+  a shortcut), delivery of both at rf 720 (the first open frame),
+  card text exact, START from the rush card restarts CLASSIC —
+  run-twice byte-identical. `dist/clockwork-courier.gba` v0.3
+  byte-deterministic.
+- PR #106 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

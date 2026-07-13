@@ -14,6 +14,16 @@
  * while your past self holds it. Deliver = win card, clock stamped;
  * START restarts. No lose state — the tower is patient.
  *
+ * THE RUSH ORDER (growth rung 2 — "multiple parcels/chutes with
+ * timing windows", the pitch's "timed chutes"): SELECT starts a run
+ * with TWO parcels (the classic ledge one plus one waiting on the
+ * step) and the chute KEEPS HOURS — its shutter is open only while
+ * (run_frames %% 240) < 60 (1 s in every 4). Both parcels through an
+ * open window = the rush is done. Pure data + clock: no physics
+ * constant moves (the rung-1 reachability rail is load-bearing), and
+ * the classic START run never evaluates any of it, so every carried
+ * pin holds by construction.
+ *
  * PROTOTYPE RULES (deliberate cuts documented in CONCEPT.md):
  *   - One ghost at a time; R fires only when the pose buffer is FULL
  *     (300 recorded playing-frames — the HUD says REWIND READY) and
@@ -47,6 +57,8 @@
  *   [6] on ground (0/1)              [15] run frames elapsed (the
  *   [7] pose buffer fill (0..300)         clock the chute stamps)
  *   [16] standing on the ghost (0/1) — growth rung 1
+ *   [17] mode (0 classic START / 1 THE RUSH ORDER, SELECT) — rung 2
+ *   [18] parcels delivered this run (rush)   [19] chute window open
  *
  * Presentation is deliberately trivial (breadth-program slice): the
  * tower is glyph rows in Butano's common FIXED 8x8 sprite font; the
@@ -73,7 +85,7 @@ extern "C"
 {
     // Headless telemetry mailbox — see the layout table in the header
     // comment. volatile so every write really lands for the emulator bus.
-    volatile unsigned cc_telemetry[17];
+    volatile unsigned cc_telemetry[20];
 }
 
 namespace
@@ -103,7 +115,7 @@ namespace
         "#P..........#..#",
         "####........#..#",
         "#...........#.##",
-        "#....##.....#..#",
+        "#....##.....#..#",   // (6,4) hosts the rush parcel Q
         "#...........D..#",
         "#..o........D.v#",
         "################",
@@ -114,6 +126,9 @@ namespace
     // Named cells (must match the level art above).
     constexpr int switch_cx = 3, switch_cy = 7;
     constexpr int parcel_cx = 1, parcel_cy = 2;
+    constexpr int parcel2_cx = 6, parcel2_cy = 4;   // on the step (rush)
+    constexpr int window_period = 240;              // the chute's hours:
+    constexpr int window_open_frames = 60;          //   1 s in every 4
     constexpr int chute_cx = 14, chute_cy = 7;
     constexpr int door_cx = 12;
     constexpr int door_cy0 = 6, door_cy1 = 7;
@@ -187,8 +202,8 @@ int main()
     constexpr int map_y0 = -56;          // row centers at -56, -48, ... 8
     text_line map_lines[map_h];
 
-    constexpr int ui_count = 6;
-    constexpr int ui_y[ui_count] = {-70, 24, 40, 52, 64, 76};
+    constexpr int ui_count = 7;
+    constexpr int ui_y[ui_count] = {-70, 24, 40, 52, 64, 76, 88};
     constexpr int ui_x = -110;
     text_line ui_lines[ui_count];
 
@@ -219,6 +234,9 @@ int main()
     int vy = 0;
     bool on_ground = true;
     bool carried = false;
+    bool p2_carried = false;             // the rush parcel (rung 2)
+    unsigned delivered_n = 0;            // rush deliveries this run
+    unsigned mode = 0;                   // 0 classic (START) / 1 rush (SELECT)
     bool door_open = false;
     bool switch_held = false;
     unsigned rewinds = 0;
@@ -243,6 +261,8 @@ int main()
         vy = 0;
         on_ground = true;
         carried = false;
+        p2_carried = false;
+        delivered_n = 0;
         door_open = false;
         switch_held = false;
         rewinds = 0;
@@ -308,14 +328,16 @@ int main()
     while(true)
     {
         bool start = bn::keypad::start_pressed();
+        bool select = bn::keypad::select_pressed();
 
         switch(state)
         {
 
         case st_title:
         case st_delivered:
-            if(start)
+            if(start || select)
             {
+                mode = select ? 1 : 0;   // SELECT: THE RUSH ORDER
                 reset_run();
                 clear_lines();
                 state = st_playing;
@@ -487,18 +509,47 @@ int main()
 
             door_open = switch_held || (door_open && player_in_door);
 
-            // Parcel + chute (the delivery).
+            // Parcel + chute (the delivery). Rung 2: the rush order
+            // adds a second parcel and gives the chute HOURS — the
+            // classic run (mode 0) evaluates exactly the old code.
+            bool window_open = (run_frames % window_period)
+                               < window_open_frames;
+
             if(! carried && feet_cell_x(px) == parcel_cx
                && feet_cell_y(py) == parcel_cy)
             {
                 carried = true;
             }
 
-            if(carried && feet_cell_x(px) == chute_cx
-               && feet_cell_y(py) == chute_cy)
+            if(mode == 1 && ! p2_carried
+               && feet_cell_x(px) == parcel2_cx
+               && feet_cell_y(py) == parcel2_cy)
             {
-                state = st_delivered;
-                clear_lines();
+                p2_carried = true;
+            }
+
+            if(mode == 0)
+            {
+                if(carried && feet_cell_x(px) == chute_cx
+                   && feet_cell_y(py) == chute_cy)
+                {
+                    state = st_delivered;
+                    clear_lines();
+                }
+            }
+            else if((carried || p2_carried) && window_open
+                    && feet_cell_x(px) == chute_cx
+                    && feet_cell_y(py) == chute_cy)
+            {
+                delivered_n += unsigned(carried) + unsigned(p2_carried);
+                carried = false;
+                p2_carried = false;
+
+                if(delivered_n >= 2)
+                {
+                    state = st_delivered;
+                    clear_lines();
+                }
             }
 
             // --- record THIS frame's pose onto the tape --------------------
@@ -527,6 +578,7 @@ int main()
             ui_lines[3].set(ui_gen, ui_x, -16, "IT CAN HOLD THE SWITCH");
             ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
             ui_lines[5].set(ui_gen, ui_x, 24, "AND YOU CAN STAND ON IT");
+            ui_lines[6].set(ui_gen, ui_x, 40, "SELECT: RUSH ORDER (2)");
             break;
 
         case st_playing:
@@ -542,6 +594,10 @@ int main()
                     if(glyph == 'P' && carried)
                     {
                         glyph = '.';
+                    }
+                    else if(y == parcel2_cy && x == parcel2_cx)
+                    {
+                        glyph = (mode == 1 && ! p2_carried) ? 'Q' : '.';
                     }
                     else if(glyph == 'D')
                     {
@@ -592,7 +648,20 @@ int main()
                 hud.append("% ");
             }
 
-            hud.append(carried ? "PARCEL HELD" : "PARCEL WAITS");
+            if(mode == 1)
+            {
+                unsigned held = unsigned(carried) + unsigned(p2_carried);
+                hud.append(bn::to_string<8>(held));
+                hud.append(" HELD ");         // the 20-sprite text cap
+                hud.append((run_frames % window_period)  // rules the HUD:
+                           < window_open_frames ? "OPEN"  // keep it terse
+                                                : "SHUT");
+            }
+            else
+            {
+                hud.append(carried ? "PARCEL HELD" : "PARCEL WAITS");
+            }
+
             ui_lines[0].set(ui_gen, ui_x, ui_y[1], hud);
 
             bn::string<40> clock("CLOCK ");
@@ -617,6 +686,12 @@ int main()
             ui_lines[2].set(ui_gen, ui_x, -28, line2);
             ui_lines[3].set(ui_gen, ui_x, -16, "THE TOWER TICKS ON");
             ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
+
+            if(mode == 1)
+            {
+                ui_lines[5].set(ui_gen, ui_x, 24, "RUSH ORDER: 2 PARCELS");
+            }
+
             break;
         }
 
@@ -638,11 +713,17 @@ int main()
         cc_telemetry[10] = unsigned(gy);
         cc_telemetry[11] = switch_held ? 1u : 0u;
         cc_telemetry[12] = door_open ? 1u : 0u;
-        cc_telemetry[13] = carried ? 1u : 0u;
+        cc_telemetry[13] = unsigned(carried) + unsigned(p2_carried);
         cc_telemetry[14] = rewinds;
         cc_telemetry[15] = run_frames;
         // growth rung 1 (extension; words 0-15 stay pinned)
         cc_telemetry[16] = on_ghost ? 1u : 0u;
+        // growth rung 2 (extension; words 0-16 stay pinned)
+        cc_telemetry[17] = mode;
+        cc_telemetry[18] = delivered_n;
+        cc_telemetry[19] = (state == st_playing
+                            && (run_frames % window_period)
+                               < window_open_frames) ? 1u : 0u;
 
         bn::core::update();
     }

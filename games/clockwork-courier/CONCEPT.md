@@ -35,7 +35,7 @@ Game Boy Advance (Butano, text-glyph presentation from the shared
 common fonts — no local assets). Runs in any GBA emulator; ships as
 `dist/clockwork-courier.gba`.
 
-## Prototype slice (PR #96) + growth rung 1 (PR #105)
+## Prototype slice (PR #96) + growth rungs 1 (PR #105) and 2 (PR #106)
 
 Movement (LEFT/RIGHT walk, A jump, fixed-point gravity + tile
 collision), ONE handcrafted single-screen level whose door DEMANDS the
@@ -53,8 +53,17 @@ and from a ghost's head (feet 56 px) at 30.76 px — only a boosted
 jump inside the corridor lands there, and the committed counter-solve
 probes (max-jump+drift, under-ledge bump, door-side hop) are asserted
 to FAIL. The committed platform solve delivers with REWINDS 2,
-detouring onto the ledge mid-run. Deliberately still cut: multiple
-parcels/chutes with timing windows, more levels, audio.
+detouring onto the ledge mid-run. **Growth rung 2 (TIMED CHUTES,
+PR #106): THE RUSH ORDER** — SELECT starts a run with TWO parcels
+(the classic ledge one plus one waiting on the step) and the chute
+KEEPS HOURS: its shutter is open 60 frames in every 240 (pure
+run_frames arithmetic — no physics constant moves; the rung-1
+reachability rail is untouched). Both parcels through an open window
+end the rush; missing the window is a WAIT, not a shortcut (the
+committed proof stands at the shut chute for 100+ pinned frames
+delivering nothing, then rf 720 — the first open frame — delivers
+both at once). START keeps the classic run bit-identical by
+construction. Deliberately still cut: more levels, audio.
 
 ## Determinism
 

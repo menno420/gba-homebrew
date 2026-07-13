@@ -1,7 +1,13 @@
 # CONCEPT — Drift Garden (first mobile target on this foundation)
 
-> **Status:** `proposed` — 2026-07-13, mobile-foundation session. Original
-> IP; one page per the concept convention.
+> **Status:** `first playable slice shipped 2026-07-13` — drift-garden
+> session, on the mobile-foundation skeleton. Original IP; one page per
+> the concept convention.
+
+Shipped in the slice: seeded 90 s win/lose rounds (plant / herd /
+cross-pollinate to tier 3 / harvest essence vs. quota) + predator wisps;
+the growth path — biomes, daily weather variation, more species, essence
+spending — is still future work.
 
 ## Genre
 
@@ -31,8 +37,9 @@ Ambient/zen garden games are a proven small-but-real niche (the
 Viridi/Prune/Alto's-Odyssey audience): plausible as a free PWA with a
 one-time "full garden" unlock or cosmetic palettes once packaged as a TWA
 with Play Billing. Realistic expectation for a solo original with zero
-marketing: portfolio piece + low-hundreds installs organically; the value
-tonight is the **foundation + provable pipeline**, not a revenue bet.
+marketing: portfolio piece + low-hundreds installs organically; a playable
+seeded slice now exists, but it is one round loop deep — the value is
+still the **foundation + provable pipeline**, not a revenue bet.
 No spend, no store account, no payment flow without an explicit owner
 action (PLATFORM-LIMITS.md mission rails).
 

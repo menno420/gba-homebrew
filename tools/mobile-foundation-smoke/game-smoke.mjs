@@ -1,0 +1,244 @@
+#!/usr/bin/env node
+// Headless GAME proof for games/mobile-foundation (Drift Garden playable slice).
+//
+// Asserts, against the real served page in headless Chromium:
+//   1. BOOT        — ?seed=42 boots into phase 'playing' with seed 42
+//   2. TOUCH       — a constructed TouchEvent dispatched on the canvas
+//                    (the real touchstart handler) counts a tap and plants
+//   3. WIN         — scripted round via window.__game.tapAt/step: plant,
+//                    mature, cross-pollinate (tier-2 appears), harvest to
+//                    essence >= quota before dusk -> phase 'won'
+//   4. LOSE        — same seed, no harvesting, step past dusk -> 'lost',
+//                    with wisps spawned and motes eaten along the way
+//   5. DETERMINISM — two fresh loads with ?seed=7 + identical scripted
+//                    input give byte-identical snapshot() JSON; seed 8 differs
+//   6. PAUSE       — visibilitychange hidden freezes the loop; visible resumes
+//
+// Scripted rounds run on a page booted "hidden" (visibility overridden
+// BEFORE load, so the game starts paused at frame 0): the rAF loop never
+// interleaves with the synchronous __game.step()/tapAt() clock, which is
+// what makes the determinism comparison byte-exact.
+//
+// Driver: playwright-core from a scratch dir (never committed, never
+// `playwright install`) + the container's Chromium — same pattern as
+// smoke.mjs / run.sh. Run via run-game.sh, or directly:
+//   SMOKE_URL=http://127.0.0.1:8902/index.html \
+//   NODE_PATH=<scratch>/node_modules node tools/mobile-foundation-smoke/game-smoke.mjs
+
+import { createRequire } from 'node:module';
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+const require = createRequire(import.meta.url);
+const { chromium } = require('playwright-core');
+
+function findChromium() {
+  if (process.env.CHROMIUM_PATH && existsSync(process.env.CHROMIUM_PATH)) {
+    return process.env.CHROMIUM_PATH;
+  }
+  const root = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers';
+  if (existsSync(root)) {
+    for (const d of readdirSync(root)) {
+      if (d.startsWith('chromium-')) {
+        const p = join(root, d, 'chrome-linux', 'chrome');
+        if (existsSync(p)) return p;
+      }
+    }
+    for (const d of readdirSync(root)) {
+      if (d.startsWith('chromium_headless_shell-')) {
+        const p = join(root, d, 'chrome-linux', 'headless_shell');
+        if (existsSync(p)) return p;
+      }
+    }
+  }
+  return null;
+}
+
+const URL_ = process.env.SMOKE_URL || 'http://127.0.0.1:8902/index.html';
+const results = [];
+function check(name, ok, detail) {
+  results.push({ name, ok, detail });
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}  ${detail}`);
+}
+
+// Boot a page whose document reports hidden BEFORE any game code runs:
+// the game starts paused at frame 0 and only __game.step() advances it.
+async function newScriptedPage(browser, url) {
+  const ctx = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+  });
+  await page.goto(url, { waitUntil: 'load' });
+  await page.waitForFunction(() => window.__gameState && window.__gameState.booted, null, { timeout: 5000 });
+  return { ctx, page };
+}
+
+const exe = findChromium();
+console.log(`game-smoke: chromium = ${exe || '(playwright default)'}`);
+console.log(`game-smoke: url      = ${URL_}`);
+
+const browser = await chromium.launch({
+  headless: true,
+  executablePath: exe || undefined,
+  args: ['--no-sandbox', '--disable-gpu'],
+});
+try {
+  // ---- 1. BOOT with an explicit seed -------------------------------------
+  const liveCtx = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  const live = await liveCtx.newPage();
+  await live.goto(`${URL_}?seed=42`, { waitUntil: 'load' });
+  await live.waitForFunction(() => window.__gameState && window.__gameState.booted, null, { timeout: 5000 });
+  const b0 = await live.evaluate(() => window.__gameState);
+  check('boot-seeded', b0.booted === true && b0.phase === 'playing' && b0.seed === 42,
+    `booted=${b0.booted} phase=${b0.phase} seed=${b0.seed} quota=${b0.quota}`);
+
+  // ---- 2. real TouchEvent on the canvas plants a mote ---------------------
+  await live.waitForTimeout(300);
+  const t0 = await live.evaluate(() => window.__gameState);
+  await live.evaluate(() => {
+    const c = document.getElementById('game');
+    const touch = new Touch({ identifier: 1, target: c, clientX: 60, clientY: 700 });
+    c.dispatchEvent(new TouchEvent('touchstart', {
+      touches: [touch], changedTouches: [touch], bubbles: true, cancelable: true,
+    }));
+    c.dispatchEvent(new TouchEvent('touchend', {
+      touches: [], changedTouches: [touch], bubbles: true, cancelable: true,
+    }));
+  });
+  const t1 = await live.evaluate(() => window.__gameState);
+  check('touchevent-plants',
+    t1.taps === t0.taps + 1 && t1.entities === t0.entities + 1 && t1.lastTap !== null,
+    `taps ${t0.taps} -> ${t1.taps}, entities ${t0.entities} -> ${t1.entities}, lastTap=${JSON.stringify(t1.lastTap)}`);
+
+  // ---- 3. scripted WIN round ----------------------------------------------
+  const winRig = await newScriptedPage(browser, `${URL_}?seed=42`);
+  const win = await winRig.page.evaluate(() => {
+    const g = window.__game;
+    const cv = document.getElementById('game');
+    const rect = cv.getBoundingClientRect();
+    const kx = rect.width / cv.width, ky = rect.height / cv.height;
+    const tap = (x, y) => g.tapAt(rect.left + x * kx, rect.top + y * ky);
+    const cw = cv.width, ch = cv.height;
+    // two adjacent plants (26 px apart: outside tap-slop, inside pollination)
+    tap(cw * 0.15, ch * 0.45);
+    tap(cw * 0.15 + 26, ch * 0.45);
+    // 18 well-separated singles (>=60 px apart, clear of seeds and the pair)
+    for (const fy of [0.6, 0.72, 0.84]) {
+      for (const fx of [0.1, 0.27, 0.44, 0.61, 0.78, 0.95]) {
+        tap(cw * fx, ch * fy);
+      }
+    }
+    const planted = g.snapshot();
+    g.step(310); // everything tier-1 matures; the adjacent pair pollinates
+    const matured = g.snapshot();
+    const tier2 = matured.motes.filter((m) => m.tier === 2).length;
+    // harvest mature tier-1s until the quota falls
+    for (const m of matured.motes) {
+      if (m.tier !== 1) continue;
+      if (g.snapshot().phase !== 'playing') break;
+      tap(m.x, m.y);
+    }
+    return {
+      startPaused: window.__gameState.paused,
+      planted: { entities: planted.motes.length, taps: planted.taps },
+      matured: { entities: matured.motes.length, tier2, frames: matured.frames },
+      final: g.snapshot(),
+    };
+  });
+  check('scripted-clock', win.startPaused === true && win.matured.frames === 310,
+    `hidden-boot paused=${win.startPaused}, frames after step(310)=${win.matured.frames}`);
+  check('pollination-tier2', win.matured.tier2 >= 1 && win.matured.entities === win.planted.entities - 1,
+    `tier2 motes=${win.matured.tier2}, entities ${win.planted.entities} -> ${win.matured.entities} (pair merged)`);
+  check('win-before-dusk',
+    win.final.phase === 'won' && win.final.essence >= 100 && win.final.frames < 5400,
+    `phase=${win.final.phase} essence=${win.final.essence}/100 frames=${win.final.frames} (<5400)`);
+  await winRig.ctx.close();
+
+  // ---- 4. scripted LOSE round (same seed, nobody gardens) -----------------
+  const loseRig = await newScriptedPage(browser, `${URL_}?seed=42`);
+  const lose = await loseRig.page.evaluate(() => {
+    const g = window.__game;
+    g.step(1200);
+    const mid = g.snapshot();
+    g.step(4200);
+    return { mid, final: g.snapshot(), state: window.__gameState };
+  });
+  check('wisps-hunt', lose.mid.wisps >= 1 && lose.state.motesLost >= 1,
+    `wisps alive @step1200=${lose.mid.wisps}, motes eaten by dusk=${lose.state.motesLost}`);
+  check('lose-at-dusk', lose.final.phase === 'lost' && lose.final.essence < 100 && lose.final.frames === 5400,
+    `phase=${lose.final.phase} essence=${lose.final.essence} frames=${lose.final.frames}`);
+  await loseRig.ctx.close();
+
+  // ---- 5. determinism: seed 7 twice, then seed 8 --------------------------
+  const script = () => {
+    const g = window.__game;
+    const cv = document.getElementById('game');
+    const rect = cv.getBoundingClientRect();
+    const kx = rect.width / cv.width, ky = rect.height / cv.height;
+    const at = (x, y) => [rect.left + x * kx, rect.top + y * ky];
+    const cw = cv.width, ch = cv.height;
+    g.tapAt(...at(cw * 0.3, ch * 0.6));
+    g.step(200);
+    g.tapAt(...at(cw * 0.62, ch * 0.55));
+    g.dragAt(...at(cw * 0.45, ch * 0.57));
+    g.step(500);
+    g.dragAt(...at(cw * 0.46, ch * 0.58));
+    g.step(700);
+    g.tapAt(...at(cw * 0.3, ch * 0.6));
+    g.step(100);
+    return JSON.stringify(g.snapshot());
+  };
+  const runs = [];
+  for (const seed of [7, 7, 8]) {
+    const rig = await newScriptedPage(browser, `${URL_}?seed=${seed}`);
+    runs.push(await rig.page.evaluate(script));
+    await rig.ctx.close();
+  }
+  check('deterministic-same-seed', runs[0] === runs[1],
+    `seed 7 twice -> identical ${runs[0].length}-byte snapshots: ${runs[0].slice(0, 96)}...`);
+  check('seed-changes-world', runs[0] !== runs[2],
+    `seed 7 vs seed 8 snapshots differ (${runs[0].length}B vs ${runs[2].length}B)`);
+
+  // ---- 6. pause/resume still holds on the live page -----------------------
+  await live.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await live.waitForTimeout(120);
+  const p0 = await live.evaluate(() => window.__gameState);
+  await live.waitForTimeout(400);
+  const p1 = await live.evaluate(() => window.__gameState);
+  check('pause-on-hidden', p0.paused === true && p1.frames === p0.frames,
+    `paused=${p0.paused} frames frozen at ${p0.frames} (recheck ${p1.frames})`);
+  await live.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await live.waitForTimeout(400);
+  const p2 = await live.evaluate(() => window.__gameState);
+  check('resume-on-visible', p2.paused === false && p2.frames > p1.frames,
+    `paused=${p2.paused} frames ${p1.frames} -> ${p2.frames}`);
+  await liveCtx.close();
+} finally {
+  await browser.close();
+}
+
+const failed = results.filter((r) => !r.ok);
+console.log(`\ngame-smoke: ${results.length - failed.length}/${results.length} assertions passed`);
+if (failed.length) {
+  console.log('GAME SMOKE RESULT: FAIL');
+  process.exit(1);
+}
+console.log('GAME SMOKE RESULT: PASS');

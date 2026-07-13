@@ -103,7 +103,7 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
 
 ## Dispatch 2026-07-13 (Shoal, PR #98)
 
-- **ts:** 2026-07-13T19:55:00Z (appended by the session-45 worker;
+- **ts:** 2026-07-13T19:50:57Z (appended by the session-45 worker;
   everything above left intact per the append-only dispatch rule)
 - Breadth game #8 = **Shoal**, the ORDER-001 concept queue's LAST
   item, built BEHIND ITS OWN COMMITTED GATE ("profile in the FIRST

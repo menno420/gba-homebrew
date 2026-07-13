@@ -54,11 +54,52 @@ constexpr int sh_push_r2 = 56 * 56;   // wide current: one central lane
                                      //   sweeps most of the water column
 constexpr int sh_push_gain = 22;
 
+// The predator pass (growth rung 1 — CONCEPT.md's "predators locking
+// onto stragglers"): two hunters live only in HUNGRY water (the
+// SELECT verb; calm START water never spawns them, so every carried
+// pin holds by construction). Every SH_PRED_RELOCK frames each
+// predator locks the unsaved fish FARTHEST from the flock centroid —
+// the straggler, deterministically (ties by index; predator 1 takes
+// the runner-up). A caught straggler is EATEN; the hunter drags its
+// kill back to its den and stalks again after a cooldown. Counterplay
+// is the concept's own feel: keep the school TIGHT.
+constexpr int sh_predators = 2;
+constexpr int sh_pred_speed = 288;   // 1.125 px/f — a pushed school
+                                     //   (1.5) outruns it; a straggler
+                                     //   drifting (<=0.4) does not
+constexpr int sh_pred_eat_r2 = 6 * 6;
+constexpr int sh_straggle_r2 = 44 * 44; // ONLY a genuine straggler is
+                                     //   prey: >44px from the flock
+                                     //   centroid. A tight (or
+                                     //   re-cohered) school STARVES
+                                     //   the hunters — abandonment,
+                                     //   not existence, is what kills
+                                     //   (tuned: without the threshold
+                                     //   the committed sweep lost
+                                     //   34/11 — leftovers were farmed
+                                     //   faster than they re-cohered)
+constexpr int sh_pred_relock = 48;   // frames between lock scans
+constexpr int sh_pred_cooldown = 300;// den time after a kill (tuned:
+                                     //   at 180 the committed sweep LOSES
+                                     //   34/11 — hungry water must be
+                                     //   tense but winnable, measured)
+// Fixed dens, right-center water: the hunters guard the way home.
+constexpr int sh_pred_den_x[sh_predators] = {176, 176};
+constexpr int sh_pred_den_y[sh_predators] = {40, 120};
+
+// sh_fish.saved: 0 = at sea, 1 = SAVED in the reef, 2 = EATEN.
 struct sh_fish
 {
     int x = 0, y = 0;                // 8.8 px
     int vx = 0, vy = 0;              // 8.8 px/frame
     int saved = 0;
+};
+
+struct sh_pred
+{
+    int x = 0, y = 0;                // 8.8 px
+    int target = -1;                 // locked fish index (-1 = none)
+    int cooldown = 0;                // frames left in the den
 };
 
 // One deterministic flock frame: boids + the player's current + walls +
@@ -71,5 +112,12 @@ struct sh_fish
 #define SH_CODE_IWRAM __attribute__((section(".iwram")))
 SH_CODE_IWRAM int sh_flock_update(sh_fish* fish, int cursor_x,
                                   int cursor_y, bool pushing);
+
+// One deterministic predator frame (hungry water only; the caller
+// simply never calls it in calm water): re-lock on schedule, stalk,
+// eat, den up. Returns fish NEWLY eaten this frame. Same IWRAM
+// discipline (and the same map-address verification duty).
+SH_CODE_IWRAM int sh_pred_update(sh_fish* fish, sh_pred* preds,
+                                 unsigned run_frames);
 
 #endif // SHOAL_FLOCK_H

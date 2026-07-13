@@ -171,3 +171,147 @@ SH_CODE_IWRAM int sh_flock_update(sh_fish* fish, int cursor_x,
 
     return newly_saved;
 }
+
+SH_CODE_IWRAM int sh_pred_update(sh_fish* fish, sh_pred* preds,
+                                 unsigned run_frames)
+{
+    // The flock centroid (whole px) — the straggler metric's anchor.
+    int cen_x = 0, cen_y = 0, at_sea = 0;
+
+    for(int i = 0; i < sh_fish_count; ++i)
+    {
+        if(fish[i].saved == 0)
+        {
+            cen_x += fish[i].x / sh_fp;
+            cen_y += fish[i].y / sh_fp;
+            ++at_sea;
+        }
+    }
+
+    if(at_sea == 0)
+    {
+        return 0;
+    }
+
+    cen_x /= at_sea;
+    cen_y /= at_sea;
+
+    // Re-lock on schedule (and whenever a target became invalid):
+    // predator 0 takes the FARTHEST unsaved fish from the centroid,
+    // predator 1 the runner-up. Squared distances, ties by index —
+    // fully deterministic.
+    bool relock = (run_frames % sh_pred_relock) == 0;
+
+    for(int p = 0; p < sh_predators; ++p)
+    {
+        int t = preds[p].target;
+
+        if(t >= 0 && fish[t].saved != 0)
+        {
+            preds[p].target = -1;
+            relock = true;
+        }
+    }
+
+    if(relock)
+    {
+        int best = -1, best_d2 = -1;
+        int second = -1, second_d2 = -1;
+
+        for(int i = 0; i < sh_fish_count; ++i)
+        {
+            if(fish[i].saved != 0)
+            {
+                continue;
+            }
+
+            int dx = fish[i].x / sh_fp - cen_x;
+            int dy = fish[i].y / sh_fp - cen_y;
+            int d2 = dx * dx + dy * dy;
+
+            if(d2 > best_d2)
+            {
+                second = best;
+                second_d2 = best_d2;
+                best = i;
+                best_d2 = d2;
+            }
+            else if(d2 > second_d2)
+            {
+                second = i;
+                second_d2 = d2;
+            }
+        }
+
+        // The straggler threshold: a fish inside the school's
+        // sh_straggle_r2 ring is NOT prey — hunters starve on a tight
+        // school; only the abandoned are taken.
+        if(best >= 0 && best_d2 <= sh_straggle_r2)
+        {
+            best = -1;
+        }
+
+        if(second >= 0 && second_d2 <= sh_straggle_r2)
+        {
+            second = -1;
+        }
+
+        if(preds[0].cooldown == 0)
+        {
+            preds[0].target = best;
+        }
+
+        if(sh_predators > 1 && preds[1].cooldown == 0)
+        {
+            preds[1].target = second >= 0 ? second : -1;
+        }
+    }
+
+    int newly_eaten = 0;
+
+    for(int p = 0; p < sh_predators; ++p)
+    {
+        sh_pred& pr = preds[p];
+
+        if(pr.cooldown > 0)
+        {
+            --pr.cooldown;               // digesting in the den
+            pr.target = -1;
+            continue;
+        }
+
+        int t = pr.target;
+
+        if(t < 0)
+        {
+            continue;                    // waits for the next lock scan
+        }
+
+        // Stalk: per-axis clamped pursuit (the flock's own metric).
+        int dx = fish[t].x - pr.x;
+        int dy = fish[t].y - pr.y;
+        int step_x = dx > sh_pred_speed ? sh_pred_speed
+                   : (dx < -sh_pred_speed ? -sh_pred_speed : dx);
+        int step_y = dy > sh_pred_speed ? sh_pred_speed
+                   : (dy < -sh_pred_speed ? -sh_pred_speed : dy);
+        pr.x += step_x;
+        pr.y += step_y;
+
+        int ex = pr.x / sh_fp - fish[t].x / sh_fp;
+        int ey = pr.y / sh_fp - fish[t].y / sh_fp;
+
+        if(ex * ex + ey * ey < sh_pred_eat_r2)
+        {
+            fish[t].saved = 2;           // EATEN
+            fish[t].vx = 0;
+            fish[t].vy = 0;
+            ++newly_eaten;
+            pr.x = sh_pred_den_x[p] * sh_fp;   // drag the kill home
+            pr.y = sh_pred_den_y[p] * sh_fp;
+            pr.cooldown = sh_pred_cooldown;
+            pr.target = -1;
+        }
+    }
+
+    return newly_eaten;
+}

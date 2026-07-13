@@ -124,3 +124,28 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   prototyped).
 - PR #98 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-13 (Shoal predator pass, PR #99)
+
+- **ts:** 2026-07-13T20:15:42Z (appended by the session-46 worker;
+  everything above left intact per the append-only dispatch rule)
+- Shoal growth rung 1 = **the predator pass** (CONCEPT.md's first
+  named cut, "predators locking onto stragglers"), on branch
+  `claude/shoal-predator` from main @ `e59b26d`. Input-verb gated
+  (SELECT = hungry water; START = calm — every carried game-state pin
+  bit-identical). Straggler THRESHOLD is the design find: only fish
+  >44 px from the flock centroid are prey — a tight school starves
+  the hunters; abandonment kills. Hungry water asks 35 home (measured:
+  40 is unreachable against the hunters; the calm sweep banks 35/8).
+- Budget rails held and extended: hungry-water idle mean 50.0% / p99
+  70.4% / steady worst 75.1% (3075/4096), 74.0% through the winning
+  herd; the t[5] < 4096 pin now covers predator frames; predator pass
+  IWRAM-placed at 0x030006d8 (map-verified). Re-pins: exactly 4, all
+  CPU-measurement literals (+~0.5% from the new per-frame mode gate),
+  justified in the card; zero game-state re-pins.
+- 6 headless proofs / 88 asserts green (carried boot/gate/calm-win +
+  hungry idle-starvation, the winnable hunt, the scatter lose), the
+  hungry win run-twice byte-identical. `dist/shoal.gba` v0.2
+  byte-deterministic.
+- PR #99 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

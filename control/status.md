@@ -324,3 +324,30 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   byte-deterministic.
 - PR #106 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (Courier levels, PR #107)
+
+- **ts:** 2026-07-13T23:35:30Z (appended by the session-53 worker; everything
+  above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Clockwork Courier growth rung 3 = **MORE LEVELS** ("more levels" in
+  CONCEPT.md; the Shoal levels playbook), on branch
+  `claude/courier-levels` from main @ `04802ed`. THE TOWER SHIFTS
+  on the L verb: three NEW tile maps with per-level literals — L1 THE
+  HIGH SHELF (boost-exclusive parcel; ghostless probes pinned to fail
+  at apex 9922), L2 THE NIGHT SHIFT (platform + ghost-threaded door +
+  timed window; delivery lands rf 480, the window edge), L3 THE FULL
+  ROUND (boost + switch ghost + window; two rewinds, delivery rf
+  960). L advances/wraps on win cards. jump_v/gravity and the 240/60
+  window untouched.
+- Carried P1-P7: green UNCHANGED (all modes read one current-floor
+  view; classic/rush pass the original literals verbatim) and the
+  rush chassis re-certified cross-ROM vs the rebuilt v0.3 dist — 0
+  differing rows over 850 frames, no clock shift; zero game-state
+  re-pins.
+- 8 proofs / 185 asserts green: + P8 THE TOWER SHIFTS — one
+  deterministic chain plays all three floors (solve + refusal per
+  floor) and the L-wrap, run-twice byte-identical (P4/P5/P7
+  likewise). `dist/clockwork-courier.gba` v0.4 byte-deterministic.
+- PR #107 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

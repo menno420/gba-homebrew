@@ -35,7 +35,7 @@ Game Boy Advance (Butano, text-glyph presentation from the shared
 common fonts — no local assets). Runs in any GBA emulator; ships as
 `dist/clockwork-courier.gba`.
 
-## Prototype slice (PR #96) + growth rungs 1 (PR #105) and 2 (PR #106)
+## Prototype slice (PR #96) + growth rungs 1-3 (PRs #105-#107)
 
 Movement (LEFT/RIGHT walk, A jump, fixed-point gravity + tile
 collision), ONE handcrafted single-screen level whose door DEMANDS the
@@ -63,7 +63,19 @@ end the rush; missing the window is a WAIT, not a shortcut (the
 committed proof stands at the shut chute for 100+ pinned frames
 delivering nothing, then rf 720 — the first open frame — delivers
 both at once). START keeps the classic run bit-identical by
-construction. Deliberately still cut: more levels, audio.
+construction. **Growth rung 3 (MORE LEVELS, PR #107): THE TOWER
+SHIFTS** — L starts a three-floor campaign, each a NEW tile map with
+its own literals: **L1 THE HIGH SHELF** (the parcel sits on a shelf
+in the ghost-boost-exclusive band — the boost is the lesson, and the
+ghostless probes are pinned to fail at apex 9922), **L2 THE NIGHT
+SHIFT** (parcel platform + door + TIMED chute: the ghost's replayed
+walk threads the door and the shut window holds the courier until
+delivery lands on rf 480, the window edge), **L3 THE FULL ROUND**
+(boost parcel + switch-standing ghost + timed window: two rewinds,
+delivery at rf 960). L on a win card advances (wraps after L3);
+jump_v/gravity and the 240/60 window are untouched; classic/rush
+verbs stay bit-identical by construction. Deliberately still cut:
+audio.
 
 ## Determinism
 

@@ -13,7 +13,7 @@
 #     bash games/clockwork-courier/proofs.sh
 # Artifacts land in $CC_PROOF_OUT (default /tmp/courier-proofs).
 #
-# The seven proofs:
+# The eight proofs:
 #   P1 boot/title           — magics, title state, every title line (incl.
 #                             rung 1's "AND YOU CAN STAND ON IT").
 #   P2 kinematics + refusal — walk clamp at the closed door (23808),
@@ -83,7 +83,7 @@ OUT="${CC_PROOF_OUT:-/tmp/courier-proofs}"
 mkdir -p "$OUT"
 
 H() { python3 tools/headless-screenshot.py "$ROM" "$@"; }
-W='--elf games/clockwork-courier/clockwork-courier.elf --watch t:cc_telemetry:20'
+W='--elf games/clockwork-courier/clockwork-courier.elf --watch t:cc_telemetry:21'
 
 echo "== P1: boot + title =="
 H "$OUT/p1.png" --frames 70 $W \
@@ -291,5 +291,83 @@ H "$OUT/p7b.png" --frames 850 $W $RUSH_ROUTE \
   "${P7_ASSERTS[@]}"
 cmp "$OUT/p7-run1.csv" "$OUT/p7-run2.csv"
 echo "P7 run-twice: byte-identical"
+
+# The tower chain: every span before frame 2146 is load-bearing (LV1
+# probes + boost solve -> L -> LV2 platform/door-thread/window ->
+# L -> LV3 probe + boost + switch ghost + window -> L wraps to LV1).
+TOWER_ROUTE='--keys 10-12:L --keys 20-22:A --keys 60-62:A --keys 64-74:LEFT --keys 420-422:R --keys 430-432:A --keys 480-482:A --keys 490-497:LEFT --keys 510-514:LEFT --keys 540-560:RIGHT --keys 580-645:RIGHT --keys 660-662:L --keys 672-710:LEFT --keys 714-716:A --keys 718-728:LEFT --keys 745-762:RIGHT --keys 1010-1012:R --keys 1020-1096:RIGHT --keys 1180-1182:L --keys 1191-1221:LEFT --keys 1225-1227:A --keys 1501-1503:R --keys 1511-1529:LEFT --keys 1541-1543:A --keys 1591-1593:A --keys 1601-1608:LEFT --keys 1621-1625:LEFT --keys 1641-1657:RIGHT --keys 1821-1823:R --keys 1831-1989:RIGHT --keys 2171-2173:L'
+
+P8_ASSERTS=(
+  --assert-watch 20:t:17:eq:2
+  --assert-watch 20:t:20:eq:0
+  --assert-watch 37:t:5:eq:9922
+  --assert-watch 77:t:5:eq:9922
+  --assert-watch 77:t:4:eq:15168
+  --assert-watch 470:t:16:eq:1
+  --assert-watch 470:t:5:eq:14336
+  --assert-watch 505:t:5:eq:8192
+  --assert-watch 505:t:6:eq:1
+  --assert-watch 505:t:4:eq:14528
+  --assert-watch 505:t:13:eq:0
+  --assert-watch 512:t:13:eq:1
+  --assert-watch 620:t:2:eq:2
+  --assert-watch 620:t:15:eq:597
+  --assert-watch 620:t:14:eq:1
+  --assert-text "640:PARCEL DELIVERED"
+  --assert-text "640:CLOCK 9s (597 FRAMES)"
+  --assert-text "640:L1 THE HIGH SHELF"
+  --assert-text "640:L: NEXT SHIFT"
+  --assert-watch 670:t:20:eq:1
+  --assert-watch 670:t:17:eq:2
+  --assert-watch 744:t:13:eq:1
+  --assert-watch 744:t:4:eq:3008
+  --assert-watch 1061:t:12:eq:1
+  --assert-watch 1100:t:4:eq:28608
+  --assert-watch 1100:t:19:eq:0
+  --assert-watch 1100:t:13:eq:1
+  --assert-watch 1100:t:2:eq:1
+  --assert-watch 1130:t:19:eq:0
+  --assert-watch 1130:t:2:eq:1
+  --assert-watch 1150:t:2:eq:2
+  --assert-watch 1150:t:15:eq:480
+  --assert-watch 1150:t:18:eq:1
+  --assert-text "1170:CLOCK 8s (480 FRAMES)"
+  --assert-text "1170:L2 THE NIGHT SHIFT"
+  --assert-watch 1201:t:20:eq:2
+  --assert-watch 1242:t:5:eq:9922
+  --assert-watch 1242:t:4:eq:7808
+  --assert-watch 1581:t:16:eq:1
+  --assert-watch 1581:t:5:eq:14336
+  --assert-watch 1622:t:13:eq:1
+  --assert-watch 1622:t:5:eq:8192
+  --assert-watch 1622:t:4:eq:5888
+  --assert-watch 1720:t:4:eq:10368
+  --assert-watch 1720:t:12:eq:1
+  --assert-watch 1830:t:14:eq:2
+  --assert-watch 2100:t:19:eq:0
+  --assert-watch 2100:t:13:eq:1
+  --assert-watch 2100:t:4:eq:27328
+  --assert-watch 2100:t:2:eq:1
+  --assert-watch 2146:t:2:eq:2
+  --assert-watch 2146:t:15:eq:960
+  --assert-watch 2146:t:14:eq:2
+  --assert-text "2160:CLOCK 16s (960 FRAMES)"
+  --assert-text "2160:L3 THE FULL ROUND"
+  --assert-watch 2200:t:20:eq:0
+  --assert-watch 2200:t:17:eq:2
+  --assert-watch 2200:t:2:eq:1
+)
+
+echo "== P8: THE TOWER SHIFTS — three floors, one chain (run 1) =="
+H "$OUT/p8.png" --frames 2300 $W $TOWER_ROUTE \
+  --watch-log "$OUT/p8-run1.csv" --shot "2160:$OUT/p8-lv3-card.png" \
+  "${P8_ASSERTS[@]}"
+
+echo "== P8: run 2 (must be byte-identical) =="
+H "$OUT/p8b.png" --frames 2300 $W $TOWER_ROUTE \
+  --watch-log "$OUT/p8-run2.csv" \
+  "${P8_ASSERTS[@]}"
+cmp "$OUT/p8-run1.csv" "$OUT/p8-run2.csv"
+echo "P8 run-twice: byte-identical"
 
 echo "ALL COURIER PROOFS PASS"

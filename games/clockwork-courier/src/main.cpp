@@ -57,8 +57,10 @@
  *   [6] on ground (0/1)              [15] run frames elapsed (the
  *   [7] pose buffer fill (0..300)         clock the chute stamps)
  *   [16] standing on the ghost (0/1) — growth rung 1
- *   [17] mode (0 classic START / 1 THE RUSH ORDER, SELECT) — rung 2
+ *   [17] mode (0 classic START / 1 THE RUSH ORDER, SELECT / 2 the
+ *        tower levels, L) — rungs 2-3
  *   [18] parcels delivered this run (rush)   [19] chute window open
+ *   [20] level index (0-2, tower levels only; 0 otherwise) — rung 3
  *
  * Presentation is deliberately trivial (breadth-program slice): the
  * tower is glyph rows in Butano's common FIXED 8x8 sprite font; the
@@ -85,7 +87,7 @@ extern "C"
 {
     // Headless telemetry mailbox — see the layout table in the header
     // comment. volatile so every write really lands for the emulator bus.
-    volatile unsigned cc_telemetry[20];
+    volatile unsigned cc_telemetry[21];
 }
 
 namespace
@@ -129,9 +131,90 @@ namespace
     constexpr int parcel2_cx = 6, parcel2_cy = 4;   // on the step (rush)
     constexpr int window_period = 240;              // the chute's hours:
     constexpr int window_open_frames = 60;          //   1 s in every 4
+
     constexpr int chute_cx = 14, chute_cy = 7;
     constexpr int door_cx = 12;
     constexpr int door_cy0 = 6, door_cy1 = 7;
+
+    // --- THE TOWER SHIFTS (growth rung 3: "more levels") -------------------
+    // Three new floors on the L verb, each a NEW tile map with its own
+    // literals (per-level from day one — the rung-2 note), combining the
+    // shipped mechanics. The classic/rush verbs never read this table.
+    // Reachability law (untouchable): ground apex = feet 38.76 px, so a
+    // ledge whose top is 32 px (row 4) is in the ghost-boost-exclusive
+    // band; door caps two rows deep are unjumpable (the #96 argument).
+    // LV1 THE HIGH SHELF — teach the boost: the parcel sits on a shelf
+    //     only a boosted jump reaches; the chute keeps no hours.
+    // LV2 THE NIGHT SHIFT — door + switch + TIMED chute: the ghost holds
+    //     the door and the window must still be caught on the far side.
+    // LV3 THE FULL ROUND — everything: boost parcel, ghost-held door,
+    //     timed window; two rewinds in one delivery.
+    constexpr char lv1_map[map_h][map_w + 1] = {
+        "################",
+        "#..............#",
+        "#..............#",
+        "#.....P........#",
+        "#.....#........#",
+        "#..............#",
+        "#..............#",
+        "#.............v#",
+        "################",
+    };
+    constexpr char lv2_map[map_h][map_w + 1] = {
+        "################",
+        "#..............#",
+        "#..............#",
+        "#..............#",
+        "#........#.....#",
+        "#P.......#.....#",
+        "##.......D.....#",
+        "#..o.....D...v.#",
+        "################",
+    };
+    constexpr char lv3_map[map_h][map_w + 1] = {
+        "################",
+        "#..............#",
+        "#..............#",
+        "#.P............#",
+        "#.#.......#....#",
+        "#.........#....#",
+        "#.........D....#",
+        "#....o....D..v.#",
+        "################",
+    };
+
+    struct floor_def
+    {
+        const char* name;
+        const char (*map)[map_w + 1];
+        int sw_x, sw_y;                  // pressure switch (-1 = none)
+        int p_x, p_y;                    // the parcel
+        int p2_x, p2_y;                  // second parcel (-1 = none)
+        int ch_x, ch_y;                  // the chute
+        int d_x, d_y0, d_y1;             // door column (-1 = none)
+        bool timed;                      // the chute keeps hours
+    };
+
+    constexpr int floor_count = 3;
+    constexpr floor_def floor_defs[floor_count] = {
+        {"THE HIGH SHELF", lv1_map, -1, -1, 6, 3, -1, -1, 14, 7,
+         -1, -1, -1, false},
+        {"THE NIGHT SHIFT", lv2_map, 3, 7, 1, 5, -1, -1, 13, 7,
+         9, 6, 7, true},
+        {"THE FULL ROUND", lv3_map, 5, 7, 2, 3, -1, -1, 13, 7,
+         10, 6, 7, true},
+    };
+
+    // The base tower as a def too, so every mode reads ONE current-floor
+    // view: classic and rush pass the original literals verbatim (their
+    // sims are bit-identical by construction).
+    constexpr floor_def base_classic = {
+        "THE TOWER", level, switch_cx, switch_cy, parcel_cx, parcel_cy,
+        -1, -1, chute_cx, chute_cy, door_cx, door_cy0, door_cy1, false};
+    constexpr floor_def base_rush = {
+        "THE TOWER", level, switch_cx, switch_cy, parcel_cx, parcel_cy,
+        parcel2_cx, parcel2_cy, chute_cx, chute_cy, door_cx, door_cy0,
+        door_cy1, true};
 
     // --- fixed-point physics (8.8 pixels; all owner-tunable integers) ------
     constexpr int fp = 256;
@@ -202,8 +285,8 @@ int main()
     constexpr int map_y0 = -56;          // row centers at -56, -48, ... 8
     text_line map_lines[map_h];
 
-    constexpr int ui_count = 7;
-    constexpr int ui_y[ui_count] = {-70, 24, 40, 52, 64, 76, 88};
+    constexpr int ui_count = 8;
+    constexpr int ui_y[ui_count] = {-70, 24, 40, 52, 64, 76, 88, 100};
     constexpr int ui_x = -110;
     text_line ui_lines[ui_count];
 
@@ -236,7 +319,10 @@ int main()
     bool carried = false;
     bool p2_carried = false;             // the rush parcel (rung 2)
     unsigned delivered_n = 0;            // rush deliveries this run
-    unsigned mode = 0;                   // 0 classic (START) / 1 rush (SELECT)
+    unsigned mode = 0;                   // 0 classic (START) / 1 rush
+                                         // (SELECT) / 2 tower levels (L)
+    unsigned level = 0;                  // tower-levels index (mode 2)
+    const floor_def* cur = &base_classic;// the ONE current-floor view
     bool door_open = false;
     bool switch_held = false;
     unsigned rewinds = 0;
@@ -284,7 +370,7 @@ int main()
             return true;
         }
 
-        char t = level[cy][cx];
+        char t = cur->map[cy][cx];
 
         if(t == '#')
         {
@@ -329,15 +415,28 @@ int main()
     {
         bool start = bn::keypad::start_pressed();
         bool select = bn::keypad::select_pressed();
+        bool lkey = bn::keypad::l_pressed();
 
         switch(state)
         {
 
         case st_title:
         case st_delivered:
-            if(start || select)
+            if(start || select || lkey)
             {
-                mode = select ? 1 : 0;   // SELECT: THE RUSH ORDER
+                unsigned prev_mode = mode;          // SELECT: rush /
+                mode = select ? 1 : (lkey ? 2 : 0); // L: the tower levels
+
+                if(mode == 2)
+                {
+                    // L from a level's win card advances (wraps after
+                    // the last floor); from anywhere else, floor 1.
+                    level = (prev_mode == 2 && state == st_delivered)
+                          ? (level + 1) % floor_count : 0;
+                }
+
+                cur = mode == 0 ? &base_classic
+                    : mode == 1 ? &base_rush : &floor_defs[level];
                 reset_run();
                 clear_lines();
                 state = st_playing;
@@ -488,11 +587,11 @@ int main()
 
             // --- the clockwork reacts --------------------------------------
             bool player_on_switch = on_ground
-                && feet_cell_x(px) == switch_cx
-                && feet_cell_y(py) == switch_cy;
+                && feet_cell_x(px) == cur->sw_x
+                && feet_cell_y(py) == cur->sw_y;
             bool ghost_on_switch = ghost_active
-                && feet_cell_x(gx) == switch_cx
-                && feet_cell_y(gy) == switch_cy;
+                && feet_cell_x(gx) == cur->sw_x
+                && feet_cell_y(gy) == cur->sw_y;
             switch_held = player_on_switch || ghost_on_switch;
 
             // The door never crushes: it stays open while the player
@@ -503,8 +602,9 @@ int main()
                 int right = ((px + half_w - 1) / fp) / cell_px;
                 int top = ((py - body_h) / fp) / cell_px;
                 int bottom = ((py - 1) / fp) / cell_px;
-                player_in_door = left <= door_cx && door_cx <= right
-                    && top <= door_cy1 && door_cy0 <= bottom;
+                player_in_door = cur->d_x >= 0
+                    && left <= cur->d_x && cur->d_x <= right
+                    && top <= cur->d_y1 && cur->d_y0 <= bottom;
             }
 
             door_open = switch_held || (door_open && player_in_door);
@@ -515,37 +615,39 @@ int main()
             bool window_open = (run_frames % window_period)
                                < window_open_frames;
 
-            if(! carried && feet_cell_x(px) == parcel_cx
-               && feet_cell_y(py) == parcel_cy)
+            if(! carried && feet_cell_x(px) == cur->p_x
+               && feet_cell_y(py) == cur->p_y)
             {
                 carried = true;
             }
 
-            if(mode == 1 && ! p2_carried
-               && feet_cell_x(px) == parcel2_cx
-               && feet_cell_y(py) == parcel2_cy)
+            if(cur->p2_x >= 0 && ! p2_carried
+               && feet_cell_x(px) == cur->p2_x
+               && feet_cell_y(py) == cur->p2_y)
             {
                 p2_carried = true;
             }
 
-            if(mode == 0)
+            if(! cur->timed)
             {
-                if(carried && feet_cell_x(px) == chute_cx
-                   && feet_cell_y(py) == chute_cy)
+                if(carried && feet_cell_x(px) == cur->ch_x
+                   && feet_cell_y(py) == cur->ch_y)
                 {
                     state = st_delivered;
                     clear_lines();
                 }
             }
             else if((carried || p2_carried) && window_open
-                    && feet_cell_x(px) == chute_cx
-                    && feet_cell_y(py) == chute_cy)
+                    && feet_cell_x(px) == cur->ch_x
+                    && feet_cell_y(py) == cur->ch_y)
             {
                 delivered_n += unsigned(carried) + unsigned(p2_carried);
                 carried = false;
                 p2_carried = false;
 
-                if(delivered_n >= 2)
+                unsigned need = cur->p2_x >= 0 ? 2u : 1u;
+
+                if(delivered_n >= need)
                 {
                     state = st_delivered;
                     clear_lines();
@@ -579,6 +681,7 @@ int main()
             ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
             ui_lines[5].set(ui_gen, ui_x, 24, "AND YOU CAN STAND ON IT");
             ui_lines[6].set(ui_gen, ui_x, 40, "SELECT: RUSH ORDER (2)");
+            ui_lines[7].set(ui_gen, ui_x, 52, "L: THE TOWER SHIFTS (3)");
             break;
 
         case st_playing:
@@ -589,15 +692,15 @@ int main()
 
                 for(int x = 0; x < map_w; ++x)
                 {
-                    char glyph = level[y][x];
+                    char glyph = cur->map[y][x];
 
                     if(glyph == 'P' && carried)
                     {
                         glyph = '.';
                     }
-                    else if(y == parcel2_cy && x == parcel2_cx)
+                    else if(y == cur->p2_y && x == cur->p2_x)
                     {
-                        glyph = (mode == 1 && ! p2_carried) ? 'Q' : '.';
+                        glyph = ! p2_carried ? 'Q' : '.';
                     }
                     else if(glyph == 'D')
                     {
@@ -648,7 +751,7 @@ int main()
                 hud.append("% ");
             }
 
-            if(mode == 1)
+            if(cur->timed)
             {
                 unsigned held = unsigned(carried) + unsigned(p2_carried);
                 hud.append(bn::to_string<8>(held));
@@ -691,6 +794,15 @@ int main()
             {
                 ui_lines[5].set(ui_gen, ui_x, 24, "RUSH ORDER: 2 PARCELS");
             }
+            else if(mode == 2)
+            {
+                bn::string<40> lv_line("L");        // the 20-sprite
+                lv_line.append(bn::to_string<8>(level + 1));  // text cap:
+                lv_line.append(" ");                // name and hint are
+                lv_line.append(cur->name);          // separate lines
+                ui_lines[5].set(ui_gen, ui_x, 24, lv_line);
+                ui_lines[6].set(ui_gen, ui_x, 40, "L: NEXT SHIFT");
+            }
 
             break;
         }
@@ -724,6 +836,8 @@ int main()
         cc_telemetry[19] = (state == st_playing
                             && (run_frames % window_period)
                                < window_open_frames) ? 1u : 0u;
+        // growth rung 3 (extension; words 0-19 stay pinned)
+        cc_telemetry[20] = mode == 2 ? level : 0u;
 
         bn::core::update();
     }

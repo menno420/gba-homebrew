@@ -62,3 +62,21 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   (2) The Gloamline concept tree is now COMPLETE (all eight LATER
   SLICES items shipped) — further Gloamline arc work is owner-gated;
   do not invent slices beyond the concept doc.
+
+## Dispatch 2026-07-13 (Brineward slice 9 — saves, PR #94)
+
+- **ts:** 2026-07-13T18:46:26Z (appended by the session-43 worker;
+  everything above left intact per the append-only dispatch rule)
+- Brineward slice 9 (roadmap item 7, the arc's final named beat:
+  "saves: banked gold / upgrades / chart persist") built on branch
+  `claude/brineward-saves` from main @ `97e0117` (slice 8 merged as
+  PR #91) — Gloamline's proven EEPROM path ported; 32 host checks +
+  22 proofs / 616 emulator asserts green in-container, zero re-pins.
+- Root-cause fix ridden along in `tools/nds-headless-check.py`:
+  DeSmuME keeps an implicit global battery per ROM basename
+  (`~/.config/desmume/<rom>.dsv`), so save-writing proofs leaked
+  state into later proof runs — the harness now imports a fresh blank
+  chip whenever `--battery-in` is absent (hermetic by default; both
+  NDS suites re-verified green).
+- PR #94 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

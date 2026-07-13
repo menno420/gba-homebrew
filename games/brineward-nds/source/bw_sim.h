@@ -321,6 +321,43 @@
 // asserted in the mirror).
 #define BW_CUE_ON_NOISE 255
 
+// --- the Graywake ledger save (arc slice 9: roadmap item 7) ---------------------
+// The concept doc's final named beat: "saves: banked gold / upgrades /
+// chart persist". The doc flagged the NDS save path as an open
+// question; Gloamline has since CLOSED it in this repo (its slice 9
+// proved the whole cartridge-EEPROM battery path headlessly, including
+// the libnds-vs-DeSmuME chip-select/HOLD-bit protocol trap and the
+// bounded-poll rule — see gl_sim.h § best-nights save and Gloamline's
+// main.c save_* helpers, which main.c here ports verbatim in shape).
+// The persisted record is ONE fixed 32-byte blob: 8 little-endian u32
+// words { magic, version, banked gold, packed upgrade tiers
+// (hull | cannon<<8 | sail<<16), charted best band, 2 spares (0),
+// checksum-of-words-0..6 } — deterministic serialization, one type-2
+// EEPROM page write. SAFETY BY CONSTRUCTION: bw_save_decode returns 0
+// (and the caller keeps the fresh ledger) on ANY bad blob — wrong
+// magic, wrong version, bad checksum, out-of-range tiers/band,
+// blank/0xFF chip — a corrupt save can reset the ledger, NEVER crash
+// or hang the game. Writes are wear-disciplined: the ARM9 writes ONLY
+// when the persisted tuple CHANGES (a pier bank, a port purchase or
+// repair, a deeper band charted) — never per frame, and never on a
+// sinking (a sinking forfeits the HOLD; nothing banked changes).
+// Audio state (slots 38-45) is deliberately NOT save material — the
+// drone/cue state is power-on-transient (session-42 guard recipe).
+#define BW_SAVE_MAGIC 0x42525356u            // 'BRSV'
+#define BW_SAVE_VERSION 1u                   // bump on any layout change
+#define BW_SAVE_WORDS 8
+#define BW_SAVE_BYTES 32                     // one type-2 EEPROM page
+#define BW_SAVE_ADDR 0                       // blob offset in the backup
+#define BW_SAVE_EEPROM_TYPE 2                // libnds addrtype (see card.h)
+#define BW_SAVE_SALT 0x4C454447u             // 'LEDG' checksum stream
+// Iteration cap on every card-SPI wait in main.c's save write path —
+// Gloamline's measured sizing carried verbatim: ~4096 RDSR polls
+// outlast a real EEPROM's ~5 ms page program with margin, while a
+// chip/emulator that never answers (DeSmuME reads the status busy
+// forever) costs only a bounded sub-frame stall — an expired poll is
+// harmless by construction (the page data commits on chip-deselect).
+#define BW_SAVE_POLL_BOUND 4096u
+
 // --- state -----------------------------------------------------------------------
 typedef struct
 {
@@ -506,5 +543,26 @@ uint32_t bw_cue_len(uint32_t cue);
 uint32_t bw_cue_duty(uint32_t cue);
 uint32_t bw_cue_vol(uint32_t cue);
 uint32_t bw_cue_freq2(uint32_t cue);
+
+// --- the Graywake ledger save (slice 9) ------------------------------------------
+
+// Checksum of a save blob's words 0..BW_SAVE_WORDS-2 (a bw_hash fold on
+// the BW_SAVE_SALT stream). Pure; word BW_SAVE_WORDS-1 is not read.
+uint32_t bw_save_checksum(const uint32_t words[BW_SAVE_WORDS]);
+
+// Serialize the ledger into a BW_SAVE_BYTES blob: { BW_SAVE_MAGIC,
+// BW_SAVE_VERSION, gold, hull|cannon<<8|sail<<16, best_band, 0, 0,
+// checksum }, little-endian words. Deterministic byte-for-byte.
+void bw_save_encode(uint32_t gold, int32_t up_hull, int32_t up_cannon,
+                    int32_t up_sail, uint32_t best_band,
+                    uint8_t out[BW_SAVE_BYTES]);
+
+// Deserialize a blob. Returns 1 and fills the outputs only for a
+// well-formed record (magic, version, checksum, every tier < BW_UP_TIERS
+// and band < BW_BANDS); returns 0 untouched on ANYTHING else — the
+// caller keeps its fresh ledger.
+int bw_save_decode(const uint8_t in[BW_SAVE_BYTES], uint32_t *gold,
+                   int32_t *up_hull, int32_t *up_cannon,
+                   int32_t *up_sail, uint32_t *best_band);
 
 #endif // BW_SIM_H

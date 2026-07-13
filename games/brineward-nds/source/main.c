@@ -1,3 +1,26 @@
+// Brineward — arc slice 9: SAVES (on the slice-8 audio).
+//
+// The concept doc's final named roadmap beat ("saves: banked gold /
+// upgrades / chart persist"): the Graywake LEDGER — banked gold, the
+// three bought upgrade tiers, and the deepest band ever charted —
+// survives the power switch on the cartridge backup chip (EEPROM over
+// the card SPI bus; DeSmuME emulates it as the battery .sav the
+// headless proofs import/export). One bounded read at power-on
+// restores the ledger; a page program fires ONLY when the persisted
+// tuple changes — a pier bank, a port purchase or repair, a deeper
+// band charted — never per frame, and never on a sinking (sinking
+// forfeits the HOLD; nothing banked changes, so the brine keeps no
+// grudge in silicon). A corrupt/blank/future-version blob decodes to
+// the fresh ledger and the game plays on — never a crash, never a
+// hang (bw_save_decode, pure + mirrored). The backup I/O is
+// Gloamline's slice-9 PROVEN flow ported in shape (chip-select/HOLD
+// discipline + bounded polls — the two measured DeSmuME traps).
+// Telemetry appends slots 46-49 (save loaded / ledger writes /
+// format version / spare) with slots 0-45 frozen; audio state stays
+// power-on-transient by design (session-42 guard recipe).
+//
+// Below this line the slice-8 story still applies verbatim:
+//
 // Brineward — arc slice 8: SYNTHESIZED AUDIO (on the slice-7 danger
 // bands + reefs).
 //
@@ -135,8 +158,13 @@
 #define BW_T_ASFXL 44   // frames left on the one-shot cue channel
 #define BW_T_ACFREQ 45  // cue channel frequency now, Hz (0 = closed;
                         //   the two-note dock chime flips this mid-cue)
+// slice 9 (extension; words 0-45 stay pinned)
+#define BW_T_SAVEOK 46  // 1 = power-on read decoded a valid ledger
+#define BW_T_SAVEWR 47  // ledger writes to the backup this power-on
+#define BW_T_SAVEVER 48 // save format version (build-flag visibility)
+#define BW_T_SPARE0 49  // reserved, always 0
 
-volatile uint32_t bw_telemetry[46];
+volatile uint32_t bw_telemetry[50];
 
 enum
 {
@@ -371,6 +399,83 @@ typedef struct
     int32_t up_sail;                     //   (concept-doc rule)
 } Score;
 
+// --- slice-9 backup I/O (bounded card-SPI EEPROM read + page program) ----------
+// The ledger's ONLY backup touches: one read at power-on, one page
+// program per ledger CHANGE (a bank, a port purchase/repair, a deeper
+// charted band — player actions minutes apart, never per frame). The
+// helpers are Gloamline's slice-9 save_* flow ported verbatim in shape
+// (games/gloamline-nds/source/main.c): standard SPI-EEPROM command
+// flows (READ 0x03 / WREN 0x06 / PAGE PROGRAM 0x02 / RDSR 0x05 with
+// BW_SAVE_EEPROM_TYPE-2 = 2-byte addressing), hand-rolled instead of
+// libnds's cardRead/WriteEeprom for Gloamline's two MEASURED reasons:
+// (1) chip-select discipline — a command must clear CARD_SPI_HOLD
+// BEFORE its last byte or DeSmuME's backup device never sees a select
+// edge (libnds's flow froze Gloamline solid on its first write);
+// (2) bounded waits — every poll gives up after BW_SAVE_POLL_BOUND
+// iterations, so a never-answering chip costs a bounded sub-frame
+// stall, never a hang. Don't re-derive; the measurements live with
+// Gloamline's slice-9 card and gl_sim.h § best-nights save.
+
+static void save_spi_byte(uint8_t b)
+{
+    REG_AUXSPIDATA = b;
+    for (uint32_t i = 0;
+         i < BW_SAVE_POLL_BOUND && (REG_AUXSPICNT & CARD_SPI_BUSY); i++) { }
+}
+
+static uint8_t save_spi_read(void)
+{
+    save_spi_byte(0);
+    return REG_AUXSPIDATA;
+}
+
+static void save_select(void)                // begin a command window
+{
+    REG_AUXSPICNT = CARD_ENABLE | CARD_SPI_ENABLE | CARD_SPI_HOLD;
+}
+
+static void save_final_byte(void)            // CS releases after the NEXT
+{                                            // byte (drop HOLD first —
+    REG_AUXSPICNT = CARD_ENABLE | CARD_SPI_ENABLE;   // the protocol rule)
+}
+
+static void save_read_backup(uint8_t blob[BW_SAVE_BYTES])
+{
+    save_select();
+    save_spi_byte(0x03);                     // READ + 2 address bytes
+    save_spi_byte((BW_SAVE_ADDR >> 8) & 0xFF);
+    save_spi_byte(BW_SAVE_ADDR & 0xFF);
+    for (int i = 0; i < BW_SAVE_BYTES - 1; i++)
+        blob[i] = save_spi_read();
+    save_final_byte();
+    blob[BW_SAVE_BYTES - 1] = save_spi_read();
+}
+
+static void save_write_backup(const uint8_t blob[BW_SAVE_BYTES])
+{
+    // WRITE ENABLE — its own one-byte chip-select window
+    save_select();
+    save_final_byte();
+    save_spi_byte(0x06);
+    // PAGE PROGRAM: BW_SAVE_BYTES is exactly one 32-byte page at
+    // BW_SAVE_ADDR 0, so no page-crossing loop is needed.
+    save_select();
+    save_spi_byte(0x02);
+    save_spi_byte((BW_SAVE_ADDR >> 8) & 0xFF);
+    save_spi_byte(BW_SAVE_ADDR & 0xFF);
+    for (int i = 0; i < BW_SAVE_BYTES - 1; i++)
+        save_spi_byte(blob[i]);
+    save_final_byte();
+    save_spi_byte(blob[BW_SAVE_BYTES - 1]);  // CS falls: the chip programs
+    // READ STATUS: wait out the program cycle — BOUNDED
+    save_select();
+    save_spi_byte(0x05);
+    for (uint32_t i = 0;
+         i < BW_SAVE_POLL_BOUND && (save_spi_read() & 0x01); i++) { }
+    save_final_byte();
+    save_spi_read();                         // terminating dummy byte
+}
+
 // --- top-screen scenes -----------------------------------------------------------
 static PrintConsole top_console;
 static PrintConsole bottom_console;
@@ -391,7 +496,7 @@ static void draw_pier(void)
     printf("\x1b[22;12HGRAYWAKE");
 }
 
-static void draw_title(void)
+static void draw_title(const Score *sc, int save_ok)
 {
     consoleSelect(&top_console);
     consoleClear();
@@ -405,6 +510,10 @@ static void draw_title(void)
     printf("\x1b[15;4Hbank gold at the pier\n");
     printf("\x1b[16;4Hafter a win SELECT: deeper\n");
     printf("\x1b[18;9HPRESS START\n");
+    if (save_ok)                             // slice 9: the harbormaster
+        printf("\x1b[20;3Hledger: %lug banked, charted %lu\n",
+               (unsigned long)sc->gold,      //   remembers you
+               (unsigned long)sc->best_band);
 }
 
 static void draw_sunk_card(const Score *sc, const BwDuel *d)
@@ -797,6 +906,35 @@ int main(void)
     BwDuel duel = {0};
     bw_duel_init(&duel, 0);              // idle telemetry before first START
     Score score = {0};
+
+    // Slice 9: the Graywake ledger — ONE bounded read of the cartridge
+    // backup at power-on (card SPI EEPROM; DeSmuME emulates it as the
+    // battery .sav). A missing, blank, corrupt or future-version blob
+    // decodes to 0 and the fresh ledger stands — never a crash, never
+    // a hang. BW_SAVE_EEPROM_TYPE is the assumed decide-and-flag
+    // addressing constant, not a boot-time chip probe.
+    uint32_t save_ok = 0;
+    uint32_t save_writes = 0;
+    {
+        uint8_t blob[BW_SAVE_BYTES];
+        save_read_backup(blob);
+        save_ok = (uint32_t)bw_save_decode(blob, &score.gold,
+                                           &score.up_hull,
+                                           &score.up_cannon,
+                                           &score.up_sail,
+                                           &score.best_band);
+    }
+    // The wear gate: the ledger AS LAST PERSISTED (what the chip
+    // holds, as decoded — a rejected blob gates as the fresh all-zero
+    // ledger, so the first real change writes a valid record straight
+    // over the garbage). Writes fire ONLY when the live ledger drifts
+    // off this tuple — player actions, minutes apart.
+    uint32_t sv_gold = score.gold;
+    int32_t sv_hull = score.up_hull;
+    int32_t sv_cannon = score.up_cannon;
+    int32_t sv_sail = score.up_sail;
+    uint32_t sv_band = score.best_band;
+
     int state = STATE_TITLE;
     int port_row = 0;              // Graywake port menu cursor (slice 4)
     bool maw_counted = false;      // this water's kill already tallied
@@ -819,7 +957,7 @@ int main(void)
     uint32_t cues = 0;             // cues fired this power-on
     uint32_t cue_frame = 0;        // global frame of the last cue
 
-    draw_title();
+    draw_title(&score, (int)save_ok);
     draw_status_frame();
 
     bw_telemetry[BW_T_MAGIC0] = 0x4252494Eu;   // 'BRIN'
@@ -1144,6 +1282,26 @@ int main(void)
             amb_flips++;
         }
 
+        // --- slice-9 ledger persistence (wear-gated: a write fires
+        // ONLY when the persisted tuple changed this frame — a bank,
+        // a port purchase/repair, a deeper band charted; sinking
+        // changes nothing banked and writes nothing) ------------------
+        if (score.gold != sv_gold || score.up_hull != sv_hull
+            || score.up_cannon != sv_cannon || score.up_sail != sv_sail
+            || score.best_band != sv_band)
+        {
+            uint8_t blob[BW_SAVE_BYTES];
+            bw_save_encode(score.gold, score.up_hull, score.up_cannon,
+                           score.up_sail, score.best_band, blob);
+            save_write_backup(blob);
+            sv_gold = score.gold;
+            sv_hull = score.up_hull;
+            sv_cannon = score.up_cannon;
+            sv_sail = score.up_sail;
+            sv_band = score.best_band;
+            save_writes++;
+        }
+
         draw_ships_and_balls(&duel, player_gfx, enemy_gfx, ball_gfx,
                              crate_gfx, maw_shadow_gfx, maw_risen_gfx,
                              reef_gfx, state, frame);
@@ -1205,6 +1363,10 @@ int main(void)
         bw_telemetry[BW_T_AFLIPS] = amb_flips;
         bw_telemetry[BW_T_ASFXL] = cue_left;
         bw_telemetry[BW_T_ACFREQ] = cue_freq_now;
+        bw_telemetry[BW_T_SAVEOK] = save_ok;
+        bw_telemetry[BW_T_SAVEWR] = save_writes;
+        bw_telemetry[BW_T_SAVEVER] = BW_SAVE_VERSION;
+        bw_telemetry[BW_T_SPARE0] = 0;
     }
 
     return 0;

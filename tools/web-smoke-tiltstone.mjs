@@ -11,6 +11,10 @@
  * the authoritative state, draw real intermediate frames mid-flight, skip
  * itself under prefers-reduced-motion, and mute must persist while the
  * honest cue log keeps recording.
+ * Slice 4 (new cell types): a deep cavern (level 4) generates with ice /
+ * locked gems / a one-way grate on the board, renders them without errors,
+ * and a real rotation there still matches the pure-Node engine exactly —
+ * grates turning, ice sliding — with the cue log staying a pure composition.
  *
  * Deps (NOT vendored — do not commit node_modules): playwright or
  * playwright-core resolvable via NODE_PATH; a local Chromium binary,
@@ -260,7 +264,50 @@ try {
     mid.animating && mid.shot !== preShot && mid.shot !== finalShot,
     `sampled at 430ms, animating=${mid.animating}`);
 
-  if (shotPath) { await page.screenshot({ path: shotPath }); console.log(`(screenshot: ${shotPath})`); }
+  // ------------------------------------ slice 4: new cell types (deep cavern)
+  await page.evaluate(() => window.TILTSTONE.reset(42, 4));
+  const deep = await page.evaluate(() => ({
+    grid: window.TILTSTONE.gridString(),
+    status: window.TILTSTONE.getState().status,
+    level: window.TILTSTONE.getState().levelIndex,
+    logLen: window.TILTSTONE.getCueLog().length
+  }));
+  check("LV5 cavern (level 4) generates with ice, locked gems and a grate on the board",
+    deep.status === "playing" && deep.level === 4 &&
+    /\*/.test(deep.grid) && /[a-h]/.test(deep.grid) && /[\^>v<]/.test(deep.grid),
+    `grid has ${(deep.grid.match(/\*/g) || []).length} ice, ${(deep.grid.match(/[a-h]/g) || []).length} locks, ${(deep.grid.match(/[\^>v<]/g) || []).length} grates`);
+  check("deep cavern matches the pure-Node generator byte-for-byte",
+    deep.grid === engine.gridString(engine.newGame(42, 4).grid));
+
+  const deepPixBefore = await page.evaluate(() => document.getElementById("game").toDataURL());
+  await page.keyboard.press("ArrowRight");
+  const deepAfter = await page.evaluate(() => ({
+    used: window.TILTSTONE.getState().used,
+    grid: window.TILTSTONE.gridString()
+  }));
+  await page.waitForFunction(() => !window.TILTSTONE.isAnimating());
+  const deepPixAfter = await page.evaluate(() => document.getElementById("game").toDataURL());
+  const pure4 = engine.rotate(engine.newGame(42, 4), "cw");
+  check("a real rotation in the deep cavern == pure-Node engine (grate turned, everything settled)",
+    deepAfter.used === 1 && deepAfter.grid === engine.gridString(pure4.grid));
+  check("the new cells render (rotation changes the canvas pixels)",
+    deepPixBefore !== deepPixAfter);
+
+  const deepTl = juice.timeline(engine.resolveTrace(engine.rotateGrid(engine.newGame(42, 4).grid, "cw")).phases);
+  const deepExpected = ["rotate"];
+  for (const s of deepTl.steps) for (const c of s.cues) deepExpected.push(juice.cueFor(c.name, c.chain).key);
+  if (pure4.status === "won") deepExpected.push("win");
+  if (pure4.status === "lost") deepExpected.push("lose");
+  const deepLog = await page.evaluate(() => window.TILTSTONE.getCueLog());
+  check("deep-cavern cue log tail == pure-Node composition (unlock cue wired through the same table)",
+    JSON.stringify(deepLog.slice(deep.logLen)) === JSON.stringify(deepExpected),
+    `[${deepLog.slice(deep.logLen).join(",")}]`);
+
+  check("zero console/page errors accumulated through the deep-cavern section",
+    consoleErrors.length === 0 && pageErrors.length === 0,
+    consoleErrors.concat(pageErrors).join(" | ") || "clean");
+
+  if (shotPath) { await page.screenshot({ path: shotPath }); console.log(`(screenshot: ${shotPath} — LV5 board with the slice-4 cells)`); }
 } finally {
   await browser.close();
 }

@@ -1,0 +1,1 @@
+- `claude/courier-ghost` · **Clockwork Courier growth rung 1: GHOST-AS-PLATFORM** — the first named cut in games/clockwork-courier/CONCEPT.md (one-way top collision on the ghost; carried proofs re-derived + committed as the proofs.sh oracle) · games/clockwork-courier/**, dist/clockwork-courier.gba, dist/README.md, .sessions/2026-07-13-courier-ghost.md · 2026-07-13

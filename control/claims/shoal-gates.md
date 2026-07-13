@@ -1,0 +1,1 @@
+- `claude/shoal-gates` · **Shoal growth rung 2: GATES** — the next named cut in games/shoal/CONCEPT.md order (static gate geometry, new input verb; calm/hungry game-state untouched) · games/shoal/**, dist/shoal.gba, dist/README.md, .sessions/2026-07-13-shoal-gates.md · 2026-07-13

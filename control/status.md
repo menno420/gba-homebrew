@@ -254,7 +254,7 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   water (card->run transitions measured unchanged) — every proof
   clock re-based +1 with EVERY game-state literal carried verbatim
   (the #102 ±1-row-offset method, applied suite-wide).
-- 7 proofs / 180 asserts green (the audio-decision ledger pinned
+- 7 proofs / 179 asserts green (the audio-decision ledger pinned
   across the whole campaign: 136 fish banked / 15 eaten / 4 wins /
   1 loss / 5 starts / mute flag; mixer voicing at the win and lose
   cards); P4/P6/P7 run-twice byte-identical. `dist/shoal.gba`

@@ -1,6 +1,6 @@
 # Session 2026-07-13-seat-ender — game-lab Track B coordinator-seat ender
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-13 (branch `claude/seat-ender-20260713`, based on main
   `d87f9ad`)

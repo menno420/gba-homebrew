@@ -349,3 +349,52 @@ int gl_record_improves(uint32_t best_nights, uint32_t nights)
 {
     return nights > best_nights;                     // strictly better only
 }
+
+int gl_map_col(int32_t x)
+{
+    // Moved VERBATIM from main.c's map_col_of (slice 3): yard pixel
+    // 16..239 -> plot column, clamped.
+    int px = x / GL_ONE;                     // 16..239
+    int col = GL_MAP_COL0 + (px - 16) * GL_MAP_COLS / 224;
+    if (col < GL_MAP_COL0) col = GL_MAP_COL0;
+    if (col > GL_MAP_COL0 + GL_MAP_COLS - 1) col = GL_MAP_COL0 + GL_MAP_COLS - 1;
+    return col;
+}
+
+int gl_map_row(int32_t y)
+{
+    // Moved VERBATIM from main.c's map_row_of (slice 3): yard pixel
+    // 32..175 -> plot row, clamped.
+    int py = y / GL_ONE;                     // 32..175
+    int row = GL_MAP_ROW0 + (py - 32) * GL_MAP_ROWS / 144;
+    if (row < GL_MAP_ROW0) row = GL_MAP_ROW0;
+    if (row > GL_MAP_ROW0 + GL_MAP_ROWS - 1) row = GL_MAP_ROW0 + GL_MAP_ROWS - 1;
+    return row;
+}
+
+int gl_mark_of_cell(int col, int row, int32_t *x, int32_t *y)
+{
+    if (col < GL_MAP_COL0 || col >= GL_MAP_COL0 + GL_MAP_COLS
+        || row < GL_MAP_ROW0 || row >= GL_MAP_ROW0 + GL_MAP_ROWS)
+        return 0;                            // off the plot: no chalk
+    // Mid-span inverse of gl_map_col/gl_map_row: the midpoint of the
+    // cell's yard-pixel preimage, so the forward map returns EXACTLY
+    // (col, row) again (proved for every plot cell in check-gloam).
+    *x = (16 + ((col - GL_MAP_COL0) * 224 + 224 / 2) / GL_MAP_COLS)
+         * GL_ONE;
+    *y = (32 + ((row - GL_MAP_ROW0) * 144 + 144 / 2) / GL_MAP_ROWS)
+         * GL_ONE;
+    return 1;
+}
+
+int gl_mark_of_touch(int tx, int ty, int32_t *x, int32_t *y)
+{
+    if (tx < 0 || ty < 0)
+        return 0;                            // defensive: no negative cell
+    return gl_mark_of_cell(tx / GL_MAP_CELL_PX, ty / GL_MAP_CELL_PX, x, y);
+}
+
+uint32_t gl_gloam_out(uint32_t wave_total, uint32_t spawned)
+{
+    return spawned < wave_total ? wave_total - spawned : 0;
+}

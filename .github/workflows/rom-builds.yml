@@ -127,7 +127,7 @@ jobs:
       # Proof 1 — boot: dual-screen title renders, telemetry mailbox is
       # live (magic words present, frame counter running, full-length
       # 3600-frame nights — i.e. the shipped ROM, not a test build).
-      - name: 'proof 1/23 — boot + telemetry mailbox'
+      - name: 'proof 1/26 — boot + telemetry mailbox'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-boot-300.png \
@@ -143,7 +143,7 @@ jobs:
       # then RIGHT / DOWN / UP+LEFT each move the player by the exact
       # pure-function distances (1.5 px/f straight, 271/256 px/f per axis
       # diagonal). Positions are 8.8 fixed (32768 = x128).
-      - name: 'proof 2/23 — 8-way move (position telemetry tracks input)'
+      - name: 'proof 2/26 — 8-way move (position telemetry tracks input)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-move.png \
@@ -167,7 +167,7 @@ jobs:
       # 2405 < 2560), state flips to DEAD with deaths=1, the card holds,
       # and START restarts instantly (fresh seed 348, player re-centered,
       # the new night's Shambler closing again).
-      - name: 'proof 3/23 — chase closes, contact = death, START restarts'
+      - name: 'proof 3/26 — chase closes, contact = death, START restarts'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-death.png \
@@ -194,7 +194,7 @@ jobs:
       # >= 22 px of margin at every alignment +-6 frames) replays a FULL
       # 60-second night headlessly (~5 s wall): dawn breaks (state 3),
       # nights survived = 1, deaths = 0.
-      - name: 'proof 4/23 — survive night 1 to dawn (full-length night)'
+      - name: 'proof 4/26 — survive night 1 to dawn (full-length night)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-dawn.png \
@@ -218,7 +218,7 @@ jobs:
       # only DELAYS — the idle player still dies by frame 490. Every
       # value below was predicted by the tools/gloam-route.py mirror sim
       # and matched by the emulator run exactly.
-      - name: 'proof 5/23 — shove: knockback + stun + cooldown (pressure valve)'
+      - name: 'proof 5/26 — shove: knockback + stun + cooldown (pressure valve)'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-shove.png \
@@ -251,7 +251,7 @@ jobs:
       # schedule (alive t[16]: 1 at rf 100, 2 past rf 800, 3 past rf
       # 1600), and dawn breaks on night 2 with 3 Shamblers up and 0
       # deaths. ~10 s wall headless for the two full nights.
-      - name: 'proof 6/23 — night-2 wave (3 zombies) spawns on schedule + survive to dawn'
+      - name: 'proof 6/26 — night-2 wave (3 zombies) spawns on schedule + survive to dawn'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-night2.png \
@@ -288,7 +288,7 @@ jobs:
       # i.e. 60 fps with the maximum crowd + full ring. Honest-method
       # note: this is DeSmuME's scanline timing model (py-desmume 0.0.9),
       # not hardware.
-      - name: 'proof 7/23 — 24-Shambler + 8-barricade frame budget (stress build, vcount probe)'
+      - name: 'proof 7/26 — 24-Shambler + 8-barricade frame budget (stress build, vcount probe)'
         run: |
           python3 tools/nds-headless-check.py \
             gloamline-stress.nds nds-stress.png \
@@ -319,7 +319,7 @@ jobs:
       # 690 with the unspent planks intact (t[24]=5). Every value was
       # predicted by the tools/gloam-route.py mirror sim and matched by
       # the emulator exactly.
-      - name: 'proof 8/23 — barricade: place blocks the dead, chew-through breaches, still no free lunch'
+      - name: 'proof 8/26 — barricade: place blocks the dead, chew-through breaches, still no free lunch'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-barricade.png \
@@ -351,7 +351,7 @@ jobs:
       # exactly 1 plank (t[26] back to 236 = 240 minus the chews since,
       # t[24] 5->4, t[29]=1) and the block keeps holding (alive at 420,
       # chewing resumed: t[26]=155). Mirror-predicted, emulator-matched.
-      - name: 'proof 9/23 — barricade repair: 1 plank, full hp, no waste on a full one'
+      - name: 'proof 9/26 — barricade repair: 1 plank, full hp, no waste on a full one'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-repair.png \
@@ -388,7 +388,7 @@ jobs:
       # wiped, 0 deaths. Route survives every +-6-frame movement skew on
       # the mirror (min dist >= 22.4 px); every pinned value below was
       # mirror-predicted and emulator-matched exactly.
-      - name: 'proof 10/23 — scavenge: SELECT enters, 3 caches looted, full pocket wastes nothing, START exits with the loot'
+      - name: 'proof 10/26 — scavenge: SELECT enters, 3 caches looted, full pocket wastes nothing, START exits with the loot'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-scavenge-loot.png \
@@ -433,7 +433,7 @@ jobs:
       # closes 6821 -> 2789) and killed INSIDE the interlude (state 4 ->
       # 2, deaths 1, contact dist 2405 — the same cold hands as proof 3),
       # planks unlooted. Daylight is bought planks, not safety.
-      - name: 'proof 11/23 — scavenge risk: the dead walk back in, idling in the interlude kills you'
+      - name: 'proof 11/26 — scavenge risk: the dead walk back in, idling in the interlude kills you'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-scavenge-death.png \
@@ -466,7 +466,7 @@ jobs:
       # (state 4 -> 1, night 2, wave of 3 on schedule, player recentered,
       # caches wiped, interlude counter 0, planks carried, 0 deaths).
       # Route survives every +-6-frame movement skew on the mirror.
-      - name: 'proof 12/23 — scavenge timer: kite out the full dawn light, night 2 starts by itself with the loot'
+      - name: 'proof 12/26 — scavenge timer: kite out the full dawn light, night 2 starts by itself with the loot'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-scavenge-timer.png \
@@ -501,7 +501,7 @@ jobs:
       # 80 px) and the dark press stays 0 the whole night — the
       # zero-re-pin gate, emulator-visible — and the death card FREEZES
       # the burn (10673 at both 250 and 340: cards burn nothing).
-      - name: 'proof 13/23 — lantern oil burns per night frame; at full light nothing changes'
+      - name: 'proof 13/26 — lantern oil burns per night frame; at full light nothing changes'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-oil-burn.png \
@@ -535,7 +535,7 @@ jobs:
       # unhesitating and kill the lamplighter in the failing light
       # (contact 2437, radius 16599 = 64.8 px, nights survived 2).
       # Every pinned value mirror-predicted, emulator-matched exactly.
-      - name: 'proof 14/23 — night 3: the light fails, the dark presses, the pressed dead kill'
+      - name: 'proof 14/26 — night 3: the light fails, the dark presses, the pressed dead kill'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-oil-press.png \
@@ -581,7 +581,7 @@ jobs:
       # (t[43] stays 1: no flask is ever wasted); START exits into
       # night 2 where the lantern burns again (10780 at run frame 20,
       # 10740 at 60), flasks wiped, loot carried, 0 deaths.
-      - name: 'proof 15/23 — oil flask: entry tops the tank to the cap, a full tank wastes nothing'
+      - name: 'proof 15/26 — oil flask: entry tops the tank to the cap, a full tank wastes nothing'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-oil-flask.png \
@@ -627,7 +627,7 @@ jobs:
       # and matched by the emulator exactly. Honest-method note: this
       # proves WHICH sound is asked for WHEN — headless CI cannot hear
       # the PSG output itself (owner playtest for the mix).
-      - name: 'proof 16/23 — audio cues: nightfall toll, death rattle, the drone dies with you'
+      - name: 'proof 16/26 — audio cues: nightfall toll, death rattle, the drone dies with you'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-audio-idle.png \
@@ -671,7 +671,7 @@ jobs:
       # the dead cross the shrinking light circle); the pressed kill
       # fires the DEATH rattle and cuts the drone (8960). All
       # mirror-predicted, emulator-matched exactly.
-      - name: 'proof 17/23 — ambience: the drone climbs as the light fails and the dark presses'
+      - name: 'proof 17/26 — ambience: the drone climbs as the light fails and the dark presses'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-audio-press.png \
@@ -727,7 +727,7 @@ jobs:
       # no-waste rule is audible silence); START exits and night 2
       # tolls in over the 65 Hz night drone (t[50] = 5, t[53] = 4).
       # All mirror-predicted, emulator-matched exactly.
-      - name: 'proof 18/23 — interlude audio: day drone, flask + cache cues, silence on the no-waste stand'
+      - name: 'proof 18/26 — interlude audio: day drone, flask + cache cues, silence on the no-waste stand'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-audio-flask.png \
@@ -773,7 +773,7 @@ jobs:
       # (700; channel closed again by 750). Cue priority is live in
       # this run: plank/shove/breach/death each preempt the channel as
       # they land. All mirror-predicted, emulator-matched exactly.
-      - name: 'proof 19/23 — verb cues: plank knock, shove thump, breach splinter, death preempts'
+      - name: 'proof 19/26 — verb cues: plank knock, shove thump, breach splinter, death preempts'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-audio-verbs.png \
@@ -821,7 +821,7 @@ jobs:
       # to the host mirror's gl_save_encode(1, 118) (golden bytes also
       # pinned host-side in check-gloam.py) — the C encoder, the
       # emulated chip, and the mirror agree at byte level.
-      - name: 'proof 20/23 — best-nights save: fresh chip, one dawn write, battery bytes == mirror encode'
+      - name: 'proof 20/26 — best-nights save: fresh chip, one dawn write, battery bytes == mirror encode'
         run: |
           python3 tools/gloam-save.py blank gl-blank.sav
           python3 tools/nds-headless-check.py \
@@ -848,7 +848,7 @@ jobs:
       # dawn writes NOTHING (t[59] stays 0 — strictly-better-only, the
       # EEPROM wear discipline); the battery image is cmp-identical
       # after the run (zero wear at byte level).
-      - name: 'proof 21/23 — save persistence: power cycle loads the record, an equal run writes nothing'
+      - name: 'proof 21/26 — save persistence: power cycle loads the record, an equal run writes nothing'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-save-reload.png \
@@ -876,7 +876,7 @@ jobs:
       # death card. The exported battery carries encode(2, 118)
       # byte-identically. Every pinned value was predicted by the
       # tools/gloam-route.py save mirror and matched exactly.
-      - name: 'proof 22/23 — record update: better dawns replace, death replaces nothing'
+      - name: 'proof 22/26 — record update: better dawns replace, death replaces nothing'
         run: |
           python3 tools/nds-headless-check.py \
             games/gloamline-nds/gloamline-nds.nds nds-save-climb.png \
@@ -915,7 +915,7 @@ jobs:
       # own. Both fixtures are built by tools/gloam-save.py through the
       # check-gloam.py mirror, which asserts they must NOT decode
       # before they're used.
-      - name: 'proof 23/23 — corrupt save = fresh table + the game plays on; future version = reset'
+      - name: 'proof 23/26 — corrupt save = fresh table + the game plays on; future version = reset'
         run: |
           python3 tools/gloam-save.py corrupt gl-save1.sav --out gl-corrupt.sav
           python3 tools/nds-headless-check.py \
@@ -945,6 +945,140 @@ jobs:
             --assert-watch 250:t:56:eq:0 \
             --assert-watch 250:t:60:eq:1 \
             --assert-watch 250:t:2:ge:200
+      # Proof 24 — THE CHALK MARK BY BUTTONS (slice 10), on proof 3's
+      # control timing (START at 120 = seed 118): X chalks the mark at
+      # the lamplighter's own feet (mark on, at the start position
+      # 32768/26624, range 0, one mark chalked); 60 frames of RIGHT
+      # (the proof-2 movement pin, 55808) open exactly 23040 of
+      # Chebyshev range on the watch line while the mark itself stays
+      # put; X wipes it (off, range 0, chalk count unchanged); X
+      # chalks a new one at the moved position (55808, count 2); the
+      # mark STANDS on the death card (the freeze-frame map keeps your
+      # note), and the instant restart (START at 430 = fresh seed 428)
+      # wipes the chalk with the fresh run while the power-on count
+      # keeps its 2. The dead ignore chalk: the control death still
+      # lands (state 2, deaths 1) with no A/B pressed. Every value was
+      # predicted by the tools/gloam-route.py mark mirror and matched
+      # by the emulator exactly.
+      - name: 'proof 24/26 — chalk mark by buttons: X places at your feet, range readout, X wipes, fresh run forgets'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-mark.png \
+            --frames 460 --keys 120-125:START --keys 150-155:X \
+            --keys 170-230:RIGHT --keys 240-245:X --keys 260-265:X \
+            --keys 430-435:START \
+            --shot 300:nds-mark-placed.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:72 \
+            --assert-watch 160:t:64:eq:1 \
+            --assert-watch 160:t:65:eq:32768 \
+            --assert-watch 160:t:66:eq:26624 \
+            --assert-watch 160:t:67:eq:0 \
+            --assert-watch 160:t:68:eq:1 \
+            --assert-watch 235:t:4:eq:55808 \
+            --assert-watch 235:t:65:eq:32768 \
+            --assert-watch 235:t:67:eq:23040 \
+            --assert-watch 250:t:64:eq:0 \
+            --assert-watch 250:t:67:eq:0 \
+            --assert-watch 250:t:68:eq:1 \
+            --assert-watch 270:t:64:eq:1 \
+            --assert-watch 270:t:65:eq:55808 \
+            --assert-watch 270:t:66:eq:26624 \
+            --assert-watch 270:t:68:eq:2 \
+            --assert-watch 420:t:3:eq:2 \
+            --assert-watch 420:t:11:eq:1 \
+            --assert-watch 420:t:64:eq:1 \
+            --assert-watch 420:t:68:eq:2 \
+            --assert-watch 445:t:3:eq:1 \
+            --assert-watch 445:t:12:eq:428 \
+            --assert-watch 445:t:64:eq:0 \
+            --assert-watch 445:t:65:eq:0 \
+            --assert-watch 445:t:68:eq:2
+      # Proof 25 — THE TOUCH ALIAS (slice 10, the concept doc's "tap
+      # the map to drop a marker at most" — optional, never required):
+      # a tap OFF the plot (LCD 8,30 = the legend row) drops nothing;
+      # a tap at LCD (100,100) = plot cell (12,12) chalks the mark at
+      # the cell's EXACT mid-span yard point (25600, 27904 — the pure
+      # gl_mark_of_cell value, host-proved to round-trip to that very
+      # cell) at range 7168 from the idle lamplighter; a second tap at
+      # (230,140) = cell (28,17) MOVES it (58368, 40960, range 25600);
+      # X wipes it — buttons always suffice. Control: the proof-3
+      # death still lands on schedule (state 2 at 250, contact dist
+      # pinned 2405) — the stylus fed NOTHING back into the sim.
+      # Every value mirror-predicted first and matched exactly.
+      - name: 'proof 25/26 — touch alias: off-plot tap drops nothing, taps place/move the mark mid-cell exactly, X wipes'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-touch.png \
+            --frames 300 --keys 120-125:START --keys 220-225:X \
+            --touch 140-150:8,30 --touch 160-170:100,100 \
+            --touch 190-200:230,140 \
+            --shot 180:nds-touch-mark.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:72 \
+            --assert-watch 155:t:64:eq:0 \
+            --assert-watch 155:t:68:eq:0 \
+            --assert-watch 175:t:64:eq:1 \
+            --assert-watch 175:t:65:eq:25600 \
+            --assert-watch 175:t:66:eq:27904 \
+            --assert-watch 175:t:67:eq:7168 \
+            --assert-watch 175:t:68:eq:1 \
+            --assert-watch 205:t:64:eq:1 \
+            --assert-watch 205:t:65:eq:58368 \
+            --assert-watch 205:t:66:eq:40960 \
+            --assert-watch 205:t:67:eq:25600 \
+            --assert-watch 205:t:68:eq:2 \
+            --assert-watch 230:t:64:eq:0 \
+            --assert-watch 230:t:67:eq:0 \
+            --assert-watch 230:t:68:eq:2 \
+            --assert-watch 250:t:3:eq:2 \
+            --assert-watch 250:t:11:eq:1 \
+            --assert-watch 250:t:13:eq:2405
+      # Proof 26 — THE WATCH LINE COUNTS THE GLOAM + CHALK SURVIVES
+      # THE DAWN (slice 10), on proof 6's committed night-2 route with
+      # ALL of proof 6's own pins re-asserted around it: a mid-night-1
+      # tap chalks the mark (cell placement — timing-skew-immune by
+      # construction); OUT reads 0 all of night 1 (the lone Shambler
+      # is already over the fence), then night 2's wave of 3 counts
+      # it down on the pure spawn schedule — OUT 2 with 1 up at rf
+      # 100, OUT 1 past rf 800, OUT 0 past rf 1600 (the mirror of
+      # t[16]'s existing climb) — and the mark STANDS through dawn ->
+      # START -> night 2 at the same yard point (chalk doesn't wash
+      # off at dawn; range pinned 21504 from the route's west-fence
+      # clamp), all the way to dawn 2. The screenshot carries the
+      # polished map: plot mark, watch line, BEST header.
+      - name: 'proof 26/26 — watch line: OUT counts tonight''s gloam down the spawn schedule; the mark survives the dawn'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/gloamline-nds/gloamline-nds.nds nds-mark-night2.png \
+            --frames 7600 $(cat games/gloamline-nds/proof/night2-route-keys.txt) \
+            --touch 2000-2010:100,100 \
+            --shot 5600:nds-mark-watchline.png \
+            --elf games/gloamline-nds/build/gloamline-nds.elf \
+            --watch t:gl_telemetry:72 \
+            --assert-watch 2020:t:64:eq:1 \
+            --assert-watch 2020:t:65:eq:25600 \
+            --assert-watch 2020:t:66:eq:27904 \
+            --assert-watch 2020:t:68:eq:1 \
+            --assert-watch 2020:t:69:eq:0 \
+            --assert-watch 3750:t:3:eq:3 \
+            --assert-watch 3750:t:56:eq:1 \
+            --assert-watch 3750:t:64:eq:1 \
+            --assert-watch 3900:t:3:eq:1 \
+            --assert-watch 3900:t:9:eq:2 \
+            --assert-watch 3900:t:16:eq:1 \
+            --assert-watch 3900:t:64:eq:1 \
+            --assert-watch 3900:t:65:eq:25600 \
+            --assert-watch 3900:t:69:eq:2 \
+            --assert-watch 4750:t:16:eq:2 \
+            --assert-watch 4750:t:69:eq:1 \
+            --assert-watch 5500:t:16:eq:3 \
+            --assert-watch 5500:t:67:eq:21504 \
+            --assert-watch 5500:t:69:eq:0 \
+            --assert-watch 7450:t:3:eq:3 \
+            --assert-watch 7450:t:10:eq:2 \
+            --assert-watch 7450:t:64:eq:1 \
+            --assert-watch 7450:t:69:eq:0
       - name: upload NDS ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -997,6 +1131,12 @@ jobs:
             nds-save-best2.png
             nds-save-corrupt.png
             nds-save-vbump.png
+            nds-mark.png
+            nds-mark-placed.png
+            nds-touch.png
+            nds-touch-mark.png
+            nds-mark-night2.png
+            nds-mark-watchline.png
             gl-save1.sav
             gl-save3.sav
           if-no-files-found: error

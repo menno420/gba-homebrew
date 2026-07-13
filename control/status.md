@@ -30,3 +30,35 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
 - melonDS enhancement lane go/no-go (owner asked 2026-07-12 ~14:15Z; complaint research delivered; proposed scope: fork melonDS-android — audio crackle fix, DraStic save-import wizard, layout parity, fast-forward fix).
 - Standing: canonical merge clause in control/README.md; NDS jobs → required checks.
 - (carried) pokemon-mod-lab OWNER-ACTION items.
+
+## Dispatch 2026-07-12 (session 37, coordinator-seat dispatch)
+
+- **ts:** 2026-07-12T21:27:13Z (this section APPENDED by the session-37
+  worker on coordinator-seat dispatch; the cycle-5 body above is left
+  intact per the dispatch's append-only instruction)
+- **Staleness note:** the cycle-5 heartbeat above is STALE vs HEAD — it
+  lists PR #68 (Gloamline slice 8) and PR #69 (Brineward slice 5) as
+  parked awaiting owner clicks; both have since MERGED (`27e8851`,
+  `a5b5325`), and the queued Gloamline slice 9 also landed (PR #74,
+  `4ad557d` = main at this session's start).
+- **Shipped this session:** Gloamline slice 10 "WATCH-MAP POLISH" —
+  chalk mark (X buttons-first; optional map-tap alias via the pure
+  gl_mark_of_cell/gl_mark_of_touch with exact cell round-trips), OUT
+  watch line (gl_gloam_out), BEST on the map header. PR #75 (branch
+  `claude/gloamline-watch-map`), commits `18886c0` (card+claim),
+  `6ad6a80` (pure layer + mirrors), `b9547f7` (glue + harness
+  --touch), `e1899f0` (CI proofs 24-26), `a8fd81f` (dist + docs).
+  26 proofs / 464 emulator asserts, all 399 pre-slice-10 asserts
+  byte-identical (zero re-pins, 8th hold); stress budget steady max 70
+  (mean 57.3) with the mark live; dist 118,272 B sha256
+  `2ec0afa4…0749`. CI run ids recorded on the PR after the final push.
+- **Parked-PR landing path:** PR #75 parked READY (non-draft), no
+  self-merge — owner click is the default; alternatively a successor
+  session may land it via non-author review-merge per lane precedent.
+- **Baton (next 2 tasks):** (1) Brineward slice 6 "wind + sailing
+  feel" is pre-built on branch `claude/brineward-wind` (session 34,
+  verified locally per the stale section above) and still has NO PR —
+  next wake should open it READY on post-#75 main and re-verify.
+  (2) The Gloamline concept tree is now COMPLETE (all eight LATER
+  SLICES items shipped) — further Gloamline arc work is owner-gated;
+  do not invent slices beyond the concept doc.

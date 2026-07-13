@@ -1,3 +1,34 @@
+// Gloamline — arc slice 10: WATCH-MAP POLISH (on the slice-9
+// best-nights save).
+//
+// The concept doc's LAST later-slice cut ("watch-map polish"),
+// honoring its own watch-map words ("Touch optional, never required
+// (tap the map to drop a marker at most); the game is 100% playable
+// on buttons"). Three additions, all bottom-screen:
+// (1) THE CHALK MARK — X chalks a '!' mark on the watch-map at the
+// lamplighter's own position and clears it again (buttons-first,
+// BINDING); tapping the map plot is the optional stylus alias that
+// drops or moves the mark to the tapped cell. The map cell geometry
+// moved VERBATIM into the pure layer (gl_map_col/gl_map_row) and the
+// tap placement is the pure gl_mark_of_touch/gl_mark_of_cell —
+// mid-span inverse with an EXACT cell round-trip (the mark renders in
+// the very cell you tapped; proved host-side for every plot cell and
+// every LCD pixel). The mark is chalk ON THE MAP, not a thing in the
+// yard: NOTHING in the sim reads it (the dead ignore chalk), so every
+// pre-slice-10 pin holds bit-identically. It persists across nights
+// within a run (chalk doesn't wash off at dawn) and wipes on a fresh
+// run. (2) THE WATCH LINE — "OUT n" under the plot counts tonight's
+// dead still out in the gloam (pure gl_gloam_out), plus "! MARK d"
+// (the mark's range in map cells) while the chalk is down; redrawn
+// only when a value flips (frame-budget rail). (3) THE RECORD ON THE
+// MAP HEADER — "BEST n" rides the watch-map during play (pure render
+// of the slice-9 state). Telemetry appends slots 64-71 (mark
+// on/x/y/dist, marks chalked, gloam-out) with slots 0-63 frozen; the
+// mailbox grows 64 -> 72 words. No new audio cue (chalk is silent —
+// a new id would outrank or renumber the pinned priority ranking).
+//
+// Below this line the slice-9 story still applies verbatim:
+//
 // Gloamline — arc slice 9: SAVE-FILE BEST-NIGHTS (on the slice-8
 // synthesized audio).
 //
@@ -121,13 +152,14 @@
 // scripted CI presses START on a fixed frame, so the whole run is a pure
 // function of the input script. No wall clock, no runtime RNG.
 //
-// Telemetry mailbox (the gl_audio_hook concept ported to NDS): 32 u32
+// Telemetry mailbox (the gl_audio_hook concept ported to NDS): 72 u32
 // words at the exported symbol `gl_telemetry`, rewritten every frame, so
 // headless proofs (tools/nds-headless-check.py --elf/--watch) can assert
 // game state numerically. Layout below at GL_T_*. Slots 0-39 keep their
 // slice-3/4/5/6 meanings EXACTLY (the pinned CI asserts read them);
 // slice 7 appends 40-47 (lantern oil), slice 8 appends 48-55 (audio
-// decisions), slice 9 appends 56-63 (the best-nights save record) —
+// decisions), slice 9 appends 56-63 (the best-nights save record),
+// slice 10 appends 64-71 (the watch-map chalk mark + gloam-out) —
 // each with every older slot frozen. On a multi-zombie night the
 // ZX/ZY/DIST/NSTUN slots describe the NEAREST Shambler (identical to
 // slice 3 whenever one zombie is up); BX/BY/BHP likewise describe the
@@ -207,8 +239,16 @@
 #define GL_T_SPARE4 61  // reserved, always 0
 #define GL_T_SPARE5 62  // reserved, always 0
 #define GL_T_SPARE6 63  // reserved, always 0
+#define GL_T_MARKON 64  // 1 = the chalk mark is on the watch-map
+#define GL_T_MARKX 65   // mark yard x, 8.8 fixed (last chalked; raw)
+#define GL_T_MARKY 66   // mark yard y
+#define GL_T_MARKDIST 67// Chebyshev player<->mark, 8.8 (0 when off)
+#define GL_T_MARKS 68   // marks chalked this power-on (X or touch)
+#define GL_T_OUT 69     // tonight's dead still out in the gloam
+#define GL_T_SPARE7 70  // reserved, always 0
+#define GL_T_SPARE8 71  // reserved, always 0
 
-volatile uint32_t gl_telemetry[64];
+volatile uint32_t gl_telemetry[72];
 
 enum
 {
@@ -366,28 +406,13 @@ static void load_palette(void)
 }
 
 // --- watch-map (bottom screen) geometry ---------------------------------------
-#define MAP_COL0 2
-#define MAP_ROW0 5
-#define MAP_COLS_N 28
-#define MAP_ROWS_N 14
-
-static int map_col_of(int32_t fx)
-{
-    int px = fx / GL_ONE;                    // 16..239
-    int col = MAP_COL0 + (px - 16) * MAP_COLS_N / 224;
-    if (col < MAP_COL0) col = MAP_COL0;
-    if (col > MAP_COL0 + MAP_COLS_N - 1) col = MAP_COL0 + MAP_COLS_N - 1;
-    return col;
-}
-
-static int map_row_of(int32_t fy)
-{
-    int py = fy / GL_ONE;                    // 32..175
-    int row = MAP_ROW0 + (py - 32) * MAP_ROWS_N / 144;
-    if (row < MAP_ROW0) row = MAP_ROW0;
-    if (row > MAP_ROW0 + MAP_ROWS_N - 1) row = MAP_ROW0 + MAP_ROWS_N - 1;
-    return row;
-}
+// Slice 10: the cell geometry moved VERBATIM into the pure layer
+// (gl_sim.h GL_MAP_* + gl_map_col/gl_map_row), so the chalk mark's
+// touch placement is provable — the render below is bit-identical.
+#define MAP_COL0 GL_MAP_COL0
+#define MAP_ROW0 GL_MAP_ROW0
+#define MAP_COLS_N GL_MAP_COLS
+#define MAP_ROWS_N GL_MAP_ROWS
 
 // --- run state -----------------------------------------------------------------
 // GL_STRESS swaps ONLY the wave schedule (full cap, all at frame 0) and
@@ -430,6 +455,11 @@ typedef struct
     uint32_t oil;
     int32_t fx[GL_FLASK_COUNT], fy[GL_FLASK_COUNT];
     uint32_t flask_up[GL_FLASK_COUNT];
+    // Watch-map chalk mark (slice 10): MAP state only — nothing in the
+    // sim reads it (the dead ignore chalk). Persists across nights
+    // within a run (start_night leaves it standing); start_run wipes it.
+    uint32_t mark_on;
+    int32_t mark_x, mark_y;
 } Run;
 
 // Spawn every zombie whose scheduled frame has arrived (index order — the
@@ -497,6 +527,9 @@ static void start_run(Run *run, uint32_t seed)
 #endif
     for (int i = 0; i < GL_BARRICADE_CAP; i++)
         run->bhp[i] = 0;             // fresh run: bare yard
+    run->mark_on = 0;                // the chalk wipes on a fresh run
+    run->mark_x = 0;
+    run->mark_y = 0;
     start_night(run);
 }
 
@@ -606,6 +639,42 @@ static void do_barricade_verb(Run *run, uint32_t down,
                     (*places)++;
                     break;
                 }
+        }
+    }
+}
+
+// The chalk-mark verb (slice 10): the stylus alias places or moves the
+// mark to the tapped map cell (the pure gl_mark_of_touch — a tap off
+// the plot drops nothing); X clears a standing mark, else chalks one
+// at the lamplighter's own position. Buttons-first (BINDING per the
+// concept doc) — touch is never required. Chalk is MAP state only:
+// nothing in the sim reads it, so this verb cannot move a pin.
+static void do_mark_verb(Run *run, int x_pressed, int touch_down,
+                         int tx, int ty, uint32_t *marks)
+{
+    if (touch_down)
+    {
+        int32_t mx, my;
+        if (gl_mark_of_touch(tx, ty, &mx, &my))
+        {
+            run->mark_x = mx;
+            run->mark_y = my;
+            run->mark_on = 1;
+            (*marks)++;
+        }
+    }
+    else if (x_pressed)
+    {
+        if (run->mark_on)
+        {
+            run->mark_on = 0;        // X wipes the standing mark
+        }
+        else
+        {
+            run->mark_x = run->px;   // X chalks at the lamplighter's feet
+            run->mark_y = run->py;
+            run->mark_on = 1;
+            (*marks)++;
         }
     }
 }
@@ -859,11 +928,12 @@ static void draw_hud(const Run *run, uint32_t nights)
 
 // --- bottom-screen watch-map -------------------------------------------------------
 // Erase-then-redraw marks: the player + EVERY zombie + every intact
-// barricade + every remaining plank cache, so the map is the yard
-// radar the concept promises. prev arrays remember last frame's cells.
-static int map_prev_row[1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
+// barricade + every remaining plank cache + the chalk mark (slice 10),
+// so the map is the yard radar the concept promises. prev arrays
+// remember last frame's cells.
+static int map_prev_row[2 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
                         + GL_CACHE_COUNT + GL_FLASK_COUNT];
-static int map_prev_col[1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
+static int map_prev_col[2 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
                         + GL_CACHE_COUNT + GL_FLASK_COUNT];
 static int map_prev_n = 0;
 // Oil gauge (slice 7): cells drawn last time, so the bar is redrawn
@@ -876,12 +946,22 @@ static int map_prev_oil_cells = -1;
 // so this buys the line back (render-only; no pin reads the bar).
 static int map_prev_dawn_cells = -1;
 static uint32_t map_prev_dawn_night = 0;
+// Watch line (slice 10): OUT count + the chalk mark's range, same
+// flip-only treatment as the gauges (values change rarely; the range
+// in map cells moves about once per 5 frames at player speed).
+static int map_prev_watch_out = -1;
+static int map_prev_watch_mark = -2;     // -2 = force, -1 = mark off
 
-static void draw_watch_map_frame(void)
+static void draw_watch_map_frame(uint32_t best_nights)
 {
     consoleSelect(&bottom_console);
     consoleClear();
     printf("\x1b[0;1HWATCH-MAP");
+    // Slice 10: the record rides the map header during play — what
+    // you're chasing, visible where you're looking. A fresh table
+    // shows nothing (the moor keeps no empty boasts, as the title).
+    if (best_nights > 0)
+        printf("  BEST %lu", (unsigned long)best_nights);
     printf("\x1b[2;1HP you Z dead # wall * wd o oil");
     printf("\x1b[4;1H+----------------------------+");
     for (int row = MAP_ROW0; row < MAP_ROW0 + MAP_ROWS_N; row++)
@@ -891,6 +971,8 @@ static void draw_watch_map_frame(void)
     map_prev_oil_cells = -1;         // consoleClear wiped the gauge
     map_prev_dawn_cells = -1;        // ... and the dawn bar
     map_prev_dawn_night = 0;
+    map_prev_watch_out = -1;         // ... and the watch line
+    map_prev_watch_mark = -2;
 }
 
 static void draw_watch_map(const Run *run, int state)
@@ -929,15 +1011,54 @@ static void draw_watch_map(const Run *run, int state)
     if (state != STATE_PLAYING && state != STATE_SCAVENGE)
         return;
 
+    // watch line (slice 10): OUT = tonight's dead still out in the
+    // gloam (pure gl_gloam_out), plus the chalk mark's range in map
+    // cells while it is down. Redrawn ONLY when a value flips.
+    int watch_out = (int)gl_gloam_out(run->wave_total, run->z_count);
+    int watch_mark = run->mark_on
+        ? (int)(gl_chebyshev(run->px, run->py, run->mark_x, run->mark_y)
+                / (GL_MAP_CELL_PX * GL_ONE))
+        : -1;
+    if (watch_out != map_prev_watch_out
+        || map_prev_watch_mark == -2
+        || (watch_mark < 0) != (map_prev_watch_mark < 0))
+    {
+        // full line: OUT flipped, or the mark went on/off
+        if (watch_mark >= 0)
+            printf("\x1b[3;1HOUT %2d   ! MARK %2d\x1b[K",
+                   watch_out, watch_mark);
+        else
+            printf("\x1b[3;1HOUT %2d\x1b[K", watch_out);
+    }
+    else if (watch_mark != map_prev_watch_mark)
+    {
+        // only the range moved (about every 5 frames at player
+        // speed): rewrite just its two digits — measured at full
+        // stress, the full-line reprint here cost the 71-line vblank
+        // budget its last scanline (72), the digits alone do not.
+        printf("\x1b[3;17H%2d", watch_mark);
+    }
+    map_prev_watch_out = watch_out;
+    map_prev_watch_mark = watch_mark;
+
     for (int i = 0; i < map_prev_n; i++)
         printf("\x1b[%d;%dH ", map_prev_row[i], map_prev_col[i]);
     map_prev_n = 0;
 
+    // the chalk mark draws FIRST (chalk sits under everything — any
+    // body or thing sharing the cell wins it)
+    if (run->mark_on)
+    {
+        int m_row = gl_map_row(run->mark_y), m_col = gl_map_col(run->mark_x);
+        printf("\x1b[%d;%dH!", m_row, m_col);
+        map_prev_row[map_prev_n] = m_row;
+        map_prev_col[map_prev_n++] = m_col;
+    }
     for (int i = 0; i < GL_CACHE_COUNT; i++)
     {
         if (!run->cache_up[i])
             continue;
-        int c_row = map_row_of(run->cy[i]), c_col = map_col_of(run->cx[i]);
+        int c_row = gl_map_row(run->cy[i]), c_col = gl_map_col(run->cx[i]);
         printf("\x1b[%d;%dH*", c_row, c_col);
         map_prev_row[map_prev_n] = c_row;
         map_prev_col[map_prev_n++] = c_col;
@@ -946,7 +1067,7 @@ static void draw_watch_map(const Run *run, int state)
     {
         if (!run->flask_up[i])
             continue;
-        int f_row = map_row_of(run->fy[i]), f_col = map_col_of(run->fx[i]);
+        int f_row = gl_map_row(run->fy[i]), f_col = gl_map_col(run->fx[i]);
         printf("\x1b[%d;%dHo", f_row, f_col);
         map_prev_row[map_prev_n] = f_row;
         map_prev_col[map_prev_n++] = f_col;
@@ -955,19 +1076,19 @@ static void draw_watch_map(const Run *run, int state)
     {
         if (run->bhp[i] == 0)
             continue;
-        int b_row = map_row_of(run->by[i]), b_col = map_col_of(run->bx[i]);
+        int b_row = gl_map_row(run->by[i]), b_col = gl_map_col(run->bx[i]);
         printf("\x1b[%d;%dH#", b_row, b_col);
         map_prev_row[map_prev_n] = b_row;
         map_prev_col[map_prev_n++] = b_col;
     }
     for (uint32_t i = 0; i < run->z_count; i++)
     {
-        int z_row = map_row_of(run->zy[i]), z_col = map_col_of(run->zx[i]);
+        int z_row = gl_map_row(run->zy[i]), z_col = gl_map_col(run->zx[i]);
         printf("\x1b[%d;%dHZ", z_row, z_col);
         map_prev_row[map_prev_n] = z_row;
         map_prev_col[map_prev_n++] = z_col;
     }
-    int p_row = map_row_of(run->py), p_col = map_col_of(run->px);
+    int p_row = gl_map_row(run->py), p_col = gl_map_col(run->px);
     printf("\x1b[%d;%dHP", p_row, p_col);   // player wins a shared cell
     map_prev_row[map_prev_n] = p_row;
     map_prev_col[map_prev_n++] = p_col;
@@ -1039,6 +1160,7 @@ int main(void)
     uint32_t scavenged = 0;        // planks scavenged this power-on
     uint32_t scavs = 0;            // interludes entered this power-on
     uint32_t oil_grabs = 0;        // oil flasks pocketed this power-on
+    uint32_t marks = 0;            // chalk marks placed this power-on
     uint32_t vlines_max = 0;       // worst frame cost seen, in scanlines
     bool pad_seen_idle = false;    // KEYINPUT boot-trap guard (session 16)
     // Slice-8 audio state (ARM9 bookkeeping only — the sound itself
@@ -1055,7 +1177,7 @@ int main(void)
     uint32_t cue_frame = 0;        // global frame of the last cue
 
     draw_title(best_nights, best_seed);
-    draw_watch_map_frame();
+    draw_watch_map_frame(best_nights);
 
     gl_telemetry[GL_T_MAGIC0] = 0x474C4F41u;   // 'GLOA'
     gl_telemetry[GL_T_MAGIC1] = 0x4D4C4E45u;   // 'MLNE'
@@ -1077,6 +1199,17 @@ int main(void)
             pad_seen_idle = true;
         bool start = pad_seen_idle && (down & KEY_START);
 
+        // Slice 10: the stylus (optional — the game never needs it).
+        // One read on the tap edge; the chalk-mark verb consumes it in
+        // PLAYING/SCAVENGE only.
+        touchPosition touch = {0};
+        int touch_down = 0;
+        if (down & KEY_TOUCH)
+        {
+            touchRead(&touch);
+            touch_down = 1;
+        }
+
         // Slice-8 audio event capture: remember where the frame began,
         // so counter deltas + state flips below say which cues fire.
         int prev_state = state;
@@ -1097,7 +1230,7 @@ int main(void)
                 consoleSelect(&top_console);
                 consoleClear();
                 draw_fence();
-                draw_watch_map_frame();
+                draw_watch_map_frame(best_nights);
             }
             break;
 
@@ -1110,6 +1243,8 @@ int main(void)
                            held & KEY_LEFT, held & KEY_RIGHT);
             do_shove_verb(&run, down, &shoves);
             do_barricade_verb(&run, down, &places, &repairs);
+            do_mark_verb(&run, pad_seen_idle && (down & KEY_X),
+                         touch_down, touch.px, touch.py, &marks);
             step_the_dead(&run, &breaches, run.oil);
 
             int touched = the_cold_hands(&run);
@@ -1164,7 +1299,7 @@ int main(void)
                 consoleSelect(&top_console);
                 consoleClear();
                 draw_fence();
-                draw_watch_map_frame();
+                draw_watch_map_frame(best_nights);
                 break;
             }
             gl_player_step(&run.px, &run.py,
@@ -1172,6 +1307,8 @@ int main(void)
                            held & KEY_LEFT, held & KEY_RIGHT);
             do_shove_verb(&run, down, &shoves);
             do_barricade_verb(&run, down, &places, &repairs);
+            do_mark_verb(&run, pad_seen_idle && (down & KEY_X),
+                         touch_down, touch.px, touch.py, &marks);
 
             // Pocket a cache the frame you reach it (after the player
             // moves, before the dead do) — but NEVER waste one: a full
@@ -1215,7 +1352,7 @@ int main(void)
                 consoleSelect(&top_console);
                 consoleClear();
                 draw_fence();
-                draw_watch_map_frame();
+                draw_watch_map_frame(best_nights);
             }
             else
             {
@@ -1232,7 +1369,7 @@ int main(void)
                 consoleSelect(&top_console);
                 consoleClear();
                 draw_fence();
-                draw_watch_map_frame();
+                draw_watch_map_frame(best_nights);
             }
             break;
 
@@ -1246,7 +1383,7 @@ int main(void)
                 consoleSelect(&top_console);
                 consoleClear();
                 draw_fence();
-                draw_watch_map_frame();
+                draw_watch_map_frame(best_nights);
             }
             else if (pad_seen_idle && (down & KEY_SELECT))
             {                                // the scavenge interlude
@@ -1256,7 +1393,7 @@ int main(void)
                 consoleSelect(&top_console);
                 consoleClear();
                 draw_fence();
-                draw_watch_map_frame();
+                draw_watch_map_frame(best_nights);
             }
             break;
         }
@@ -1542,6 +1679,15 @@ int main(void)
         gl_telemetry[GL_T_SPARE4] = 0;
         gl_telemetry[GL_T_SPARE5] = 0;
         gl_telemetry[GL_T_SPARE6] = 0;
+        gl_telemetry[GL_T_MARKON] = run.mark_on;
+        gl_telemetry[GL_T_MARKX] = (uint32_t)run.mark_x;
+        gl_telemetry[GL_T_MARKY] = (uint32_t)run.mark_y;
+        gl_telemetry[GL_T_MARKDIST] = (uint32_t)(run.mark_on
+            ? gl_chebyshev(run.px, run.py, run.mark_x, run.mark_y) : 0);
+        gl_telemetry[GL_T_MARKS] = marks;
+        gl_telemetry[GL_T_OUT] = gl_gloam_out(run.wave_total, run.z_count);
+        gl_telemetry[GL_T_SPARE7] = 0;
+        gl_telemetry[GL_T_SPARE8] = 0;
     }
 
     return 0;

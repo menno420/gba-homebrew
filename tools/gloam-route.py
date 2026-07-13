@@ -24,8 +24,12 @@ state flips, highest cue id wins) and which ambience tier the drone
 plays, so audio telemetry pins are mirror-predicted like everything
 else — and the slice-9 best-nights record: the power-on save state is
 a constructor argument, a strictly-better dawn moves the record and
-counts one backup write, equal/worse dawns and deaths move nothing),
-driven by the same `--keys START-END:NAME` spans
+counts one backup write, equal/worse dawns and deaths move nothing —
+and the slice-10 watch-map chalk mark: X chalks/clears a mark at the
+player's position, a stylus tap (`--touch START-END:X,Y`, the pure
+gl_mark_of_touch cell placement) drops or moves it, it persists
+across nights and wipes on a fresh run, and the dead ignore it
+entirely), driven by the same `--keys START-END:NAME` spans
 tools/nds-headless-check.py replays.
 
 Emulator/ROM alignment (session-17 guard): the py-desmume frontend's frame
@@ -102,8 +106,9 @@ class GloamSim:
     """
 
     def __init__(self, spans, offset=NOMINAL_OFFSET,
-                 best_nights=0, best_seed=0, save_ok=0):
+                 best_nights=0, best_seed=0, save_ok=0, touch_spans=()):
         self.spans = spans
+        self.touch_spans = list(touch_spans)  # (start, end, x, y) emu frames
         self.offset = offset
         self.state = STATE_TITLE
         self.frame = 0                       # mirrors main.c `frame`
@@ -160,6 +165,14 @@ class GloamSim:
         self.best_seed = best_seed
         self.save_ok = save_ok
         self.save_writes = 0
+        # watch-map chalk mark (slice 10): map state only — the dead
+        # ignore chalk (nothing in the sim reads it). Persists across
+        # nights within a run; start_run wipes it.
+        self.mark_on = 0
+        self.mark_x = 0
+        self.mark_y = 0
+        self.marks = 0
+        self.prev_touch = False              # stylus-down edge detect
         # evidence
         self.min_dist = None                 # over PLAYING+SCAVENGE frames
         self.dawn_emu_frames = []            # emu frame of each dawn flip
@@ -218,7 +231,40 @@ class GloamSim:
         self.planks = cg.GL_PLANK_STOCK
         self.oil = cg.GL_OIL_MAX                 # a fresh lantern
         self.bhp = [0] * cg.GL_BARRICADE_CAP     # fresh run: bare yard
+        self.mark_on = 0                         # chalk wipes on a fresh run
+        self.mark_x = 0
+        self.mark_y = 0
         self.start_night()
+
+    def touch_edge(self, emu):
+        """Stylus-down edge at this emu frame -> (tx, ty) or None
+        (mirrors main.c's keysDown() & KEY_TOUCH read)."""
+        now = None
+        for start, end, tx, ty in self.touch_spans:
+            if start <= emu < end:
+                now = (tx, ty)
+        edge = now if (now is not None and not self.prev_touch) else None
+        self.prev_touch = now is not None
+        return edge
+
+    def mark_verb(self, down, touch_down):
+        """Mirror of main.c do_mark_verb(): the touch alias places or
+        moves the mark to the tapped cell (off-plot taps do nothing);
+        X clears a standing mark, else chalks one at the player's own
+        position. Runs in PLAYING and SCAVENGE."""
+        if touch_down is not None:
+            ok, mx, my = cg.gl_mark_of_touch(touch_down[0], touch_down[1])
+            if ok:
+                self.mark_x, self.mark_y = mx, my
+                self.mark_on = 1
+                self.marks += 1
+        elif self.pad_seen_idle and 'X' in down:
+            if self.mark_on:
+                self.mark_on = 0
+            else:
+                self.mark_x, self.mark_y = self.px, self.py
+                self.mark_on = 1
+                self.marks += 1
 
     def nearest(self):
         best, best_i = None, 0
@@ -361,6 +407,7 @@ class GloamSim:
         self.frame += 1
         down = held - self.prev_held
         self.prev_held = held
+        touch_down = self.touch_edge(emu_frame)
         if not held:
             self.pad_seen_idle = True
         start = self.pad_seen_idle and 'START' in down
@@ -380,6 +427,7 @@ class GloamSim:
                 'LEFT' in held, 'RIGHT' in held)
             self.shove_verb(down)
             self.barricade_verb(down)
+            self.mark_verb(down, touch_down)
             self.step_the_dead(self.oil)
             if self.the_cold_hands():
                 self.deaths += 1
@@ -409,6 +457,7 @@ class GloamSim:
                     'LEFT' in held, 'RIGHT' in held)
                 self.shove_verb(down)
                 self.barricade_verb(down)
+                self.mark_verb(down, touch_down)
                 for i in range(cg.GL_CACHE_COUNT):
                     if (self.cache_up[i]
                             and self.planks < cg.GL_PLANK_MAX
@@ -506,7 +555,12 @@ class GloamSim:
               f'adrone {cg.gl_amb_freq(self.amb_tier) if self.amb_on else 0} '
               f'aflips {self.amb_flips} asfxl {self.cue_left} '
               f'best {self.best_nights} bestseed {self.best_seed} '
-              f'saveok {self.save_ok} savewr {self.save_writes}')
+              f'saveok {self.save_ok} savewr {self.save_writes} '
+              f'markon {self.mark_on} markx {self.mark_x} '
+              f'marky {self.mark_y} '
+              f'markdist {cg.gl_chebyshev(self.px, self.py, self.mark_x, self.mark_y) if self.mark_on else 0} '
+              f'marks {self.marks} '
+              f'out {cg.gl_gloam_out(self.wave_total, len(self.zx))}')
 
 
 def skewed(spans, delta):
@@ -516,12 +570,30 @@ def skewed(spans, delta):
             for start, end, name in spans]
 
 
-def verify(spans, nights, end, skew, min_dist_px, probes=()):
-    """Simulate every movement skew in +-skew; return (ok, report_lines)."""
+def parse_touch_specs(specs):
+    """['START-END:X,Y', ...] -> [(start, end, x, y), ...] (emu frames)."""
+    spans = []
+    for spec in specs:
+        span, _, pos = spec.partition(':')
+        start, _, end = span.partition('-')
+        x, _, y = pos.partition(',')
+        spans.append((int(start), int(end), int(x), int(y)))
+    return spans
+
+
+def verify(spans, nights, end, skew, min_dist_px, probes=(),
+           touch_spans=()):
+    """Simulate every movement skew in +-skew; return (ok, report_lines).
+
+    touch_spans ride UNSKEWED (they anchor to the map like the START
+    presses; no committed survive-route uses them — they exist so a
+    touch proof's pins can be mirror-predicted at nominal alignment).
+    """
     lines = []
     ok = True
     for delta in range(-skew, skew + 1):
-        sim = GloamSim(skewed(spans, delta), NOMINAL_OFFSET)
+        sim = GloamSim(skewed(spans, delta), NOMINAL_OFFSET,
+                       touch_spans=touch_spans)
         sim.run(end + skew, probes=probes if delta == 0 else ())
         survived = (sim.deaths == 0 and sim.nights_survived >= nights)
         dist_px = (sim.min_dist or 0) / cg.GL_ONE
@@ -705,6 +777,11 @@ def main():
                         metavar='EMUFRAME',
                         help='print predicted telemetry after this emu '
                              'frame (nominal alignment); repeatable')
+    parser.add_argument('--touch', action='append', default=[],
+                        metavar='START-END:X,Y',
+                        help='hold the stylus at bottom-LCD (X, Y) during '
+                             'emu frames [START, END) — the slice-10 '
+                             'chalk-mark alias; repeatable, unskewed')
     parser.add_argument('--out', help='derive: write the route file here')
     args = parser.parse_args()
 
@@ -728,7 +805,8 @@ def main():
     spans = parse_keys_specs(specs)
     end = args.end or max(end for _s, end, _n in spans) + 400
     ok, lines = verify(spans, args.nights, end, args.skew, args.min_dist,
-                       probes=args.probe)
+                       probes=args.probe,
+                       touch_spans=parse_touch_specs(args.touch))
     for line in lines:
         print(line)
     if not ok:

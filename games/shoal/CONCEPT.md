@@ -55,7 +55,7 @@ OAM: 50 fish + cursor + HUD text ≈ 60 sprites — far under the
 pivot needed). The mailbox carries the CPU words permanently, so the
 budget is a pinned regression test, not a one-time claim.
 
-## Prototype slice (PR #98) + growth rungs 1-3 (PRs #99 / #100 / #101)
+## Prototype slice (PR #98) + growth rungs 1-4 (PRs #99-#102)
 
 50-fish boids flock + the current + the reef + the win loop (save 40,
 clock stamped, instant restart). **Growth rung 1 (the predator pass,
@@ -94,8 +94,27 @@ the school banks, and BOTH end cards grade the run — a scattered
 shoal keeps whatever stars its saves earned, and a near-goalless one
 reads "RATING -"; grading losses is what makes the ratings proper.
 The sim never consults a star: zero game-state drift in any water
-(proven cross-ROM against the v0.3 dist). Deliberately still cut:
-multiple tuned levels, audio.
+(proven cross-ROM against the v0.3 dist). **Growth rung 4 (multiple
+tuned levels, PR #102): THE TUNED LEVELS** — L starts a four-level
+campaign, each a DISTINCT deliberate parameter set over the shipped
+mechanics (the concept's S3 "4 levels with tuned flock parameters"):
+**L1 THE SHALLOWS** (one gate, no hunters, goal 40 — learn the
+funnel), **L2 THE HUNT** (one hunter on the shipped 44 px/300 knob,
+goal 36 — keep the school tight with no walls to hide behind),
+**L3 THE NARROWS** (both gates + one 52 px/360 hunter, goal 32 — the
+funnel strands stragglers, so the ring and den are loosened together
+or the queue at the gap would be farmed), **L4 DEEP WATER** (both
+gates + two 52 px/420 hunters, goal 28 — everything at once; the
+lowest goal prices the double predation). Per-level knob triples are
+retuned ALL THREE TOGETHER (the #99 rule); star lines derive from
+each level's goal (the #101 rule); L on a win card advances, on a
+scattered card retries, and wraps after L4. Every level is proven
+winnable by its own committed route in one deterministic chain
+(proofs.sh P7): 40/0 lost @ rf 2881 · 36/3 @ 1050 · 32/5 @ 2955 ·
+28/7 @ 1707. Worst frame anywhere in the chain: **82.3%**
+(3369/4096, L4 — two hunters + two walls + a pushed 50-boid school);
+the `t[5] < 4096` rail covers it. The carried waters never read the
+level table. Deliberately still cut: audio.
 
 Hungry-water frame budget (same meter as the gate, final build):
 idle mean 50.0%, p99 70.4%, steady worst 75.1% (3075/4096); 74.0%

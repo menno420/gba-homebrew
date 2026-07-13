@@ -1,6 +1,6 @@
 // Drift Garden service worker — minimal cache-first shell precache.
 // Bump CACHE on every shipped change to the shell files.
-const CACHE = 'drift-garden-v1';
+const CACHE = 'drift-garden-v2';
 const SHELL = [
   './',
   './index.html',

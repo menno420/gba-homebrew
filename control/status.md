@@ -1,13 +1,60 @@
 # game-lab seat heartbeat — control/status.md
 
-updated: 2026-07-12T16:20:12Z
+updated: 2026-07-13T04:46:55Z
 
 Coordinator-only; overwritten wholesale each coordinator turn. Prior
 narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b9b` c4).
 
-- **ts:** 2026-07-12T16:20:12Z
-- **phase:** WORK LOOP cycle 5 (merged seat v1) — idle on owner clicks, both next slices pre-built
-- **chain:** healthy — pacemaker chain re-armed each turn (serialize-on-busy doctrine, documented c3); failsafe `trig_01JD1t7rD5jUCqkJQJaNCi3E` cron 50 */2 * * * firing on schedule (12:50Z + 14:50Z fires delivered).
+- **ts:** 2026-07-13T04:46:55Z
+- **phase:** ORDER 005 night run — MORNING tally posted (this file + outbox); parked-green PRs await the owner's morning sweep
+- **chain:** healthy — pacemaker send_later chain alive (outstanding ticks verified via list_triggers 04:44Z); failsafe `trig_01LZ37j6Ah8rLCM7KZfmgS97` cron 50 */2 * * * enabled, last fire 2026-07-13T02:50:29Z, next 04:50Z (re-created 2026-07-12T21:12Z, superseding the retired `trig_01JD1t7rD5jUCqkJQJaNCi3E` referenced in older heartbeats).
+- **note:** sections below "Night run 2026-07-13 tally" are prior-cycle narrative kept for the game-arc record; where they disagree with the tally, the tally (verified live 04:42–04:46Z) wins.
+
+## Night run 2026-07-13 tally
+
+All claims below verified against live GitHub 2026-07-13T04:42–04:46Z (Q-0120).
+
+### Merged (owner hand-sweep ~01:43–01:45Z) — gba-homebrew
+- PR #75 — Gloamline slice 10 (watch-map polish), merged 01:43:47Z
+- PR #77 — ORDER 005 scribe (control), merged 01:45:06Z
+- PR #78 — Drift Garden mobile PWA foundation, merged 01:44:49Z
+- PR #79 — Undertow web arcade, merged 01:44:40Z
+- PR #80 — Gloamline slice 11 (best-night rematch), merged 01:44:05Z
+- PR #81 — Tiltstone web puzzle, merged 01:44:28Z
+
+### Parked OPEN + green (heads verified, all three workflows success) — gba-homebrew
+- PR #82 — Brineward slices 6+7 (carries the previously unpublished `claude/brineward-wind` slice 6; head `20f4bfa`)
+- PR #83 — Deepcast, GBA fishing tension arcade (head `55e0a3b`)
+- PR #84 — Drift Garden foundation→real game (head `35dc162`)
+- PR #85 — release packaging: dist/web arcade bundle + 4 versioned zips + RELEASES.md + RELEASE-HOWTO.md (head `d8f1049`)
+- PR #86 — Cindervault, GBA turn-based dungeon-dive roguelike (breadth game #6; head `76884fb`, green at 04:28Z)
+
+### Parked OPEN + green — pokemon-mod-lab (state only; no content crosses repos)
+- PR #57 — ORDER 006 .gitignore (independently review-approved; head `52b408c`)
+- PR #58 — ORDER 007 scribe (head `2ae4c40`)
+- PR #59 — review-queue row #17 closed by code-trace (head `2d53bcf`)
+- PR #60 — closed-retracted (fleet-manager rung; not merged)
+
+### New games tonight (concept + playable prototype each)
+- Undertow — web diver arcade (merged #79) — sellability: free-arcade / near-zero paid
+- Tiltstone — web gravity puzzle (merged #81) — sellability: free-arcade / near-zero paid
+- Drift Garden — mobile PWA foundation (merged #78) → real game (parked #84) — sellability: free-arcade / near-zero paid
+- Deepcast — GBA fishing arcade (parked #83) — sellability: free-arcade / near-zero paid
+- Cindervault — GBA dungeon-dive roguelike (parked #86) — sellability: free-arcade / near-zero paid
+
+### Walls (pointers only)
+- Dispatched-merge and PR-publish classifier denials recorded in the affected PR bodies.
+- Enabler can't arm: no required status-check contexts — see outbox.
+
+### Routine state
+- Failsafe `trig_01LZ37j6Ah8rLCM7KZfmgS97` (cron 50 */2 * * *): ALIVE — enabled, last fire 02:50:29Z, next 04:50Z (verified via list_triggers 04:44Z); fires observed this run 22:50 / 00:50-region / 02:10-region / 02:50 (earlier fires per prior session records).
+- Pacemaker send_later chain: alive (future one-shot ticks present in the trigger list).
+
+### Baton — next 2 tasks
+1. Brineward: next roadmap increment after danger bands + reefs, branched from PR #82's open head (per ORDER 005 rule 2 — note the base in the PR body).
+2. Drift Garden: next game slice on PR #84's open head (extend the foundation→game arc), with Deepcast/Cindervault second slices as the alternates.
+
+ts: 2026-07-13T04:46:55Z
 
 ## Parked READY+green (owner clicks; either order — coordinator re-parks whichever goes stale)
 - PR #68 — Gloamline slice 8 "synthesized audio" (session 30): head `8d4245e`, 19 proofs / 353 asserts, zero re-pins (6th hold), dist sha256 `eab78ae0…215d`. CI 29192781139 + 29192781148 green.

@@ -1,0 +1,1 @@
+- `claude/night-tally-20260713` · **control tally** — ORDER 005 morning tally: status.md heartbeat + outbox ⚑ entry (control-only fast lane) · 2026-07-13

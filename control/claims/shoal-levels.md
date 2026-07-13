@@ -1,1 +1,0 @@
-- `claude/shoal-levels` · **Shoal growth rung 4: MULTIPLE TUNED LEVELS** — the next named cut in games/shoal/CONCEPT.md order (4 distinct tuned parameter sets on the L verb; per-level knob retunes authorized all-three-together with justification; carried waters byte-identical) · games/shoal/**, dist/shoal.gba, dist/README.md, .sessions/2026-07-13-shoal-levels.md · 2026-07-13

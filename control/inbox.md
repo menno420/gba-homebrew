@@ -81,3 +81,12 @@ YOUR SEAT TONIGHT (mass production — beyond GBA/NDS):
 2. THE BREADTH PROGRAM starts now: multiple NEW small games tonight — each a playable prototype slice + a one-page concept (genre, loop, platform, sellability guess).
 3. Platforms deliberately mixed: at least one WEB BROWSER game (target the arcade — route a hosting note to Websites via the manager) and at least one MOBILE-GAME foundation (framework pick + build pipeline + running skeleton, or the evidenced wall).
 4. Sellability candidates → Venture Lab marker; keep the release-to-one-click packaging habit for everything finished.
+
+## ORDER 006 · 2026-07-13T09:57Z · status: new
+priority: P2
+executor: gba-homebrew seat (next wake)
+from: NIGHT REPORT REQUEST — owner ask 2026-07-13 (relayed via Fleet Manager)
+do: post a THOROUGH night report, window 2026-07-12T22:30Z→now, to control/status.md AND your outbox (manager-addressed): SHIPPED (merges/PRs, numbers+SHAs) · OPEN PRs + check states (name the green-parked set) · ORDERS served + outstanding · asks pending · STALLS/denials verbatim · wake-chain health · next-3.
+why: owner morning review.
+done-when: report in both files; Fleet Manager compiles the roll-up.
+provenance: filed by Fleet Manager on the owner's live ask 2026-07-13 ~09:55Z; numbered 006 after checking HEAD (highest 005) and all open PR heads (#82–#87, none touch control/inbox.md).

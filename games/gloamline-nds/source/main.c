@@ -1,3 +1,36 @@
+// Gloamline — arc slice 11: BEST-NIGHT REMATCH (on the slice-10
+// watch-map polish; the first slice past the concept doc's completed
+// LATER-SLICES tree, on the owner's continue order).
+//
+// Slice 9 wrote the promise into its own player text ("because every
+// run is seed-deterministic, the recorded seed means your best night
+// is *literally replayable* — start a run when the frame counter
+// matches...") and left it a wink: a human cannot time a frame
+// counter. This slice makes it a verb. SELECT at the TITLE SCREEN or
+// the DEATH CARD — when a record exists — starts a run on the
+// RECORDED best seed instead of the frame-counter latch (the pure
+// gl_run_seed; the offer gate is the pure gl_rematch_available), so
+// the very night the record was set replays spawn for spawn:
+// determinism is the feature, now on a button. The death card is the
+// natural seat (TITLE is unreachable after the first START — a
+// title-only rematch would be once per power-on); with NO record
+// SELECT stays completely inert on both screens (the moor keeps no
+// empty boasts — the same rule as the title/card BEST lines). A
+// rematch run wears a '*' after its SEED on the HUD and the cards —
+// one console character, render-only. START keeps the old
+// fresh-latch path bit-identical everywhere, and a rematch feeds
+// NOTHING new into the sim (the recorded seed is just a seed), so
+// every pre-slice-11 pin holds bit-identically: no committed route
+// presses SELECT at the title or the death card. Beating your record
+// ON the rematch improves the record as any dawn does (same seed —
+// the strictly-better rule and the wear discipline are untouched).
+// No new audio cue (the nightfall toll already rings every path into
+// a night, rematch included). Telemetry appends slots 72-79 (rematch
+// flag, rematches this power-on, 6 spares) with slots 0-71 frozen;
+// the mailbox grows 72 -> 80 words.
+//
+// Below this line the slice-10 story still applies verbatim:
+//
 // Gloamline — arc slice 10: WATCH-MAP POLISH (on the slice-9
 // best-nights save).
 //
@@ -152,15 +185,16 @@
 // scripted CI presses START on a fixed frame, so the whole run is a pure
 // function of the input script. No wall clock, no runtime RNG.
 //
-// Telemetry mailbox (the gl_audio_hook concept ported to NDS): 72 u32
+// Telemetry mailbox (the gl_audio_hook concept ported to NDS): 80 u32
 // words at the exported symbol `gl_telemetry`, rewritten every frame, so
 // headless proofs (tools/nds-headless-check.py --elf/--watch) can assert
 // game state numerically. Layout below at GL_T_*. Slots 0-39 keep their
 // slice-3/4/5/6 meanings EXACTLY (the pinned CI asserts read them);
 // slice 7 appends 40-47 (lantern oil), slice 8 appends 48-55 (audio
 // decisions), slice 9 appends 56-63 (the best-nights save record),
-// slice 10 appends 64-71 (the watch-map chalk mark + gloam-out) —
-// each with every older slot frozen. On a multi-zombie night the
+// slice 10 appends 64-71 (the watch-map chalk mark + gloam-out),
+// slice 11 appends 72-79 (the best-night rematch) — each with every
+// older slot frozen. On a multi-zombie night the
 // ZX/ZY/DIST/NSTUN slots describe the NEAREST Shambler (identical to
 // slice 3 whenever one zombie is up); BX/BY/BHP likewise describe the
 // intact barricade nearest the player.
@@ -247,8 +281,16 @@
 #define GL_T_OUT 69     // tonight's dead still out in the gloam
 #define GL_T_SPARE7 70  // reserved, always 0
 #define GL_T_SPARE8 71  // reserved, always 0
+#define GL_T_REMATCH 72 // 1 = this run replays the recorded best seed
+#define GL_T_REMATCHES 73 // rematch runs started this power-on
+#define GL_T_SPARE9 74  // reserved, always 0
+#define GL_T_SPARE10 75 // reserved, always 0
+#define GL_T_SPARE11 76 // reserved, always 0
+#define GL_T_SPARE12 77 // reserved, always 0
+#define GL_T_SPARE13 78 // reserved, always 0
+#define GL_T_SPARE14 79 // reserved, always 0
 
-volatile uint32_t gl_telemetry[72];
+volatile uint32_t gl_telemetry[80];
 
 enum
 {
@@ -857,35 +899,45 @@ static void draw_title(uint32_t best_nights, uint32_t best_seed)
     printf("\x1b[19;9HPRESS START\n");
     // Slice 9: the record survived the power cycle — show it. A fresh
     // (or reset) table shows nothing: the moor keeps no empty boasts.
+    // Slice 11: with a record standing, SELECT walks its very night
+    // again (the same no-empty-boasts gate hides the offer too).
     if (best_nights > 0)
+    {
+        printf("\x1b[20;3HPRESS SELECT: rematch\n");
         printf("\x1b[21;3Hbest %lu night(s)  seed %lu",
                (unsigned long)best_nights, (unsigned long)best_seed);
+    }
 }
 
 static void draw_death_card(const Run *run, uint32_t deaths,
-                            uint32_t best_nights)
+                            uint32_t best_nights, uint32_t rematch_on)
 {
     consoleSelect(&top_console);
     consoleClear();
     printf("\x1b[7;7HTHE COLD HANDS\n");
     printf("\x1b[8;9HFOUND YOU\n");
     printf("\x1b[11;7Hnight %lu", (unsigned long)run->night);
-    printf("\x1b[12;7Hseed %lu", (unsigned long)run->seed);
+    printf("\x1b[12;7Hseed %lu%s", (unsigned long)run->seed,
+           rematch_on ? "*" : "");        // slice 11: the rematch's star
     printf("\x1b[13;7Hdeaths %lu", (unsigned long)deaths);
     if (best_nights > 0)                 // slice 9: what you're chasing
         printf("\x1b[14;7Hbest %lu night(s)", (unsigned long)best_nights);
     printf("\x1b[16;5HPRESS START: retry\n");
+    if (best_nights > 0)                 // slice 11: chase it again now
+        printf("\x1b[17;5HPRESS SELECT: rematch\n");
 }
 
 static void draw_dawn_card(const Run *run, uint32_t nights,
-                           uint32_t best_nights, uint32_t best_seed)
+                           uint32_t best_nights, uint32_t best_seed,
+                           uint32_t rematch_on)
 {
     consoleSelect(&top_console);
     consoleClear();
     printf("\x1b[7;9HDAWN BREAKS\n");
     printf("\x1b[10;5Hnight %lu survived", (unsigned long)run->night);
     printf("\x1b[11;5Hnights total %lu", (unsigned long)nights);
-    printf("\x1b[12;5Hseed %lu", (unsigned long)run->seed);
+    printf("\x1b[12;5Hseed %lu%s", (unsigned long)run->seed,
+           rematch_on ? "*" : "");        // slice 11: the rematch's star
     // Slice 9: the record (already updated for THIS dawn if it
     // improved — the caller writes the backup first, so what the card
     // shows is what the cartridge now holds).
@@ -897,7 +949,8 @@ static void draw_dawn_card(const Run *run, uint32_t nights,
     printf("\x1b[17;3HPRESS SELECT: scavenge");
 }
 
-static void draw_scavenge_hud(const Run *run, uint32_t nights)
+static void draw_scavenge_hud(const Run *run, uint32_t nights,
+                              uint32_t rematch_on)
 {
     unsigned int secs = run->scav_left / 60;
     unsigned long caches = 0;
@@ -906,12 +959,13 @@ static void draw_scavenge_hud(const Run *run, uint32_t nights)
     consoleSelect(&top_console);
     printf("\x1b[0;1HSCAVENGE %u:%02u  CACHE %lu\x1b[K",
            secs / 60, secs % 60, caches);
-    printf("\x1b[1;1HSEED %lu NTS %lu SHV %c PK %lu\x1b[K",
-           (unsigned long)run->seed, (unsigned long)nights,
+    printf("\x1b[1;1HSEED %lu%s NTS %lu SHV %c PK %lu\x1b[K",
+           (unsigned long)run->seed, rematch_on ? "*" : "",
+           (unsigned long)nights,
            run->shove_cd == 0 ? '+' : '.', (unsigned long)run->planks);
 }
 
-static void draw_hud(const Run *run, uint32_t nights)
+static void draw_hud(const Run *run, uint32_t nights, uint32_t rematch_on)
 {
     unsigned int secs = run->dawn_left / 60;
     consoleSelect(&top_console);
@@ -921,8 +975,12 @@ static void draw_hud(const Run *run, uint32_t nights)
            (unsigned long)run->night, secs / 60, secs % 60,
            (unsigned long)run->z_count,
            (unsigned long)(run->oil * 100u / GL_OIL_MAX));
-    printf("\x1b[1;1HSEED %lu NTS %lu SHV %c PK %lu\x1b[K",
-           (unsigned long)run->seed, (unsigned long)nights,
+    // Slice 11: a rematch run wears a '*' after its seed — one console
+    // character inside a line this HUD already reprints every frame
+    // (render-only; a fresh-latch run's line is byte-identical).
+    printf("\x1b[1;1HSEED %lu%s NTS %lu SHV %c PK %lu\x1b[K",
+           (unsigned long)run->seed, rematch_on ? "*" : "",
+           (unsigned long)nights,
            run->shove_cd == 0 ? '+' : '.', (unsigned long)run->planks);
 }
 
@@ -1161,6 +1219,8 @@ int main(void)
     uint32_t scavs = 0;            // interludes entered this power-on
     uint32_t oil_grabs = 0;        // oil flasks pocketed this power-on
     uint32_t marks = 0;            // chalk marks placed this power-on
+    uint32_t rematch_on = 0;       // this run replays the recorded seed
+    uint32_t rematches = 0;        // rematch runs started this power-on
     uint32_t vlines_max = 0;       // worst frame cost seen, in scanlines
     bool pad_seen_idle = false;    // KEYINPUT boot-trap guard (session 16)
     // Slice-8 audio state (ARM9 bookkeeping only — the sound itself
@@ -1225,7 +1285,21 @@ int main(void)
         case STATE_TITLE:
             if (start)
             {
+                rematch_on = 0;             // the fresh-latch path, as ever
                 start_run(&run, frame);     // latch the frame-counter seed
+                state = STATE_PLAYING;
+                consoleSelect(&top_console);
+                consoleClear();
+                draw_fence();
+                draw_watch_map_frame(best_nights);
+            }
+            else if (pad_seen_idle && (down & KEY_SELECT)
+                     && gl_rematch_available(best_nights))
+            {                               // slice 11: the rematch — the
+                rematch_on = 1;             // recorded seed, on a button
+                rematches++;
+                start_run(&run, gl_run_seed(1, best_nights, best_seed,
+                                            frame));
                 state = STATE_PLAYING;
                 consoleSelect(&top_console);
                 consoleClear();
@@ -1257,7 +1331,7 @@ int main(void)
                 state = STATE_DEAD;
                 oamClear(&oamMain, 0, 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
                                       + GL_CACHE_COUNT + GL_FLASK_COUNT);
-                draw_death_card(&run, deaths, best_nights);
+                draw_death_card(&run, deaths, best_nights, rematch_on);
             }
             else if (--run.dawn_left == 0)
             {
@@ -1280,11 +1354,11 @@ int main(void)
                 oamClear(&oamMain, 0, 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
                                       + GL_CACHE_COUNT + GL_FLASK_COUNT);
                 draw_dawn_card(&run, nights_survived, best_nights,
-                               best_seed);
+                               best_seed, rematch_on);
             }
             else
             {
-                draw_hud(&run, nights_survived);
+                draw_hud(&run, nights_survived, rematch_on);
             }
             break;
         }
@@ -1342,7 +1416,7 @@ int main(void)
                 state = STATE_DEAD;
                 oamClear(&oamMain, 0, 1 + GL_ZOMBIE_CAP + GL_BARRICADE_CAP
                                       + GL_CACHE_COUNT + GL_FLASK_COUNT);
-                draw_death_card(&run, deaths, best_nights);
+                draw_death_card(&run, deaths, best_nights, rematch_on);
             }
             else if (--run.scav_left == 0)   // dawn light spent
             {
@@ -1356,7 +1430,7 @@ int main(void)
             }
             else
             {
-                draw_scavenge_hud(&run, nights_survived);
+                draw_scavenge_hud(&run, nights_survived, rematch_on);
             }
             break;
         }
@@ -1364,7 +1438,21 @@ int main(void)
         case STATE_DEAD:
             if (start)                       // instant restart, fresh seed
             {
+                rematch_on = 0;              // the star comes off
                 start_run(&run, frame);
+                state = STATE_PLAYING;
+                consoleSelect(&top_console);
+                consoleClear();
+                draw_fence();
+                draw_watch_map_frame(best_nights);
+            }
+            else if (pad_seen_idle && (down & KEY_SELECT)
+                     && gl_rematch_available(best_nights))
+            {                                // slice 11: chase it again
+                rematch_on = 1;              // right now — the death card
+                rematches++;                 // is the rematch's seat
+                start_run(&run, gl_run_seed(1, best_nights, best_seed,
+                                            frame));
                 state = STATE_PLAYING;
                 consoleSelect(&top_console);
                 consoleClear();
@@ -1688,6 +1776,14 @@ int main(void)
         gl_telemetry[GL_T_OUT] = gl_gloam_out(run.wave_total, run.z_count);
         gl_telemetry[GL_T_SPARE7] = 0;
         gl_telemetry[GL_T_SPARE8] = 0;
+        gl_telemetry[GL_T_REMATCH] = rematch_on;
+        gl_telemetry[GL_T_REMATCHES] = rematches;
+        gl_telemetry[GL_T_SPARE9] = 0;
+        gl_telemetry[GL_T_SPARE10] = 0;
+        gl_telemetry[GL_T_SPARE11] = 0;
+        gl_telemetry[GL_T_SPARE12] = 0;
+        gl_telemetry[GL_T_SPARE13] = 0;
+        gl_telemetry[GL_T_SPARE14] = 0;
     }
 
     return 0;

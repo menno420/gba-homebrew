@@ -613,7 +613,8 @@ def parse_touch_specs(specs):
 
 
 def verify(spans, nights, end, skew, min_dist_px, probes=(),
-           touch_spans=(), best_nights=0, best_seed=0, save_ok=0):
+           touch_spans=(), best_nights=0, best_seed=0, save_ok=0,
+           run_through=False):
     """Simulate every movement skew in +-skew; return (ok, report_lines).
 
     touch_spans ride UNSKEWED (they anchor to the map like the START
@@ -623,6 +624,10 @@ def verify(spans, nights, end, skew, min_dist_px, probes=(),
     (slice 9 constructor state) so a rematch proof's pins (slice 11)
     can be mirror-predicted against the same record the CI battery
     fixture carries; committed survive-routes all run the fresh table.
+    run_through keeps simulating past deaths (designed-death probe
+    scripts pin restart/rematch values on the far side of a card —
+    such scripts always "FAIL" the survive verdict by design; their
+    evidence is the probes).
     """
     lines = []
     ok = True
@@ -630,7 +635,8 @@ def verify(spans, nights, end, skew, min_dist_px, probes=(),
         sim = GloamSim(skewed(spans, delta), NOMINAL_OFFSET,
                        best_nights=best_nights, best_seed=best_seed,
                        save_ok=save_ok, touch_spans=touch_spans)
-        sim.run(end + skew, probes=probes if delta == 0 else ())
+        sim.run(end + skew, probes=probes if delta == 0 else (),
+                stop_on_death=not run_through)
         survived = (sim.deaths == 0 and sim.nights_survived >= nights)
         dist_px = (sim.min_dist or 0) / cg.GL_ONE
         verdict = 'ok' if survived and dist_px >= min_dist_px else 'FAIL'
@@ -825,6 +831,10 @@ def main():
                         help='power-on record: seed of the best run')
     parser.add_argument('--save-ok', action='store_true',
                         help='power-on backup read decoded a valid blob')
+    parser.add_argument('--run-through', action='store_true',
+                        help='keep simulating past deaths (designed-death '
+                             'probe scripts pin values beyond the card; '
+                             'their survive verdict FAILs by design)')
     parser.add_argument('--out', help='derive: write the route file here')
     args = parser.parse_args()
 
@@ -851,7 +861,8 @@ def main():
                        probes=args.probe,
                        touch_spans=parse_touch_specs(args.touch),
                        best_nights=args.best, best_seed=args.best_seed,
-                       save_ok=1 if args.save_ok else 0)
+                       save_ok=1 if args.save_ok else 0,
+                       run_through=args.run_through)
     for line in lines:
         print(line)
     if not ok:

@@ -15,6 +15,10 @@
  * locked gems / a one-way grate on the board, renders them without errors,
  * and a real rotation there still matches the pure-Node engine exactly —
  * grates turning, ice sliding — with the cue log staying a pure composition.
+ * Slice 5 (level packs): the picker lists the engine's pinned packs, a real
+ * click enters stage 1 on the curated seed (grid byte-identical to the
+ * pure-Node generator), winning a stage by real key presses advances with N
+ * to the next curated seed, and ?pack=&stage= boots straight into a stage.
  *
  * Deps (NOT vendored — do not commit node_modules): playwright or
  * playwright-core resolvable via NODE_PATH; a local Chromium binary,
@@ -307,7 +311,80 @@ try {
     consoleErrors.length === 0 && pageErrors.length === 0,
     consoleErrors.concat(pageErrors).join(" | ") || "clean");
 
-  if (shotPath) { await page.screenshot({ path: shotPath }); console.log(`(screenshot: ${shotPath} — LV5 board with the slice-4 cells)`); }
+  // ------------------------------------- slice 5: level packs (curated seeds)
+  const packs = engine.PACKS;
+  const deepPack = packs.find(p => p.id === "deep-cuts");
+
+  const pb = await page.evaluate(() => ({
+    options: Array.from(document.getElementById("packbox").options).map(o => o.value),
+    pack: window.TILTSTONE.getPack()
+  }));
+  check("pack picker lists the engine's pinned packs (and free play has no active pack)",
+    JSON.stringify(pb.options) === JSON.stringify(packs.map(p => p.id)) && pb.pack === null,
+    `options=[${pb.options.join(",")}]`);
+
+  await page.selectOption("#packbox", "deep-cuts");   // real UI: select + click
+  await page.click("#btn-pack");
+  const st1 = await page.evaluate(() => ({
+    pack: window.TILTSTONE.getPack(),
+    grid: window.TILTSTONE.gridString(),
+    seed: window.TILTSTONE.getState().seed,
+    level: window.TILTSTONE.getState().levelIndex,
+    hud: document.getElementById("hud-pack").textContent
+  }));
+  check("Play pack (real click) enters stage 1: curated seed at the pack's depth, HUD names it",
+    st1.pack && st1.pack.id === "deep-cuts" && st1.pack.stage === 0 &&
+    st1.seed === deepPack.entries[0].seed && st1.level === deepPack.levelIndex &&
+    st1.hud === `${deepPack.name} 1/${deepPack.entries.length}`,
+    `seed=${st1.seed} hud="${st1.hud}"`);
+  check("pack stage grid == pure-Node generator on the curated seed, byte-for-byte",
+    st1.grid === engine.gridString(engine.newGame(deepPack.entries[0].seed, deepPack.levelIndex).grid));
+
+  // win stage 1 with REAL key presses of the curated level's own solver line
+  const lvl1 = engine.generateLevel(deepPack.entries[0].seed, deepPack.levelIndex);
+  for (const ch of lvl1.solution) await page.keyboard.press(ch === "R" ? "ArrowRight" : "ArrowLeft");
+  await page.waitForFunction(() => !window.TILTSTONE.isAnimating());
+  const wonStage = await page.evaluate(() => ({
+    status: window.TILTSTONE.getState().status,
+    msg: document.getElementById("msg").textContent,
+    nextEnabled: !document.getElementById("btn-next").disabled
+  }));
+  check("stage 1 won by real key presses; the win message points at stage 2",
+    wonStage.status === "won" && wonStage.nextEnabled &&
+    wonStage.msg.includes(`stage 2/${deepPack.entries.length}`),
+    `solution="${lvl1.solution}" msg="${wonStage.msg}"`);
+
+  await page.keyboard.press("n");                     // advance within the pack
+  const st2 = await page.evaluate(() => ({
+    pack: window.TILTSTONE.getPack(),
+    grid: window.TILTSTONE.gridString(),
+    seed: window.TILTSTONE.getState().seed
+  }));
+  check("N advances to stage 2 — the NEXT curated seed, byte-identical to pure Node",
+    st2.pack && st2.pack.stage === 1 && st2.seed === deepPack.entries[1].seed &&
+    st2.grid === engine.gridString(engine.newGame(deepPack.entries[1].seed, deepPack.levelIndex).grid),
+    `seed ${st1.seed} -> ${st2.seed}`);
+
+  // ?pack=&stage= boots straight into a pack stage (fresh page load)
+  const granite = packs.find(p => p.id === "granite-gauntlet");
+  await page.goto(pathToFileURL(indexPath).href + "?pack=granite-gauntlet&stage=2", { waitUntil: "load" });
+  await page.waitForFunction(() => window.TILTSTONE && window.TILTSTONE.getState);
+  const boot = await page.evaluate(() => ({
+    pack: window.TILTSTONE.getPack(),
+    grid: window.TILTSTONE.gridString(),
+    hud: document.getElementById("hud-pack").textContent
+  }));
+  check("?pack=&stage= boots straight into the pack stage (1-based URL, curated seed)",
+    boot.pack && boot.pack.id === "granite-gauntlet" && boot.pack.stage === 1 &&
+    boot.grid === engine.gridString(engine.newGame(granite.entries[1].seed, granite.levelIndex).grid) &&
+    boot.hud === `${granite.name} 2/${granite.entries.length}`,
+    `hud="${boot.hud}"`);
+
+  check("zero console/page errors accumulated through the pack section",
+    consoleErrors.length === 0 && pageErrors.length === 0,
+    consoleErrors.concat(pageErrors).join(" | ") || "clean");
+
+  if (shotPath) { await page.screenshot({ path: shotPath }); console.log(`(screenshot: ${shotPath} — GRANITE GAUNTLET stage 2 via ?pack= boot)`); }
 } finally {
   await browser.close();
 }

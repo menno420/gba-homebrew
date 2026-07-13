@@ -100,3 +100,27 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   pinning. `dist/clockwork-courier.gba` byte-deterministic.
 - PR #96 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-13 (Shoal, PR #98)
+
+- **ts:** 2026-07-13T19:55:00Z (appended by the session-45 worker;
+  everything above left intact per the append-only dispatch rule)
+- Breadth game #8 = **Shoal**, the ORDER-001 concept queue's LAST
+  item, built BEHIND ITS OWN COMMITTED GATE ("profile in the FIRST
+  session, pivot cheap if the budget says no"): measured on emulated
+  hardware via the pinned Butano CPU meter — naive O(n^2) 50-boid
+  flock **120.5% of a frame (FAIL)**; the concept's mitigation ladder
+  (precision drop + neighbor grid + deterministic 8-neighbor cap) +
+  ARM code in REAL IWRAM (`section(".iwram")` — the *.bn_iwram.cpp
+  build rule alone does NOT place it) → **52.4% mean / 68.6% steady
+  worst = PASS**. The boid slice SHIPPED, no pivot needed; the CPU
+  words ride the telemetry mailbox so the budget is a pinned
+  regression test.
+- 3 headless proofs / 42 asserts green (boot; the gate + determinism;
+  a full scripted herd — 40/50 saved at run-frame 1619 with the win
+  card text pinned — plus instant restart), run-twice byte-identical.
+  `dist/shoal.gba` byte-deterministic. **The ORDER-001 concept queue
+  is now FULLY BUILT** (Lumen Drift complete, Courier + Shoal
+  prototyped).
+- PR #98 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

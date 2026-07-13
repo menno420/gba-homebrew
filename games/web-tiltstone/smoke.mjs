@@ -17,6 +17,9 @@
  *   8. generation sweep: 12 consecutive seeds all produce solvable levels
  *      whose solver line actually wins
  *   9. daily seed: pure date -> integer mapping
+ *  10. par + grade (slice 2): par == solution length, BFS-verified MINIMAL
+ *      (no shorter winning line exists within budget), grade truth table,
+ *      and par minimality re-verified across the 12-seed sweep
  *
  * Exits nonzero on any failed assertion; prints one PASS/FAIL line each.
  */
@@ -175,6 +178,45 @@ check("initial state is at rest and merge-free",
 // ------------------------------------------------------------- 9. daily seed
 check("daily seed is a pure date mapping", E.dailySeed("2026-07-13") === 20260713,
   `2026-07-13 -> ${E.dailySeed("2026-07-13")}`);
+
+// -------------------------------------------------- 10. par + grade (slice 2)
+{
+  // helper: independently derive the true shortest winning depth via search()
+  const minWinDepth = (level) => {
+    const found = E.search(level.grid, level.budget);
+    let min = Infinity;
+    for (const rec of found.records)
+      if (rec.collected >= level.quota && rec.depth < min) min = rec.depth;
+    return min;
+  };
+
+  const p = E.par(g0.level);
+  check("par == stored solution length", p === g0.level.solution.length,
+    `par=${p} solution="${g0.level.solution}"`);
+  check("par is MINIMAL: BFS finds no shorter winning line (seed 42)",
+    p === minWinDepth(g0.level), `search min win depth=${minWinDepth(g0.level)}`);
+
+  // grade truth table around par (par floors the win, diff clamps at 0)
+  const table = [0, 1, 2, 3, 5].map(d => E.grade(p + d, p).label).join(",");
+  check("grade truth table: 0->PERFECT 1->GREAT 2->GOOD 3+->CLEARED",
+    table === "PERFECT,GREAT,GOOD,CLEARED,CLEARED" && E.grade(p - 1, p).diff === 0,
+    `[${table}], underflow clamps to diff 0`);
+
+  // a PERFECT is reachable by construction: the solver line wins in par turns
+  const perfect = E.replay(E.newGame(SEED, 0), g0.level.solution);
+  check("replaying the solver line is graded PERFECT",
+    perfect.status === "won" && E.grade(perfect.used, p).label === "PERFECT",
+    `used=${perfect.used} par=${p}`);
+
+  // par minimality holds across the same 12-seed sweep as section 8
+  let minimalOk = 0;
+  for (let s = 100; s < 112; s++) {
+    const lvl = E.generateLevel(s, 0);
+    if (E.par(lvl) === minWinDepth(lvl)) minimalOk++;
+  }
+  check("12-seed sweep: every stored par is the true BFS minimum",
+    minimalOk === 12, `${minimalOk}/12 minimal`);
+}
 
 // ------------------------------------------------------------------- verdict
 if (failures) {

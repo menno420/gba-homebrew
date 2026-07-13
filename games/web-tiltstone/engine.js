@@ -31,7 +31,7 @@
   else root.TiltstoneEngine = api;
 })(typeof self !== "undefined" ? self : this, function () {
 
-  var VERSION = "1.0.0";
+  var VERSION = "1.1.0";
   var SIZE = 8;          // grid is SIZE x SIZE (square — rotation-safe)
   var EMPTY = 0, WALL = 1, STONE = 2, GEM0 = 3;
   var MERGE_MIN = 3;     // orthogonal group size that collects
@@ -216,6 +216,27 @@
     return null;
   }
 
+  // ------------------------------------------------------- par + grading --
+
+  // Par = the length of the SHORTEST winning rotation line for this level.
+  // `generateLevel` stores exactly that: `search` pushes records in BFS
+  // (shortest-first) order and generation keeps the first record meeting the
+  // quota, so `level.solution` is minimal-depth by construction — par is its
+  // length. Pure; never reveals the line itself, only how long it is.
+  function par(level) {
+    return level && level.solution ? level.solution.length : null;
+  }
+
+  // Grade a finished level: how many turns over par did the win take?
+  // Pure integer mapping — par is a floor (the solver's shortest line), so
+  // diff is never negative on a real win; clamped defensively anyway.
+  //   0 over -> PERFECT, 1 -> GREAT, 2 -> GOOD, 3+ -> CLEARED
+  function grade(used, parTurns) {
+    var diff = Math.max(0, (used | 0) - (parTurns | 0));
+    var label = diff === 0 ? "PERFECT" : diff === 1 ? "GREAT" : diff === 2 ? "GOOD" : "CLEARED";
+    return { diff: diff, label: label };
+  }
+
   // --------------------------------------------------------- generation --
 
   // Level parameters ramp gently with levelIndex (colors 3 -> 4 at level 3).
@@ -321,7 +342,7 @@
     mulberry32: mulberry32, mixSeed: mixSeed, dailySeed: dailySeed,
     emptyGrid: emptyGrid, cloneGrid: cloneGrid, gridString: gridString,
     rotateGrid: rotateGrid, settle: settle, findGroups: findGroups, resolve: resolve,
-    search: search, solve: solve,
+    search: search, solve: solve, par: par, grade: grade,
     paramsFor: paramsFor, generateLevel: generateLevel,
     newGame: newGame, rotate: rotate, replay: replay
   };

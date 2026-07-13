@@ -51,6 +51,7 @@
   <div id="hud">
     <span id="hud-gems">GEMS 0/0</span>
     <span id="hud-turns">TURNS 0/0</span>
+    <span id="hud-par">PAR 0</span>
     <span id="hud-level">LV 1</span>
     <span id="hud-seed">SEED 0</span>
   </div>
@@ -60,6 +61,7 @@
     <button id="btn-cw"  class="big" title="rotate clockwise (Right / D)">&#10227; CW</button>
   </div>
   <div class="row">
+    <button id="btn-undo" disabled title="take back the last rotation (U)">Undo</button>
     <button id="btn-restart" title="restart level (R)">Restart</button>
     <button id="btn-next" disabled title="next level (N, after a win)">Next level</button>
     <button id="btn-daily" title="today's shared UTC seed">Daily</button>
@@ -67,8 +69,9 @@
     <button id="btn-load">Load seed</button>
   </div>
   <div id="hint">
-    &larr;/A rotate left &middot; &rarr;/D rotate right &middot; R restart &middot; N next level<br>
-    hit the gem quota before your rotations run out &middot; every seed is provably winnable
+    &larr;/A rotate left &middot; &rarr;/D rotate right &middot; U undo &middot; R restart &middot; N next level<br>
+    hit the gem quota before your rotations run out &middot; every seed is provably winnable<br>
+    PAR is the solver's shortest line &mdash; match it for a PERFECT
   </div>
 </div>
 <script src="engine.js"></script>

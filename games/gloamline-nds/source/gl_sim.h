@@ -447,4 +447,29 @@ int gl_mark_of_touch(int tx, int ty, int32_t *x, int32_t *y);
 // Pure f(wave_total, spawned), floored at 0 (never underflows).
 uint32_t gl_gloam_out(uint32_t wave_total, uint32_t spawned);
 
+// --- best-night rematch (slice 11) -------------------------------------------
+// Slice 9 wrote the promise into its own player text ("the recorded
+// seed means your best night is *literally replayable* — start a run
+// when the frame counter matches...") and left it a wink: a human
+// cannot time a frame counter. The rematch makes it a verb: SELECT at
+// the title screen or the death card — when a record exists — starts
+// a run on the RECORDED best seed instead of the frame-counter latch,
+// so the very night the record was set replays spawn for spawn
+// (determinism is the feature, now on a button). With no record the
+// verb is completely inert (the moor keeps no empty boasts — the same
+// rule as the title/card BEST lines). START keeps the old fresh-latch
+// path bit-identical everywhere, so every pre-slice-11 pin holds; the
+// rematch feeds nothing new into the sim — the seed is just a seed.
+
+// 1 if a rematch can be offered at all: a record exists. Pure.
+int gl_rematch_available(uint32_t best_nights);
+
+// The seed a new run starts on: the RECORDED seed iff this start is a
+// rematch AND a record exists (a rematch without a record falls back
+// to the latch — defense in depth; main.c also gates the verb), else
+// the frame-counter latch. Pure f(rematch, best_nights, best_seed,
+// latched).
+uint32_t gl_run_seed(int rematch, uint32_t best_nights,
+                     uint32_t best_seed, uint32_t latched);
+
 #endif // GL_SIM_H

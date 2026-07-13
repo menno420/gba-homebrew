@@ -398,3 +398,15 @@ uint32_t gl_gloam_out(uint32_t wave_total, uint32_t spawned)
 {
     return spawned < wave_total ? wave_total - spawned : 0;
 }
+
+int gl_rematch_available(uint32_t best_nights)
+{
+    return best_nights > 0;                  // no record, no rematch —
+}                                            // the moor keeps no empty boasts
+
+uint32_t gl_run_seed(int rematch, uint32_t best_nights,
+                     uint32_t best_seed, uint32_t latched)
+{
+    return (rematch && gl_rematch_available(best_nights)) ? best_seed
+                                                          : latched;
+}

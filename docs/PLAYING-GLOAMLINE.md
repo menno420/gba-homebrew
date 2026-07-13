@@ -17,7 +17,10 @@ your best run — most nights survived, and the seed that made it — now
 persists across power cycles in the cartridge's battery save. Slice 10
 finishes the concept's watch-map: chalk a mark on it (X, or just tap the
 map), read how many of tonight's dead are still out in the gloam, and
-see your record while you play.
+see your record while you play. Slice 11 puts your best night on a
+button: with a record standing, SELECT at the title or after a death
+starts a **rematch** — the very night your record was set, spawn for
+spawn.
 
 ## 1. Get the ROM
 
@@ -75,6 +78,7 @@ chalk mark.
 | Button | Action |
 |---|---|
 | START (title / after death / at dawn) | Start — retry — next night |
+| SELECT (title / after death) | **Rematch** your best night (record required) |
 | SELECT (at dawn) | **Scavenge** the yard before the next night |
 | START (while scavenging) | Leave early — the night begins |
 | D-pad | Move, 8 directions |
@@ -187,11 +191,24 @@ fence-line spawn. **NTS** (nights survived) on the HUD is your score.
   the night will send is already inside the fence, so what you see is
   what you fight. And your best-night record rides the map header
   (`BEST n`) — what you're chasing, visible where you're looking.
+- **Rematch the moor's best night.** With a record standing, the title
+  screen and the death card both offer `PRESS SELECT: rematch` — SELECT
+  starts a run on the RECORDED seed instead of a fresh one, so the very
+  night your record was set comes back spawn for spawn: same fence
+  climbs, same schedule, your inputs against your own ghost of a night.
+  A rematch run wears a `*` after its seed on the HUD and the cards so
+  you always know which fight you're in; START anywhere still deals a
+  fresh night, and beating your record ON the rematch counts like any
+  other dawn. No record, no offer — the moor keeps no empty boasts.
 - Every run is **reproducible**: the SEED on the HUD fully determines
   every spawn of every night (and everything after it, given your
-  inputs). Same seed + same moves = same night, every time.
+  inputs). Same seed + same moves = same night, every time. (The
+  rematch is this promise on a button — no frame-counter timing
+  required.)
 
 The concept doc's slice list is complete: skeleton → shove + waves →
 barricades → scavenge interlude → lantern oil → synthesized audio →
-best-nights saves → watch-map polish (this slice). Further arc work is
-an owner call.
+best-nights saves → watch-map polish. Slice 11 (the best-night
+rematch) is the first cut past that tree, on the owner's
+continue-the-arc order: it pays off the save slice's own promise that
+the recorded seed makes your best night literally replayable.

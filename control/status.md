@@ -80,3 +80,23 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   NDS suites re-verified green).
 - PR #94 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-13 (Clockwork Courier prototype, PR #96)
+
+- **ts:** 2026-07-13T19:16:53Z (appended by the session-44 worker;
+  everything above left intact per the append-only dispatch rule)
+- Breadth game #7 per ORDER 005 rule 3's work-finding precedence: the
+  track plan at HEAD (`docs/concepts/session-1-concepts.md`) is the
+  committed ORDER-001 concept queue — **Clockwork Courier** (its next
+  unbuilt item, risk MEDIUM) built as a playable prototype slice on
+  branch `claude/clockwork-courier` from main @ `8bac80a`; Shoal
+  (risk MEDIUM-HIGH) remains queued behind its own doc-mandated
+  profiling gate.
+- The hook is proven on camera: 4 headless proofs / 75 asserts (69
+  watch + 6 text) — the rewind snap and the ghost's replay pinned to
+  IDENTICAL literals 301 frames apart, the ghost-held door crossed
+  with the parcel, the win card text exact, run-twice byte-identical;
+  a probe-found door-jump exploit was closed in the level before
+  pinning. `dist/clockwork-courier.gba` byte-deterministic.
+- PR #96 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

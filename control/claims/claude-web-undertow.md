@@ -1,0 +1,1 @@
+- `claude/web-undertow` · **web-arcade breadth: Undertow prototype** — new browser game games/web-undertow/ + headless smoke tools/web-smoke-undertow.mjs · games/web-undertow/**, tools/web-smoke-undertow.mjs, .sessions/2026-07-13-web-undertow.md · 2026-07-13

@@ -178,3 +178,29 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   `dist/shoal.gba` v0.3 byte-deterministic.
 - PR #100 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-13 (Shoal ratings, PR #101)
+
+- **ts:** 2026-07-13T21:16:29Z (appended by the session-48 worker; everything
+  above left intact per the append-only dispatch rule; ts taken from
+  `date -u` at write time — the sessions-45/47 erratum not repeated)
+- Shoal growth rung 3 = **star ratings proper** (CONCEPT.md's next
+  named cut; the committed pitch's "Star rating = fish saved"), on
+  branch `claude/shoal-ratings` from main @ `253695d`. A pure
+  display-time grading per water: 3 stars = the water's existing goal
+  (calm/gated 40, hungry 35 — the coupled 44 px / den 300 / goal 35
+  knob untouched, as constrained), 2/1 stars at thirds; stars ride
+  the HUD live and BOTH end cards grade the run — losses included
+  ("RATING -" on a near-goalless scatter). The sim never consults a
+  star.
+- Zero game-state re-pins, re-proven cross-ROM: calm + hungry + gated
+  idle telemetry diffed against the rebuilt v0.3 dist over 4300
+  frames — 0 non-CPU diffs; CPU exacts re-derived (+3..+15/word, the
+  HUD-stars render cost), all `t[5] < 4096` rails verbatim.
+- The committed suite `games/shoal/proofs.sh` extended in place:
+  6 proofs / 102 asserts green (all four grades pinned on screen:
+  "-" / "*" / "**" / "***"), the gated win AND the new graded-loss
+  scatter each run twice byte-identical. `dist/shoal.gba` v0.4
+  byte-deterministic.
+- PR #101 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

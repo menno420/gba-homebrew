@@ -55,7 +55,7 @@ OAM: 50 fish + cursor + HUD text ≈ 60 sprites — far under the
 pivot needed). The mailbox carries the CPU words permanently, so the
 budget is a pinned regression test, not a one-time claim.
 
-## Prototype slice (PR #98) + growth rungs 1 (PR #99) and 2 (PR #100)
+## Prototype slice (PR #98) + growth rungs 1-3 (PRs #99 / #100 / #101)
 
 50-fish boids flock + the current + the reef + the win loop (save 40,
 clock stamped, instant restart). **Growth rung 1 (the predator pass,
@@ -83,8 +83,19 @@ then snaked down to the other gap. The same no-input run that banks
 walls, hold the school. Goal stays 40 (calm rules — no hunters, so
 the hungry water's coupled difficulty knob, straggler 44 px + den
 300 + goal 35, is untouched); the committed funnel route banks 40/50
-at run-frame 3519 (~59 s — the clock is the brag). Deliberately
-still cut: star ratings proper, multiple tuned levels, audio.
+at run-frame 3519 (~59 s — the clock is the brag). **Growth rung 3
+(star ratings proper, PR #101)**: the committed pitch's own sentence
+— "Star rating = fish saved" — mechanized as a pure display-time
+lookup graded PER WATER: the 3-star line IS each water's existing
+goal (calm/gated 40, hungry 35 — the coupled hungry knob 44 px /
+den 300 / goal 35 untouched), 2 and 1 stars at thirds of it
+(calm/gated 14/27/40, hungry 12/24/35). Stars ride the HUD live as
+the school banks, and BOTH end cards grade the run — a scattered
+shoal keeps whatever stars its saves earned, and a near-goalless one
+reads "RATING -"; grading losses is what makes the ratings proper.
+The sim never consults a star: zero game-state drift in any water
+(proven cross-ROM against the v0.3 dist). Deliberately still cut:
+multiple tuned levels, audio.
 
 Hungry-water frame budget (same meter as the gate, final build):
 idle mean 50.0%, p99 70.4%, steady worst 75.1% (3075/4096); 74.0%

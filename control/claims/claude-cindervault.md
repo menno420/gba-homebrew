@@ -1,1 +1,0 @@
-- `claude/cindervault` · **GBA breadth: Cindervault prototype (game #6)** — new turn-based dungeon-dive roguelike games/cindervault/ + headless proof · games/cindervault/**, dist/cindervault.gba, .sessions/2026-07-13-cindervault.md · 2026-07-13

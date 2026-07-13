@@ -4,8 +4,9 @@
 
 What the arcade needs to serve this game:
 
-- **Files:** `index.html` + `engine.js` + `app.js` only (the `.md` docs and
-  `smoke.mjs` are repo material, not runtime). Copy the directory as-is.
+- **Files:** `index.html` + `engine.js` + `juice.js` + `app.js` only (the
+  `.md` docs and `smoke.mjs` are repo material, not runtime). Copy the
+  directory as-is.
 - **Entry point:** `index.html`.
 - **No build step.** Plain HTML5 canvas + vanilla JS, zero dependencies.
 - **No server-side code.** Any static file host works; opening

@@ -6,6 +6,11 @@
  * the test API is exposed, a keyboard rotation input changes the rendered
  * canvas pixels AND the engine state behind them, and the page state matches
  * a pure-Node engine run of the same seed + inputs (shell adds nothing).
+ * Slice 3 (juice): the audio cue log must equal a pure-Node composition of
+ * the exact inputs performed, the replay must settle to the plain render of
+ * the authoritative state, draw real intermediate frames mid-flight, skip
+ * itself under prefers-reduced-motion, and mute must persist while the
+ * honest cue log keeps recording.
  *
  * Deps (NOT vendored — do not commit node_modules): playwright or
  * playwright-core resolvable via NODE_PATH; a local Chromium binary,
@@ -150,6 +155,110 @@ try {
   check("undo after a win is a no-op (won card frozen)",
     won.undoDisabled && frozen.status === "won" && frozen.used === solution.length,
     `status=${frozen.status} used=${frozen.used}`);
+
+  // --------------------------------------- slice 3: juice (animation + audio)
+  const juice = require(path.resolve(here, "..", "games", "web-tiltstone", "juice.js"));
+
+  // The cue log is the shell's honest audio record — recompose it in pure
+  // Node from the exact inputs performed above (the shell rule: "rotate" at
+  // the press, then the timeline's cues in schedule order, then win/lose;
+  // "undo" only when a state actually pops). The page must match EXACTLY.
+  const composeCues = (seq) => {
+    let st = engine.newGame(SEED, 0);
+    const hist = [], log = [];
+    for (const it of seq) {
+      if (it === "undo") {
+        if (!hist.length || st.status === "won") continue;
+        st = hist.pop(); log.push("undo"); continue;
+      }
+      if (st.status !== "playing") continue;
+      const prev = st;
+      st = engine.rotate(st, it); hist.push(prev);
+      log.push("rotate");
+      const tl = juice.timeline(engine.resolveTrace(engine.rotateGrid(prev.grid, it)).phases);
+      for (const s of tl.steps) for (const c of s.cues) log.push(juice.cueFor(c.name, c.chain).key);
+      if (st.status === "won") log.push("win");
+      if (st.status === "lost") log.push("lose");
+    }
+    return log;
+  };
+  await page.waitForFunction(() => !window.TILTSTONE.isAnimating());
+  const expectedLog = composeCues(["cw", "undo", "undo", "cw", "cw", "cw", "undo"]);
+  const pageLog = await page.evaluate(() => window.TILTSTONE.getCueLog());
+  check("cue log == pure-Node composition of the exact inputs performed",
+    JSON.stringify(pageLog) === JSON.stringify(expectedLog),
+    `[${pageLog.join(",")}]${JSON.stringify(pageLog) === JSON.stringify(expectedLog) ? "" : ` != expected [${expectedLog.join(",")}]`}`);
+  check("cue log carries the cascade (chain-x2 collect keyed) and ends on the win cue",
+    pageLog.includes("collect@x2") && pageLog[pageLog.length - 1] === "win",
+    `last="${pageLog[pageLog.length - 1]}"`);
+
+  // the replay is cosmetic: once it settles, the canvas IS the plain render
+  // of the authoritative state (a forced re-render changes nothing)
+  const settled = await page.evaluate(() => document.getElementById("game").toDataURL());
+  const rerendered = await page.evaluate(() => { window.TILTSTONE.render(); return document.getElementById("game").toDataURL(); });
+  check("animation settles to the true final render (forced re-render is a no-op)",
+    settled === rerendered, `dataURL ${settled.length}B, byte-identical`);
+
+  // prefers-reduced-motion: the input applies with NO animation frames, and
+  // the cues still land in the log in the same order
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.evaluate(() => window.TILTSTONE.reset(42, 0));
+  const logBeforeRM = await page.evaluate(() => window.TILTSTONE.getCueLog().length);
+  await page.keyboard.press("ArrowRight");
+  const rm = await page.evaluate(() => ({
+    animating: window.TILTSTONE.isAnimating(),
+    used: window.TILTSTONE.getState().used,
+    log: window.TILTSTONE.getCueLog()
+  }));
+  const rmExpected = composeCues(["cw"]);
+  check("prefers-reduced-motion: input applies instantly with zero animation, cues still logged in order",
+    rm.animating === false && rm.used === 1 &&
+    JSON.stringify(rm.log.slice(logBeforeRM)) === JSON.stringify(rmExpected),
+    `animating=${rm.animating} new cues=[${rm.log.slice(logBeforeRM).join(",")}]`);
+  await page.emulateMedia({ reducedMotion: null });
+
+  // mute: toggles + persists (guarded localStorage), and the honest log
+  // keeps recording while muted
+  await page.click("#btn-mute");
+  const mutedNow = await page.evaluate(() => ({
+    muted: window.TILTSTONE.isMuted(),
+    label: document.getElementById("btn-mute").textContent,
+    stored: (() => { try { return window.localStorage.getItem("tiltstone-muted"); } catch { return null; } })(),
+    logLen: window.TILTSTONE.getCueLog().length
+  }));
+  await page.keyboard.press("ArrowRight");
+  await page.waitForFunction(() => !window.TILTSTONE.isAnimating());
+  const mutedAfter = await page.evaluate(() => ({ logLen: window.TILTSTONE.getCueLog().length }));
+  await page.click("#btn-mute"); // leave sound on for the next player
+  check("mute toggles + persists, and the cue log keeps recording while muted",
+    mutedNow.muted === true && mutedNow.label === "Sound: off" && mutedNow.stored === "1" &&
+    mutedAfter.logLen > mutedNow.logLen,
+    `label="${mutedNow.label}" stored=${mutedNow.stored} log ${mutedNow.logLen} -> ${mutedAfter.logLen}`);
+
+  // the replay really draws INTERMEDIATE states: a frame sampled mid-flight
+  // is neither the pre-input board nor the settled one
+  await page.evaluate(() => window.TILTSTONE.reset(42, 0));
+  for (const ch of solution.slice(0, -1)) {
+    await page.keyboard.press(ch === "R" ? "ArrowRight" : "ArrowLeft");
+    await page.waitForFunction(() => !window.TILTSTONE.isAnimating());
+  }
+  const preShot = await page.evaluate(() => document.getElementById("game").toDataURL());
+  await page.keyboard.press(solution[solution.length - 1] === "R" ? "ArrowRight" : "ArrowLeft");
+  await page.waitForTimeout(430); // inside the cascade window (sweep 150ms + ~950ms trace)
+  const mid = await page.evaluate(() => ({
+    shot: document.getElementById("game").toDataURL(),
+    animating: window.TILTSTONE.isAnimating()
+  }));
+  if (shotPath) {
+    const midPath = shotPath.replace(/\.png$/, "-mid.png");
+    await page.screenshot({ path: midPath });
+    console.log(`(mid-animation screenshot: ${midPath})`);
+  }
+  await page.waitForFunction(() => !window.TILTSTONE.isAnimating());
+  const finalShot = await page.evaluate(() => document.getElementById("game").toDataURL());
+  check("mid-animation frame differs from both the pre-input and the settled board",
+    mid.animating && mid.shot !== preShot && mid.shot !== finalShot,
+    `sampled at 430ms, animating=${mid.animating}`);
 
   if (shotPath) { await page.screenshot({ path: shotPath }); console.log(`(screenshot: ${shotPath})`); }
 } finally {

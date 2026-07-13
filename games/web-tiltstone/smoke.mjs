@@ -20,6 +20,10 @@
  *  10. par + grade (slice 2): par == solution length, BFS-verified MINIMAL
  *      (no shorter winning line exists within budget), grade truth table,
  *      and par minimality re-verified across the 12-seed sweep
+ *  11. trace + juice (slice 3): settleMoves/resolveTrace agree with
+ *      settle/resolve byte-for-byte (incl. the 12-seed sweep), the phase
+ *      script is well-formed, and juice.js's pure timeline + synth cue
+ *      table are deterministic (chain-rising collect pitch, capped)
  *
  * Exits nonzero on any failed assertion; prints one PASS/FAIL line each.
  */
@@ -216,6 +220,98 @@ check("daily seed is a pure date mapping", E.dailySeed("2026-07-13") === 2026071
   }
   check("12-seed sweep: every stored par is the true BFS minimum",
     minimalOk === 12, `${minimalOk}/12 minimal`);
+}
+
+// ----------------------------------------- 11. trace + juice pure (slice 3)
+{
+  const J = require(path.join(here, "juice.js"));
+
+  // settleMoves: same grid as settle, and the move list reconstructs it.
+  // (Fixture from section 2: gem over a wall + gem in an open column.)
+  const w = E.emptyGrid(8); w[4][2] = E.WALL; w[0][2] = E.GEM0; w[0][3] = E.GEM0;
+  const sm = E.settleMoves(w);
+  const rebuilt = E.cloneGrid(w);
+  for (const mv of sm.moves) rebuilt[mv.from[0]][mv.from[1]] = E.EMPTY;
+  for (const mv of sm.moves) rebuilt[mv.to[0]][mv.to[1]] = mv.v;
+  check("settleMoves: grid byte-identical to settle, moves reconstruct it",
+    E.gridString(sm.grid) === E.gridString(E.settle(w)) &&
+    E.gridString(rebuilt) === E.gridString(sm.grid) &&
+    sm.moves.length === 2 && sm.moves.some(m => m.to[0] === 3 && m.to[1] === 2) &&
+    sm.moves.some(m => m.to[0] === 7 && m.to[1] === 3),
+    `moves=${sm.moves.map(m => `[${m.from}]->[${m.to}]`).join(" ")}`);
+
+  // resolveTrace ≡ resolve on every rotation of the seed-42 solver line,
+  // and the phase script is well-formed.
+  let st42 = E.newGame(SEED, 0), traceOk = true, phasesOk = true, detail = "";
+  for (const ch of g0.level.solution) {
+    const rot = E.rotateGrid(st42.grid, ch === "R" ? "cw" : "ccw");
+    const plain = E.resolve(rot), trace = E.resolveTrace(rot);
+    if (E.gridString(trace.grid) !== E.gridString(plain.grid) ||
+        trace.collected !== plain.collected ||
+        JSON.stringify(trace.events) !== JSON.stringify(plain.events)) traceOk = false;
+    if (trace.phases[0].type !== "fall" ||
+        E.gridString(trace.phases[trace.phases.length - 1].grid) !== E.gridString(trace.grid) ||
+        trace.phases.some(p => p.type === "collect" && !(p.chain >= 1 && p.cells.length === p.size))) phasesOk = false;
+    detail += `${ch}:${trace.phases.length}ph/${trace.collected}g `;
+    st42 = E.rotate(st42, ch === "R" ? "cw" : "ccw");
+  }
+  check("resolveTrace ≡ resolve (grid+collected+events) on the seed-42 solver line", traceOk, detail.trim());
+  check("trace phases well-formed (fall-first, last grid == final, collect fields sane)", phasesOk);
+
+  // consistency across the 12-seed sweep: the trace's final grid is exactly
+  // what rotate() puts on the board, every turn of every solver line.
+  let sweepOk = 0, turns = 0;
+  for (let s = 100; s < 112; s++) {
+    let st = E.newGame(s, 0);
+    let all = true;
+    for (const ch of st.level.solution) {
+      const dir = ch === "R" ? "cw" : "ccw";
+      const trace = E.resolveTrace(E.rotateGrid(st.grid, dir));
+      st = E.rotate(st, dir);
+      turns++;
+      if (E.gridString(trace.grid) !== E.gridString(st.grid)) all = false;
+    }
+    if (all) sweepOk++;
+  }
+  check("12-seed sweep: trace final grid == rotate() grid on every solver turn",
+    sweepOk === 12, `${sweepOk}/12 seeds, ${turns} turns checked`);
+
+  // juice timeline: deterministic, sequential, non-overlapping; empty falls
+  // produce no step; total == last step's end.
+  const rot3 = (() => { // the solver line's 3rd rotation — the collecting one
+    let st = E.newGame(SEED, 0);
+    st = E.rotate(st, "cw"); st = E.rotate(st, "cw");
+    return E.rotateGrid(st.grid, "cw");
+  })();
+  const trace3 = E.resolveTrace(rot3);
+  const tl = J.timeline(trace3.phases), tl2 = J.timeline(trace3.phases);
+  let mono = tl.steps.length > 0, prevEnd = 0;
+  for (const s of tl.steps) { if (!(s.t0 >= prevEnd && s.t1 >= s.t0)) mono = false; prevEnd = s.t1; }
+  check("juice timeline: sequential + non-overlapping, total == last end, deterministic",
+    mono && tl.total === prevEnd && JSON.stringify(tl) === JSON.stringify(tl2) &&
+    tl.steps.length === trace3.phases.filter(p => p.type !== "fall" || p.moves.length).length,
+    `${tl.steps.length} steps over ${tl.total}ms`);
+
+  // juice cue schedule on the collecting rotation: land/collect cues in
+  // chronological order, chains rising — the exact log the shell must emit.
+  const cueSeq = [];
+  for (const s of tl.steps) for (const c of s.cues) cueSeq.push(J.cueFor(c.name, c.chain).key);
+  const chainsInSeq = tl.steps.filter(s => s.phase.type === "collect").map(s => s.phase.chain);
+  check("cue schedule of the collecting rotation: collects present, chain x2 keyed",
+    cueSeq.includes("collect") && cueSeq.includes("collect@x2") &&
+    chainsInSeq.every((c, i) => i === 0 || c >= chainsInSeq[i - 1]),
+    `[${cueSeq.join(",")}] chains=[${chainsInSeq.join(",")}]`);
+
+  // cue table: every named cue resolves; collect pitch rises with the chain
+  // and caps; unknown names are null.
+  const names = ["rotate", "land", "collect", "win", "lose", "undo"];
+  const allCues = names.every(n => { const c = J.cueFor(n, 0); return c && c.wave && c.f0 > 0 && c.dur > 0; });
+  const c1 = J.cueFor("collect", 1), c2 = J.cueFor("collect", 2), c3 = J.cueFor("collect", 3);
+  const cCap = J.cueFor("collect", J.CHAIN_CAP + 1), cOver = J.cueFor("collect", J.CHAIN_CAP + 5);
+  check("cue table: all 6 cues resolve, collect pitch rises per chain and caps, unknown -> null",
+    allCues && c2.f0 > c1.f0 && c3.f0 > c2.f0 && cCap.f0 === cOver.f0 &&
+    c1.key === "collect" && c2.key === "collect@x2" && J.cueFor("nope", 0) === null,
+    `f0: x1=${c1.f0} x2=${c2.f0} x3=${c3.f0} cap=${cCap.f0} (juice v${J.VERSION})`);
 }
 
 // ------------------------------------------------------------------- verdict

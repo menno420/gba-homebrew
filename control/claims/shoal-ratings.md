@@ -1,0 +1,1 @@
+- `claude/shoal-ratings` · **Shoal growth rung 3: STAR RATINGS proper** — the next named cut in games/shoal/CONCEPT.md order ("star rating = fish saved" grading, display-only data rung; sim/knob untouched) · games/shoal/**, dist/shoal.gba, dist/README.md, .sessions/2026-07-13-shoal-ratings.md · 2026-07-13

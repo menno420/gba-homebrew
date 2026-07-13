@@ -174,6 +174,39 @@ namespace
     // centered coordinates.
     constexpr int scr_x(int px) { return px - 120; }
     constexpr int scr_y(int px) { return px - 80; }
+
+    // --- star ratings proper (growth rung 3) --------------------------------
+    // The committed concept's own sentence, mechanized: "Star rating =
+    // fish saved" — graded PER WATER (the rung-1 precedent), as a pure
+    // display-time lookup. The 3-star line IS each water's existing
+    // goal constant (the coupled hungry knob 44px/300/35 is untouched
+    // — no new tuning enters the sim); 2 and 1 stars sit at thirds of
+    // it, rounded up: calm/gated 14/27/40, hungry 12/24/35. Losses
+    // finally grade too — that is what makes the ratings PROPER: a
+    // scattered shoal still banks its stars, and a goalless run reads
+    // "-". Display-only: the sim never consults a star.
+    constexpr int stars_of(unsigned saved_count, unsigned mode_now)
+    {
+        int goal = mode_now == 1 ? save_goal_hungry : save_goal;
+
+        return int(saved_count) >= goal ? 3
+             : int(saved_count) >= (goal * 2 + 2) / 3 ? 2
+             : int(saved_count) >= (goal + 2) / 3 ? 1 : 0;
+    }
+
+    void append_stars(bn::string<40>& text, int stars)
+    {
+        if(stars == 0)
+        {
+            text.append("-");
+            return;
+        }
+
+        for(int i = 0; i < stars; ++i)
+        {
+            text.append("*");
+        }
+    }
 }
 
 int main()
@@ -189,7 +222,7 @@ int main()
     ui_gen.set_left_alignment();
 
     constexpr int ui_x = -110;
-    text_line ui_lines[7];
+    text_line ui_lines[8];
     text_line reef_marks[3];
     text_line cursor_glyph;
     text_line pred_glyphs[sh_predators]; // 'X' hunters (hungry water)
@@ -409,6 +442,7 @@ int main()
             ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
             ui_lines[5].set(ui_gen, ui_x, 24, "SELECT: HUNGRY WATER (35)");
             ui_lines[6].set(ui_gen, ui_x, 36, "R: THE GATED RUN (40)");
+            ui_lines[7].set(ui_gen, ui_x, 48, "STARS = FISH SAVED");
             break;
 
         case st_herding:
@@ -458,6 +492,8 @@ int main()
             hud.append("/");
             hud.append(bn::to_string<8>(mode == 1 ? save_goal_hungry
                                                   : save_goal));
+            hud.append(" ");
+            append_stars(hud, stars_of(saved, mode)); // rating, live
 
             if(mode == 1)
             {
@@ -487,6 +523,9 @@ int main()
             ui_lines[2].set(ui_gen, ui_x, -28, line2);
             ui_lines[3].set(ui_gen, ui_x, -16, "THE TIDE THANKS YOU");
             ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
+            bn::string<40> stars_line("RATING ");
+            append_stars(stars_line, stars_of(saved, mode));
+            ui_lines[5].set(ui_gen, ui_x, 24, stars_line);
             break;
         }
 
@@ -506,6 +545,9 @@ int main()
             ui_lines[2].set(ui_gen, ui_x, -28, line2);
             ui_lines[3].set(ui_gen, ui_x, -16, "KEEP THE SCHOOL TIGHT");
             ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
+            bn::string<40> stars_line("RATING ");
+            append_stars(stars_line, stars_of(saved, mode));
+            ui_lines[5].set(ui_gen, ui_x, 24, stars_line);
             break;
         }
 

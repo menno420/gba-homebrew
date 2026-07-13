@@ -35,6 +35,14 @@
 #   P5 gates are geometry    — the same no-input run that banks 5 fish in
 #                              calm water banks ZERO in gated water: the
 #                              walls, and only the walls, hold the school.
+#   P6 a graded loss (rung 3) — the ratings rung's other half: a run that
+#                              banks 6 then feeds the remnant to the
+#                              hunters SCATTERS at rf 3420 and the card
+#                              grades it honestly ("RATING -"); with P4's
+#                              live HUD stars (* at 25, ** at 30) and its
+#                              "RATING ***" win card, all four grades
+#                              (- / * / ** / ***) are pinned on screen.
+#                              RUN TWICE — byte-identical watch-logs.
 #
 # CPU-word pins (t[4]/t[5] exact literals) are PER-BUILD measurements — any
 # code touch shifts them ~±15 data units. Re-derive them once per slice and
@@ -62,7 +70,8 @@ H "$OUT/p1.png" --frames 70 $W \
   --assert-text "60:HERD 40 FISH TO THE REEF" \
   --assert-text "60:PRESS START" \
   --assert-text "60:SELECT: HUNGRY WATER (35)" \
-  --assert-text "60:R: THE GATED RUN (40)"
+  --assert-text "60:R: THE GATED RUN (40)" \
+  --assert-text "60:STARS = FISH SAVED"
 
 echo "== P2: calm idle — THE GATE, carried =="
 H "$OUT/p2.png" --frames 1300 $W --keys 10-12:START \
@@ -76,18 +85,19 @@ H "$OUT/p2.png" --frames 1300 $W --keys 10-12:START \
   --assert-watch 400:t:15:eq:389 \
   --assert-watch 400:t:16:eq:0 \
   --assert-watch 400:t:17:eq:0 \
-  --assert-watch 400:t:4:eq:2085 \
-  --assert-watch 400:t:5:eq:2822 \
+  --assert-watch 400:t:4:eq:2088 \
+  --assert-watch 400:t:5:eq:2833 \
   --assert-watch 400:t:5:lt:4096 \
   --assert-watch 1199:t:6:eq:47 \
   --assert-watch 1199:t:7:eq:3 \
   --assert-watch 1199:t:8:eq:85 \
   --assert-watch 1199:t:9:eq:57 \
-  --assert-watch 1199:t:5:eq:2822 \
+  --assert-watch 1199:t:5:eq:2833 \
   --assert-watch 1199:t:5:lt:4096 \
   --assert-watch 1299:t:7:eq:5 \
   --assert-watch 1299:t:16:eq:0 \
-  --assert-watch 1299:t:24:eq:0
+  --assert-watch 1299:t:24:eq:0 \
+  --assert-text "1299:SAVED 5/40 -"
 
 echo "== P3: hungry idle — the predator pass, carried =="
 H "$OUT/p3.png" --frames 1700 $W --keys 10-12:SELECT \
@@ -97,13 +107,13 @@ H "$OUT/p3.png" --frames 1700 $W --keys 10-12:SELECT \
   --assert-watch 320:t:19:eq:40 \
   --assert-watch 320:t:20:eq:176 \
   --assert-watch 320:t:21:eq:120 \
-  --assert-watch 400:t:5:eq:3058 \
+  --assert-watch 400:t:5:eq:3073 \
   --assert-watch 400:t:5:lt:4096 \
   --assert-watch 1420:t:17:eq:8 \
   --assert-watch 1699:t:17:eq:10 \
   --assert-watch 1699:t:6:eq:37 \
   --assert-watch 1699:t:7:eq:3 \
-  --assert-watch 1699:t:5:eq:3058 \
+  --assert-watch 1699:t:5:eq:3073 \
   --assert-watch 1699:t:5:lt:4096 \
   --assert-watch 1699:t:24:eq:0
 
@@ -129,12 +139,15 @@ P4_ASSERTS=(
   --assert-watch 3540:t:17:eq:0
   --assert-watch 3540:t:22:eq:0
   --assert-watch 3540:t:23:eq:0
-  --assert-watch 3540:t:5:eq:2916
+  --assert-watch 3540:t:5:eq:2927
   --assert-watch 3540:t:5:lt:4096
   --assert-text "3560:THE SHOAL IS HOME"
   --assert-text "3560:SAVED 40/50"
   --assert-text "3560:CLOCK 58s (3519 FRAMES)"
   --assert-text "3560:THE TIDE THANKS YOU"
+  --assert-text "1700:SAVED 25/40 *"
+  --assert-text "2000:SAVED 30/40 **"
+  --assert-text "3560:RATING ***"
   --assert-watch 3650:t:2:eq:1
   --assert-watch 3650:t:16:eq:0
   --assert-watch 3650:t:17:eq:0
@@ -166,7 +179,47 @@ H "$OUT/p5.png" --frames 1300 $W --keys 10-12:R \
   --assert-watch 1299:t:8:eq:70 \
   --assert-watch 1299:t:9:eq:62 \
   --assert-watch 1299:t:17:eq:0 \
-  --assert-watch 1299:t:5:eq:2949 \
+  --assert-watch 1299:t:5:eq:2958 \
   --assert-watch 1299:t:5:lt:4096
+
+# The committed graded-loss route (rung 3 — ratings grade LOSSES too):
+# SELECT starts the hungry water, the cursor slips under the school to
+# its right flank (banking nothing on the way), then the current pins
+# the school against the LEFT wall — off the reef, permanently
+# straggling. Six fish leak home early; the hunters take the rest one
+# straggler at a time until the 35-goal dies at eaten 16: SCATTERED at
+# run-frame 3420 with saved 6 -> "RATING -". Every span before frame
+# 3432 is load-bearing.
+GRADED_LOSS_ROUTE='--keys 10-12:SELECT --keys 12-42:DOWN --keys 12-57:RIGHT --keys 60-90:UP --keys 100-3460:A --keys 100-130:DOWN --keys 160-190:UP --keys 220-250:DOWN --keys 280-310:UP --keys 340-370:DOWN --keys 400-430:UP --keys 460-490:DOWN --keys 520-550:UP --keys 580-610:DOWN --keys 640-670:UP --keys 700-730:DOWN --keys 760-790:UP --keys 820-850:DOWN --keys 880-910:UP --keys 940-970:DOWN --keys 1000-1030:UP --keys 1060-1090:DOWN --keys 1120-1150:UP --keys 1180-1210:DOWN --keys 1240-1270:UP --keys 1300-1330:DOWN --keys 1360-1390:UP --keys 1420-1450:DOWN --keys 1480-1510:UP --keys 1540-1570:DOWN --keys 1600-1630:UP --keys 1660-1690:DOWN --keys 1720-1750:UP --keys 1780-1810:DOWN --keys 1840-1870:UP --keys 1900-1930:DOWN --keys 1960-1990:UP --keys 2020-2050:DOWN --keys 2080-2110:UP --keys 2140-2170:DOWN --keys 2200-2230:UP --keys 2260-2290:DOWN --keys 2320-2350:UP --keys 2380-2410:DOWN --keys 2440-2470:UP --keys 2500-2530:DOWN --keys 2560-2590:UP --keys 2620-2650:DOWN --keys 2680-2710:UP --keys 2740-2770:DOWN --keys 2800-2830:UP --keys 2860-2890:DOWN --keys 2920-2950:UP --keys 2980-3010:DOWN --keys 3040-3070:UP --keys 3100-3130:DOWN --keys 3160-3190:UP --keys 3220-3250:DOWN --keys 3280-3310:UP --keys 3340-3370:DOWN --keys 3400-3430:UP'
+
+P6_ASSERTS=(
+  --assert-watch 100:t:16:eq:1
+  --assert-watch 1200:t:7:eq:6
+  --assert-watch 1200:t:17:eq:6
+  --assert-watch 3450:t:2:eq:3
+  --assert-watch 3450:t:7:eq:6
+  --assert-watch 3450:t:17:eq:16
+  --assert-watch 3450:t:15:eq:3420
+  --assert-watch 3450:t:24:eq:0
+  --assert-watch 3450:t:5:eq:3094
+  --assert-watch 3450:t:5:lt:4096
+  --assert-text "3480:THE SHOAL SCATTERED"
+  --assert-text "3480:EATEN 16  SAVED 6"
+  --assert-text "3480:CLOCK 57s (3420 FRAMES)"
+  --assert-text "3480:KEEP THE SCHOOL TIGHT"
+  --assert-text "3480:RATING -"
+)
+
+echo "== P6: a graded loss — the scattered shoal still banks its stars (run 1) =="
+H "$OUT/p6.png" --frames 3520 $W $GRADED_LOSS_ROUTE \
+  --watch-log "$OUT/p6-run1.csv" --shot "3480:$OUT/p6-card.png" \
+  "${P6_ASSERTS[@]}"
+
+echo "== P6: run 2 (must be byte-identical) =="
+H "$OUT/p6b.png" --frames 3520 $W $GRADED_LOSS_ROUTE \
+  --watch-log "$OUT/p6-run2.csv" \
+  "${P6_ASSERTS[@]}"
+cmp "$OUT/p6-run1.csv" "$OUT/p6-run2.csv"
+echo "P6 run-twice: byte-identical"
 
 echo "ALL SHOAL PROOFS PASS"

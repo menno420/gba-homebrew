@@ -152,8 +152,10 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
 
 ## Dispatch 2026-07-13 (Shoal gates, PR #100)
 
-- **ts:** 2026-07-13T21:04:30Z (appended by the session-47 worker;
-  everything above left intact per the append-only dispatch rule)
+- **ts:** 2026-07-13T20:51:25Z (appended by the session-47 worker;
+  everything above left intact per the append-only dispatch rule;
+  ts corrected at the flip — first committed pre-written, the
+  session-45 erratum repeated and re-caught)
 - Shoal growth rung 2 = **the gates** (CONCEPT.md's next named cut;
   the committed pitch's "through gates"), on branch
   `claude/shoal-gates` from main @ `c5d3cd6`. Input-verb gated (R =

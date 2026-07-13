@@ -60,6 +60,18 @@
  *   [19] pred0 y                      THIS frame (gated/level runs)
  *   [25] level index (0-3, tuned levels only; 0 otherwise)
  *
+ * AUDIO (growth rung 5, the concept's LAST cut): five original
+ * synthesized cues (audio/generate_audio.py — deterministic, no
+ * samples ever) played through Butano's maxmod pipeline as pure
+ * DECISIONS on events the sim already computed: run start / a fish
+ * banks / a straggler eaten / the shoal home / the shoal scattered.
+ * Nothing feeds back into the sim. Every trigger bumps a cumulative
+ * gl_audio_hook counter (games/common/include/gl_audio_hook.h):
+ *   [0] run starts   [1] fish banked (cumulative, += per fish)
+ *   [2] fish eaten   [3] wins   [4] losses   [5] mute state (B)
+ * so the headless harness pins the decisions and the mixer-memory
+ * nonzero watch proves the voicing (docs/capabilities.md).
+ *
  * Presentation is deliberately trivial (breadth-program slice): fish
  * are one-glyph text sprites ('>') moved per frame, the cursor is
  * '+', the reef a glyph column; HUD/title/win text uses the common
@@ -76,9 +88,11 @@
 #include "bn_display.h"
 #include "bn_bg_palettes.h"
 #include "bn_sprite_ptr.h"
+#include "bn_sound_items.h"
 #include "bn_sprite_text_generator.h"
 
 #include "shoal_flock.h"
+#include "gl_audio_hook.h"
 
 #include "common_fixed_8x8_sprite_font.h"
 #include "common_variable_8x8_sprite_font.h"
@@ -249,7 +263,7 @@ int main()
     ui_gen.set_left_alignment();
 
     constexpr int ui_x = -110;
-    text_line ui_lines[9];
+    text_line ui_lines[10];
     text_line reef_marks[3];
     text_line cursor_glyph;
     text_line pred_glyphs[sh_predators]; // 'X' hunters (hungry water)
@@ -298,6 +312,16 @@ int main()
     unsigned eaten = 0;
     unsigned gate_blocked = 0;           // fish pressed into coral this frame
     unsigned level = 0;                  // tuned-levels index (mode 3 only)
+    bool muted = false;                  // B toggles; hook counters
+                                         // bump regardless (the audio
+                                         // DECISION is always proven)
+    bool start_cue_pending = false;      // the run-start cue fires on
+                                         // the FIRST herding frame, not
+                                         // the spawn frame: that frame
+                                         // already skips vblanks (the
+                                         // 50-sprite generation spike)
+                                         // and sits on a boundary — the
+                                         // boot-lag trap (#102 card)
     int cursor_x = 40, cursor_y = 80;    // whole px
     bool pushing = false;
     unsigned saved = 0;
@@ -341,6 +365,11 @@ int main()
         bool select = bn::keypad::select_pressed();
         bool rkey = bn::keypad::r_pressed();
         bool lkey = bn::keypad::l_pressed();
+
+        if(bn::keypad::b_pressed())
+        {
+            muted = ! muted;             // gates play() ONLY — never
+        }                                //   the hook counters
 
         switch(state)
         {
@@ -404,6 +433,8 @@ int main()
                     }
                 }
 
+                start_cue_pending = true;
+
                 state = st_herding;
             }
             break;
@@ -411,6 +442,18 @@ int main()
         case st_herding:
         {
             ++run_frames;
+
+            if(start_cue_pending)
+            {
+                start_cue_pending = false;
+
+                if(! muted)
+                {
+                    bn::sound_items::sh_start.play(bn::fixed(0.8));
+                }
+
+                gl::count_audio(0);      // run starts
+            }
 
             // Cursor: the current you steer.
             if(bn::keypad::left_held() && cursor_x > water_x0)
@@ -437,25 +480,50 @@ int main()
 
             // --- the flock: one deterministic IWRAM pass (see
             // shoal_flock.h for the measured ladder that shaped it).
-            saved += unsigned(sh_flock_update(fish, cursor_x, cursor_y,
-                                              pushing));
+            int banked = sh_flock_update(fish, cursor_x, cursor_y,
+                                         pushing);
+            saved += unsigned(banked);
+
+            if(banked > 0)
+            {
+                if(! muted)
+                {
+                    bn::sound_items::sh_save.play(bn::fixed(0.5));
+                }
+
+                gl_audio_hook[1] = gl_audio_hook[1] + unsigned(banked);
+            }
 
             // --- the hunters (hungry water: the shipped knob verbatim,
             // so every carried pin holds; tuned levels: the level's own
             // triple; calm/gated water never runs this).
+            int taken = 0;
+
             if(mode == 1)
             {
-                eaten += unsigned(sh_pred_update(fish, preds, run_frames,
-                                                 sh_straggle_r2,
-                                                 sh_pred_cooldown,
-                                                 sh_predators));
+                taken = sh_pred_update(fish, preds, run_frames,
+                                       sh_straggle_r2,
+                                       sh_pred_cooldown,
+                                       sh_predators);
             }
             else if(mode == 3 && level_defs[level].hunters > 0)
             {
-                eaten += unsigned(sh_pred_update(fish, preds, run_frames,
+                taken = sh_pred_update(fish, preds, run_frames,
                                        level_defs[level].straggle_r2,
                                        level_defs[level].cooldown,
-                                       level_defs[level].hunters));
+                                       level_defs[level].hunters);
+            }
+
+            eaten += unsigned(taken);
+
+            if(taken > 0)
+            {
+                if(! muted)
+                {
+                    bn::sound_items::sh_eaten.play(bn::fixed(0.8));
+                }
+
+                gl_audio_hook[2] = gl_audio_hook[2] + unsigned(taken);
             }
 
             // --- the gates (gated run: all committed walls, so every
@@ -479,12 +547,26 @@ int main()
             {
                 state = st_home;
                 clear_lines();
+
+                if(! muted)
+                {
+                    bn::sound_items::sh_win.play(bn::fixed(0.9));
+                }
+
+                gl::count_audio(3);      // wins
             }
             else if(eaten > 0
                     && fish_count - int(eaten) < int(goal))
             {
                 state = st_scattered;    // the goal died with the shoal
                 clear_lines();
+
+                if(! muted)
+                {
+                    bn::sound_items::sh_lose.play(bn::fixed(0.9));
+                }
+
+                gl::count_audio(4);      // losses
             }
 
             break;
@@ -507,6 +589,7 @@ int main()
             ui_lines[6].set(ui_gen, ui_x, 36, "R: THE GATED RUN (40)");
             ui_lines[7].set(ui_gen, ui_x, 48, "STARS = FISH SAVED");
             ui_lines[8].set(ui_gen, ui_x, 60, "L: TUNED LEVELS (4)");
+            ui_lines[9].set(ui_gen, ui_x, 72, "B: MUTE");
             break;
 
         case st_herding:
@@ -582,6 +665,12 @@ int main()
             hud.append("  CLOCK ");
             hud.append(bn::to_string<8>(run_frames / 60));
             hud.append("s");
+
+            if(muted)
+            {
+                hud.append("  MUTE");
+            }
+
             ui_lines[0].set(ui_gen, ui_x, 66, hud);
             break;
         }
@@ -720,6 +809,8 @@ int main()
         sh_telemetry[24] = gate_blocked;
         // slice 4 (extension; words 0-24 stay pinned)
         sh_telemetry[25] = mode == 3 ? level : 0u;
+        // slice 5: the audio decision layer's mute flag rides the hook
+        gl_audio_hook[5] = muted ? 1u : 0u;
 
         bn::core::update();
     }

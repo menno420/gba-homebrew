@@ -233,3 +233,31 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   byte-deterministic.
 - PR #102 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-13 (Shoal audio, PR #103)
+
+- **ts:** 2026-07-13T22:12:44Z (appended by the session-50 worker; everything
+  above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time)
+- Shoal growth rung 5 = **AUDIO, the concept's LAST named cut** — on
+  branch `claude/shoal-audio` from main @ `751341c`. Five original
+  synthesized cues (deterministic `audio/generate_audio.py`, no
+  samples ever) via maxmod, fired as pure decisions on events the sim
+  already computed (start / bank / eaten / home / scattered) + B-mute
+  gating playback only. Zero sim feedback; every trigger counted in
+  `gl_audio_hook`, voicing proven by the mixer-memory watch.
+- Budget (binding constraint held): P7 four-level chain measured
+  before/after — L4 worst frame 82.30% -> 82.35% (3369 -> 3371/4096);
+  per-level means +0.1..0.4pp; `t[5] < 4096` everywhere; **no
+  scope-down needed**. Known trap fired as documented: the constant
+  mixer cost tipped the TITLE->run spawn spike +1 vblank in every
+  water (card->run transitions measured unchanged) — every proof
+  clock re-based +1 with EVERY game-state literal carried verbatim
+  (the #102 ±1-row-offset method, applied suite-wide).
+- 7 proofs / 179 asserts green (the audio-decision ledger pinned
+  across the whole campaign: 136 fish banked / 15 eaten / 4 wins /
+  1 loss / 5 starts / mute flag; mixer voicing at the win and lose
+  cards); P4/P6/P7 run-twice byte-identical. `dist/shoal.gba`
+  **v1.0 CONCEPT COMPLETE**, byte-deterministic.
+- PR #103 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

@@ -55,7 +55,7 @@ OAM: 50 fish + cursor + HUD text ≈ 60 sprites — far under the
 pivot needed). The mailbox carries the CPU words permanently, so the
 budget is a pinned regression test, not a one-time claim.
 
-## Prototype slice (PR #98) + growth rungs 1-4 (PRs #99-#102)
+## Prototype slice (PR #98) + growth rungs 1-5 (PRs #99-#103) — FULLY BUILT
 
 50-fish boids flock + the current + the reef + the win loop (save 40,
 clock stamped, instant restart). **Growth rung 1 (the predator pass,
@@ -114,7 +114,28 @@ winnable by its own committed route in one deterministic chain
 28/7 @ 1707. Worst frame anywhere in the chain: **82.3%**
 (3369/4096, L4 — two hunters + two walls + a pushed 50-boid school);
 the `t[5] < 4096` rail covers it. The carried waters never read the
-level table. Deliberately still cut: audio.
+level table. **Growth rung 5 (audio, PR #103) — the LAST cut, now
+built**: five original synthesized cues (`audio/generate_audio.py`,
+deterministic stdlib synthesis — no samples, ever) through Butano's
+maxmod pipeline, fired as pure DECISIONS on events the sim already
+computed — run start, a fish banks, a straggler eaten, the shoal
+home, the shoal scattered — plus a B-mute that gates playback only.
+Nothing feeds back into the sim; every trigger rides a cumulative
+`gl_audio_hook` counter and the mixer-memory nonzero watch proves
+the voicing (docs/capabilities.md). Budget: the audio engine's
+constant cost moved the four-level chain's worst frame 82.30% ->
+82.35% (3369 -> 3371/4096) — the `t[5] < 4096` rail holds everywhere
+with no scope-down. One measured side effect, handled by the #102
+method: the constant cost tipped the TITLE->run spawn-spike frame
+across one more vblank in every water (card->run transitions
+unchanged), so every proof clock re-based +1 with every game-state
+literal carried verbatim.
+
+**With this rung the committed concept is FULLY BUILT**: boids flock
+(gated by its own profiling law), the current, the reef, predators
+locking onto stragglers, gates, star ratings, four tuned levels, and
+audio — every named item of the ORDER-001 pitch and its S1-S3 scope
+ladder is on cartridge, each behind committed headless proofs.
 
 Hungry-water frame budget (same meter as the gate, final build):
 idle mean 50.0%, p99 70.4%, steady worst 75.1% (3075/4096); 74.0%

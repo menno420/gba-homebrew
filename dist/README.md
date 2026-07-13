@@ -19,6 +19,20 @@ changes its game, with provenance:
 | [`gloamline.nds`](gloamline.nds) | **best-night rematch** (arc slice 11) · session 2026-07-13-gloamline-rematch | 118,272 bytes | source tree of the slice-11 rematch commit (`games/gloamline-nds/` at the same tree as this file); build is byte-deterministic (two clean builds + an independent fresh-worktree build, identical hash) | `3bab5544c03d01e358fd1f8898df47031bb3f48107fb1469551ab7ed794ec061` |
 | [`brineward.nds`](brineward.nds) | **the Maw** (arc slice 5) · session 31 · 2026-07-12 | 116,224 bytes | source tree of the slice-5 Maw commit (`games/brineward-nds/` at the same tree as this file); build is byte-deterministic (two clean builds, identical hash) | `6e571941c4d286e76d1a05b18cb1c498b0ccfc20da5c62c95bc2d22a26d2af7c` |
 
+## `web/` + `releases/` — the web arcade and its versioned zips
+
+`dist/web/` is the **host-ready static arcade** (landing page +
+`undertow/`, `tiltstone/`, `drift-garden/` — upload as-is, zero build);
+`dist/releases/` holds the **deterministic versioned zips** of the same
+content for per-game uploads and GitHub Releases. Both are rebuilt from
+scratch by `tools/package-web-arcade.sh` (fixed source epoch + sorted
+member list + `zip -X` = byte-identical re-runs), staging each game's
+runtime files only, per its own hosting contract. Versions, byte sizes and
+pinned sha256s: [`docs/RELEASES.md`](../docs/RELEASES.md); owner publish
+steps: [`docs/RELEASE-HOWTO.md`](../docs/RELEASE-HOWTO.md). Refresh policy
+matches the ROM table above: re-run the script in the same PR that changes
+a packaged game.
+
 **How they were built:** GBA — `tools/setup-toolchain.sh` (pinned
 devkitARM r68 + Butano) then `tools/build.sh`; NDS —
 `tools/setup-nds-toolchain.sh` (pinned BlocksDS 1.21.1 + Wonderful GCC)

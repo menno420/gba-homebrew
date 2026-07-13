@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Undertow — trench diver</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #04101c; color: #cfe8f5;
+    font-family: "Courier New", monospace;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none;
+  }
+  #wrap { text-align: center; }
+  canvas {
+    background: #06283d;
+    max-width: 100vw; max-height: 96vh;
+    image-rendering: pixelated;
+    border: 1px solid #123a52;
+  }
+  #hint { font-size: 12px; color: #5f8aa3; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="480" height="640"></canvas>
+  <div id="hint">arrows / A,D to steer &middot; space to dive &middot; touch: tap halves</div>
+</div>
+<script src="game.js"></script>
+</body>
+</html>

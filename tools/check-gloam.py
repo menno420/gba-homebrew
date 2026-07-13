@@ -548,6 +548,17 @@ def gl_gloam_out(wave_total, spawned):
     return wave_total - spawned if spawned < wave_total else 0
 
 
+def gl_rematch_available(best_nights):
+    """Mirror of gl_rematch_available()."""
+    return 1 if best_nights > 0 else 0
+
+
+def gl_run_seed(rematch, best_nights, best_seed, latched):
+    """Mirror of gl_run_seed()."""
+    return (best_seed if rematch and gl_rematch_available(best_nights)
+            else latched)
+
+
 # --- proofs ------------------------------------------------------------------
 
 def on_perimeter(x, y):
@@ -1398,6 +1409,59 @@ def main():
                 failures += 1
                 print(f'FAIL gloam-out: ({total},{spawned}) -> {got}')
 
+    # 16. best-night rematch (slice 11).
+    # 16a. the offer gate: a rematch is available IFF a record exists —
+    # exactly the "no empty boasts" rule the title/card BEST lines use.
+    rematch_cases = 0
+    for best in list(range(30)) + [0xFFFFFFFE, 0xFFFFFFFF]:
+        rematch_cases += 1
+        got = gl_rematch_available(best)
+        if got != gl_rematch_available(best):
+            failures += 1
+            print(f'FAIL rematch determinism: best {best}')
+        if got != (1 if best > 0 else 0):
+            failures += 1
+            print(f'FAIL rematch gate: best {best} -> {got}')
+    # 16b. seed choice truth table: the RECORDED seed iff rematch AND a
+    # record exists; the frame-counter latch otherwise (a rematch call
+    # without a record falls back to the latch — defense in depth over
+    # the main.c verb gate). Extremes included: seed words are opaque
+    # u32s, never arithmetic.
+    seed_cases = 0
+    for rematch in (0, 1):
+        for best in (0, 1, 13, 0xFFFFFFFF):
+            for best_seed in (0, 118, 0xDEADBEEF, 0xFFFFFFFF):
+                for latched in (1, 118, 428, 0xFFFFFFFF):
+                    seed_cases += 1
+                    got = gl_run_seed(rematch, best, best_seed, latched)
+                    want = (best_seed if rematch and best > 0
+                            else latched)
+                    if got != gl_run_seed(rematch, best, best_seed,
+                                          latched):
+                        failures += 1
+                        print(f'FAIL run-seed determinism: '
+                              f'({rematch},{best},{best_seed},{latched})')
+                    if got != want:
+                        failures += 1
+                        print(f'FAIL run-seed: ({rematch},{best},'
+                              f'{best_seed},{latched}) -> {got}')
+    # 16c. the replay contract: a rematch run's ENTIRE spawn schedule is
+    # the record run's, spawn for spawn — because gl_run_seed returns
+    # the recorded seed verbatim and the schedule is pure f(seed, night,
+    # index). Checked explicitly over sample records so the contract
+    # survives any future seed-derivation cleverness.
+    replay_checks = 0
+    for best_seed in (0, 118, 348, 0xDEADBEEF):
+        seed = gl_run_seed(1, 2, best_seed, 999)
+        for night in (1, 2, 3, 13):
+            for index in range(gl_wave_count(night)):
+                replay_checks += 1
+                if (gl_spawn_of_night(seed, night, index)
+                        != gl_spawn_of_night(best_seed, night, index)):
+                    failures += 1
+                    print(f'FAIL rematch replay: seed {best_seed} '
+                          f'night {night} index {index} drifted')
+
     if failures:
         print(f'check-gloam: {failures} failure(s)')
         return 1
@@ -1443,8 +1507,12 @@ def main():
           'cells place strictly-interior with EXACT cell round-trips '
           f'({off_cells} off-plot cells all reject), {touch_px} touch '
           'pixels alias the cell placement exactly (negatives reject), '
-          f'map corners land on the plot edges, and {out_cases} '
-          'gloam-out cases match max(total - spawned, 0)')
+          f'map corners land on the plot edges, {out_cases} '
+          'gloam-out cases match max(total - spawned, 0), '
+          f'{rematch_cases} rematch-gate cases record-iff-available, '
+          f'{seed_cases} run-seed cases truth-table-exact (recorded '
+          f'seed iff rematch and a record), and {replay_checks} '
+          'rematch spawn checks replay the record run spawn for spawn')
     return 0
 
 

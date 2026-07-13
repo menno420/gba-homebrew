@@ -29,8 +29,12 @@ and the slice-10 watch-map chalk mark: X chalks/clears a mark at the
 player's position, a stylus tap (`--touch START-END:X,Y`, the pure
 gl_mark_of_touch cell placement) drops or moves it, it persists
 across nights and wipes on a fresh run, and the dead ignore it
-entirely), driven by the same `--keys START-END:NAME` spans
-tools/nds-headless-check.py replays.
+entirely — and the slice-11 best-night rematch: SELECT at the title
+or the death card, when a record exists (`--best/--best-seed/
+--save-ok` mirror the power-on backup read), starts the run on the
+RECORDED seed via gl_run_seed instead of the frame-counter latch;
+with no record the verb is inert), driven by the same
+`--keys START-END:NAME` spans tools/nds-headless-check.py replays.
 
 Emulator/ROM alignment (session-17 guard): the py-desmume frontend's frame
 N sets input that the ROM's loop iteration sees ~2 frames later (ROM frame
@@ -173,6 +177,12 @@ class GloamSim:
         self.mark_y = 0
         self.marks = 0
         self.prev_touch = False              # stylus-down edge detect
+        # best-night rematch (slice 11): SELECT at the title or the
+        # death card — when a record exists — starts a run on the
+        # RECORDED seed instead of the frame-counter latch. Display
+        # state only past the seed choice: the sim never reads it.
+        self.rematch_on = 0
+        self.rematches = 0
         # evidence
         self.min_dist = None                 # over PLAYING+SCAVENGE frames
         self.dawn_emu_frames = []            # emu frame of each dawn flip
@@ -415,9 +425,19 @@ class GloamSim:
         prev_counts = (self.shoves, self.places, self.repairs,
                        self.breaches, self.scavenged, self.oil_grabs)
 
+        select = self.pad_seen_idle and 'SELECT' in down
+
         if self.state == STATE_TITLE:
             if start:
+                self.rematch_on = 0
                 self.start_run(self.frame)
+                self.state = STATE_PLAYING
+            elif select and cg.gl_rematch_available(self.best_nights):
+                # slice 11: the rematch — the recorded seed, on a button
+                self.rematch_on = 1
+                self.rematches += 1
+                self.start_run(cg.gl_run_seed(1, self.best_nights,
+                                              self.best_seed, self.frame))
                 self.state = STATE_PLAYING
         elif self.state == STATE_PLAYING:
             self.oil = cg.gl_oil_burn(self.oil)   # the lantern burns
@@ -487,7 +507,17 @@ class GloamSim:
                         self.state = STATE_PLAYING
         elif self.state == STATE_DEAD:
             if start:
+                self.rematch_on = 0
                 self.start_run(self.frame)
+                self.state = STATE_PLAYING
+            elif select and cg.gl_rematch_available(self.best_nights):
+                # slice 11: chase it again right now (TITLE is
+                # unreachable after the first START — the death card
+                # is the rematch's natural seat)
+                self.rematch_on = 1
+                self.rematches += 1
+                self.start_run(cg.gl_run_seed(1, self.best_nights,
+                                              self.best_seed, self.frame))
                 self.state = STATE_PLAYING
         elif self.state == STATE_DAWN:
             if start:
@@ -560,7 +590,8 @@ class GloamSim:
               f'marky {self.mark_y} '
               f'markdist {cg.gl_chebyshev(self.px, self.py, self.mark_x, self.mark_y) if self.mark_on else 0} '
               f'marks {self.marks} '
-              f'out {cg.gl_gloam_out(self.wave_total, len(self.zx))}')
+              f'out {cg.gl_gloam_out(self.wave_total, len(self.zx))} '
+              f'rematch {self.rematch_on} rematches {self.rematches}')
 
 
 def skewed(spans, delta):
@@ -582,18 +613,23 @@ def parse_touch_specs(specs):
 
 
 def verify(spans, nights, end, skew, min_dist_px, probes=(),
-           touch_spans=()):
+           touch_spans=(), best_nights=0, best_seed=0, save_ok=0):
     """Simulate every movement skew in +-skew; return (ok, report_lines).
 
     touch_spans ride UNSKEWED (they anchor to the map like the START
     presses; no committed survive-route uses them — they exist so a
     touch proof's pins can be mirror-predicted at nominal alignment).
+    best_nights/best_seed/save_ok mirror the power-on backup read
+    (slice 9 constructor state) so a rematch proof's pins (slice 11)
+    can be mirror-predicted against the same record the CI battery
+    fixture carries; committed survive-routes all run the fresh table.
     """
     lines = []
     ok = True
     for delta in range(-skew, skew + 1):
         sim = GloamSim(skewed(spans, delta), NOMINAL_OFFSET,
-                       touch_spans=touch_spans)
+                       best_nights=best_nights, best_seed=best_seed,
+                       save_ok=save_ok, touch_spans=touch_spans)
         sim.run(end + skew, probes=probes if delta == 0 else ())
         survived = (sim.deaths == 0 and sim.nights_survived >= nights)
         dist_px = (sim.min_dist or 0) / cg.GL_ONE
@@ -782,6 +818,13 @@ def main():
                         help='hold the stylus at bottom-LCD (X, Y) during '
                              'emu frames [START, END) — the slice-10 '
                              'chalk-mark alias; repeatable, unskewed')
+    parser.add_argument('--best', type=int, default=0,
+                        help='power-on record: best nights (slice-11 '
+                             'rematch probes; default 0 = fresh table)')
+    parser.add_argument('--best-seed', type=int, default=0,
+                        help='power-on record: seed of the best run')
+    parser.add_argument('--save-ok', action='store_true',
+                        help='power-on backup read decoded a valid blob')
     parser.add_argument('--out', help='derive: write the route file here')
     args = parser.parse_args()
 
@@ -806,7 +849,9 @@ def main():
     end = args.end or max(end for _s, end, _n in spans) + 400
     ok, lines = verify(spans, args.nights, end, args.skew, args.min_dist,
                        probes=args.probe,
-                       touch_spans=parse_touch_specs(args.touch))
+                       touch_spans=parse_touch_specs(args.touch),
+                       best_nights=args.best, best_seed=args.best_seed,
+                       save_ok=1 if args.save_ok else 0)
     for line in lines:
         print(line)
     if not ok:

@@ -1,7 +1,7 @@
 {
   "name": "Drift Garden",
   "short_name": "DriftGarden",
-  "description": "Original tap-to-plant ambient garden — mobile foundation skeleton (game-lab).",
+  "description": "Original ambient garden game — plant motes, herd currents, pollinate, harvest essence before dusk (game-lab).",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

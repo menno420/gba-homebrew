@@ -46,6 +46,7 @@
  *   [5] player y (8.8 px, feet)     [14] rewinds used this run
  *   [6] on ground (0/1)              [15] run frames elapsed (the
  *   [7] pose buffer fill (0..300)         clock the chute stamps)
+ *   [16] standing on the ghost (0/1) — growth rung 1
  *
  * Presentation is deliberately trivial (breadth-program slice): the
  * tower is glyph rows in Butano's common FIXED 8x8 sprite font; the
@@ -72,7 +73,7 @@ extern "C"
 {
     // Headless telemetry mailbox — see the layout table in the header
     // comment. volatile so every write really lands for the emulator bus.
-    volatile unsigned cc_telemetry[16];
+    volatile unsigned cc_telemetry[17];
 }
 
 namespace
@@ -98,10 +99,10 @@ namespace
     // optional; the two-cell cap closes that exploit).
     constexpr char level[map_h][map_w + 1] = {
         "################",
-        "#..............#",
-        "#P.............#",
-        "####...........#",
         "#...........#..#",
+        "#P..........#..#",
+        "####........#..#",
+        "#...........#.##",
         "#....##.....#..#",
         "#...........D..#",
         "#..o........D.v#",
@@ -186,8 +187,8 @@ int main()
     constexpr int map_y0 = -56;          // row centers at -56, -48, ... 8
     text_line map_lines[map_h];
 
-    constexpr int ui_count = 5;
-    constexpr int ui_y[ui_count] = {-70, 24, 40, 52, 64};
+    constexpr int ui_count = 6;
+    constexpr int ui_y[ui_count] = {-70, 24, 40, 52, 64, 76};
     constexpr int ui_x = -110;
     text_line ui_lines[ui_count];
 
@@ -228,6 +229,8 @@ int main()
     int buf_head = 0;                    // next write slot
 
     bool ghost_active = false;
+    bool on_ghost = false;               // standing on the ghost's head
+                                         // (growth rung 1)
     pose_t ghost_track[rewind_frames];
     int ghost_at = 0;                    // replay cursor
     int gx = 0;
@@ -247,6 +250,7 @@ int main()
         buf_fill = 0;
         buf_head = 0;
         ghost_active = false;
+        on_ghost = false;
         gx = 0;
         gy = 0;
     };
@@ -358,6 +362,30 @@ int main()
                 ++rewinds;
             }
 
+            // --- ghost-as-platform, part 1: the ride (growth rung 1) ------
+            // Standing on the ghost's head re-evaluates every frame AFTER
+            // the ghost has replayed its pose: still active, still under
+            // your feet, and the seat not squeezed into a wall -> your
+            // feet FOLLOW its head. Otherwise you are dismounted and
+            // normal physics resumes this same frame.
+            if(on_ghost)
+            {
+                int seat = gy - body_h;
+
+                if(ghost_active
+                   && px - gx < 2 * half_w && gx - px < 2 * half_w
+                   && ! blocked_at(px, seat))
+                {
+                    py = seat;
+                    vy = 0;
+                    on_ground = true;
+                }
+                else
+                {
+                    on_ghost = false;
+                }
+            }
+
             // --- courier physics (integer, input-driven, deterministic) ---
             int vx = 0;
 
@@ -374,9 +402,13 @@ int main()
             if(bn::keypad::a_pressed() && on_ground)
             {
                 vy = jump_v;
+                on_ghost = false;         // jumping dismounts
             }
 
-            vy += gravity;
+            if(! on_ghost)
+            {
+                vy += gravity;            // riders hang on the replay,
+            }                             //   not on gravity
 
             if(vy > fall_cap)
             {
@@ -395,10 +427,26 @@ int main()
             }
 
             // Vertical, with landing/bump resolution to the cell edge.
+            if(! on_ghost)
             {
                 int ny = py + vy;
+                int seat = gy - body_h;
 
-                if(! blocked_at(px, ny))
+                // Ghost-as-platform, part 2: the one-way TOP landing.
+                // Falling, horizontally over the ghost, feet crossing its
+                // head this frame, seat clear -> stand on it. One-way by
+                // construction: rising or sideways never tests this.
+                if(ghost_active && vy > 0
+                   && px - gx < 2 * half_w && gx - px < 2 * half_w
+                   && py <= seat && ny >= seat
+                   && ! blocked_at(px, seat))
+                {
+                    py = seat;
+                    vy = 0;
+                    on_ground = true;
+                    on_ghost = true;
+                }
+                else if(! blocked_at(px, ny))
                 {
                     py = ny;
                     on_ground = false;
@@ -478,6 +526,7 @@ int main()
             ui_lines[2].set(ui_gen, ui_x, -28, "YOUR GHOST REPLAYS YOU");
             ui_lines[3].set(ui_gen, ui_x, -16, "IT CAN HOLD THE SWITCH");
             ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
+            ui_lines[5].set(ui_gen, ui_x, 24, "AND YOU CAN STAND ON IT");
             break;
 
         case st_playing:
@@ -592,6 +641,8 @@ int main()
         cc_telemetry[13] = carried ? 1u : 0u;
         cc_telemetry[14] = rewinds;
         cc_telemetry[15] = run_frames;
+        // growth rung 1 (extension; words 0-15 stay pinned)
+        cc_telemetry[16] = on_ghost ? 1u : 0u;
 
         bn::core::update();
     }

@@ -55,12 +55,29 @@ OAM: 50 fish + cursor + HUD text ≈ 60 sprites — far under the
 pivot needed). The mailbox carries the CPU words permanently, so the
 budget is a pinned regression test, not a one-time claim.
 
-## Prototype slice (this PR)
+## Prototype slice (PR #98) + growth rung 1 (PR #99)
 
 50-fish boids flock + the current + the reef + the win loop (save 40,
-clock stamped, instant restart). Deliberately cut (the committed
-concept's later rungs): predators locking onto stragglers, gates,
-star ratings, multiple tuned levels, audio.
+clock stamped, instant restart). **Growth rung 1 (the predator pass,
+PR #99): THE HUNGRY WATER** — SELECT starts a run with two hunters
+(START keeps the calm water, so every calm pin holds by construction).
+Every 48 frames each hunter locks the fish farthest from the flock
+centroid — but ONLY a genuine straggler (>44 px out): **a tight or
+re-cohered school starves them; abandonment, not existence, is what
+kills** (measured: without the threshold the committed sweep lost
+34/11 — leftovers were farmed faster than they re-cohered). A caught
+straggler is eaten; the hunter dens up for 300 frames. The hungry
+water asks for 35 home (the committed concept's "star rating = fish
+saved" grading, per water; 40 is provably out of reach against the
+hunters — the same sweep that banks 40 calm banks 35/8 hungry, and a
+scatter-in-place loses 16). Deliberately still cut: gates, star
+ratings proper, multiple tuned levels, audio.
+
+Hungry-water frame budget (same meter as the gate, final build):
+idle mean 50.0%, p99 70.4%, steady worst 75.1% (3075/4096); 74.0%
+(3033) through the winning herd — the `t[5] < 4096` regression rail
+now covers predator-live frames too. Predator pass in IWRAM at
+0x030006d8 (map-verified).
 
 ## Determinism
 

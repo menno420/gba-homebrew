@@ -39,7 +39,8 @@
  *     input script replays bit-identically.
  *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
- * --elf --watch sh:sh_telemetry:16), volatile, C-linkage, every frame:
+ * --elf --watch sh:sh_telemetry:24), volatile, C-linkage, every frame
+ * (words 0-15 FROZEN since #98; the predator pass appends 16-23):
  *   [0] 0x53484F41 'SHOA' magic     [8]  flock centroid x (whole px)
  *   [1] 0x4C524546 'LREF' magic     [9]  flock centroid y (whole px)
  *   [2] state (0 title, 1 herding,  [10] fish[0] x (8.8 px)
@@ -51,6 +52,10 @@
  *   [5] max cpu usage since boot         clock the reef stamps)
  *   [6] fish still at sea
  *   [7] fish SAVED in the reef
+ *   [16] mode (0 calm/1 hungry)  [20] pred1 x   [21] pred1 y
+ *   [17] fish EATEN              [22] pred0 lock (fish idx+1, 0=none)
+ *   [18] pred0 x (whole px)      [23] pred1 lock
+ *   [19] pred0 y
  *
  * Presentation is deliberately trivial (breadth-program slice): fish
  * are one-glyph text sprites ('>') moved per frame, the cursor is
@@ -78,7 +83,7 @@
 extern "C"
 {
     // Headless telemetry mailbox — layout in the header comment.
-    volatile unsigned sh_telemetry[16];
+    volatile unsigned sh_telemetry[24];
 }
 
 namespace
@@ -88,7 +93,8 @@ namespace
         st_title = 0,
         st_herding = 1,
         st_home = 2,
-    };
+        st_scattered = 3,            // hungry water only: the 40-fish
+    };                               //   goal became unreachable
 
     constexpr unsigned seed_constant = 0x510A17E5;  // fixed; init-only
 
@@ -117,7 +123,17 @@ namespace
     // shoal_flock.h / shoal_flock.bn_iwram.cpp (the IWRAM hot loop —
     // the gate's measured story is told there). Here: display + goal.
     constexpr int fish_count = sh_fish_count;
-    constexpr int save_goal = 40;
+    constexpr int save_goal = 40;        // calm water (carried pins)
+    constexpr int save_goal_hungry = 35; // the hungry water asks for 35
+                                         // home: measured — vs two
+                                         // threshold-locked hunters the
+                                         // committed sweep banks 35 with
+                                         // 8 lost; 40 is not reachable
+                                         // without scattering the
+                                         // remnant into their jaws (the
+                                         // concept's own "star rating =
+                                         // fish saved" grading, per
+                                         // water)
     constexpr int fp = sh_fp;
     constexpr int water_x0 = sh_water_x0, water_x1 = sh_water_x1;
     constexpr int water_y0 = sh_water_y0, water_y1 = sh_water_y1;
@@ -172,9 +188,10 @@ int main()
     ui_gen.set_left_alignment();
 
     constexpr int ui_x = -110;
-    text_line ui_lines[5];
+    text_line ui_lines[6];
     text_line reef_marks[3];
     text_line cursor_glyph;
+    text_line pred_glyphs[sh_predators]; // 'X' hunters (hungry water)
 
     // One '>' sprite per fish, generated once and MOVED per frame (the
     // no-assets trick without per-frame text regeneration). 50 fish +
@@ -194,6 +211,12 @@ int main()
         }
 
         cursor_glyph.clear();
+
+        for(auto& g : pred_glyphs)
+        {
+            g.clear();
+        }
+
         fish_sprites.clear();
     };
 
@@ -202,6 +225,9 @@ int main()
     unsigned frames = 0;                 // monotonic since boot
     unsigned max_cpu = 0;                // worst last_cpu_usage.data() seen
     fish_t fish[fish_count];
+    sh_pred preds[sh_predators];
+    unsigned mode = 0;                   // 0 calm (START) / 1 hungry (SELECT)
+    unsigned eaten = 0;
     int cursor_x = 40, cursor_y = 80;    // whole px
     bool pushing = false;
     unsigned saved = 0;
@@ -222,6 +248,15 @@ int main()
             f.saved = false;
         }
 
+        for(int p = 0; p < sh_predators; ++p)
+        {
+            preds[p].x = sh_pred_den_x[p] * fp;
+            preds[p].y = sh_pred_den_y[p] * fp;
+            preds[p].target = -1;
+            preds[p].cooldown = 0;
+        }
+
+        eaten = 0;
         cursor_x = 40;
         cursor_y = 80;
         pushing = false;
@@ -232,14 +267,17 @@ int main()
     while(true)
     {
         bool start = bn::keypad::start_pressed();
+        bool select = bn::keypad::select_pressed();
 
         switch(state)
         {
 
         case st_title:
         case st_home:
-            if(start)
+        case st_scattered:
+            if(start || select)
             {
+                mode = select ? 1 : 0;   // SELECT: the hungry water
                 reset_run();
                 clear_lines();
 
@@ -288,9 +326,25 @@ int main()
             saved += unsigned(sh_flock_update(fish, cursor_x, cursor_y,
                                               pushing));
 
-            if(saved >= save_goal)
+            // --- the hunters (hungry water only — the SELECT verb;
+            // calm water never runs this, so every carried pin holds).
+            if(mode == 1)
+            {
+                eaten += unsigned(sh_pred_update(fish, preds,
+                                                 run_frames));
+            }
+
+            unsigned goal = mode == 1 ? save_goal_hungry : save_goal;
+
+            if(saved >= goal)
             {
                 state = st_home;
+                clear_lines();
+            }
+            else if(mode == 1
+                    && fish_count - int(eaten) < int(goal))
+            {
+                state = st_scattered;    // the goal died with the shoal
                 clear_lines();
             }
 
@@ -310,6 +364,7 @@ int main()
             ui_lines[2].set(ui_gen, ui_x, -28, "DPAD STEERS - A PUSHES");
             ui_lines[3].set(ui_gen, ui_x, -16, "HERD 40 FISH TO THE REEF");
             ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
+            ui_lines[5].set(ui_gen, ui_x, 24, "SELECT: HUNGRY WATER (35)");
             break;
 
         case st_herding:
@@ -339,9 +394,34 @@ int main()
             cursor_glyph.set(map_gen, scr_x(cursor_x) - 4,
                              scr_y(cursor_y), cur);
 
+            for(int p = 0; p < sh_predators; ++p)
+            {
+                if(mode == 1)
+                {
+                    bn::string<40> jaws("X");
+                    pred_glyphs[p].set(map_gen,
+                                       scr_x(preds[p].x / fp) - 4,
+                                       scr_y(preds[p].y / fp), jaws);
+                }
+                else
+                {
+                    pred_glyphs[p].clear();
+                }
+            }
+
             bn::string<40> hud("SAVED ");
             hud.append(bn::to_string<8>(saved));
-            hud.append("/50  CLOCK ");
+            hud.append("/");
+            hud.append(bn::to_string<8>(mode == 1 ? save_goal_hungry
+                                                  : save_goal));
+
+            if(mode == 1)
+            {
+                hud.append("  LOST ");
+                hud.append(bn::to_string<8>(eaten));
+            }
+
+            hud.append("  CLOCK ");
             hud.append(bn::to_string<8>(run_frames / 60));
             hud.append("s");
             ui_lines[0].set(ui_gen, ui_x, 66, hud);
@@ -362,6 +442,25 @@ int main()
             line2.append(" FRAMES)");
             ui_lines[2].set(ui_gen, ui_x, -28, line2);
             ui_lines[3].set(ui_gen, ui_x, -16, "THE TIDE THANKS YOU");
+            ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
+            break;
+        }
+
+        case st_scattered:
+        {
+            ui_lines[0].set(ui_gen, ui_x, -60, "THE SHOAL SCATTERED");
+            bn::string<40> line1("EATEN ");
+            line1.append(bn::to_string<8>(eaten));
+            line1.append("  SAVED ");
+            line1.append(bn::to_string<8>(saved));
+            ui_lines[1].set(ui_gen, ui_x, -40, line1);
+            bn::string<40> line2("CLOCK ");
+            line2.append(bn::to_string<8>(run_frames / 60));
+            line2.append("s (");
+            line2.append(bn::to_string<8>(run_frames));
+            line2.append(" FRAMES)");
+            ui_lines[2].set(ui_gen, ui_x, -28, line2);
+            ui_lines[3].set(ui_gen, ui_x, -16, "KEEP THE SCHOOL TIGHT");
             ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
             break;
         }
@@ -418,6 +517,15 @@ int main()
         sh_telemetry[13] = unsigned(cursor_y);
         sh_telemetry[14] = pushing ? 1u : 0u;
         sh_telemetry[15] = run_frames;
+        // slice 2 (extension; words 0-15 stay pinned)
+        sh_telemetry[16] = mode;
+        sh_telemetry[17] = eaten;
+        sh_telemetry[18] = unsigned(preds[0].x / fp);
+        sh_telemetry[19] = unsigned(preds[0].y / fp);
+        sh_telemetry[20] = unsigned(preds[1].x / fp);
+        sh_telemetry[21] = unsigned(preds[1].y / fp);
+        sh_telemetry[22] = unsigned(preds[0].target + 1);
+        sh_telemetry[23] = unsigned(preds[1].target + 1);
 
         bn::core::update();
     }

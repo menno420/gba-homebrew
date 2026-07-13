@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tiltstone — turn the cavern, catch the fall</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; min-height: 100%;
+    background: #14100d; color: #e8dcc8;
+    font-family: "Courier New", monospace;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #wrap { text-align: center; padding: 12px 8px; }
+  h1 { font-size: 20px; letter-spacing: 4px; margin: 4px 0 2px; color: #d9b96c; }
+  #tag { font-size: 11px; color: #8a7a5e; margin: 0 0 8px; }
+  canvas {
+    background: #1d1712;
+    max-width: 96vw; height: auto;
+    image-rendering: pixelated;
+    border: 2px solid #4a3b28; border-radius: 4px;
+    touch-action: manipulation;
+  }
+  #hud {
+    display: flex; justify-content: space-between; gap: 8px;
+    max-width: 432px; margin: 6px auto 0; font-size: 13px; color: #cbb98f;
+  }
+  #msg { min-height: 18px; font-size: 13px; margin-top: 4px; color: #d9b96c; }
+  .row { margin-top: 8px; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+  button {
+    background: #2c231a; color: #e8dcc8; border: 1px solid #5a4a32;
+    border-radius: 4px; font-family: inherit; font-size: 14px;
+    padding: 8px 14px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: #3b2f21; }
+  button:disabled { opacity: 0.35; cursor: default; }
+  button.big { font-size: 18px; padding: 10px 22px; }
+  input#seedbox {
+    background: #1d1712; color: #e8dcc8; border: 1px solid #5a4a32;
+    border-radius: 4px; font-family: inherit; font-size: 13px;
+    padding: 8px 6px; width: 110px;
+  }
+  #hint { font-size: 11px; color: #8a7a5e; margin-top: 8px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>TILTSTONE</h1>
+  <p id="tag">turn the cavern &middot; let them fall &middot; three of a kind collects</p>
+  <canvas id="game" width="432" height="432"></canvas>
+  <div id="hud">
+    <span id="hud-gems">GEMS 0/0</span>
+    <span id="hud-turns">TURNS 0/0</span>
+    <span id="hud-level">LV 1</span>
+    <span id="hud-seed">SEED 0</span>
+  </div>
+  <div id="msg"></div>
+  <div class="row">
+    <button id="btn-ccw" class="big" title="rotate counter-clockwise (Left / A)">&#10226; CCW</button>
+    <button id="btn-cw"  class="big" title="rotate clockwise (Right / D)">&#10227; CW</button>
+  </div>
+  <div class="row">
+    <button id="btn-restart" title="restart level (R)">Restart</button>
+    <button id="btn-next" disabled title="next level (N, after a win)">Next level</button>
+    <button id="btn-daily" title="today's shared UTC seed">Daily</button>
+    <input id="seedbox" type="number" placeholder="seed" inputmode="numeric">
+    <button id="btn-load">Load seed</button>
+  </div>
+  <div id="hint">
+    &larr;/A rotate left &middot; &rarr;/D rotate right &middot; R restart &middot; N next level<br>
+    hit the gem quota before your rotations run out &middot; every seed is provably winnable
+  </div>
+</div>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

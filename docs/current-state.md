@@ -68,7 +68,8 @@ Outcomes, live-verified at close-out:
 - **Web arcade:** `dist/web/` (landing page + undertow/ + tiltstone/ +
   drift-garden/, zero-build static) plus 4 sha256-pinned versioned
   zips — lands on main when PR #85 merges.
-- **Gloamline arc: SCOPE-COMPLETE** — concept (PR #50) → feasibility
+- **Gloamline arc: SCOPE-COMPLETE** —
+  [concept](concepts/gloamline-concept.md) (PR #50) → feasibility
   (#51) → skeleton (#52) → shove + waves (#54) → barricades (#56) →
   scavenge interlude (#62) → lantern oil (#64) → audio (#68) → saves
   (#74) → watch-map polish (#75, completed the concept tree) →

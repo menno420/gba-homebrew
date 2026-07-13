@@ -55,7 +55,7 @@ OAM: 50 fish + cursor + HUD text ≈ 60 sprites — far under the
 pivot needed). The mailbox carries the CPU words permanently, so the
 budget is a pinned regression test, not a one-time claim.
 
-## Prototype slice (PR #98) + growth rung 1 (PR #99)
+## Prototype slice (PR #98) + growth rungs 1 (PR #99) and 2 (PR #100)
 
 50-fish boids flock + the current + the reef + the win loop (save 40,
 clock stamped, instant restart). **Growth rung 1 (the predator pass,
@@ -70,14 +70,35 @@ straggler is eaten; the hunter dens up for 300 frames. The hungry
 water asks for 35 home (the committed concept's "star rating = fish
 saved" grading, per water; 40 is provably out of reach against the
 hunters — the same sweep that banks 40 calm banks 35/8 hungry, and a
-scatter-in-place loses 16). Deliberately still cut: gates, star
-ratings proper, multiple tuned levels, audio.
+scatter-in-place loses 16). **Growth rung 2 (the gates, PR #100):
+THE GATED RUN** — R starts a run where two static coral walls with
+OFFSET gaps (gap 0 high at x=104, gap 1 low at x=156) stand between
+the school and the reef: the committed pitch's "past predators,
+through gates, into the safe reef", built as pure static geometry
+(position tests, no per-frame state). A fish pressed into the coral
+is ejected the way it came with its approach damped, so the school
+must be FUNNELED — compressed into a gap lane and pumped through,
+then snaked down to the other gap. The same no-input run that banks
+5 fish in calm water banks ZERO gated: the walls, and only the
+walls, hold the school. Goal stays 40 (calm rules — no hunters, so
+the hungry water's coupled difficulty knob, straggler 44 px + den
+300 + goal 35, is untouched); the committed funnel route banks 40/50
+at run-frame 3519 (~59 s — the clock is the brag). Deliberately
+still cut: star ratings proper, multiple tuned levels, audio.
 
 Hungry-water frame budget (same meter as the gate, final build):
 idle mean 50.0%, p99 70.4%, steady worst 75.1% (3075/4096); 74.0%
 (3033) through the winning herd — the `t[5] < 4096` regression rail
 now covers predator-live frames too. Predator pass in IWRAM at
 0x030006d8 (map-verified).
+
+Gated-run frame budget (same meter, rung-2 build): the winning
+funnel route runs mean 35.9%, p99 57.2%, worst 71.2% (2916/4096)
+over its 3517 gate-active frames; the gated idle school holds 72.0%
+(2949) worst. The rail covers gate-active frames too. Gate pass in
+IWRAM at 0x03000a2c (map-verified). The proof suite (input scripts
+included — they are part of the pin) is committed at
+`games/shoal/proofs.sh`.
 
 ## Determinism
 

@@ -315,3 +315,57 @@ SH_CODE_IWRAM int sh_pred_update(sh_fish* fish, sh_pred* preds,
 
     return newly_eaten;
 }
+
+SH_CODE_IWRAM int sh_gate_update(sh_fish* fish)
+{
+    // STATIC GEOMETRY ONLY (the concept's "through gates"): no state,
+    // no RNG — a pure position test per fish per wall, run AFTER the
+    // flock pass so the walls have the last word on the frame. A fish
+    // inside a wall band and outside that wall's gap is ejected to the
+    // side it was swimming FROM (vx sign; a still fish is treated as
+    // an east-facing one — deterministic either way) with its approach
+    // damped. sh_speed_max (1.5 px/f) < the 5 px band means entry is
+    // always caught before exit: no tunneling by construction.
+    int blocked = 0;
+
+    for(int i = 0; i < sh_fish_count; ++i)
+    {
+        sh_fish& f = fish[i];
+
+        if(f.saved)
+        {
+            continue;
+        }
+
+        int px = f.x / sh_fp;
+        int py = f.y / sh_fp;
+
+        for(int g = 0; g < sh_gates; ++g)
+        {
+            if(px < sh_gate_x[g] - sh_gate_half
+               || px > sh_gate_x[g] + sh_gate_half)
+            {
+                continue;
+            }
+
+            if(py >= sh_gate_gap_y0[g] && py <= sh_gate_gap_y1[g])
+            {
+                continue;                // through the gap — swim on
+            }
+
+            if(f.vx > 0)
+            {
+                f.x = (sh_gate_x[g] - sh_gate_half - 1) * sh_fp;
+            }
+            else
+            {
+                f.x = (sh_gate_x[g] + sh_gate_half + 1) * sh_fp;
+            }
+
+            f.vx = -(f.vx / 2);          // the coral gives nothing back
+            ++blocked;
+        }
+    }
+
+    return blocked;
+}

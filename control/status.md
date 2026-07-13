@@ -149,3 +149,30 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   byte-deterministic.
 - PR #99 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-13 (Shoal gates, PR #100)
+
+- **ts:** 2026-07-13T21:04:30Z (appended by the session-47 worker;
+  everything above left intact per the append-only dispatch rule)
+- Shoal growth rung 2 = **the gates** (CONCEPT.md's next named cut;
+  the committed pitch's "through gates"), on branch
+  `claude/shoal-gates` from main @ `c5d3cd6`. Input-verb gated (R =
+  the gated run; START/SELECT untouched): two static coral walls
+  with OFFSET gaps — the school must be funneled, and the committed
+  route banks 40/50 at run-frame 3519. The hungry water's coupled
+  difficulty knob (44 px / den 300 / goal 35) untouched by design.
+- Carried pins proven cross-ROM this time: the prior sessions' local
+  proof scripts died with the container, so calm+hungry idle runs
+  were replayed on the merged v0.2 dist AND the new build — zero
+  game-state diffs over 3000 frames (CPU words only). The fix is
+  committed: `games/shoal/proofs.sh` now carries the full suite
+  (routes + asserts), so future carried-pin checks are re-runnable.
+- 5 proofs / 82 asserts green (boot; calm gate; hungry starvation;
+  the gated win run-twice byte-identical + calm restart; the idle
+  discriminator — same no-input run banks 5 calm vs 0 gated). Budget:
+  win-route mean 35.9% / p99 57.2% / worst 71.2% (2916/4096), gated
+  idle worst 72.0% (2949); `t[5] < 4096` rail covers gate-active
+  frames; `sh_gate_update` in IWRAM at 0x03000a2c (map-verified).
+  `dist/shoal.gba` v0.3 byte-deterministic.
+- PR #100 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

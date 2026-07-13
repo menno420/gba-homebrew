@@ -1,0 +1,1 @@
+- `claude/mobile-foundation` · **mobile-foundation breadth program (owner night order)** — framework decision + npm-free PWA build pipeline + running skeleton with headless smoke proof · expected files: `games/mobile-foundation/**`, `tools/mobile-foundation-smoke/**`, appends to `docs/PLATFORM-LIMITS.md`, one session card · 2026-07-13

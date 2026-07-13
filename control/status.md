@@ -261,3 +261,34 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   **v1.0 CONCEPT COMPLETE**, byte-deterministic.
 - PR #103 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-13 (Courier ghost-as-platform, PR #105)
+
+- **ts:** 2026-07-13T22:50:12Z (appended by the session-51 worker; everything
+  above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time)
+- Clockwork Courier growth rung 1 = **GHOST-AS-PLATFORM** (the first
+  named cut in games/clockwork-courier/CONCEPT.md), on branch
+  `claude/courier-ghost` from main @ `256e8cb`. Your past self is
+  a one-way platform: fall onto its head and stand; riding follows
+  the replay; jumping dismounts. Proof-ground: the BELL LEDGE (32 px)
+  above the chute corridor — max ground jump peaks at 38.76 px
+  (pinned), ghost-head boost at 30.76 px, so only the boost lands;
+  the door wall now runs to the ceiling in cells no carried
+  trajectory touches.
+- The session-44 proof scripts had died with their container — the
+  suite was re-derived against the byte-verified v0.1 dist and is now
+  COMMITTED at `games/clockwork-courier/proofs.sh` (the Shoal
+  oracle pattern; the re-derivation reproduced the #96 card's own
+  literals: door clamp 23808, parcel 3008/6144, switch 6208). Cross-
+  ROM carry: P2/P3/P4 replay bit-identically on v0.1 and this build
+  (0 differing telemetry rows over 1800 frames, no clock shift) —
+  zero game-state re-pins.
+- 6 proofs / 95 asserts green: carried boot/kinematics/rewind/
+  delivery + P5 the platform SOLVE (mount pinned via the new
+  on_ghost word, ledge stand at feet 8192, delivery with REWINDS 2)
+  and P6 the counter-solve (strongest scripted cheats pinned to
+  FAIL); P4 and P5 run-twice byte-identical.
+  `dist/clockwork-courier.gba` v0.2 byte-deterministic.
+- PR #105 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

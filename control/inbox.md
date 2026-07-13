@@ -59,6 +59,11 @@ done-when: the self-review section is on main within this lane's next two wakes.
 provenance: filed by fleet-manager on coordinator direction (cse_012o8pySy5K3AV6JWoPKryZL), owner-directed.
 
 ## ORDER 005 · 2026-07-13T00:47:05Z · status: new
+priority: P1
+executor: gba-homebrew seat (tonight's night run)
+do: execute the owner night-run directive quoted verbatim below (everything from "DIRECT ORDER" to the end of this section is the owner's text, unaltered by the scribe).
+why: direct owner order, received live 2026-07-13 (night run), landed verbatim per top-precedence owner turn; these header fields were added by the scribe to satisfy the inbox order grammar — the order text itself is untouched.
+done-when: the directive's MORNING clause is met — by ~06:00Z the tally (slices landed or opened / new game starts with concept+prototype / sellables routed) is posted in heartbeat + outbox.
 
 DIRECT ORDER — GAME LAB (owner, 2026-07-13, night run). Land this verbatim in your inbox (top-precedence owner turn), then execute all night.
 

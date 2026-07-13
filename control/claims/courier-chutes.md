@@ -1,0 +1,1 @@
+- `claude/courier-chutes` · **Clockwork Courier growth rung 2: TIMED CHUTES** — "multiple parcels/chutes with timing windows" on a SELECT verb (classic run untouched; physics constants untouched per the reachability rail) · games/clockwork-courier/**, dist/clockwork-courier.gba, dist/README.md, .sessions/2026-07-13-courier-chutes.md · 2026-07-13

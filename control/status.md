@@ -625,3 +625,29 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #117 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (undertow-ghost, PR #118)
+
+- **ts:** 2026-07-14T04:17:25Z (appended by this dispatch's worker;
+  everything above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Undertow growth cut 3 — the concept's "ghost replays of your best run"
+  line — on branch `claude/undertow-ghost` from main @ `932cfd1`: every
+  run records its steer timeline (RLE), the best run per seed persists to
+  guarded localStorage (`undertow.ghost.<seed>`), and later runs of the
+  same seed get a translucent ghost diver replaying it in lockstep — a
+  second sim instance (own RNG, own rows) fed the stored inputs,
+  render-only, zero contact with the live run. `?ghost=0` opts out.
+- game.js v1.2.0 -> v1.3.0: sim core factored into makeSim/rowIn/physStep
+  (both divers execute the SAME step, so replay fidelity is by
+  construction); pre-change fixed point for seed 7 (crashFrame=823, 194m)
+  carried verbatim. Smoke 22 -> 31 assertions: replay fidelity (stored
+  timeline reproduces crashFrame+depth exactly), live-run identity ghost
+  on vs cleared storage, lockstep ghost lands on its recorded numbers
+  mid-run, best-per-seed keeper, reload persistence, per-seed keying,
+  opt-out. Run twice, 31/31 PASS, outputs byte-identical.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #118 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

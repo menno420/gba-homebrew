@@ -1,0 +1,1 @@
+- `claude/wickroad` · **new game #11 prototype: Wickroad** — GBA market-route trading loop (one-page concept + playable prototype slice + committed proofs; the generative rung) · games/wickroad/**, dist/wickroad.gba, dist/README.md, .sessions/2026-07-14-wickroad.md · 2026-07-14

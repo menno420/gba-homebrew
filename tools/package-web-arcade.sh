@@ -3,11 +3,12 @@
 # dist/releases/ (deterministic versioned zips) from the game sources at the
 # current tree, and (with --verify) assert the committed manifest.
 #
-# Session 55 refresh (supersedes the stale PR #85 cut): packages main's
-# ACTUAL shipped set — Drift Garden is the playable seeded round game since
-# PR #84 (v1.0, no longer "foundation v0.1"), Tiltstone is the pre-juice
-# main cut (the #92<-#93<-#95<-#97 stack is unmerged; when #93 lands, add
-# juice.js to the Tiltstone stage list AND bump its zip version).
+# Arcade-refresh repin (2026-07-14, supersedes the PR #109 cut): packages
+# main's ACTUAL shipped set — Undertow v1.5 (five growth cuts since #109:
+# PRs #110/#114/#118/#123/#126), Drift Garden v1.4 (weather/species/essence/
+# biomes: PRs #111/#115/#119/#124), Tiltstone still the pre-juice main cut
+# (the #92<-#93<-#95<-#97 stack is unmerged; when #93 lands, add juice.js
+# to the Tiltstone stage list AND bump its zip version).
 #
 # Deterministic by construction: fixed source epoch on every staged file and
 # directory, zip member list sorted with LC_ALL=C, `zip -X` (no platform
@@ -138,14 +139,17 @@ PY
 }
 
 # --- versioned release zips ---------------------------------------------------
-# Undertow and Tiltstone stay v1.0 (their staged runtime bytes are the same
-# main cut #85 packaged). Drift Garden becomes v1.0: the playable seeded
-# round game (PR #84) replaced the "foundation v0.1" #85 shipped. The arcade
-# bundle bumps to v1.1 (its Drift Garden member changed).
-make_zip "$WEB/undertow"     "$REL/web-undertow-v1.0.zip"
+# Undertow becomes v1.5: five merged growth cuts since the v1.0 zip (daily
+# dive #110, cosmetics #114, ghost replays #118, oxygen #123, jellyfish
+# hazards #126 — the named growth path complete). Drift Garden becomes
+# v1.4: four cuts since its v1.0 zip (daily weather #111, species #115,
+# essence spending #119, biomes #124 — path complete). Tiltstone stays
+# v1.0 (its staged runtime bytes are unchanged on main since #81). The
+# arcade bundle bumps to v1.2 (two members changed).
+make_zip "$WEB/undertow"     "$REL/web-undertow-v1.5.zip"
 make_zip "$WEB/tiltstone"    "$REL/web-tiltstone-v1.0.zip"
-make_zip "$WEB/drift-garden" "$REL/drift-garden-v1.0.zip"
-make_zip "$WEB"              "$REL/web-arcade-v1.1.zip"
+make_zip "$WEB/drift-garden" "$REL/drift-garden-v1.4.zip"
+make_zip "$WEB"              "$REL/web-arcade-v1.2.zip"
 
 # --- provenance printout -------------------------------------------------------
 echo "dist/web/ + dist/releases/ rebuilt (source epoch: $SOURCE_EPOCH)"

@@ -3,12 +3,13 @@
 # dist/releases/ (deterministic versioned zips) from the game sources at the
 # current tree, and (with --verify) assert the committed manifest.
 #
-# Arcade-refresh repin (2026-07-14, supersedes the PR #109 cut): packages
-# main's ACTUAL shipped set — Undertow v1.5 (five growth cuts since #109:
-# PRs #110/#114/#118/#123/#126), Drift Garden v1.4 (weather/species/essence/
-# biomes: PRs #111/#115/#119/#124), Tiltstone still the pre-juice main cut
-# (the #92<-#93<-#95<-#97 stack is unmerged; when #93 lands, add juice.js
-# to the Tiltstone stage list AND bump its zip version).
+# ORDER 006 repin (2026-07-14, supersedes the #130 arcade-refresh cut):
+# the #92<-#93<-#95<-#97 Tiltstone stack has landed on main, so the standing
+# #93 follow-up is served — juice.js is now on the Tiltstone stage list
+# (per the updated games/web-tiltstone/HOSTING.md contract) and Tiltstone
+# ships at v1.1 (arcade bundle v1.3). Undertow v1.5 and Drift Garden v1.4
+# are unchanged from the #130 cut (PRs #110/#114/#118/#123/#126 and
+# #111/#115/#119/#124 respectively).
 #
 # Deterministic by construction: fixed source epoch on every staged file and
 # directory, zip member list sorted with LC_ALL=C, `zip -X` (no platform
@@ -22,7 +23,8 @@
 #
 # Runtime file sets are the per-game hosting contracts, verbatim:
 #   games/web-undertow/HOSTING.md      -> index.html, game.js
-#   games/web-tiltstone/HOSTING.md     -> index.html, engine.js, app.js
+#   games/web-tiltstone/HOSTING.md     -> index.html, engine.js, juice.js,
+#       app.js
 #   games/mobile-foundation/README.md  -> index.html, game.js,
 #       manifest.webmanifest, sw.js, icon-192.png, icon-512.png
 # (.md docs and smoke scripts are repo material, not runtime — never staged.)
@@ -41,7 +43,8 @@ mkdir -p "$WEB/undertow" "$WEB/tiltstone" "$WEB/drift-garden" "$REL"
 cp "$ROOT/games/web-undertow/index.html" "$ROOT/games/web-undertow/game.js" \
    "$WEB/undertow/"
 cp "$ROOT/games/web-tiltstone/index.html" "$ROOT/games/web-tiltstone/engine.js" \
-   "$ROOT/games/web-tiltstone/app.js" "$WEB/tiltstone/"
+   "$ROOT/games/web-tiltstone/juice.js" "$ROOT/games/web-tiltstone/app.js" \
+   "$WEB/tiltstone/"
 cp "$ROOT/games/mobile-foundation/index.html" \
    "$ROOT/games/mobile-foundation/game.js" \
    "$ROOT/games/mobile-foundation/manifest.webmanifest" \
@@ -139,17 +142,15 @@ PY
 }
 
 # --- versioned release zips ---------------------------------------------------
-# Undertow becomes v1.5: five merged growth cuts since the v1.0 zip (daily
-# dive #110, cosmetics #114, ghost replays #118, oxygen #123, jellyfish
-# hazards #126 — the named growth path complete). Drift Garden becomes
-# v1.4: four cuts since its v1.0 zip (daily weather #111, species #115,
-# essence spending #119, biomes #124 — path complete). Tiltstone stays
-# v1.0 (its staged runtime bytes are unchanged on main since #81). The
-# arcade bundle bumps to v1.2 (two members changed).
+# Tiltstone becomes v1.1: the #92<-#93<-#95<-#97 stack landed (par+undo,
+# juice, cell types, level packs) — its staged runtime grew a file
+# (juice.js) and every member changed. Undertow stays v1.5 and Drift
+# Garden v1.4 (staged bytes unchanged since the #130 cut). The arcade
+# bundle bumps to v1.3 (its Tiltstone members changed).
 make_zip "$WEB/undertow"     "$REL/web-undertow-v1.5.zip"
-make_zip "$WEB/tiltstone"    "$REL/web-tiltstone-v1.0.zip"
+make_zip "$WEB/tiltstone"    "$REL/web-tiltstone-v1.1.zip"
 make_zip "$WEB/drift-garden" "$REL/drift-garden-v1.4.zip"
-make_zip "$WEB"              "$REL/web-arcade-v1.2.zip"
+make_zip "$WEB"              "$REL/web-arcade-v1.3.zip"
 
 # --- provenance printout -------------------------------------------------------
 echo "dist/web/ + dist/releases/ rebuilt (source epoch: $SOURCE_EPOCH)"

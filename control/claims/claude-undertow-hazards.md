@@ -1,0 +1,1 @@
+- `claude/undertow-hazards` · **Undertow growth cut 5 (jellyfish hazards)** — jellyfish that drift on a seeded side-band RNG stream; contact ends the run; completes the concept's named growth path · games/web-undertow/**, tools/web-smoke-undertow.mjs, .sessions/2026-07-14-undertow-hazards.md · 2026-07-14

@@ -1,1 +1,0 @@
-- `claude/drift-garden-biomes` · **Drift Garden growth cut 4 (biomes)** — essence-purchasable biomes with distinct wind PATTERNS (sim parameters read at round start; default biome reproduces pre-cut behavior exactly) · games/mobile-foundation/**, tools/mobile-foundation-smoke/**, .sessions/2026-07-14-drift-garden-biomes.md · 2026-07-14

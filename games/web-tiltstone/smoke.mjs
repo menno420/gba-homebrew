@@ -24,6 +24,12 @@
  *      settle/resolve byte-for-byte (incl. the 12-seed sweep), the phase
  *      script is well-formed, and juice.js's pure timeline + synth cue
  *      table are deterministic (chain-rising collect pitch, capped)
+ *  12. new cell types (slice 4): one-way grates pass exactly downward and
+ *      turn with the cavern, ice slips deterministically (left first) and
+ *      drops its cargo, locked gems never group and free on an adjacent
+ *      collect (cascading through the freed gem), settleMoves/resolveTrace
+ *      stay exact on kitchen-sink grids, and deep-level generation places
+ *      the new cells while levels 0-3 draw the identical RNG stream
  *
  * Exits nonzero on any failed assertion; prints one PASS/FAIL line each.
  */
@@ -312,6 +318,149 @@ check("daily seed is a pure date mapping", E.dailySeed("2026-07-13") === 2026071
     allCues && c2.f0 > c1.f0 && c3.f0 > c2.f0 && cCap.f0 === cOver.f0 &&
     c1.key === "collect" && c2.key === "collect@x2" && J.cueFor("nope", 0) === null,
     `f0: x1=${c1.f0} x2=${c2.f0} x3=${c3.f0} cap=${cCap.f0} (juice v${J.VERSION})`);
+}
+
+// ------------------------------------------ 12. new cell types (slice 4)
+{
+  const J = require(path.join(here, "juice.js"));
+
+  // encoding: the new codes render distinct chars and sit OUTSIDE the gem range
+  {
+    const g = E.emptyGrid(8);
+    g[0][0] = E.ICE; g[0][1] = E.LOCK0 + 1;
+    g[0][2] = E.GRATE0; g[0][3] = E.GRATE0 + 1; g[0][4] = E.GRATE0 + 2; g[0][5] = E.GRATE0 + 3;
+    const row = E.gridString(g).split("\n")[0];
+    check("cell codes: ice/locked/grates serialize as * b ^ > v < and are not gems",
+      row.startsWith("*b^>v<") && !E.isGem(E.ICE) && !E.isGem(E.LOCK0) && !E.isGem(E.GRATE0 + 2) &&
+      E.isGem(E.GEM0) && E.isGem(E.GEM0 + 7),
+      `row0="${row}"`);
+  }
+
+  // one-way grate: porous exactly when pointing down, a wall otherwise
+  {
+    const mk = (o) => { const g = E.emptyGrid(8); g[4][2] = E.GRATE0 + o; g[0][2] = E.STONE; return E.settle(g); };
+    const down = mk(2), up = mk(0), right = mk(1), left = mk(3);
+    check("grate one-way: stone falls THROUGH a down grate to the floor, rests ON every other orientation",
+      down[7][2] === E.STONE && down[4][2] === E.GRATE0 + 2 &&
+      up[3][2] === E.STONE && right[3][2] === E.STONE && left[3][2] === E.STONE,
+      `down->row7, up/right/left->row3, grate cell intact`);
+    const floorGrate = E.emptyGrid(8); floorGrate[7][2] = E.GRATE0 + 2; floorGrate[0][2] = E.STONE;
+    const fg = E.settle(floorGrate);
+    check("a piece never rests INSIDE a porous grate (floor grate: stone rests above it)",
+      fg[6][2] === E.STONE && fg[7][2] === E.GRATE0 + 2);
+  }
+
+  // grate arrow turns with the cavern: CW cycles up->right->down->left, 4x = identity
+  {
+    const g = E.emptyGrid(8); g[3][3] = E.GRATE0 + 2; // down
+    const cw = E.rotateGrid(g, "cw"), ccw = E.rotateGrid(g, "ccw");
+    const codeIn = (grid) => [].concat(...grid).filter(v => v !== E.EMPTY)[0];
+    let four = g; for (let i = 0; i < 4; i++) four = E.rotateGrid(four, "cw");
+    check("grate orientation rotates with the cavern (CW down->left, CCW down->right, 4xCW identity)",
+      codeIn(cw) === E.GRATE0 + 3 && codeIn(ccw) === E.GRATE0 + 1 &&
+      E.gridString(four) === E.gridString(g),
+      `cw=${codeIn(cw) - E.GRATE0} ccw=${codeIn(ccw) - E.GRATE0}`);
+  }
+
+  // ice: slips off a pile (left before right), cargo drops after it, and the
+  // move list nets the slide as one diagonal move that still reconstructs
+  {
+    const g = E.emptyGrid(8); g[7][3] = E.STONE; g[6][3] = E.ICE; g[5][3] = E.GEM0;
+    const s = E.settle(g);
+    check("ice slips LEFT off a pile and its cargo drops into the vacated cell",
+      s[7][2] === E.ICE && s[6][3] === E.GEM0 && s[7][3] === E.STONE,
+      `ice@[7,2] gem@[6,3]`);
+    const gr = E.emptyGrid(8); gr[7][2] = E.WALL; gr[7][3] = E.STONE; gr[6][3] = E.ICE;
+    check("left blocked -> ice slips RIGHT (deterministic preference)",
+      E.settle(gr)[7][4] === E.ICE);
+    const boxed = E.emptyGrid(8); boxed[7][2] = E.WALL; boxed[7][4] = E.WALL; boxed[7][3] = E.STONE; boxed[6][3] = E.ICE;
+    check("boxed-in ice stays put (no slip without side + diagonal empty)",
+      E.settle(boxed)[6][3] === E.ICE);
+    const sm = E.settleMoves(g);
+    const rebuilt = E.cloneGrid(g);
+    for (const mv of sm.moves) rebuilt[mv.from[0]][mv.from[1]] = E.EMPTY;
+    for (const mv of sm.moves) rebuilt[mv.to[0]][mv.to[1]] = mv.v;
+    check("settleMoves nets a slip as ONE diagonal move; grid == settle, moves reconstruct",
+      E.gridString(sm.grid) === E.gridString(s) && E.gridString(rebuilt) === E.gridString(s) &&
+      sm.moves.some(m => m.v === E.ICE && m.from[1] !== m.to[1]),
+      `moves=${sm.moves.map(m => `[${m.from}]->[${m.to}]`).join(" ")}`);
+  }
+
+  // locked gems: never group on their own; an adjacent collect frees one and
+  // the freed gem cascades a chain-2 collect
+  {
+    const solo = E.emptyGrid(8); solo[7][0] = E.LOCK0; solo[7][1] = E.LOCK0; solo[7][2] = E.LOCK0;
+    check("three adjacent same-color LOCKED gems never collect",
+      E.findGroups(E.settle(solo)).length === 0 && E.resolve(solo).collected === 0);
+    const g = E.emptyGrid(8);
+    g[7][0] = E.GEM0; g[6][0] = E.GEM0; g[5][0] = E.GEM0;   // red column pops chain 1
+    g[7][1] = E.LOCK0 + 1;                                   // locked blue beside it
+    g[7][2] = E.GEM0 + 1; g[7][3] = E.GEM0 + 1;              // two free blues waiting
+    const res = E.resolve(g);
+    check("adjacent collect FREES a locked gem (event carries unlocked: 1)",
+      res.events.length === 2 && res.events[0].unlocked === 1 && res.events[0].chain === 1,
+      `events=${JSON.stringify(res.events)}`);
+    check("the freed gem completes the group -> chain-2 cascade through the lock",
+      res.collected === 6 && res.events[1].chain === 2 && res.events[1].color === 1 &&
+      res.grid[7][1] === E.EMPTY,
+      `collected=${res.collected}`);
+    const lockFree = E.emptyGrid(8);
+    lockFree[7][0] = E.GEM0; lockFree[6][0] = E.GEM0; lockFree[5][0] = E.GEM0; lockFree[7][5] = E.LOCK0 + 1;
+    const far = E.resolve(lockFree);
+    check("a NON-adjacent collect leaves the lock intact (no unlocked field on the event)",
+      far.grid[7][5] === E.LOCK0 + 1 && far.events.length === 1 && !("unlocked" in far.events[0]));
+  }
+
+  // trace exactness + unlock cue on a kitchen-sink grid
+  {
+    const g = E.emptyGrid(8);
+    g[7][0] = E.GEM0; g[6][0] = E.GEM0; g[5][0] = E.GEM0;    // popping reds
+    g[7][1] = E.LOCK0 + 1; g[7][2] = E.GEM0 + 1; g[7][3] = E.GEM0 + 1; // lock chain
+    g[7][5] = E.STONE; g[6][5] = E.ICE;                      // slipping ice
+    g[4][7] = E.GRATE0 + 2; g[0][7] = E.GEM0 + 2;            // porous grate
+    const plain = E.resolve(g), trace = E.resolveTrace(g);
+    check("resolveTrace ≡ resolve on a kitchen-sink grid (ice + lock + grate + cascade)",
+      E.gridString(trace.grid) === E.gridString(plain.grid) &&
+      trace.collected === plain.collected &&
+      JSON.stringify(trace.events) === JSON.stringify(plain.events),
+      `collected=${trace.collected} events=${trace.events.length}`);
+    const unlockPhase = trace.phases.find(p => p.type === "collect" && p.unlocked);
+    check("the unlocking collect phase carries the freed cells and its grid shows the freed gem",
+      !!unlockPhase && unlockPhase.unlocked.length === 1 &&
+      unlockPhase.grid[unlockPhase.unlocked[0][0]][unlockPhase.unlocked[0][1]] === E.GEM0 + 1);
+    const tl = J.timeline(trace.phases);
+    const cueKeys = [];
+    for (const s of tl.steps) for (const c of s.cues) cueKeys.push(J.cueFor(c.name, c.chain).key);
+    const u = J.cueFor("unlock", 0);
+    check("juice: the unlocking collect schedules an 'unlock' cue; the cue table resolves it",
+      cueKeys.includes("unlock") && u && u.key === "unlock" && u.f0 > 0 && u.dur > 0,
+      `[${cueKeys.join(",")}] (juice v${J.VERSION})`);
+  }
+
+  // generation: levels 0-3 place ZERO new cells (identical RNG stream ->
+  // every pre-slice-4 pin holds); level 4+ places them, still provably solvable
+  {
+    const p0 = E.paramsFor(0), p3 = E.paramsFor(3), p4 = E.paramsFor(4);
+    check("paramsFor: no new cells before level 4; ice 2 / locks 2 / grates 1 from level 4",
+      p0.ice === 0 && p0.locks === 0 && p0.grates === 0 &&
+      p3.ice === 0 && p3.locks === 0 && p3.grates === 0 &&
+      p4.ice === 2 && p4.locks === 2 && p4.grates === 1);
+    const l4 = E.generateLevel(SEED, 4);
+    const gs = E.gridString(l4.grid);
+    check("(seed 42, level 4): generated cavern contains ice, locked gems and a grate",
+      /\*/.test(gs) && /[a-h]/.test(gs) && /[\^>v<]/.test(gs),
+      `salt=${l4.salt} quota=${l4.quota} best=${l4.best} solution="${l4.solution}"`);
+    check("(seed 42, level 4): the generator's own solver line wins it",
+      E.replay(E.newGame(SEED, 4), l4.solution).status === "won");
+    let ok4 = 0, worst4 = 0;
+    for (let s = 100; s < 112; s++) {
+      const lvl = E.generateLevel(s, 4);
+      worst4 = Math.max(worst4, lvl.salt);
+      if (E.replay(E.newGame(s, 4), lvl.solution).status === "won") ok4++;
+    }
+    check("12-seed sweep at level 4: every deep cavern is provably winnable with the new cells live",
+      ok4 === 12, `${ok4}/12 won, worst salt=${worst4}`);
+  }
 }
 
 // ------------------------------------------------------------------- verdict

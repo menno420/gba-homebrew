@@ -24,7 +24,7 @@
   else root.TiltstoneJuice = api;
 })(typeof self !== "undefined" ? self : this, function () {
 
-  var VERSION = "1.0.0";
+  var VERSION = "1.1.0";
 
   // ------------------------------------------------------------- timing --
 
@@ -64,7 +64,9 @@
         t += dur;
       } else { // collect
         if (ph.chain !== lastChain) { t += lastChain > 0 ? T.chainGapMs : 0; lastChain = ph.chain; }
-        steps.push({ phase: ph, t0: t, t1: t + T.popMs, cues: [{ name: "collect", chain: ph.chain, at: "start" }] });
+        var cues = [{ name: "collect", chain: ph.chain, at: "start" }];
+        if (ph.unlocked && ph.unlocked.length) cues.push({ name: "unlock", at: "end" }); // slice 4: a lock broke
+        steps.push({ phase: ph, t0: t, t1: t + T.popMs, cues: cues });
         t += T.popMs;
       }
     }
@@ -83,7 +85,8 @@
     collect: { wave: "sine",     f0: 523, f1: 784,  dur: 0.16, gain: 0.16 },
     win:     { wave: "triangle", f0: 523, f1: 1046, dur: 0.35, gain: 0.18 },
     lose:    { wave: "square",   f0: 150, f1: 55,   dur: 0.40, gain: 0.15 },
-    undo:    { wave: "sine",     f0: 330, f1: 262,  dur: 0.08, gain: 0.10 }
+    undo:    { wave: "sine",     f0: 330, f1: 262,  dur: 0.08, gain: 0.10 },
+    unlock:  { wave: "square",   f0: 392, f1: 587,  dur: 0.12, gain: 0.12 } // slice 4: a cage springs open
   };
   var CHAIN_RATIO = 1.25, CHAIN_CAP = 4;
 

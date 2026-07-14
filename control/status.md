@@ -133,6 +133,32 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
 - **Follow-up for the packaging lane:** when PR #85 lands, its
   `tools/package-web-arcade.sh` staging list needs `juice.js` added to the
   Tiltstone runtime set (HOSTING.md here already updated).
+
+## Dispatch 2026-07-13 (Tiltstone slice 4, dispatched)
+
+- **ts:** 2026-07-13T18:52:50Z (this section APPENDED by the session-45
+  worker on coordinator dispatch; everything above left intact)
+- **Shipped this session:** Tiltstone slice 4 "NEW CELL TYPES" — concept
+  growth item 4: locked gems (collect adjacent to free, cascades chain
+  through the freed gem), ice (slips off piles, left before right), one-way
+  grates (porous exactly downward, arrow turns with the cavern) — pure
+  settle()/resolve() extensions (engine v1.2.0 → 1.3.0, juice v1.0.0 →
+  1.1.0 with an `unlock` cue), entering generation at level 5+ so levels
+  1–4 draw the identical RNG stream. PR #95 (branch
+  `claude/tiltstone-cells`, base `claude/tiltstone-juice` @ `427f165` —
+  stacked on OPEN PR #93 per the standing default). Engine smoke 31 → 50
+  asserts (all 31 carried pins byte-identical), browser smoke 18 → 24
+  checks in real Chromium (LV5 board matches the pure-Node generator
+  byte-for-byte; cue log stays a pure composition), screenshots
+  `docs/proof/session-45-tiltstone-cells{,-mid}.png`,
+  `python3 bootstrap.py check --strict` exit 0 at the flip.
+- **Landing posture:** opened READY, born-red then flipped; no merge /
+  auto-merge / label calls from this session — the live enabler may land
+  it server-side on green.
+- **Baton (next):** Tiltstone growth item 5 "level packs" (curate seeds
+  the solver rates hard — long solutions, low slack — into named packs);
+  item 6 (daily leaderboard) stays out of static-hosting scope. Packaging
+  follow-up for PR #85 still open: Tiltstone staging list needs `juice.js`.
 ## Dispatch 2026-07-13 (Brineward slice 9 — saves, PR #94)
 
 - **ts:** 2026-07-13T18:46:26Z (appended by the session-43 worker;

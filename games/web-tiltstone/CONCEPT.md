@@ -73,8 +73,15 @@ if the daily hook shows organic pull.
    (states are immutable snapshots), U key/button, works from a BURIED card
    (won cards stay frozen); undo count rides the win card so grades stay
    honest.
-4. **New cell types**: locked gems (collect adjacent to free), ice (slides
-   sideways), one-way grates — each a pure `settle()` extension.
+4. **New cell types** — ✅ SHIPPED (slice 4, session 45): locked gems
+   (fall like dead weight, never group; a collect popping adjacent frees a
+   normal gem — cascades chain through it), ice (never merges; slips off
+   piles, left before right, and keeps falling), one-way grates (fixed like
+   walls, porous exactly downward, arrow turns with the cavern) — each a
+   pure `settle()`/`resolve()` extension in the engine, entering the
+   generator at level 5+ (levels 1–4 draw the identical RNG stream, so all
+   prior pins hold). Rendered as caged gems / glinting ice / arrowed
+   grates; the juice layer gained an `unlock` cue on the same honest log.
 5. **Level packs**: curate seeds the solver rates hard (long solutions,
    low slack) into named packs.
 6. **Daily leaderboard** needs a backend — out of static-hosting scope;

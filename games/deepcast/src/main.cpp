@@ -56,7 +56,8 @@
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
  * --elf --watch dc:dc_telemetry:16): a volatile 16-word array with
  * C-linkage symbol `dc_telemetry`, updated every frame:
- *   [0] 0x44454550 'DEEP'   magic     [8]  tension (0..600 snap)
+ *   [0] 0x44454550 'DEEP'   magic     [8]  tension (snaps at lm[3]:
+ *                                          600/750/900 by line tier)
  *   [1] 0x43415354 'CAST'   magic     [9]  line remaining (catch at 0)
  *   [2] state id (enum State)         [10] current/last fish weight
  *   [3] frames since boot (monotonic) [11] fish phase (1 surge, 0 rest)
@@ -79,6 +80,40 @@
  *   [12] side-band RNG stream state (live: the derived seed on the
  *        title — it follows the dial — then advances one word per cast)
  *   [13] 0x46495348 'FISH' magic   [14..15] 0
+ *
+ * Third mailbox `dc_linemeta` (--watch lm:dc_linemeta:8), growth cut 4,
+ * updated every frame:
+ *   [0] 0x4C494E45 'LINE' magic
+ *   [1] line tier (0 worn / 1 braided / 2 steel)
+ *   [2] bank (persistent score, deposited at dusk, spent in the shop)
+ *   [3] snap threshold of the CURRENT line (600 / 750 / 900)
+ *   [4] reel rate of the CURRENT line (line units per reeling frame,
+ *       5 / 4 / 3 — the "slower reel" half of the tradeoff)
+ *   [5] 1 while the LINE SHOP screen is open, else 0
+ *   [6] cost of the NEXT tier (0 when maxed)
+ *   [7] 0
+ *
+ * LINE UPGRADES + SRAM BANK (growth cut 4 — the concept's "line upgrades
+ * bought with score (thicker line = higher snap threshold, slower reel) —
+ * a run-to-run meta without breaking determinism" line): every run's dusk
+ * score is DEPOSITED into a persistent BANK the moment dusk falls, and the
+ * bank buys line tiers in the LINE SHOP — SELECT on the title, R at dusk
+ * (both edge-triggered; SELECT closes back). Three tiers, each with the
+ * doc's exact tradeoff: WORN LINE (snap 600, reel 5 — the v0.2 constants),
+ * BRAIDED LINE (snap 750, reel 4, cost 15), STEEL LINE (snap 900, reel 3,
+ * cost 40). A thicker line survives more tension before it snaps but
+ * shortens the line SLOWER per reeling frame — fights last longer, so the
+ * fish's surge rhythm gets more chances at you. Reel-tension gain, slack
+ * decay and every RNG stream are untouched; the click-speed audio law
+ * scales with the CURRENT line's snap threshold (16 frames at slack -> 4
+ * at the snap point, whatever that point is), so the ratchet stays an
+ * honest tension bar on any line. Bank + tier persist across power cycles
+ * via games/common gl_save.h (magic-checked SRAM slot, tag "DCLINE1" —
+ * the Lumen Drift LDRIFT1 pattern): a fresh / foreign / erased cartridge
+ * loads as no save = bank 0, tier 0 = bit-exact v0.4 behavior, so every
+ * committed pin carries on first boot. Determinism contract extension:
+ * a run is a pure function of (seed, line tier) — the dial publishes the
+ * seed, the shop publishes the tier.
  *
  * AUDIO (growth cut 1 — the concept's named line: "reel clicks that
  * speed up with tension"): four original synthesized cues
@@ -118,6 +153,7 @@
 #include "bn_sprite_text_generator.h"
 
 #include "gl_audio_hook.h"
+#include "gl_save.h"
 
 #include "common_variable_8x8_sprite_font.h"
 
@@ -127,6 +163,7 @@ extern "C"
     // comment. volatile so every write really lands for the emulator bus.
     volatile unsigned dc_telemetry[16];
     volatile unsigned dc_fishlog[16];
+    volatile unsigned dc_linemeta[8];
 }
 
 namespace
@@ -164,6 +201,8 @@ namespace
         st_result = 4,  // CATCH / SNAP card, auto-advances
         st_over = 5,    // dusk falls: final score, START restarts
         st_log = 6,     // catch log (SELECT from charge/dusk; SELECT back)
+        st_shop = 7,    // line shop (SELECT from title, R from dusk;
+                        // SELECT back; A buys the next tier)
     };
 
     // Tuning (all integers; see CONCEPT.md for the intended strategy space).
@@ -171,8 +210,6 @@ namespace
     constexpr int min_depth = 12;          // target depth = min_depth + charge
     constexpr int sink_rate = 2;           // m per frame while sinking
     constexpr int line_per_depth = 6;      // line at hook = depth * this
-    constexpr int tension_snap = 600;      // tension >= this -> line snaps
-    constexpr int reel_line = 5;           // line lost per reeling frame
     constexpr int reel_tension_base = 6;   // tension gained per reeling frame...
     constexpr int surge_tension_extra = 18;// ...plus this while the fish surges
     constexpr int slack_tension = 9;       // tension lost per released frame
@@ -181,11 +218,41 @@ namespace
     constexpr int result_frames = 90;      // RESULT card duration
     constexpr int start_lures = 3;
 
+    // --- line tiers (growth cut 4) ---------------------------------------
+    // "Thicker line = higher snap threshold, slower reel" — the doc's exact
+    // tradeoff, one row per tier. Tier 0 IS the v0.2 constants (snap 600,
+    // reel 5), so a fresh cartridge (no save -> tier 0) is bit-exact v0.4:
+    // every committed pin carries on first boot. Bought in the LINE SHOP
+    // with the persistent BANK (dusk scores, deposited automatically).
+
+    constexpr int line_tiers = 3;
+
+    constexpr const char* line_names[line_tiers] = {
+        "WORN LINE", "BRAIDED LINE", "STEEL LINE",
+    };
+
+    constexpr int line_snap[line_tiers] = {600, 750, 900};
+    constexpr int line_reel[line_tiers] = {5, 4, 3};
+    constexpr int line_cost[line_tiers] = {0, 15, 40};  // cost to REACH tier
+
+    // The persistent meta (SRAM payload behind gl_save.h's magic tag):
+    // the bank and the owned line tier. Bump the tag to invalidate saves
+    // if this layout ever changes.
+    constexpr const char* save_magic = "DCLINE1";
+
+    struct dc_save
+    {
+        int bank = 0;
+        int tier = 0;
+    };
+
     // Audio (pure decision layer — see the header comment). The reel
     // click period shrinks linearly with tension: every 16 frames at
-    // slack, every 4 at the snap point (~4 -> ~15 clicks/second).
+    // slack, every 4 at the snap point (~4 -> ~15 clicks/second). The
+    // snap point is the CURRENT line's (growth cut 4), so the ratchet
+    // stays an honest tension bar on any line.
     constexpr int click_max_interval = 16; // frames between clicks, tension 0
-    constexpr int click_min_interval = 4;  // ...at tension_snap
+    constexpr int click_min_interval = 4;  // ...at the line's snap threshold
 
     // --- species tables (growth cut 3) ----------------------------------
     // Four depth bands by target depth, four named species per band, one
@@ -312,9 +379,9 @@ int main()
     text_gen.set_left_alignment();
 
     constexpr int text_x = -104;
-    constexpr int line_count = 6;
-    text_line lines[line_count];  // y slots: -60 -40 -20 0 20 40
-    constexpr int line_y[line_count] = {-60, -40, -20, 0, 20, 40};
+    constexpr int line_count = 7;
+    text_line lines[line_count];  // y slots: -60 -40 -20 0 20 40 56
+    constexpr int line_y[line_count] = {-60, -40, -20, 0, 20, 40, 56};
 
     auto clear_lines = [&]()
     {
@@ -329,6 +396,19 @@ int main()
     // reads it — so with no dial input every run is the boot run, and a
     // dialed value survives game over (START reruns the SAME lake).
     unsigned seed_sel = seed_constant;
+
+    // Line upgrades (growth cut 4): the persistent meta, restored from the
+    // magic-checked SRAM slot at boot. Fresh / foreign / erased SRAM loads
+    // as no save -> bank 0, tier 0 (the v0.4 line) — the fresh cartridge
+    // boots exactly like v0.4. Deliberately NOT reset by reset_run(): the
+    // bank and the line are the run-to-run meta.
+    gl::save_slot<dc_save> meta_slot(save_magic);
+    dc_save meta;
+
+    if(! meta_slot.load(meta))
+    {
+        meta = dc_save();
+    }
 
     // --- run state (all plain ints; reset_run() restores the exact boot run)
     rng_t rng(seed_constant);
@@ -359,6 +439,7 @@ int main()
     int log_weight[log_ring] = {};
     int log_total = 0;
     unsigned log_return = st_charge;   // state SELECT returns to
+    unsigned shop_return = st_title;   // state the LINE SHOP returns to
 
     // Audio decision layer state (presentation-only: never read by the
     // sim, deliberately NOT reset by reset_run — mute is a player
@@ -415,6 +496,14 @@ int main()
             if(bn::keypad::start_pressed())
             {
                 reset_run();
+            }
+            else if(bn::keypad::select_pressed())
+            {
+                // The LINE SHOP (growth cut 4): SELECT is the title's one
+                // free key (the dial owns the dpad + L/R). No RNG moves.
+                shop_return = st_title;
+                state = st_shop;
+                clear_lines();
             }
             else
             {
@@ -560,7 +649,11 @@ int main()
 
             if(a_held)
             {
-                line -= reel_line;
+                // Growth cut 4: the CURRENT line sets both halves of the
+                // tradeoff — a thicker line reels FEWER units per frame
+                // (below) and snaps at a HIGHER threshold (the check
+                // beneath). Tier 0 is the v0.2 math verbatim.
+                line -= line_reel[meta.tier];
                 tension += reel_tension_base + weight / 8
                         + (surge ? surge_tension_extra : 0);
             }
@@ -581,9 +674,9 @@ int main()
                 }
             }
 
-            if(tension >= tension_snap)
+            if(tension >= line_snap[meta.tier])
             {
-                tension = tension_snap;
+                tension = line_snap[meta.tier];
                 result_code = 2;  // SNAP
                 --lures;
                 result_timer = result_frames;
@@ -630,6 +723,16 @@ int main()
                 tension = 0;
                 state = lures > 0 ? st_charge : st_over;
                 clear_lines();
+
+                if(state == st_over)
+                {
+                    // Growth cut 4: dusk deposits the run's score into
+                    // the persistent BANK, exactly once per run, and the
+                    // save lands in SRAM immediately (a power cycle
+                    // after dusk keeps the deposit).
+                    meta.bank += score;
+                    meta_slot.save(meta);
+                }
             }
             break;
 
@@ -644,6 +747,15 @@ int main()
                 state = st_log;
                 clear_lines();
             }
+            else if(bn::keypad::r_pressed())
+            {
+                // The LINE SHOP from dusk (growth cut 4): SELECT is the
+                // catch log's here, so the shop takes R (free at dusk —
+                // the dial only lives on the title). No RNG moves.
+                shop_return = st_over;
+                state = st_shop;
+                clear_lines();
+            }
             break;
 
         case st_log:
@@ -651,6 +763,24 @@ int main()
             {
                 state = log_return;
                 clear_lines();
+            }
+            break;
+
+        case st_shop:
+            if(bn::keypad::select_pressed())
+            {
+                state = shop_return;
+                clear_lines();
+            }
+            else if(bn::keypad::a_pressed() && meta.tier < line_tiers - 1
+                    && meta.bank >= line_cost[meta.tier + 1])
+            {
+                // Buy the next tier (edge-triggered — one press is one
+                // purchase). The spend + the new line land in SRAM
+                // immediately; an unaffordable press changes nothing.
+                meta.bank -= line_cost[meta.tier + 1];
+                ++meta.tier;
+                meta_slot.save(meta);
             }
             break;
 
@@ -668,7 +798,7 @@ int main()
         {
             click_interval = click_max_interval
                     - ((click_max_interval - click_min_interval) * tension)
-                      / tension_snap;
+                      / line_snap[meta.tier];
 
             if(click_timer <= 0)
             {
@@ -676,7 +806,8 @@ int main()
                 {
                     // Pitch rides tension too: 1.0x at slack -> 2.0x at
                     // the snap point (deterministic fixed-point math).
-                    bn::fixed speed = 1 + bn::fixed(tension) / tension_snap;
+                    bn::fixed speed = 1 + bn::fixed(tension)
+                            / line_snap[meta.tier];
                     bn::sound_items::dc_click.play(bn::fixed(0.5), speed, 0);
                 }
 
@@ -708,6 +839,9 @@ int main()
             lines[4].set(text_gen, text_x, line_y[4], "3 LURES. PRESS START");
             lines[5].set(text_gen, text_x, line_y[5],
                          "B: MUTE  DPAD L R: DIAL SEED");
+            bn::string<40> shop_line("SELECT: LINE SHOP  BANK ");
+            shop_line.append(bn::to_string<8>(meta.bank));
+            lines[6].set(text_gen, text_x, line_y[6], shop_line);
             break;
         }
 
@@ -749,7 +883,7 @@ int main()
             line0.append(bn::to_string<8>(weight));
             lines[0].set(text_gen, text_x, line_y[0], line0);
             lines[1].set(text_gen, text_x, line_y[1],
-                         bar_string("TENSION", tension, tension_snap));
+                         bar_string("TENSION", tension, line_snap[meta.tier]));
             bn::string<40> line2("LINE ");
             line2.append(bn::to_string<8>(line));
             lines[2].set(text_gen, text_x, line_y[2], line2);
@@ -794,6 +928,9 @@ int main()
             lines[3].set(text_gen, text_x, line_y[3], line3);
             lines[4].set(text_gen, text_x, line_y[4], "PRESS START");
             lines[5].set(text_gen, text_x, line_y[5], "SELECT: CATCH LOG");
+            bn::string<40> shop_line("R: LINE SHOP  BANK ");
+            shop_line.append(bn::to_string<8>(meta.bank));
+            lines[6].set(text_gen, text_x, line_y[6], shop_line);
             break;
         }
 
@@ -827,6 +964,49 @@ int main()
             }
 
             lines[5].set(text_gen, text_x, line_y[5], "SELECT: BACK");
+            break;
+        }
+
+        case st_shop:
+        {
+            lines[0].set(text_gen, text_x, line_y[0], "LINE SHOP");
+            bn::string<40> bank_line("BANK ");
+            bank_line.append(bn::to_string<8>(meta.bank));
+            lines[1].set(text_gen, text_x, line_y[1], bank_line);
+            bn::string<40> cur_line("LINE: ");
+            cur_line.append(line_names[meta.tier]);
+            lines[2].set(text_gen, text_x, line_y[2], cur_line);
+
+            if(meta.tier < line_tiers - 1)
+            {
+                // The next tier + its price, and the doc's tradeoff made
+                // legible before the purchase: snap up, reel down.
+                bn::string<40> next_line("NEXT: ");
+                next_line.append(line_names[meta.tier + 1]);
+                next_line.append(" COST ");
+                next_line.append(bn::to_string<8>(line_cost[meta.tier + 1]));
+                lines[3].set(text_gen, text_x, line_y[3], next_line);
+                bn::string<40> trade_line("SNAP ");
+                trade_line.append(bn::to_string<8>(line_snap[meta.tier]));
+                trade_line.append(">");
+                trade_line.append(bn::to_string<8>(line_snap[meta.tier + 1]));
+                trade_line.append("  REEL ");
+                trade_line.append(bn::to_string<8>(line_reel[meta.tier]));
+                trade_line.append(">");
+                trade_line.append(bn::to_string<8>(line_reel[meta.tier + 1]));
+                lines[4].set(text_gen, text_x, line_y[4], trade_line);
+            }
+            else
+            {
+                lines[3].set(text_gen, text_x, line_y[3], "LINE MAXED");
+                bn::string<40> trade_line("SNAP ");
+                trade_line.append(bn::to_string<8>(line_snap[meta.tier]));
+                trade_line.append("  REEL ");
+                trade_line.append(bn::to_string<8>(line_reel[meta.tier]));
+                lines[4].set(text_gen, text_x, line_y[4], trade_line);
+            }
+
+            lines[5].set(text_gen, text_x, line_y[5], "A: BUY  SELECT: BACK");
             break;
         }
 
@@ -869,6 +1049,18 @@ int main()
         dc_fishlog[13] = 0x46495348u;  // 'FISH'
         dc_fishlog[14] = 0;
         dc_fishlog[15] = 0;
+
+        // Line-upgrade mailbox (growth cut 4): every slot, every frame —
+        // see the layout table in the header comment.
+        dc_linemeta[0] = 0x4C494E45u;  // 'LINE'
+        dc_linemeta[1] = unsigned(meta.tier);
+        dc_linemeta[2] = unsigned(meta.bank);
+        dc_linemeta[3] = unsigned(line_snap[meta.tier]);
+        dc_linemeta[4] = unsigned(line_reel[meta.tier]);
+        dc_linemeta[5] = state == st_shop ? 1u : 0u;
+        dc_linemeta[6] = meta.tier < line_tiers - 1
+                ? unsigned(line_cost[meta.tier + 1]) : 0u;
+        dc_linemeta[7] = 0;
 
         // Audio evidence hook: per-frame words next to the cumulative
         // trigger counters (slots 0-3 bump at the play sites above).

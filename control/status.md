@@ -837,3 +837,32 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #124 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (deepcast-upgrades, PR #125)
+
+- Deepcast growth cut 4 (`claude/deepcast-upgrades`, cut from main @
+  `e6b7693`): the concept's "line upgrades bought with score (thicker
+  line = higher snap threshold, slower reel)" line, marked BUILT.
+- Dusk scores deposit into a persistent BANK (gl_save.h magic-checked
+  SRAM slot, tag `DCLINE1`); LINE SHOP (SELECT on title, R at dusk)
+  buys WORN/BRAIDED/STEEL — snap 600/750/900 up, reel 5/4/3 down.
+  Fresh/erased cart loads as no save = v0.4 bit-exact: the whole
+  committed P1-P6 suite ran green against the new build unmodified
+  before any new pin was written. New `dc_linemeta` 8-word mailbox.
+- proofs.sh +P7: worn baseline on fresh cart; boot 1 banks 18, buys
+  BRAIDED, refused on STEEL, run twice from two factory-fresh
+  savefiles (watch-logs AND savefiles byte-identical); boot 2 on the
+  same savefile (mGBA --savefile bus-copy path, the Lumen Drift
+  two-boot pattern) restores bank 3/tier 1 and pins the tradeoff as
+  arithmetic on the same hold-only fight (line 432-4k vs 432-5k,
+  fighting at 623 past worn's 600 snap frame, snap at exactly 750).
+  407 assert flags, 887 green assert lines, exit 0.
+- dist/deepcast.gba v0.5: two clean builds byte-identical, 134,392
+  bytes, sha256 `c8ed6f11…`; suite re-run at dist bytes. Toolchain
+  certified first (clean scratch-worktree rebuild of main hit the
+  committed v0.4 `f87b7975…` exactly).
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #125 opened READY on main; no merge/approve/auto-merge calls from
+  this session — the server-side enabler decides on green.

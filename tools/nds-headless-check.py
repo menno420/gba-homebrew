@@ -333,6 +333,26 @@ def main():
         if not emu.backup.import_file(path, int(size) if size else 8192):
             sys.exit(f'FAIL: battery import of {path!r} failed')
         print(f'battery in: {path} ({size or 8192} bytes)')
+    else:
+        # HERMETIC BY DEFAULT (found the hard way, Brineward slice 9):
+        # DeSmuME keeps an IMPLICIT battery per ROM basename at
+        # ~/.config/desmume/<rom>.dsv, GLOBAL across runs and working
+        # directories — so a ROM that writes its backup in one proof
+        # run silently boots the NEXT run on that leaked save, and
+        # proofs contaminate each other in job order. Every run
+        # without an explicit --battery-in therefore imports a
+        # factory-fresh chip (all 0xFF), which is exactly what every
+        # committed pin has always assumed.
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.sav',
+                                         delete=False) as blank:
+            blank.write(b'\xff' * 8192)
+            blank_path = blank.name
+        try:
+            if not emu.backup.import_file(blank_path, 8192):
+                sys.exit('FAIL: hermetic blank battery import failed')
+        finally:
+            os.unlink(blank_path)
     emu.volume_set(0)
     # BlocksDS-vs-DeSmuME boot quirk: latch "no keys pressed" BEFORE the
     # first frame (see module docstring / docs/PLATFORM-LIMITS.md).

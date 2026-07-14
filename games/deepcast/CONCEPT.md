@@ -1,0 +1,136 @@
+# Deepcast — concept
+
+> **Status:** `reference`
+
+## Pitch
+
+A quiet lake at dusk, three lures, one button. Hold A to charge a cast —
+how long you hold IS how deep the lure goes, and deeper water holds
+heavier, more valuable fish. When one bites, the whole game is the line:
+reel and the tension climbs, yield and the fish takes your line back.
+Snap the line and you lose a lure; land the fish and its weight is your
+score. When the third lure is gone, dusk falls.
+
+## Genre
+
+Single-mechanic fishing arcade / tension management (push-pull risk
+metering: the "reel or yield" loop of classic fishing minigames promoted
+to being the entire game). Deliberately NOT a reflex game — the bite
+hooks itself; all skill lives in reading the fish's rest/surge rhythm.
+
+## Core loop
+
+Charge a cast (risk appetite: deep = rich = long, dangerous fight) → the
+lure sinks, a seeded fish bites by depth → fight: hold A to reel while it
+rests, release while it surges → catch (score += weight) or snap (lure
+lost) → repeat until all 3 lures are gone → final score, one button to
+run it back. The same seed replays identically, so a score is a claim
+someone else can check.
+
+## Target platform
+
+Game Boy Advance (Butano). Fully deterministic fixed-point core with a
+frame-driven, seeded PRNG and a telemetry mailbox (`dc_telemetry`), so
+every build is headless-provable in CI and every run is replayable from
+an input script.
+
+## Sellability guess (honest)
+
+Near-zero as a paid standalone — a GBA homebrew of a known minigame
+mechanic sells to almost nobody. Its realistic market is
+the flash-cart / itch.io homebrew niche: a free or pay-what-you-want
+curio, or one game in a bundled original-homebrew compilation cart,
+where "complete, polished, deterministic score-attack" is the bar it
+already meets. The mechanic's depth-vs-greed decision is the one seed
+worth growing. (The presentation is no longer placeholder: growth cut 5
+shipped the real art pass — every named growth line below is now BUILT,
+the named growth path is COMPLETE.)
+
+## Growth path
+
+- Real art pass: lake gradient by depth, silhouette fish, rod-bend sprite
+  as the analog tension gauge (HUD bar becomes diegetic). **BUILT**
+  (growth cut 5, 2026-07-14 — the LAST named line: the growth path is
+  complete): a full-screen ten-band lake background (original procedural
+  assets, `games/deepcast/graphics/generate_assets.py`) whose palette is
+  rewritten from a closed-form law of the live depth word — dim = 2*band
+  + depth/8 — so the WHOLE lake visibly deepens as the lure sinks (never
+  reaching exact black, by the law's blue floor); a 32x16 silhouette
+  fish, frame = the species index from growth cut 3 (depth band = size,
+  rarity = shade — mythics palest), shown only while fighting and on the
+  CATCH card (hidden while sinking and on a SNAP: the species keeps its
+  secret); and a 32x32 rod sprite with 8 bend frames, bend = tension *
+  7 / snap-threshold — the same tension-over-snap law the audio ratchet
+  reads, so the rod is an honest analog gauge on any line tier. The text
+  HUD (tension bar included) stays alongside. Presentation ONLY: game
+  state, RNG word order and all three sim mailboxes untouched — P1-P7
+  pass verbatim; the art itself is proven in `games/deepcast/proofs.sh`
+  P8-P10 via a fourth presentation mailbox (`dc_artmeta`) plus DISPCNT /
+  BG-and-OBJ palette RAM / VRAM screenblock pins read at GBA bus
+  addresses (the Cindervault art-pass method), all legs run twice
+  byte-identical.
+- Fish species tables per depth band with named rarities; a catch log.
+  **BUILT** (growth cut 3, 2026-07-14): four depth bands by target depth
+  (THE SHALLOWS / MIDWATER / THE DEEPS / THE ABYSS — the band is named on
+  the sink card), four named species per band, one per rarity tier
+  (COMMON / UNCOMMON / RARE / MYTHIC; 16 species, MUD BREAM to THE
+  NAMELESS). The species is drawn at cast time from a SIDE-BAND xorshift32
+  stream seeded from `seed ^ 0x51DEF157`, so the main stream's word order
+  is untouched — every v0.2/v0.3 pin carries verbatim, and the seed-select
+  contract extends to the fish's name (same dialed seed = same species on
+  the same casts). The catch card names the landed fish; SELECT (the one
+  unused key) opens a per-run CATCH LOG (ring of the last 8 landed fish —
+  snapped lines never log). The log is session-scope by design: SRAM
+  persistence of a lifetime log is its own growth cut (follow-up), since
+  battery-save plumbing + save-versioning is a bigger slice than a data
+  table. Proven in `games/deepcast/proofs.sh` P6 (species/rarity/log
+  glyph-exact + `dc_fishlog` mailbox witnesses, run twice byte-identical)
+  with species witnesses threaded through P1-P5.
+- Line upgrades bought with score (thicker line = higher snap threshold,
+  slower reel) — a run-to-run meta without breaking determinism. **BUILT**
+  (growth cut 4, 2026-07-14): every run's dusk score deposits into a
+  persistent BANK (the `games/common/include/gl_save.h` magic-checked SRAM
+  slot, tag `DCLINE1` — the Lumen Drift save pattern; this is also the SRAM
+  follow-up the species cut named), and the LINE SHOP (SELECT on the title,
+  R at dusk — SELECT closes back, A buys) spends it on three line tiers
+  with the exact tradeoff this line names: WORN LINE (snap 600, reel
+  5/frame — the v0.2 constants), BRAIDED LINE (snap 750, reel 4, cost 15),
+  STEEL LINE (snap 900, reel 3, cost 40). Tension gain, slack decay and
+  every RNG stream are untouched, so a run is a pure function of
+  (seed, line tier) — the dial publishes the seed, the shop publishes the
+  tier — and a fresh/erased cartridge loads as no save = tier 0 = v0.4
+  bit-exact behavior (every committed pin carries on first boot). The
+  click-speed audio law scales with the current line's snap threshold, so
+  the ratchet stays an honest tension bar on any line. Proven in
+  `games/deepcast/proofs.sh` P7 (`dc_linemeta` mailbox: buy + refused buy
+  glyph-exact, two-boot SRAM persistence via `--savefile` on separate
+  emulator boots, and the tradeoff as arithmetic on the SAME hold-only
+  fight: same bite/tension trajectory, line 432-4k vs 432-5k, still
+  fighting at 623 past the worn line's 600, snap at exactly 750), with
+  P1-P6 running unmodified as the fresh-cart identity proof. The lifetime
+  catch log stays a follow-up: this cut spends SRAM on the meta the
+  concept names first.
+- Daily seed + score-attack: the deterministic core makes a shareable
+  "same lake, same fish" challenge free to build. **BUILT** (growth cut
+  2, 2026-07-14), GBA-shaped: a cartridge has no clock and no server, so
+  "daily" becomes a dialable seed — the title's seed line is a picker
+  (UP/DOWN +-1, LEFT/RIGHT +-0x100, L/R +-0x10000, shown as 8 hex
+  digits). Two players who dial the same digits fish the SAME lake —
+  same bites, same weights, same surge rhythm — and the dusk score card
+  names the seed, so a score is a claim anyone with a cartridge can
+  check. The boot seed 0xDEE9CA57 is untouched: no dial input = the
+  v0.2 run, bit-identical. Proven in `games/deepcast/proofs.sh` (P4:
+  dialed lake, run twice; P5: dial away and back reproduces every
+  default-lake literal). The leaderboard half of this line is out of
+  GBA scope — no network — per the Tiltstone PR #97 precedent; the seed
+  is what makes an off-cartridge leaderboard honest.
+- Audio: reel clicks that speed up with tension — tension readable with
+  eyes closed (also a nice accessibility angle). **BUILT** (growth cut 1,
+  2026-07-14): while reeling, a dry ratchet click fires on a period that
+  shrinks linearly with tension (every 16 frames at slack -> every 4 at
+  the snap point) with its pitch rising the same way; yielding is
+  silent, so the click train IS the tension bar. Plus the loop's three
+  event cues (bite plunge, catch resolve, snap twang) — four original
+  synthesized sounds (`audio/generate_audio.py`, deterministic, no
+  samples), B mutes. Proven in `games/deepcast/proofs.sh` (decision
+  ledger + mixer-memory voicing watch).

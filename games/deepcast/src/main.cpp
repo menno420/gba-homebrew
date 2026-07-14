@@ -1,0 +1,1314 @@
+/*
+ * DEEPCAST (game-lab Track B, breadth program game #4)
+ *
+ * Single-mechanic fishing / line-tension-management arcade, original IP.
+ * A quiet lake at dusk. HOLD A to charge a cast — hold time IS the target
+ * depth. The lure sinks; a seeded fish bites by depth (deeper = heavier =
+ * worth more; hooking is automatic and forgiving — the game is the FIGHT,
+ * not the reflex). In the fight: HOLD A to reel (tension rises, line
+ * shortens), RELEASE to let the fish run (tension falls, line pays out).
+ * The fish alternates seeded REST and SURGE phases — reel through the
+ * rests, yield to the surges. Tension maxed = the line SNAPS (fish lost +
+ * one of 3 lures); line reeled to zero = CATCH, score += weight. The run
+ * ends when all 3 lures are gone.
+ *
+ * DETERMINISM CONTRACT (headless proof relies on all of this):
+ *   - Integer math only. One xorshift32 PRNG, boot seed 0xDEE9CA57
+ *     (shown on the title card). RNG words are consumed ONLY at pinned
+ *     events (cast: bite delay + fish weight; fight: phase lengths), in a
+ *     fixed order, so the same input script replays bit-identically.
+ *   - Frame-count-driven: no wall clock, no interrupts feeding the sim.
+ *   - START from game over restarts the SAME seeded run.
+ *
+ * SEED-SELECT SCORE-ATTACK (growth cut 2 — the concept's "daily seed +
+ * score-attack" line, GBA-shaped: a cartridge has no clock and no server,
+ * so "daily" becomes a DIALABLE seed): on the title, the seed line is a
+ * picker — UP/DOWN dials the seed +-1, LEFT/RIGHT +-0x100, L/R +-0x10000
+ * (all edge-triggered, 32-bit wrapping; the xorshift dead state 0 is
+ * skipped). Two players who dial the same 8 hex digits fish the SAME
+ * lake — same bites, same weights, same surge rhythm — and the seed is
+ * repeated on the dusk score card, so a score is a claim anyone with a
+ * cartridge can check. The boot seed stays 0xDEE9CA57: with no dial
+ * input the game is bit-identical to v0.2. START from game over restarts
+ * the same dialed seed; the picker only lives on the title.
+ *
+ * SPECIES TABLES + CATCH LOG (growth cut 3 — the concept's "fish species
+ * tables per depth band with named rarities; a catch log" line): the lake
+ * is split into four DEPTH BANDS by target depth (THE SHALLOWS < 52m,
+ * MIDWATER < 102m, THE DEEPS < 152m, THE ABYSS beyond — the band is named
+ * on screen while the lure sinks), and each band holds four named species,
+ * one per rarity tier (COMMON / UNCOMMON / RARE / MYTHIC — 16 species
+ * total). Which species bites is decided at cast time by ONE word from a
+ * SIDE-BAND xorshift32 stream seeded from `seed_sel ^ 0x51DEF157` (dead
+ * state 0 falls back to the salt): the MAIN stream's word order is
+ * untouched, so every pinned literal of the default and dialed lakes
+ * carries verbatim, while the same dialed seed still lands the same
+ * species on the same casts — the score-attack contract extends to the
+ * fish's name. Species are revealed on the CATCH card (you don't know
+ * what is on the line until you land it); a snapped line never logs.
+ * SELECT (the one unused key) opens the CATCH LOG between casts and at
+ * dusk: a per-run ring of the last 8 catches (species, rarity, weight),
+ * newest last. The log is session-scope by design — SRAM persistence is
+ * a separate growth cut. The log screen freezes nothing that matters:
+ * the sim only advances on cast/fight states, and no RNG word is
+ * consumed by opening it.
+ *
+ * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
+ * --elf --watch dc:dc_telemetry:16): a volatile 16-word array with
+ * C-linkage symbol `dc_telemetry`, updated every frame:
+ *   [0] 0x44454550 'DEEP'   magic     [8]  tension (snaps at lm[3]:
+ *                                          600/750/900 by line tier)
+ *   [1] 0x43415354 'CAST'   magic     [9]  line remaining (catch at 0)
+ *   [2] state id (enum State)         [10] current/last fish weight
+ *   [3] frames since boot (monotonic) [11] fish phase (1 surge, 0 rest)
+ *   [4] selected PRNG seed (boot      [12] lures remaining
+ *       0xDEE9CA57; title dial live)
+ *   [5] charge frames (this cast)     [13] catches this run
+ *   [6] lure depth (m)                [14] score this run
+ *   [7] target depth (m)              [15] last fight result (1 catch, 2 snap)
+ *
+ * Second mailbox `dc_fishlog` (--watch fl:dc_fishlog:16), growth cut 3,
+ * updated every frame:
+ *   [0]  species index of the current/last cast (band*4 + tier, 0..15;
+ *        255 = no cast yet this run)
+ *   [1]  rarity tier of the current/last cast (0 common .. 3 mythic;
+ *        255 = no cast yet this run)
+ *   [2]  catches logged this run (total, monotonic; ring keeps last 8)
+ *   [3]  1 while the catch-log screen is open, else 0
+ *   [4..11] the log ring: entry n lives in slot n%8, packed as
+ *        species*256 + weight (0 = empty slot)
+ *   [12] side-band RNG stream state (live: the derived seed on the
+ *        title — it follows the dial — then advances one word per cast)
+ *   [13] 0x46495348 'FISH' magic   [14..15] 0
+ *
+ * Third mailbox `dc_linemeta` (--watch lm:dc_linemeta:8), growth cut 4,
+ * updated every frame:
+ *   [0] 0x4C494E45 'LINE' magic
+ *   [1] line tier (0 worn / 1 braided / 2 steel)
+ *   [2] bank (persistent score, deposited at dusk, spent in the shop)
+ *   [3] snap threshold of the CURRENT line (600 / 750 / 900)
+ *   [4] reel rate of the CURRENT line (line units per reeling frame,
+ *       5 / 4 / 3 — the "slower reel" half of the tradeoff)
+ *   [5] 1 while the LINE SHOP screen is open, else 0
+ *   [6] cost of the NEXT tier (0 when maxed)
+ *   [7] 0
+ *
+ * LINE UPGRADES + SRAM BANK (growth cut 4 — the concept's "line upgrades
+ * bought with score (thicker line = higher snap threshold, slower reel) —
+ * a run-to-run meta without breaking determinism" line): every run's dusk
+ * score is DEPOSITED into a persistent BANK the moment dusk falls, and the
+ * bank buys line tiers in the LINE SHOP — SELECT on the title, R at dusk
+ * (both edge-triggered; SELECT closes back). Three tiers, each with the
+ * doc's exact tradeoff: WORN LINE (snap 600, reel 5 — the v0.2 constants),
+ * BRAIDED LINE (snap 750, reel 4, cost 15), STEEL LINE (snap 900, reel 3,
+ * cost 40). A thicker line survives more tension before it snaps but
+ * shortens the line SLOWER per reeling frame — fights last longer, so the
+ * fish's surge rhythm gets more chances at you. Reel-tension gain, slack
+ * decay and every RNG stream are untouched; the click-speed audio law
+ * scales with the CURRENT line's snap threshold (16 frames at slack -> 4
+ * at the snap point, whatever that point is), so the ratchet stays an
+ * honest tension bar on any line. Bank + tier persist across power cycles
+ * via games/common gl_save.h (magic-checked SRAM slot, tag "DCLINE1" —
+ * the Lumen Drift LDRIFT1 pattern): a fresh / foreign / erased cartridge
+ * loads as no save = bank 0, tier 0 = bit-exact v0.4 behavior, so every
+ * committed pin carries on first boot. Determinism contract extension:
+ * a run is a pure function of (seed, line tier) — the dial publishes the
+ * seed, the shop publishes the tier.
+ *
+ * AUDIO (growth cut 1 — the concept's named line: "reel clicks that
+ * speed up with tension"): four original synthesized cues
+ * (audio/generate_audio.py — deterministic, no samples ever) played
+ * through Butano's maxmod pipeline as pure DECISIONS on state the sim
+ * already computed. THE cut: while reeling in the fight, a dry ratchet
+ * click fires every click-interval frames, and the interval shrinks
+ * linearly with tension (16 frames at slack -> 4 at the snap point) while
+ * the click's pitch rises — the tension bar, readable with eyes closed.
+ * Supporting cues on the loop's three events: the bite, the catch, the
+ * snap. Nothing feeds back into the sim (no RNG, no state writes).
+ * B toggles MUTE (gates play() ONLY — counters still bump, so the
+ * decision layer stays provable muted or not). Every trigger bumps a
+ * cumulative gl_audio_hook slot (games/common/include/gl_audio_hook.h):
+ *   [0] reel clicks   [1] bites   [2] catches   [3] snaps
+ *   [4] click interval THIS frame (0 = not reeling; the speed-up word)
+ *   [5] mute state
+ * so the headless harness pins the decisions and the maxmod
+ * mixer-memory nonzero watch proves the voicing (docs/capabilities.md).
+ *
+ * ART PASS (growth cut 5 — CONCEPT.md: "Real art pass: lake gradient by
+ * depth, silhouette fish, rod-bend sprite as the analog tension gauge
+ * (HUD bar becomes diegetic)" — the LAST named growth line, presentation
+ * ONLY): three layers, every one a pure READ of state the sim already
+ * computed (no RNG, no state writes — game state, RNG word order and
+ * every dc_telemetry / dc_fishlog / dc_linemeta word are byte-identical
+ * to growth cut 4, so every existing proof pin carries verbatim):
+ *
+ *   1. THE LAKE GRADIENT BY DEPTH — a full-screen tile background of ten
+ *      horizontal water bands (original procedural assets,
+ *      graphics/generate_assets.py) whose ten palette entries are
+ *      rewritten from a closed-form law of the line's live depth word:
+ *
+ *          band i (0 surface .. 9 bottom), depth d metres:
+ *          dim = 2*i + d/8
+ *          BGR555 = max(1,5-dim/3) | max(1,16-dim)<<5 | max(4,26-dim)<<10
+ *
+ *      — at d=0 a dusk-blue gradient; as the lure sinks the WHOLE lake
+ *      deepens toward abyss-dark (blue floor 4/31: never exact black, so
+ *      the harness's font-pixel text matcher is safe by construction).
+ *   2. THE SILHOUETTE FISH — a 32x16 sprite shown while a fish is on the
+ *      line (fight) and on the CATCH card, frame = the dc_fishlog species
+ *      index (band*4 + tier, growth cut 3): the depth band sets the
+ *      silhouette's SIZE, the rarity its SHADE (mythics palest). It
+ *      faces the reel during rests and FLIPS to run on surge frames —
+ *      you see a shape in the water, not a name; the species is still
+ *      revealed only on the catch card.
+ *   3. THE ROD BEND — a 32x32 rod sprite (charge/sink/fight), 8 bend
+ *      frames; while fighting the frame is the analog tension gauge:
+ *
+ *          rod_bend = tension * 7 / line_snap[tier]
+ *
+ *      — the SAME tension-over-snap-threshold law the audio ratchet
+ *      reads (growth cuts 1 + 4), so the rod is an honest gauge on any
+ *      line tier. Text HUD (incl. the TENSION bar) stays alongside.
+ *
+ * Presentation telemetry for the headless harness (a FOURTH mailbox —
+ * the three sim mailboxes are untouched by contract): volatile unsigned
+ * dc_artmeta[8], C linkage, updated every frame:
+ *   [0] 0x44415254 'DART' magic     [4] fish frame (species index 0..15;
+ *   [1] depth word the gradient          255 = no fish on screen)
+ *       law read this frame         [5] rod bend frame (0..7; 255 = no
+ *   [2] gradient band-0 BGR555          rod on screen)
+ *       (the law above at i=0)      [6] fish flipped (1 = surge run)
+ *   [3] gradient band-9 BGR555      [7] 0
+ *
+ * All code and art original; the font is Butano's zlib-licensed common
+ * asset (third_party/butano/common).
+ */
+
+#include "bn_core.h"
+#include "bn_color.h"
+#include "bn_fixed.h"
+#include "bn_keypad.h"
+#include "bn_string.h"
+#include "bn_vector.h"
+#include "bn_display.h"
+#include "bn_bg_palettes.h"
+#include "bn_sprite_ptr.h"
+#include "bn_sound_items.h"
+#include "bn_sprite_text_generator.h"
+#include "bn_bg_palette_ptr.h"
+#include "bn_regular_bg_ptr.h"
+#include "bn_regular_bg_item.h"
+#include "bn_regular_bg_map_ptr.h"
+#include "bn_regular_bg_map_item.h"
+#include "bn_regular_bg_map_cell_info.h"
+
+#include "bn_sprite_items_dc_fish.h"
+#include "bn_sprite_items_dc_rod.h"
+#include "bn_regular_bg_tiles_items_dc_water.h"
+#include "bn_bg_palette_items_dc_water_palette.h"
+
+#include "gl_audio_hook.h"
+#include "gl_save.h"
+
+#include "common_variable_8x8_sprite_font.h"
+
+extern "C"
+{
+    // Headless telemetry mailboxes — see the layout tables in the header
+    // comment. volatile so every write really lands for the emulator bus.
+    volatile unsigned dc_telemetry[16];
+    volatile unsigned dc_fishlog[16];
+    volatile unsigned dc_linemeta[8];
+
+    // Presentation telemetry (growth cut 5, the art pass) — the art's own
+    // mailbox, so the three simulation mailboxes stay untouched by
+    // contract. Layout in the header comment.
+    volatile unsigned dc_artmeta[8];
+}
+
+namespace
+{
+    // --- deterministic core -------------------------------------------------
+
+    constexpr unsigned seed_constant = 0xDEE9CA57;
+
+    struct rng_t
+    {
+        unsigned s;
+
+        explicit rng_t(unsigned seed) : s(seed) {}
+
+        unsigned next()
+        {
+            s ^= s << 13;
+            s ^= s >> 17;
+            s ^= s << 5;
+            return s;
+        }
+
+        int range(int n)  // [0, n)
+        {
+            return int(next() % unsigned(n));
+        }
+    };
+
+    enum state_t : unsigned
+    {
+        st_title = 0,   // press START
+        st_charge = 1,  // hold A to charge the cast, release to cast
+        st_sink = 2,    // lure sinks to target depth, seeded bite delay
+        st_fight = 3,   // hold A reel / release run
+        st_result = 4,  // CATCH / SNAP card, auto-advances
+        st_over = 5,    // dusk falls: final score, START restarts
+        st_log = 6,     // catch log (SELECT from charge/dusk; SELECT back)
+        st_shop = 7,    // line shop (SELECT from title, R from dusk;
+                        // SELECT back; A buys the next tier)
+    };
+
+    // Tuning (all integers; see CONCEPT.md for the intended strategy space).
+    constexpr int max_charge = 160;        // frames of A-hold, caps the cast
+    constexpr int min_depth = 12;          // target depth = min_depth + charge
+    constexpr int sink_rate = 2;           // m per frame while sinking
+    constexpr int line_per_depth = 6;      // line at hook = depth * this
+    constexpr int reel_tension_base = 6;   // tension gained per reeling frame...
+    constexpr int surge_tension_extra = 18;// ...plus this while the fish surges
+    constexpr int slack_tension = 9;       // tension lost per released frame
+    constexpr int run_rest = 1;            // line paid out per released frame...
+    constexpr int run_surge = 2;           // ...or this while the fish surges
+    constexpr int result_frames = 90;      // RESULT card duration
+    constexpr int start_lures = 3;
+
+    // --- line tiers (growth cut 4) ---------------------------------------
+    // "Thicker line = higher snap threshold, slower reel" — the doc's exact
+    // tradeoff, one row per tier. Tier 0 IS the v0.2 constants (snap 600,
+    // reel 5), so a fresh cartridge (no save -> tier 0) is bit-exact v0.4:
+    // every committed pin carries on first boot. Bought in the LINE SHOP
+    // with the persistent BANK (dusk scores, deposited automatically).
+
+    constexpr int line_tiers = 3;
+
+    constexpr const char* line_names[line_tiers] = {
+        "WORN LINE", "BRAIDED LINE", "STEEL LINE",
+    };
+
+    constexpr int line_snap[line_tiers] = {600, 750, 900};
+    constexpr int line_reel[line_tiers] = {5, 4, 3};
+    constexpr int line_cost[line_tiers] = {0, 15, 40};  // cost to REACH tier
+
+    // The persistent meta (SRAM payload behind gl_save.h's magic tag):
+    // the bank and the owned line tier. Bump the tag to invalidate saves
+    // if this layout ever changes.
+    constexpr const char* save_magic = "DCLINE1";
+
+    struct dc_save
+    {
+        int bank = 0;
+        int tier = 0;
+    };
+
+    // Audio (pure decision layer — see the header comment). The reel
+    // click period shrinks linearly with tension: every 16 frames at
+    // slack, every 4 at the snap point (~4 -> ~15 clicks/second). The
+    // snap point is the CURRENT line's (growth cut 4), so the ratchet
+    // stays an honest tension bar on any line.
+    constexpr int click_max_interval = 16; // frames between clicks, tension 0
+    constexpr int click_min_interval = 4;  // ...at the line's snap threshold
+
+    // --- the art pass (growth cut 5) -------------------------------------
+    // All presentation-only laws (pure reads of sim state; nothing here is
+    // ever read back by the sim). The gradient law MUST match the one in
+    // graphics/generate_assets.py (the committed palette is the law at
+    // depth 0).
+
+    constexpr int gradient_bands = 10;     // 10 bands x 16 px = the screen
+    constexpr int rod_bend_frames = 8;     // rod sprite frames 0..7
+
+    constexpr unsigned gradient_color(int i, int d)
+    {
+        // Band i (0 = surface .. 9 = bottom) at line depth d metres, as a
+        // BGR555 halfword. The blue floor of 4/31 keeps the deepest water
+        // off exact black (the harness's text-ink color) by construction.
+        int dim = 2 * i + d / 8;
+        int r = 5 - dim / 3;
+        int g = 16 - dim;
+        int b = 26 - dim;
+
+        if(r < 1)
+        {
+            r = 1;
+        }
+
+        if(g < 1)
+        {
+            g = 1;
+        }
+
+        if(b < 4)
+        {
+            b = 4;
+        }
+
+        return unsigned(r) | unsigned(g) << 5 | unsigned(b) << 10;
+    }
+
+    // --- species tables (growth cut 3) ----------------------------------
+    // Four depth bands by target depth, four named species per band, one
+    // per rarity tier. Pure data + one side-band RNG word per cast: the
+    // fight math never reads any of this (weight stays the main stream's
+    // word), so every existing pin carries by construction.
+
+    constexpr unsigned side_salt = 0x51DEF157;  // 'SIDE-FISH' stream salt
+    constexpr int band_count = 4;
+    constexpr int tier_count = 4;
+    constexpr int log_ring = 8;            // catch log keeps the last 8
+
+    // Tier roll (side-band word % 100): <55 common, <83 uncommon,
+    // <96 rare, else mythic.
+    constexpr int tier_uncommon = 55;
+    constexpr int tier_rare = 83;
+    constexpr int tier_mythic = 96;
+
+    constexpr const char* band_names[band_count] = {
+        "THE SHALLOWS",     // target <  52m
+        "MIDWATER",         // target < 102m
+        "THE DEEPS",        // target < 152m
+        "THE ABYSS",        // target beyond
+    };
+
+    constexpr const char* rarity_names[tier_count] = {
+        "COMMON", "UNCOMMON", "RARE", "MYTHIC",
+    };
+
+    // species index = band*4 + tier
+    constexpr const char* species_names[band_count * tier_count] = {
+        "MUD BREAM",    "DUSK PERCH",    "GHOST KOI",    "LANTERN CARP",
+        "SILVER TROUT", "TWILIGHT PIKE", "VEIL SALMON",  "MOON EEL",
+        "STONE CATFISH","IRON GAR",      "BLIND ANGLER", "DROWNED KING",
+        "PALE LURKER",  "TRENCH MAW",    "VOID SIREN",   "THE NAMELESS",
+    };
+
+    constexpr int depth_band(int target)
+    {
+        return target < 52 ? 0 : target < 102 ? 1 : target < 152 ? 2 : 3;
+    }
+
+    constexpr unsigned derive_side_seed(unsigned seed)
+    {
+        unsigned s = seed ^ side_salt;
+        return s != 0 ? s : side_salt;   // skip xorshift32's dead state
+    }
+
+    // --- text presentation ---------------------------------------------------
+
+    struct text_line
+    {
+        bn::vector<bn::sprite_ptr, 24> sprites;
+        bn::string<40> cached;
+        bool dirty_clear = false;
+
+        void set(bn::sprite_text_generator& gen, int x, int y,
+                 const bn::string<40>& text)
+        {
+            if(! dirty_clear && cached == text)
+            {
+                return;
+            }
+
+            dirty_clear = false;
+            cached = text;
+            sprites.clear();
+            gen.generate(x, y, text, sprites);
+        }
+
+        void clear()
+        {
+            cached.clear();
+            sprites.clear();
+            dirty_clear = true;
+        }
+    };
+
+    bn::string<40> bar_string(const char* label, int value, int max_value)
+    {
+        // "LABEL [####------]" — 10 cells, deterministic integer fill.
+        bn::string<40> out(label);
+        out.append(" [");
+        int cells = (value * 10) / max_value;
+
+        if(cells > 10)
+        {
+            cells = 10;
+        }
+
+        for(int i = 0; i < 10; ++i)
+        {
+            out.append(i < cells ? "#" : "-");
+        }
+
+        out.append("]");
+        return out;
+    }
+
+    bn::string<40> seed_hex(unsigned value)
+    {
+        // The seed as exactly 8 uppercase hex digits — the shareable
+        // challenge code two players compare on their title screens.
+        bn::string<40> out;
+
+        for(int shift = 28; shift >= 0; shift -= 4)
+        {
+            unsigned digit = (value >> shift) & 0xFu;
+            out.push_back(char(digit < 10 ? '0' + digit : 'A' + digit - 10));
+        }
+
+        return out;
+    }
+}
+
+int main()
+{
+    bn::core::init();
+
+    // Dusk-lake backdrop: deep blue-violet, unmistakably not a blank screen.
+    bn::bg_palettes::set_transparent_color(bn::color(3, 3, 9));
+
+    bn::sprite_text_generator text_gen(common::variable_8x8_sprite_font);
+    text_gen.set_left_alignment();
+
+    // --- the art pass (growth cut 5): the lake, the fish, the rod --------
+
+    // The lake: a full-screen background of ten 16px water bands. The map
+    // is static (band i = tile 1+i, row 0 the surface shimmer); the
+    // GRADIENT lives in the palette, rewritten from gradient_color() as
+    // the line's depth word moves — the whole lake deepens as you sink.
+    constexpr int bg_cols = 32;
+    constexpr int bg_rows = 32;
+
+    alignas(int) bn::regular_bg_map_cell bg_cells[bg_cols * bg_rows] = {};
+    bn::regular_bg_map_item bg_map_item(bg_cells[0],
+                                        bn::size(bg_cols, bg_rows));
+
+    for(int y = 0; y < bg_rows; ++y)
+    {
+        // 20 visible rows -> band = row/2; offscreen rows keep the
+        // deepest band. Row 0 is the dusk surface shimmer tile.
+        int band = y / 2 < gradient_bands ? y / 2 : gradient_bands - 1;
+        int gfx = y == 0 ? 11 : 1 + band;
+
+        for(int x = 0; x < bg_cols; ++x)
+        {
+            bn::regular_bg_map_cell& cell =
+                    bg_cells[bg_map_item.cell_index(x, y)];
+            bn::regular_bg_map_cell_info cell_info(cell);
+            cell_info.set_tile_index(gfx);
+            cell = cell_info.cell();
+        }
+    }
+
+    bn::regular_bg_item bg_item(bn::regular_bg_tiles_items::dc_water,
+                                bn::bg_palette_items::dc_water_palette,
+                                bg_map_item);
+    // create_bg() places the MAP CENTER: cell (0, 0)'s top-left lands on
+    // the screen's top-left (-120, -80).
+    bn::regular_bg_ptr lake_bg = bg_item.create_bg(-120 + bg_cols * 4,
+                                                   -80 + bg_rows * 4);
+    bn::regular_bg_map_ptr lake_map = lake_bg.map();
+    lake_map.reload_cells_ref();
+    bn::bg_palette_ptr lake_palette = lake_bg.palette();
+
+    // The gradient palette writer: entries 1..10 follow the law at the
+    // given depth; 11 the surface glint; the rest inert filler. Only
+    // rewritten when the depth word actually moves.
+    bn::color lake_colors[16];
+    int gradient_depth = -1;
+
+    auto apply_gradient = [&](int d)
+    {
+        if(d == gradient_depth)
+        {
+            return;
+        }
+
+        gradient_depth = d;
+        lake_colors[0] = bn::color(0, 0, 0);        // transparent slot
+
+        for(int i = 0; i < gradient_bands; ++i)
+        {
+            unsigned v = gradient_color(i, d);
+            lake_colors[1 + i] = bn::color(int(v & 31), int(v >> 5 & 31),
+                                           int(v >> 10 & 31));
+        }
+
+        lake_colors[11] = bn::color(24, 29, 30);    // surface glint
+        lake_colors[12] = bn::color(1, 1, 2);
+        lake_colors[13] = bn::color(1, 1, 2);
+        lake_colors[14] = bn::color(1, 1, 2);
+        lake_colors[15] = bn::color(1, 1, 2);
+        lake_palette.set_colors(bn::span<const bn::color>(lake_colors));
+    };
+
+    apply_gradient(0);
+
+    // The silhouette fish (32x16, frame = species index) and the rod
+    // (32x32, frame = bend 0..7). Both sit BELOW the HUD text rows their
+    // states use, so no --assert-text pin is ever overlapped.
+    bn::sprite_ptr fish_sprite = bn::sprite_items::dc_fish.create_sprite(
+            44, 44);
+    fish_sprite.set_visible(false);
+    int fish_frame_shown = 0;
+
+    bn::sprite_ptr rod_sprite = bn::sprite_items::dc_rod.create_sprite(
+            84, 40);
+    rod_sprite.set_visible(false);
+    int rod_frame_shown = 0;
+
+    constexpr int text_x = -104;
+    constexpr int line_count = 7;
+    text_line lines[line_count];  // y slots: -60 -40 -20 0 20 40 56
+    constexpr int line_y[line_count] = {-60, -40, -20, 0, 20, 40, 56};
+
+    auto clear_lines = [&]()
+    {
+        for(int i = 0; i < line_count; ++i)
+        {
+            lines[i].clear();
+        }
+    };
+
+    // Seed-select (growth cut 2): the dialed challenge seed. Boot value is
+    // the v0.2 constant, only the title dial changes it, and reset_run()
+    // reads it — so with no dial input every run is the boot run, and a
+    // dialed value survives game over (START reruns the SAME lake).
+    unsigned seed_sel = seed_constant;
+
+    // Line upgrades (growth cut 4): the persistent meta, restored from the
+    // magic-checked SRAM slot at boot. Fresh / foreign / erased SRAM loads
+    // as no save -> bank 0, tier 0 (the v0.4 line) — the fresh cartridge
+    // boots exactly like v0.4. Deliberately NOT reset by reset_run(): the
+    // bank and the line are the run-to-run meta.
+    gl::save_slot<dc_save> meta_slot(save_magic);
+    dc_save meta;
+
+    if(! meta_slot.load(meta))
+    {
+        meta = dc_save();
+    }
+
+    // --- run state (all plain ints; reset_run() restores the exact boot run)
+    rng_t rng(seed_constant);
+    rng_t side(derive_side_seed(seed_constant));  // species stream (cut 3)
+    unsigned state = st_title;
+    unsigned frames = 0;        // monotonic since boot, never reset
+    int lures = start_lures;
+    int catches = 0;
+    int score = 0;
+    int charge = 0;
+    int depth = 0;
+    int target = 0;
+    int bite_delay = 0;
+    int weight = 0;
+    int line_start = 0;
+    int line = 0;
+    int tension = 0;
+    int surge = 0;
+    int phase_timer = 0;
+    int result_code = 0;        // 0 none · 1 catch · 2 snap
+    int result_timer = 0;
+
+    // Species + catch log state (growth cut 3). cur_* are 255 until the
+    // run's first cast; the log is a ring of the last log_ring catches.
+    unsigned cur_species = 255;
+    unsigned cur_rarity = 255;
+    int log_species[log_ring] = {};
+    int log_weight[log_ring] = {};
+    int log_total = 0;
+    unsigned log_return = st_charge;   // state SELECT returns to
+    unsigned shop_return = st_title;   // state the LINE SHOP returns to
+
+    // Audio decision layer state (presentation-only: never read by the
+    // sim, deliberately NOT reset by reset_run — mute is a player
+    // preference, and the click timer restarts with every reel anyway).
+    bool muted = false;
+    int click_timer = 0;
+
+    auto reset_run = [&]()
+    {
+        rng.s = seed_sel;
+        side.s = derive_side_seed(seed_sel);
+        cur_species = 255;
+        cur_rarity = 255;
+        log_total = 0;
+
+        for(int i = 0; i < log_ring; ++i)
+        {
+            log_species[i] = 0;
+            log_weight[i] = 0;
+        }
+
+        lures = start_lures;
+        catches = 0;
+        score = 0;
+        charge = 0;
+        depth = 0;
+        target = 0;
+        bite_delay = 0;
+        weight = 0;
+        line_start = 0;
+        line = 0;
+        tension = 0;
+        surge = 0;
+        phase_timer = 0;
+        result_code = 0;
+        result_timer = 0;
+        state = st_charge;
+        clear_lines();
+    };
+
+    while(true)
+    {
+        bool a_held = bn::keypad::a_held();
+
+        if(bn::keypad::b_pressed())
+        {
+            muted = ! muted;    // gates play() only — counters still bump
+        }
+
+        switch(state)
+        {
+
+        case st_title:
+            if(bn::keypad::start_pressed())
+            {
+                reset_run();
+            }
+            else if(bn::keypad::select_pressed())
+            {
+                // The LINE SHOP (growth cut 4): SELECT is the title's one
+                // free key (the dial owns the dpad + L/R). No RNG moves.
+                shop_return = st_title;
+                state = st_shop;
+                clear_lines();
+            }
+            else
+            {
+                // The seed dial (edge-triggered so one press is one step —
+                // a challenge code is a repeatable press sequence). 32-bit
+                // wrap; 0 is xorshift32's dead state, so it is skipped in
+                // whichever direction the dial was turning.
+                unsigned delta = 0;
+
+                if(bn::keypad::up_pressed())
+                {
+                    delta += 1;
+                }
+
+                if(bn::keypad::down_pressed())
+                {
+                    delta -= 1;
+                }
+
+                if(bn::keypad::right_pressed())
+                {
+                    delta += 0x100;
+                }
+
+                if(bn::keypad::left_pressed())
+                {
+                    delta -= 0x100;
+                }
+
+                if(bn::keypad::r_pressed())
+                {
+                    delta += 0x10000;
+                }
+
+                if(bn::keypad::l_pressed())
+                {
+                    delta -= 0x10000;
+                }
+
+                if(delta != 0)
+                {
+                    seed_sel += delta;
+
+                    if(seed_sel == 0)
+                    {
+                        seed_sel += delta;
+                    }
+                }
+
+                // The species stream follows the dial live (the daily
+                // cut's publish-the-choice-when-it-exists idea): fl[12]
+                // shows the derived side seed for whatever is dialed.
+                side.s = derive_side_seed(seed_sel);
+            }
+            break;
+
+        case st_charge:
+            if(a_held)
+            {
+                if(charge < max_charge)
+                {
+                    ++charge;
+                }
+            }
+            else if(charge > 0)
+            {
+                // Cast. Both MAIN RNG words are consumed HERE, in this
+                // order — the pinned event the determinism contract
+                // promises. The species word (growth cut 3) comes from
+                // the SIDE-BAND stream, so the main stream's word order
+                // is exactly the v0.3 order.
+                target = min_depth + charge;
+                bite_delay = 20 + rng.range(80);
+                weight = 2 + target / 12 + rng.range(2 + target / 10);
+
+                int roll = side.range(100);
+                int tier = roll < tier_uncommon ? 0
+                         : roll < tier_rare ? 1
+                         : roll < tier_mythic ? 2 : 3;
+                cur_species = unsigned(depth_band(target) * tier_count
+                                       + tier);
+                cur_rarity = unsigned(tier);
+
+                depth = 0;
+                state = st_sink;
+                clear_lines();
+            }
+            else if(bn::keypad::select_pressed())
+            {
+                // Catch log (growth cut 3): only between casts, so the
+                // log can never interleave a fight. No RNG is consumed.
+                log_return = st_charge;
+                state = st_log;
+                clear_lines();
+            }
+            break;
+
+        case st_sink:
+            if(depth < target)
+            {
+                depth += sink_rate;
+
+                if(depth > target)
+                {
+                    depth = target;
+                }
+            }
+            else if(bite_delay > 0)
+            {
+                --bite_delay;
+            }
+            else
+            {
+                // BITE — hooking is automatic (forgiving by design; the
+                // game is the fight, not the reflex).
+                line_start = target * line_per_depth;
+                line = line_start;
+                tension = 0;
+                surge = 0;
+                phase_timer = 45 + rng.range(45);  // opening rest
+                state = st_fight;
+                clear_lines();
+
+                if(! muted)
+                {
+                    bn::sound_items::dc_bite.play(bn::fixed(0.7));
+                }
+
+                gl::count_audio(1);      // bites
+            }
+            break;
+
+        case st_fight:
+            if(phase_timer > 0)
+            {
+                --phase_timer;
+            }
+            else
+            {
+                surge = surge ? 0 : 1;
+                phase_timer = surge ? 30 + rng.range(30) : 45 + rng.range(45);
+            }
+
+            if(a_held)
+            {
+                // Growth cut 4: the CURRENT line sets both halves of the
+                // tradeoff — a thicker line reels FEWER units per frame
+                // (below) and snaps at a HIGHER threshold (the check
+                // beneath). Tier 0 is the v0.2 math verbatim.
+                line -= line_reel[meta.tier];
+                tension += reel_tension_base + weight / 8
+                        + (surge ? surge_tension_extra : 0);
+            }
+            else
+            {
+                line += surge ? run_surge : run_rest;
+
+                if(line > line_start)
+                {
+                    line = line_start;
+                }
+
+                tension -= slack_tension;
+
+                if(tension < 0)
+                {
+                    tension = 0;
+                }
+            }
+
+            if(tension >= line_snap[meta.tier])
+            {
+                tension = line_snap[meta.tier];
+                result_code = 2;  // SNAP
+                --lures;
+                result_timer = result_frames;
+                state = st_result;
+                clear_lines();
+
+                if(! muted)
+                {
+                    bn::sound_items::dc_snap.play(bn::fixed(0.9));
+                }
+
+                gl::count_audio(3);      // snaps
+            }
+            else if(line <= 0)
+            {
+                line = 0;
+                result_code = 1;  // CATCH
+                ++catches;
+                score += weight;
+
+                // The catch log (growth cut 3): only LANDED fish are
+                // logged — a snapped line keeps its secret.
+                log_species[log_total % log_ring] = int(cur_species);
+                log_weight[log_total % log_ring] = weight;
+                ++log_total;
+                result_timer = result_frames;
+                state = st_result;
+                clear_lines();
+
+                if(! muted)
+                {
+                    bn::sound_items::dc_catch.play(bn::fixed(0.9));
+                }
+
+                gl::count_audio(2);      // catches
+            }
+            break;
+
+        case st_result:
+            if(--result_timer <= 0)
+            {
+                charge = 0;
+                depth = 0;
+                tension = 0;
+                state = lures > 0 ? st_charge : st_over;
+                clear_lines();
+
+                if(state == st_over)
+                {
+                    // Growth cut 4: dusk deposits the run's score into
+                    // the persistent BANK, exactly once per run, and the
+                    // save lands in SRAM immediately (a power cycle
+                    // after dusk keeps the deposit).
+                    meta.bank += score;
+                    meta_slot.save(meta);
+                }
+            }
+            break;
+
+        case st_over:
+            if(bn::keypad::start_pressed())
+            {
+                reset_run();  // same seed -> the identical run, by contract
+            }
+            else if(bn::keypad::select_pressed())
+            {
+                log_return = st_over;
+                state = st_log;
+                clear_lines();
+            }
+            else if(bn::keypad::r_pressed())
+            {
+                // The LINE SHOP from dusk (growth cut 4): SELECT is the
+                // catch log's here, so the shop takes R (free at dusk —
+                // the dial only lives on the title). No RNG moves.
+                shop_return = st_over;
+                state = st_shop;
+                clear_lines();
+            }
+            break;
+
+        case st_log:
+            if(bn::keypad::select_pressed())
+            {
+                state = log_return;
+                clear_lines();
+            }
+            break;
+
+        case st_shop:
+            if(bn::keypad::select_pressed())
+            {
+                state = shop_return;
+                clear_lines();
+            }
+            else if(bn::keypad::a_pressed() && meta.tier < line_tiers - 1
+                    && meta.bank >= line_cost[meta.tier + 1])
+            {
+                // Buy the next tier (edge-triggered — one press is one
+                // purchase). The spend + the new line land in SRAM
+                // immediately; an unaffordable press changes nothing.
+                meta.bank -= line_cost[meta.tier + 1];
+                ++meta.tier;
+                meta_slot.save(meta);
+            }
+            break;
+
+        }
+
+        // --- THE audio cut: reel clicks that speed up with tension.
+        // While reeling (fight + A held), a ratchet click fires every
+        // click_interval frames; the interval shrinks linearly with the
+        // tension the sim just computed, and the click's pitch rises with
+        // it. Reads sim state only — never writes it.
+
+        int click_interval = 0;
+
+        if(state == st_fight && a_held)
+        {
+            click_interval = click_max_interval
+                    - ((click_max_interval - click_min_interval) * tension)
+                      / line_snap[meta.tier];
+
+            if(click_timer <= 0)
+            {
+                if(! muted)
+                {
+                    // Pitch rides tension too: 1.0x at slack -> 2.0x at
+                    // the snap point (deterministic fixed-point math).
+                    bn::fixed speed = 1 + bn::fixed(tension)
+                            / line_snap[meta.tier];
+                    bn::sound_items::dc_click.play(bn::fixed(0.5), speed, 0);
+                }
+
+                gl::count_audio(0);      // reel clicks
+                click_timer = click_interval;
+            }
+
+            --click_timer;
+        }
+        else
+        {
+            click_timer = 0;    // the first reeling frame always clicks
+        }
+
+        // --- draw (text only; lines re-render only when their string changes)
+
+        switch(state)
+        {
+
+        case st_title:
+        {
+            lines[0].set(text_gen, text_x, line_y[0], "DEEPCAST");
+            lines[1].set(text_gen, text_x, line_y[1], "A QUIET LAKE AT DUSK");
+            bn::string<40> seed_line("SEED ");
+            seed_line.append(seed_hex(seed_sel));
+            lines[2].set(text_gen, text_x, line_y[2], seed_line);
+            lines[3].set(text_gen, text_x, line_y[3],
+                         "HOLD A: CAST DEEP, REEL SOFT");
+            lines[4].set(text_gen, text_x, line_y[4], "3 LURES. PRESS START");
+            lines[5].set(text_gen, text_x, line_y[5],
+                         "B: MUTE  DPAD L R: DIAL SEED");
+            bn::string<40> shop_line("SELECT: LINE SHOP  BANK ");
+            shop_line.append(bn::to_string<8>(meta.bank));
+            lines[6].set(text_gen, text_x, line_y[6], shop_line);
+            break;
+        }
+
+        case st_charge:
+        {
+            bn::string<40> status("LURES ");
+            status.append(bn::to_string<8>(lures));
+            status.append("  SCORE ");
+            status.append(bn::to_string<8>(score));
+            lines[0].set(text_gen, text_x, line_y[0], status);
+            lines[1].set(text_gen, text_x, line_y[1],
+                         charge > 0 ? "CHARGING..." : "HOLD A TO CAST");
+            lines[2].set(text_gen, text_x, line_y[2],
+                         bar_string("CAST", charge, max_charge));
+            lines[5].set(text_gen, text_x, line_y[5], "SELECT: CATCH LOG");
+            break;
+        }
+
+        case st_sink:
+        {
+            bn::string<40> line0("DEPTH ");
+            line0.append(bn::to_string<8>(depth));
+            line0.append("M OF ");
+            line0.append(bn::to_string<8>(target));
+            line0.append("M");
+            lines[0].set(text_gen, text_x, line_y[0], line0);
+            lines[1].set(text_gen, text_x, line_y[1],
+                         depth < target ? "THE LURE SINKS..." : "WAITING...");
+            lines[2].set(text_gen, text_x, line_y[2],
+                         band_names[depth_band(target)]);
+            break;
+        }
+
+        case st_fight:
+        {
+            bn::string<40> line0("DEPTH ");
+            line0.append(bn::to_string<8>(target));
+            line0.append("M  WT ");
+            line0.append(bn::to_string<8>(weight));
+            lines[0].set(text_gen, text_x, line_y[0], line0);
+            lines[1].set(text_gen, text_x, line_y[1],
+                         bar_string("TENSION", tension, line_snap[meta.tier]));
+            bn::string<40> line2("LINE ");
+            line2.append(bn::to_string<8>(line));
+            lines[2].set(text_gen, text_x, line_y[2], line2);
+            lines[3].set(text_gen, text_x, line_y[3],
+                         surge ? "IT SURGES! LET IT RUN"
+                               : "IT RESTS. REEL, GENTLY");
+            break;
+        }
+
+        case st_result:
+            if(result_code == 1)
+            {
+                bn::string<40> line0("CATCH! +");
+                line0.append(bn::to_string<8>(weight));
+                lines[0].set(text_gen, text_x, line_y[0], line0);
+                bn::string<40> line1("SCORE ");
+                line1.append(bn::to_string<8>(score));
+                lines[1].set(text_gen, text_x, line_y[1], line1);
+                lines[2].set(text_gen, text_x, line_y[2],
+                             species_names[cur_species]);
+                lines[3].set(text_gen, text_x, line_y[3],
+                             rarity_names[cur_rarity]);
+            }
+            else
+            {
+                lines[0].set(text_gen, text_x, line_y[0], "SNAP! THE LINE BREAKS");
+                lines[1].set(text_gen, text_x, line_y[1], "LURE LOST");
+            }
+            break;
+
+        case st_over:
+        {
+            lines[0].set(text_gen, text_x, line_y[0], "DUSK FALLS. LURES GONE");
+            bn::string<40> line1("SCORE ");
+            line1.append(bn::to_string<8>(score));
+            lines[1].set(text_gen, text_x, line_y[1], line1);
+            bn::string<40> line2("CATCHES ");
+            line2.append(bn::to_string<8>(catches));
+            lines[2].set(text_gen, text_x, line_y[2], line2);
+            bn::string<40> line3("SEED ");
+            line3.append(seed_hex(seed_sel));
+            lines[3].set(text_gen, text_x, line_y[3], line3);
+            lines[4].set(text_gen, text_x, line_y[4], "PRESS START");
+            lines[5].set(text_gen, text_x, line_y[5], "SELECT: CATCH LOG");
+            bn::string<40> shop_line("R: LINE SHOP  BANK ");
+            shop_line.append(bn::to_string<8>(meta.bank));
+            lines[6].set(text_gen, text_x, line_y[6], shop_line);
+            break;
+        }
+
+        case st_log:
+        {
+            bn::string<40> header("CATCH LOG ");
+            header.append(bn::to_string<8>(log_total));
+            lines[0].set(text_gen, text_x, line_y[0], header);
+
+            if(log_total == 0)
+            {
+                lines[1].set(text_gen, text_x, line_y[1], "NOTHING YET");
+            }
+            else
+            {
+                // The last up-to-4 catches, oldest of them first. The
+                // ring keeps log_ring entries; entry n is slot n%ring.
+                int shown = log_total < 4 ? log_total : 4;
+
+                for(int i = 0; i < shown; ++i)
+                {
+                    int entry = log_total - shown + i;
+                    int slot = entry % log_ring;
+                    bn::string<40> row(species_names[log_species[slot]]);
+                    row.append(" ");
+                    row.append(rarity_names[log_species[slot] % tier_count]);
+                    row.append(" ");
+                    row.append(bn::to_string<8>(log_weight[slot]));
+                    lines[1 + i].set(text_gen, text_x, line_y[1 + i], row);
+                }
+            }
+
+            lines[5].set(text_gen, text_x, line_y[5], "SELECT: BACK");
+            break;
+        }
+
+        case st_shop:
+        {
+            lines[0].set(text_gen, text_x, line_y[0], "LINE SHOP");
+            bn::string<40> bank_line("BANK ");
+            bank_line.append(bn::to_string<8>(meta.bank));
+            lines[1].set(text_gen, text_x, line_y[1], bank_line);
+            bn::string<40> cur_line("LINE: ");
+            cur_line.append(line_names[meta.tier]);
+            lines[2].set(text_gen, text_x, line_y[2], cur_line);
+
+            if(meta.tier < line_tiers - 1)
+            {
+                // The next tier + its price, and the doc's tradeoff made
+                // legible before the purchase: snap up, reel down.
+                bn::string<40> next_line("NEXT: ");
+                next_line.append(line_names[meta.tier + 1]);
+                next_line.append(" COST ");
+                next_line.append(bn::to_string<8>(line_cost[meta.tier + 1]));
+                lines[3].set(text_gen, text_x, line_y[3], next_line);
+                bn::string<40> trade_line("SNAP ");
+                trade_line.append(bn::to_string<8>(line_snap[meta.tier]));
+                trade_line.append(">");
+                trade_line.append(bn::to_string<8>(line_snap[meta.tier + 1]));
+                trade_line.append("  REEL ");
+                trade_line.append(bn::to_string<8>(line_reel[meta.tier]));
+                trade_line.append(">");
+                trade_line.append(bn::to_string<8>(line_reel[meta.tier + 1]));
+                lines[4].set(text_gen, text_x, line_y[4], trade_line);
+            }
+            else
+            {
+                lines[3].set(text_gen, text_x, line_y[3], "LINE MAXED");
+                bn::string<40> trade_line("SNAP ");
+                trade_line.append(bn::to_string<8>(line_snap[meta.tier]));
+                trade_line.append("  REEL ");
+                trade_line.append(bn::to_string<8>(line_reel[meta.tier]));
+                lines[4].set(text_gen, text_x, line_y[4], trade_line);
+            }
+
+            lines[5].set(text_gen, text_x, line_y[5], "A: BUY  SELECT: BACK");
+            break;
+        }
+
+        }
+
+        // --- the art pass (growth cut 5): pure reads of the sim state the
+        // frame just computed — the gradient follows the depth word, the
+        // fish follows the species word, the rod follows tension over the
+        // CURRENT line's snap threshold (the audio ratchet's law).
+
+        apply_gradient(depth);
+
+        bool fish_on = state == st_fight
+                || (state == st_result && result_code == 1);
+        unsigned fish_frame = 255;
+        bool fish_flip = false;
+
+        if(fish_on)
+        {
+            fish_frame = cur_species;
+            fish_flip = state == st_fight && surge != 0;
+
+            if(int(fish_frame) != fish_frame_shown)
+            {
+                fish_frame_shown = int(fish_frame);
+                fish_sprite.set_tiles(bn::sprite_items::dc_fish.tiles_item(),
+                                      fish_frame_shown);
+            }
+        }
+
+        fish_sprite.set_visible(fish_on);
+        fish_sprite.set_horizontal_flip(fish_flip);
+
+        bool rod_on = state == st_charge || state == st_sink
+                || state == st_fight;
+        unsigned rod_frame = 255;
+
+        if(rod_on)
+        {
+            rod_frame = state == st_fight
+                    ? unsigned(tension * (rod_bend_frames - 1)
+                               / line_snap[meta.tier])
+                    : 0u;
+
+            if(int(rod_frame) != rod_frame_shown)
+            {
+                rod_frame_shown = int(rod_frame);
+                rod_sprite.set_tiles(bn::sprite_items::dc_rod.tiles_item(),
+                                     rod_frame_shown);
+            }
+        }
+
+        rod_sprite.set_visible(rod_on);
+
+        dc_artmeta[0] = 0x44415254u;  // 'DART'
+        dc_artmeta[1] = unsigned(depth);
+        dc_artmeta[2] = gradient_color(0, depth);
+        dc_artmeta[3] = gradient_color(9, depth);
+        dc_artmeta[4] = fish_frame;
+        dc_artmeta[5] = rod_frame;
+        dc_artmeta[6] = fish_flip ? 1u : 0u;
+        dc_artmeta[7] = 0;
+
+        // --- telemetry mailbox: every slot, every frame
+
+        ++frames;
+        dc_telemetry[0] = 0x44454550u;  // 'DEEP'
+        dc_telemetry[1] = 0x43415354u;  // 'CAST'
+        dc_telemetry[2] = state;
+        dc_telemetry[3] = frames;
+        dc_telemetry[4] = seed_sel;
+        dc_telemetry[5] = unsigned(charge);
+        dc_telemetry[6] = unsigned(depth);
+        dc_telemetry[7] = unsigned(target);
+        dc_telemetry[8] = unsigned(tension);
+        dc_telemetry[9] = unsigned(line);
+        dc_telemetry[10] = unsigned(weight);
+        dc_telemetry[11] = unsigned(surge);
+        dc_telemetry[12] = unsigned(lures);
+        dc_telemetry[13] = unsigned(catches);
+        dc_telemetry[14] = unsigned(score);
+        dc_telemetry[15] = unsigned(result_code);
+
+        // Species + catch-log mailbox (growth cut 3): every slot, every
+        // frame — see the layout table in the header comment.
+        dc_fishlog[0] = cur_species;
+        dc_fishlog[1] = cur_rarity;
+        dc_fishlog[2] = unsigned(log_total);
+        dc_fishlog[3] = state == st_log ? 1u : 0u;
+
+        for(int i = 0; i < log_ring; ++i)
+        {
+            dc_fishlog[4 + i] = log_weight[i] > 0
+                    ? unsigned(log_species[i] * 256 + log_weight[i]) : 0u;
+        }
+
+        dc_fishlog[12] = side.s;
+        dc_fishlog[13] = 0x46495348u;  // 'FISH'
+        dc_fishlog[14] = 0;
+        dc_fishlog[15] = 0;
+
+        // Line-upgrade mailbox (growth cut 4): every slot, every frame —
+        // see the layout table in the header comment.
+        dc_linemeta[0] = 0x4C494E45u;  // 'LINE'
+        dc_linemeta[1] = unsigned(meta.tier);
+        dc_linemeta[2] = unsigned(meta.bank);
+        dc_linemeta[3] = unsigned(line_snap[meta.tier]);
+        dc_linemeta[4] = unsigned(line_reel[meta.tier]);
+        dc_linemeta[5] = state == st_shop ? 1u : 0u;
+        dc_linemeta[6] = meta.tier < line_tiers - 1
+                ? unsigned(line_cost[meta.tier + 1]) : 0u;
+        dc_linemeta[7] = 0;
+
+        // Audio evidence hook: per-frame words next to the cumulative
+        // trigger counters (slots 0-3 bump at the play sites above).
+        gl_audio_hook[4] = unsigned(click_interval);
+        gl_audio_hook[5] = muted ? 1u : 0u;
+
+        bn::core::update();
+    }
+}

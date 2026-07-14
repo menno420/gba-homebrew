@@ -5,20 +5,20 @@
 > `tools/package-web-arcade.sh` and ASSERTED by
 > `tools/package-web-arcade.sh --verify` (every indented
 > `sha256  path` line below is machine-checked; drift fails the run).
-> Arcade-refresh repin 2026-07-14 — supersedes the PR #109 ledger:
-> Undertow is packaged at v1.5 (five growth cuts merged since #109:
-> PRs #110/#114/#118/#123/#126 — daily dive, cosmetics, ghost
-> replays, oxygen, jellyfish hazards), Drift Garden at v1.4 (four
-> cuts: PRs #111/#115/#119/#124 — daily weather, species, essence
-> spending, biomes), Tiltstone is still the pre-juice main cut (add
-> `juice.js` + bump versions when the #92<-#93<-#95<-#97 stack
-> lands), and the arcade bundle is v1.2.
+> ORDER 006 repin 2026-07-14 — supersedes the #130 arcade-refresh
+> ledger: the #92<-#93<-#95<-#97 Tiltstone stack landed on main
+> (par+undo, juice, cell types, level packs), serving #93's standing
+> follow-up — `juice.js` joins the Tiltstone staged runtime and
+> Tiltstone is packaged at v1.1 (arcade bundle v1.3). Undertow stays
+> at v1.5 (PRs #110/#114/#118/#123/#126) and Drift Garden at v1.4
+> (PRs #111/#115/#119/#124) — their staged bytes are unchanged from
+> the #130 cut.
 
 ## Versioned zips (`dist/releases/`)
 
     fd3559d43c0aad5b111745d7f50a668a21afe6ba404dcc6c7086b2244ce3500d  dist/releases/drift-garden-v1.4.zip
-    42817d5c1f155415fffd1aad1f6c4ff017de620677180615219e8bcc334ed227  dist/releases/web-arcade-v1.2.zip
-    74b8514df11fa8fbcbd9aa5e0a84b4366f92a45d32f63a0d50d07cf5b3f393ce  dist/releases/web-tiltstone-v1.0.zip
+    5174c744a44230984b67ab3e0ccca8218a654fbbbce1606267ce92758f9a1b82  dist/releases/web-arcade-v1.3.zip
+    3a8b5ce7ee8c7cc6c052d4a64dcca81f8dad259fe6e2739c26a409fe4c25ef5b  dist/releases/web-tiltstone-v1.1.zip
     a2f9def0b24fc69fdd261a141adadb17893ecf432b982ac362a9aba29bf08db4  dist/releases/web-undertow-v1.5.zip
 
 ## Staged runtime files (`dist/web/` — the hosting contracts, verbatim)
@@ -30,9 +30,10 @@
     31c8012a821d2383f39293bbb3e534c8932dbb752b88c71320c79eaefef74176  dist/web/drift-garden/index.html
     90d6c97a79abca6d9f551e08ba9ba98fac7b54e3bb9803b7c0afb0b4a9e8959f  dist/web/drift-garden/manifest.webmanifest
     157b2eeef94b7b7053527c80c20acfb34851905ea00f34c7b62dc3554733ccc5  dist/web/drift-garden/sw.js
-    067d3c8565f7e8f62442b59bce21e2a2d4c8a84c6f5088926825d54ab38710fe  dist/web/tiltstone/app.js
-    34c7f35f75698f7614c11b35b3e6d5a76b1f3afa40ea777729651c3e158b65d6  dist/web/tiltstone/engine.js
-    81ac9faa78a492729ffefc54f2b03b2c9cd09aaaeb12977b9e5b331e6decfb69  dist/web/tiltstone/index.html
+    ee71b7f5457909a0cd31929c0cb6c2c7eb5609343332fc2f401c03b5592eb8b7  dist/web/tiltstone/app.js
+    65727657d8ceaa1d255cfbd67443868506d0df577877a39990ccfcd75d26871d  dist/web/tiltstone/engine.js
+    0f125638459a45ef786edcddaa2db514c3aac74cfcd056a94f0d62b78caa6440  dist/web/tiltstone/index.html
+    dc918b931fa6fed1799aea8b34ff62f88aafa611107abc9ad1ae600d6f8a7964  dist/web/tiltstone/juice.js
     32da58fc9d4bec6cad7c1a404b84bd4397a31c02282c47fb692ff343ea52e9ed  dist/web/undertow/game.js
     898e8e4e3889371ef2ab40907586bb732f77a7997bda2e0e6c0310c426fec163  dist/web/undertow/index.html
 
@@ -41,8 +42,9 @@
 Fixed source epoch (`2026-07-14 00:00:00 UTC`) on every staged file
 and directory, zip member list sorted under `LC_ALL=C`, `zip -X`
 (no platform extra fields). Two runs at the same tree produce
-byte-identical zips (proven run-twice for this repin — and the two
-UNCHANGED artifacts, `web-tiltstone-v1.0.zip` and
-`dist/web/index.html`, reproduced their #109 pins exactly, a free
-cross-cut determinism witness); `--verify` re-derives everything
-above from the tree in one command.
+byte-identical zips (proven run-twice for this repin — and the
+UNCHANGED artifacts, `web-undertow-v1.5.zip`,
+`drift-garden-v1.4.zip`, `dist/web/index.html` and all nine
+non-Tiltstone staged files, reproduced their #130 pins exactly, a
+free cross-cut determinism witness); `--verify` re-derives
+everything above from the tree in one command.

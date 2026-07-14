@@ -1,1 +1,0 @@
-- `claude/deepcast-audio` · **Deepcast growth cut 1 (reel-click audio) + committed proofs port** — reel clicks that speed up with tension (CONCEPT.md's named audio cut, Shoal/Courier audio playbook) + `games/deepcast/proofs.sh` (Shoal convention) · games/deepcast/**, dist/deepcast.gba, dist/README.md, .sessions/2026-07-14-deepcast-audio.md · 2026-07-14

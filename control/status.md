@@ -804,3 +804,36 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #123 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (drift-garden-biomes, PR #124)
+
+- **ts:** 2026-07-14T06:29:50Z (appended by this dispatch's worker;
+  everything above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Drift Garden growth cut 4 — the concept's "wind patterns per biome"
+  line, the LAST named growth cut — on branch `claude/drift-garden-biomes`
+  from main @ `65c3659`: four biomes (meadow free / gale ridge 60 /
+  whorl hollow 130 / tide flats 220) bought with banked essence in a
+  second dusk-screen shop section (PR #119's wallet/rows plumbing). A
+  biome is a wind-PATTERN parameter set — gust strength windMul, gust
+  cadence gustEvery, a deterministic swirl rotating the wind vector, a
+  sine sway breathing its amplitude, prevailing-bias coupling biasMul —
+  plus a render-only hue tint. Read ONCE at round start into roundBiome
+  (PR #111's weather discipline: the sim step never reads meta or the
+  clock); snapshot() carries the round's biome; sw.js cache v5 -> v6.
+  Default 'meadow' carries identity parameters, pinned byte-exact against
+  the pre-cut build's snapshots (seed 11 / fake date 20300607, steps
+  500 + 1500). Completes Drift Garden's named growth path.
+- Smoke 27 -> 35 assertions: pinned pre-cut fixed point; per-biome
+  determinism (same biome + seed + date twice -> byte-identical two-stage
+  snapshots); 4 pairwise-distinct worlds on the same seed + date; spend
+  deny/buy/re-buy; real-tap biome rows leave the frozen round untouched;
+  round-start read on replant; reload persistence; every-biome-owned +
+  meadow-active sim-inert vs fresh storage. Run twice: 35/35 PASS both,
+  deterministic lines byte-identical. Foundation smoke 6/6. All 27
+  pre-existing assertions unchanged.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #124 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

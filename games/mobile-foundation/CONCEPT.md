@@ -7,8 +7,10 @@
 Shipped in the slice: seeded 90 s win/lose rounds (plant / herd /
 cross-pollinate to tier 3 / harvest essence vs. quota) + predator wisps.
 Growth cut 1 shipped 2026-07-14: daily seeded weather (UTC-date-derived
-wind parameters, read once at boot). The rest of the growth path —
-biomes, more species, essence spending — is still future work.
+wind parameters, read once at boot). Growth cut 2 shipped 2026-07-14:
+more species (two per tier, distinct visuals/values; hybrid
+cross-pollination). The rest of the growth path — biomes, essence
+spending — is still future work.
 
 ## Genre
 
@@ -21,7 +23,9 @@ mobile retention. Portrait, offline-first, session length 30 s – 5 min.
 1. **Tap to plant** a mote (seed of light) anywhere — it drifts, glows,
    and slowly matures (the skeleton's tap-spawn is this verb already).
 2. **Drag to shepherd** — currents from your finger herd motes together;
-   motes that cluster **cross-pollinate** into rarer, brighter species.
+   motes that cluster **cross-pollinate** into rarer, brighter species
+   (MORE SPECIES BUILT 2026-07-14 — two species per tier with distinct
+   hues/values; mixed-species parents breed the rare next-tier line).
 3. **Return later** — the garden kept drifting (or resumes exactly where
    backgrounded, per the pause discipline); harvest matured motes for
    essence, spend essence on new biomes/palettes/species.

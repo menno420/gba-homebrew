@@ -18,7 +18,14 @@
 //                    product); same fake date + same seed + same script is
 //                    byte-identical; a different fake date diverges the world
 //                    on the SAME seed
-//   7. PAUSE       — visibilitychange hidden freezes the loop; visible resumes
+//   7. SPECIES     — two species per tier: childSpeciesFor is pure (pure
+//                    pair -> common line, hybrid pair -> rare line); at a
+//                    fixed seed both tier-1 species appear deterministically
+//                    and harvest values follow the table (fern 5, clover 8);
+//                    a same-species pair breeds tier-2 'lotus' and the pure
+//                    line ladders to tier-3 'aurora'; a mixed pair breeds
+//                    tier-2 'iris' worth 22
+//   8. PAUSE       — visibilitychange hidden freezes the loop; visible resumes
 //
 // Scripted rounds run on a page booted "hidden" (visibility overridden
 // BEFORE load, so the game starts paused at frame 0): the rAF loop never
@@ -291,7 +298,150 @@ try {
     `same seed 11, ${DAY_A.num} ('${JSON.parse(wxRuns[0]).weather}') vs ${DAY_B.num} ` +
     `('${JSON.parse(wxRuns[2]).weather}') -> snapshots differ`);
 
-  // ---- 7. pause/resume still holds on the live page -----------------------
+  // ---- 7. species -----------------------------------------------------------
+  // Fixed seeds pin the SIDE-BAND species stream (mulberry32(seed ^
+  // 0x85EBCA6B), one draw per tier-1 spawn: draws 1-3 are the boot seed
+  // motes, draws 4+ the player's plants in plant order). Precomputed:
+  //   seed 12 -> plants f,f,f,f,c,...   (both kinds within 14 plants)
+  //   seed 27 -> plants f,f,f,f          (a pure fern quartet)
+  //   seed  9 -> plants f,c              (a hybrid pair)
+  // All species pages boot under fake DAY_A so weather drift is pinned too.
+
+  // pure derivation: parents -> child, no game state involved
+  const sp0 = await live.evaluate(() => {
+    const g = window.__game;
+    const table = g.speciesTable();
+    return {
+      tiers: Object.keys(table).join(','),
+      perTier: Object.values(table).map((t) => t.length).join(','),
+      pureT1: g.childSpeciesFor(1, 'fern', 'fern').id,
+      hybridT1: g.childSpeciesFor(1, 'fern', 'clover').id,
+      pureT2: g.childSpeciesFor(2, 'lotus', 'lotus').id,
+      hybridT2: g.childSpeciesFor(2, 'lotus', 'iris').id,
+    };
+  });
+  check('species-child-derivation',
+    sp0.tiers === '1,2,3' && sp0.perTier === '2,2,2'
+      && sp0.pureT1 === 'lotus' && sp0.hybridT1 === 'iris'
+      && sp0.pureT2 === 'aurora' && sp0.hybridT2 === 'solaris',
+    `table ${sp0.perTier} species over tiers ${sp0.tiers}; ` +
+    `fern+fern->${sp0.pureT1} fern+clover->${sp0.hybridT1} ` +
+    `lotus+lotus->${sp0.pureT2} lotus+iris->${sp0.hybridT2}`);
+
+  // both tier-1 species appear at seed 12; harvest values follow the table
+  const kindsRig = await newScriptedPage(browser, `${URL_}?seed=12`, DAY_A);
+  const kinds = await kindsRig.page.evaluate(() => {
+    const g = window.__game;
+    const cv = document.getElementById('game');
+    const rect = cv.getBoundingClientRect();
+    const kx = rect.width / cv.width, ky = rect.height / cv.height;
+    const tap = (x, y) => g.tapAt(rect.left + x * kx, rect.top + y * ky);
+    const cw = cv.width, ch = cv.height;
+    // 14 well-separated plants (66 px grid, clear of the boot seed motes)
+    let n = 0;
+    outer: for (const fy of [0.55, 0.7, 0.85]) {
+      for (const fx of [0.1, 0.27, 0.44, 0.61, 0.78]) {
+        tap(cw * fx, ch * fy);
+        if (++n >= 14) break outer;
+      }
+    }
+    const table = g.speciesTable();
+    const valid = g.snapshot().motes.every((m) => table[m.tier].some((s) => s.id === m.sp));
+    g.step(310); // all tier-1s mature (grid spacing prevents any merge)
+    const mature = g.snapshot();
+    const fern = mature.motes.find((m) => m.sp === 'fern');
+    const clover = mature.motes.find((m) => m.sp === 'clover');
+    const e0 = g.snapshot().essence;
+    tap(fern.x, fern.y);
+    const e1 = g.snapshot().essence;
+    tap(clover.x, clover.y);
+    const e2 = g.snapshot().essence;
+    return {
+      valid,
+      kinds: [...new Set(mature.motes.map((m) => m.sp))].sort().join(','),
+      count: mature.motes.length,
+      fernGain: e1 - e0,
+      cloverGain: e2 - e1,
+    };
+  });
+  check('species-both-kinds',
+    kinds.valid && kinds.kinds === 'clover,fern' && kinds.count === 17,
+    `14 plants + 3 seeds (seed 12) -> ${kinds.count} motes, species {${kinds.kinds}}, all table-valid=${kinds.valid}`);
+  check('species-harvest-values', kinds.fernGain === 5 && kinds.cloverGain === 8,
+    `harvest fern +${kinds.fernGain} (want 5), clover +${kinds.cloverGain} (want 8)`);
+  await kindsRig.ctx.close();
+
+  // pure fern quartet (seed 27): two adjacent pairs -> two tier-2 'lotus';
+  // the lotus pair matures and merges -> tier-3 'aurora' (the pure ladder)
+  const pureRig = await newScriptedPage(browser, `${URL_}?seed=27`, DAY_A);
+  const pure = await pureRig.page.evaluate(() => {
+    const g = window.__game;
+    const cv = document.getElementById('game');
+    const rect = cv.getBoundingClientRect();
+    const kx = rect.width / cv.width, ky = rect.height / cv.height;
+    const tap = (x, y) => g.tapAt(rect.left + x * kx, rect.top + y * ky);
+    const cw = cv.width, ch = cv.height;
+    const x = cw * 0.25, y = ch * 0.75;
+    tap(x, y); tap(x + 26, y);           // pair A (species draws 4, 5)
+    tap(x, y + 34); tap(x + 26, y + 34); // pair B (species draws 6, 7)
+    g.step(310); // both pairs mature and merge (one merge per step)
+    const mid = g.snapshot();
+    // shepherd the two lotus children together with the real drag verb
+    // (current() draws no randomness — the herd is fully deterministic),
+    // then let them mature and merge
+    const herd = () => {
+      const t2 = g.snapshot().motes.filter((m) => m.tier === 2);
+      if (t2.length === 2) {
+        const mx = (t2[0].x + t2[1].x) / 2, my = (t2[0].y + t2[1].y) / 2;
+        for (let i = 0; i < 3; i++) g.dragAt(rect.left + mx * kx, rect.top + my * ky);
+      }
+    };
+    herd();
+    g.step(150);
+    herd();
+    g.step(160); // both children mature by ~601 -> pure merge
+    const fin = g.snapshot();
+    return {
+      midT2: mid.motes.filter((m) => m.tier === 2).map((m) => m.sp).join(','),
+      midCount: mid.motes.length,
+      finT3: fin.motes.filter((m) => m.tier === 3).map((m) => m.sp).join(','),
+      finT2: fin.motes.filter((m) => m.tier === 2).length,
+      frames: fin.frames,
+    };
+  });
+  check('species-pure-pair', pure.midT2 === 'lotus,lotus' && pure.midCount === 5,
+    `seed 27: two fern pairs -> tier-2 [${pure.midT2}], ${pure.midCount} motes (3 seeds + 2 children)`);
+  check('species-tier3-ladder', pure.finT3 === 'aurora' && pure.finT2 === 0 && pure.frames === 620,
+    `lotus+lotus -> tier-3 [${pure.finT3}] by frame ${pure.frames} (tier-2 left: ${pure.finT2})`);
+  await pureRig.ctx.close();
+
+  // hybrid pair (seed 9): fern + clover breed the RARE tier-2 'iris',
+  // and harvesting it pays the rare-line value (22)
+  const hybRig = await newScriptedPage(browser, `${URL_}?seed=9`, DAY_A);
+  const hyb = await hybRig.page.evaluate(() => {
+    const g = window.__game;
+    const cv = document.getElementById('game');
+    const rect = cv.getBoundingClientRect();
+    const kx = rect.width / cv.width, ky = rect.height / cv.height;
+    const tap = (x, y) => g.tapAt(rect.left + x * kx, rect.top + y * ky);
+    const cw = cv.width, ch = cv.height;
+    tap(cw * 0.6, ch * 0.7); tap(cw * 0.6 + 26, ch * 0.7); // fern, clover
+    const parents = g.snapshot().motes.slice(3).map((m) => m.sp).join('+');
+    g.step(310); // pair matures and merges
+    const mid = g.snapshot();
+    const iris = mid.motes.find((m) => m.tier === 2);
+    g.step(310); // the child matures
+    const e0 = g.snapshot().essence;
+    const grown = g.snapshot().motes.find((m) => m.tier === 2);
+    tap(grown.x, grown.y);
+    const e1 = g.snapshot().essence;
+    return { parents, childSp: iris ? iris.sp : '(none)', irisGain: e1 - e0 };
+  });
+  check('species-hybrid-pair', hyb.parents === 'fern+clover' && hyb.childSp === 'iris' && hyb.irisGain === 22,
+    `seed 9: ${hyb.parents} -> tier-2 '${hyb.childSp}', harvested for +${hyb.irisGain} (want 22)`);
+  await hybRig.ctx.close();
+
+  // ---- 8. pause/resume still holds on the live page -----------------------
   await live.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
     Object.defineProperty(document, 'hidden', { value: true, configurable: true });

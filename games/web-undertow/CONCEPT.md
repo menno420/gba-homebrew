@@ -1,6 +1,7 @@
 # Undertow — concept
 
-> **Status:** `reference`
+> **Status:** `reference` — growth path complete: all five named cuts BUILT
+> (daily seed, cosmetics, ghosts, oxygen, jellyfish hazards)
 
 ## Pitch
 
@@ -38,9 +39,53 @@ cheap and is the only version of this game with a reason to return.
 
 ## Growth path
 
-- Oxygen meter + air-pocket pickups (adds a reason to leave the safe line).
-- Hazards/creatures in the channel (jellyfish that drift on the seeded RNG).
-- Daily seeded run with a shareable score URL (`?seed=YYYYMMDD`).
-- Cosmetics (diver skins, bubble trails) — pure render-side, zero sim risk.
+- Oxygen meter + air-pocket pickups (adds a reason to leave the safe line) —
+  **BUILT** (growth cut 4): the tank drains every frame, faster with depth;
+  air pockets spawn inside the channel from a side-band RNG stream derived
+  from the seed (a fixed two draws per row — the wall stream draws exactly
+  what it drew before, so a seed's channel layout is unchanged); contact
+  refills the tank (pickups never alter motion); an empty tank ends the run
+  like a crash ("OUT OF AIR"). This is a SIM change — run outcomes for a
+  given seed legitimately moved (seed-7 no-input: crashFrame 823 / 194m on
+  the wall → 810 / 191m out of air). Oxygen and pockets live inside the sim
+  instance, so ghost replays stay exact by construction; ghost records were
+  re-versioned (v1 → v2) and stale pre-oxygen records are dropped cleanly.
+- Hazards/creatures in the channel (jellyfish that drift on the seeded RNG) —
+  **BUILT** (growth cut 5, the last named cut): jellyfish spawn in the
+  channel from row 40 on, drawn from a third side-band RNG stream derived
+  from the seed (a fixed four draws per row — the wall and pocket streams
+  draw exactly what they drew before, so a seed's channel AND pocket layout
+  are unchanged); each jelly drifts horizontally on a bounded sine of the
+  sim's own step counter (a pure function of row data + time — no state, no
+  extra RNG); touching one ends the run like a crash ("STUNG AT N m") —
+  one-touch death, the game's grammar. This is a SIM change: outcomes for
+  seeds whose dive path meets a jellyfish legitimately moved (seed-3
+  no-input: 650 / 148m out of air → 358 / 76m stung), while paths no jelly
+  crosses carry verbatim (seed-7 no-input: 810 / 191m out of air,
+  unchanged). Drift lives inside the sim instance, so ghost replays stay
+  exact by construction; ghost records re-versioned v2 → v3, stale
+  pre-jellyfish records dropped cleanly.
+- Daily seeded run with a shareable score URL (`?seed=YYYYMMDD`) —
+  **BUILT** (growth cut 1): `?daily=1` derives the seed from the UTC date
+  as YYYYMMDD (read once at boot, never in the sim step); the gameover
+  screen shares a `?seed=N&depth=M` challenge link (`S` copies it; the
+  `depth` param is render-only — a title-screen score to beat). Static
+  hosting only — the URL itself is the share, no server, no leaderboard.
+- Cosmetics (diver skins, bubble trails) — pure render-side, zero sim risk —
+  **BUILT** (growth cut 2): four skins (diver colors + a bubble-trail draw
+  style each), selected via `?skin=ID` or a `C` key-cycle on the
+  title/gameover screens, persisted to guarded `localStorage`. Skins touch
+  rendering only — the sim step and both RNG streams are byte-identical
+  across skins, and the smoke asserts identical crashFrame/depth for the
+  same seed under a non-default skin.
 - Ghost replays of your best run — nearly free because the sim is
-  deterministic: store the input timeline, replay it against the same seed.
+  deterministic: store the input timeline, replay it against the same seed —
+  **BUILT** (growth cut 3): every run records its input timeline
+  (run-length encoded steer per frame); the best run per seed persists to
+  guarded `localStorage` (`undertow.ghost.<seed>`); on later runs of the
+  same seed a translucent ghost diver replays it in lockstep — a second
+  sim instance (own RNG, own trench rows) fed the stored inputs,
+  render-only presence with zero contact with the live run's sim or RNG.
+  The live run is byte-identical with the ghost on or off, and a stored
+  timeline replays to the original crash frame and depth exactly (both
+  asserted by the smoke). `?ghost=0` opts out, render-side only.

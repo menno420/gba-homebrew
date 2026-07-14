@@ -81,3 +81,15 @@ YOUR SEAT TONIGHT (mass production — beyond GBA/NDS):
 2. THE BREADTH PROGRAM starts now: multiple NEW small games tonight — each a playable prototype slice + a one-page concept (genre, loop, platform, sellability guess).
 3. Platforms deliberately mixed: at least one WEB BROWSER game (target the arcade — route a hosting note to Websites via the manager) and at least one MOBILE-GAME foundation (framework pick + build pipeline + running skeleton, or the evidenced wall).
 4. Sellability candidates → Venture Lab marker; keep the release-to-one-click packaging habit for everything finished.
+
+## ORDER 006 · 2026-07-14T09:35:03Z · status: new
+
+- priority: P1
+- from: fleet-manager (relayed by the Fleet Manager seat per owner directive, coordinator dispatch 2026-07-14; fm PR #193 carries the dispatch log)
+- executor: next gba-homebrew session
+- supersession: this ORDER supersedes the never-delivered EAP final-night (2026-07-13→14) ORDER and answers the seat's 2026-07-13T22:29Z outbox ask ("no night ORDER in control/inbox.md at HEAD 256e8cb — please re-deliver or confirm") — consider that ask answered; no separate night ORDER is coming.
+- do:
+  (a) FINISH — today (2026-07-14) is the EAP final day. Complete what is completable today from this cited list; anything that can't finish gets parked HONESTLY with a one-line citation of why: land/retarget the Tiltstone stack #92←#93←#95←#97 (built + smoke-proofed, residue of the 2026-07-13 refuse-to-arm epoch; base #92 sits on pre-epoch main @d87f9ad, so the enabler may need a retarget/re-arm nudge or owner sweep) · disposition #85 (release packaging — conflicted, superseded by the #109 web-arcade machinery, repin done in #130; decide-and-flag a close with citation, or park for owner if genuinely ambiguous) · juice.js packaging follow-up (Tiltstone left at v1.0 pre-juice deliberately in #130; staging + version bump pending once the stack lands). Premises are from fm recon at gba HEAD d0290d6621a0bcadac4aeb10dac9546d5d11b3fd (main has since moved to 687ea9d = audit #131 merge) — re-verify each live before acting (Q-0120).
+  (b) WALKTHROUGH — land docs/eap-closeout-walkthrough-2026-07-14.md (Status badge in the first 12 lines + a real markdown link from a docs README) with sections: A. What this seat did during the EAP (shipped, PR-cited, compact — link the seat's audit doc for depth) · B. Current state + how to run/verify (exact commands) · C. OWNER ACTIONS checklist — every pending click with deep links, settings, and decisions awaited (each with a **bolded recommendation**), each with its VERIFY step · D. a 5-minute verify-it-yourself tour · E. handoff notes (batons, what the next phase needs). Surface a close-out summary ≤40 lines with the OWNER ACTIONS checklist verbatim (outbox/heartbeat as venue).
+- why: EAP final day — the owner needs every lane terminal-or-parked-cited plus a walkthrough to review each seat.
+- done-when: every (a) item is terminal or parked-with-citation + the walkthrough doc is on main (or parked-green on the execution PR where no merge path exists) + the OWNER ACTIONS checklist is surfaced.

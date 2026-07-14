@@ -36,18 +36,39 @@ an input script.
 
 ## Sellability guess (honest)
 
-Near-zero as a paid standalone — a text-presentation GBA homebrew of a
-known minigame mechanic sells to almost nobody. Its realistic market is
+Near-zero as a paid standalone — a GBA homebrew of a known minigame
+mechanic sells to almost nobody. Its realistic market is
 the flash-cart / itch.io homebrew niche: a free or pay-what-you-want
 curio, or one game in a bundled original-homebrew compilation cart,
 where "complete, polished, deterministic score-attack" is the bar it
 already meets. The mechanic's depth-vs-greed decision is the one seed
-worth growing; the presentation is placeholder.
+worth growing. (The presentation is no longer placeholder: growth cut 5
+shipped the real art pass — every named growth line below is now BUILT,
+the named growth path is COMPLETE.)
 
 ## Growth path
 
 - Real art pass: lake gradient by depth, silhouette fish, rod-bend sprite
-  as the analog tension gauge (HUD bar becomes diegetic).
+  as the analog tension gauge (HUD bar becomes diegetic). **BUILT**
+  (growth cut 5, 2026-07-14 — the LAST named line: the growth path is
+  complete): a full-screen ten-band lake background (original procedural
+  assets, `games/deepcast/graphics/generate_assets.py`) whose palette is
+  rewritten from a closed-form law of the live depth word — dim = 2*band
+  + depth/8 — so the WHOLE lake visibly deepens as the lure sinks (never
+  reaching exact black, by the law's blue floor); a 32x16 silhouette
+  fish, frame = the species index from growth cut 3 (depth band = size,
+  rarity = shade — mythics palest), shown only while fighting and on the
+  CATCH card (hidden while sinking and on a SNAP: the species keeps its
+  secret); and a 32x32 rod sprite with 8 bend frames, bend = tension *
+  7 / snap-threshold — the same tension-over-snap law the audio ratchet
+  reads, so the rod is an honest analog gauge on any line tier. The text
+  HUD (tension bar included) stays alongside. Presentation ONLY: game
+  state, RNG word order and all three sim mailboxes untouched — P1-P7
+  pass verbatim; the art itself is proven in `games/deepcast/proofs.sh`
+  P8-P10 via a fourth presentation mailbox (`dc_artmeta`) plus DISPCNT /
+  BG-and-OBJ palette RAM / VRAM screenblock pins read at GBA bus
+  addresses (the Cindervault art-pass method), all legs run twice
+  byte-identical.
 - Fish species tables per depth band with named rarities; a catch log.
   **BUILT** (growth cut 3, 2026-07-14): four depth bands by target depth
   (THE SHALLOWS / MIDWATER / THE DEEPS / THE ABYSS — the band is named on

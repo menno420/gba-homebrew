@@ -134,9 +134,53 @@
  * so the headless harness pins the decisions and the maxmod
  * mixer-memory nonzero watch proves the voicing (docs/capabilities.md).
  *
- * Presentation is deliberately trivial (breadth-program one-night slice):
- * Butano common sprite-text font over a dusk backdrop color, text bars for
- * charge/tension. All code original; font is Butano's zlib-licensed common
+ * ART PASS (growth cut 5 — CONCEPT.md: "Real art pass: lake gradient by
+ * depth, silhouette fish, rod-bend sprite as the analog tension gauge
+ * (HUD bar becomes diegetic)" — the LAST named growth line, presentation
+ * ONLY): three layers, every one a pure READ of state the sim already
+ * computed (no RNG, no state writes — game state, RNG word order and
+ * every dc_telemetry / dc_fishlog / dc_linemeta word are byte-identical
+ * to growth cut 4, so every existing proof pin carries verbatim):
+ *
+ *   1. THE LAKE GRADIENT BY DEPTH — a full-screen tile background of ten
+ *      horizontal water bands (original procedural assets,
+ *      graphics/generate_assets.py) whose ten palette entries are
+ *      rewritten from a closed-form law of the line's live depth word:
+ *
+ *          band i (0 surface .. 9 bottom), depth d metres:
+ *          dim = 2*i + d/8
+ *          BGR555 = max(1,5-dim/3) | max(1,16-dim)<<5 | max(4,26-dim)<<10
+ *
+ *      — at d=0 a dusk-blue gradient; as the lure sinks the WHOLE lake
+ *      deepens toward abyss-dark (blue floor 4/31: never exact black, so
+ *      the harness's font-pixel text matcher is safe by construction).
+ *   2. THE SILHOUETTE FISH — a 32x16 sprite shown while a fish is on the
+ *      line (fight) and on the CATCH card, frame = the dc_fishlog species
+ *      index (band*4 + tier, growth cut 3): the depth band sets the
+ *      silhouette's SIZE, the rarity its SHADE (mythics palest). It
+ *      faces the reel during rests and FLIPS to run on surge frames —
+ *      you see a shape in the water, not a name; the species is still
+ *      revealed only on the catch card.
+ *   3. THE ROD BEND — a 32x32 rod sprite (charge/sink/fight), 8 bend
+ *      frames; while fighting the frame is the analog tension gauge:
+ *
+ *          rod_bend = tension * 7 / line_snap[tier]
+ *
+ *      — the SAME tension-over-snap-threshold law the audio ratchet
+ *      reads (growth cuts 1 + 4), so the rod is an honest gauge on any
+ *      line tier. Text HUD (incl. the TENSION bar) stays alongside.
+ *
+ * Presentation telemetry for the headless harness (a FOURTH mailbox —
+ * the three sim mailboxes are untouched by contract): volatile unsigned
+ * dc_artmeta[8], C linkage, updated every frame:
+ *   [0] 0x44415254 'DART' magic     [4] fish frame (species index 0..15;
+ *   [1] depth word the gradient          255 = no fish on screen)
+ *       law read this frame         [5] rod bend frame (0..7; 255 = no
+ *   [2] gradient band-0 BGR555          rod on screen)
+ *       (the law above at i=0)      [6] fish flipped (1 = surge run)
+ *   [3] gradient band-9 BGR555      [7] 0
+ *
+ * All code and art original; the font is Butano's zlib-licensed common
  * asset (third_party/butano/common).
  */
 
@@ -151,6 +195,17 @@
 #include "bn_sprite_ptr.h"
 #include "bn_sound_items.h"
 #include "bn_sprite_text_generator.h"
+#include "bn_bg_palette_ptr.h"
+#include "bn_regular_bg_ptr.h"
+#include "bn_regular_bg_item.h"
+#include "bn_regular_bg_map_ptr.h"
+#include "bn_regular_bg_map_item.h"
+#include "bn_regular_bg_map_cell_info.h"
+
+#include "bn_sprite_items_dc_fish.h"
+#include "bn_sprite_items_dc_rod.h"
+#include "bn_regular_bg_tiles_items_dc_water.h"
+#include "bn_bg_palette_items_dc_water_palette.h"
 
 #include "gl_audio_hook.h"
 #include "gl_save.h"
@@ -164,6 +219,11 @@ extern "C"
     volatile unsigned dc_telemetry[16];
     volatile unsigned dc_fishlog[16];
     volatile unsigned dc_linemeta[8];
+
+    // Presentation telemetry (growth cut 5, the art pass) — the art's own
+    // mailbox, so the three simulation mailboxes stay untouched by
+    // contract. Layout in the header comment.
+    volatile unsigned dc_artmeta[8];
 }
 
 namespace
@@ -253,6 +313,43 @@ namespace
     // stays an honest tension bar on any line.
     constexpr int click_max_interval = 16; // frames between clicks, tension 0
     constexpr int click_min_interval = 4;  // ...at the line's snap threshold
+
+    // --- the art pass (growth cut 5) -------------------------------------
+    // All presentation-only laws (pure reads of sim state; nothing here is
+    // ever read back by the sim). The gradient law MUST match the one in
+    // graphics/generate_assets.py (the committed palette is the law at
+    // depth 0).
+
+    constexpr int gradient_bands = 10;     // 10 bands x 16 px = the screen
+    constexpr int rod_bend_frames = 8;     // rod sprite frames 0..7
+
+    constexpr unsigned gradient_color(int i, int d)
+    {
+        // Band i (0 = surface .. 9 = bottom) at line depth d metres, as a
+        // BGR555 halfword. The blue floor of 4/31 keeps the deepest water
+        // off exact black (the harness's text-ink color) by construction.
+        int dim = 2 * i + d / 8;
+        int r = 5 - dim / 3;
+        int g = 16 - dim;
+        int b = 26 - dim;
+
+        if(r < 1)
+        {
+            r = 1;
+        }
+
+        if(g < 1)
+        {
+            g = 1;
+        }
+
+        if(b < 4)
+        {
+            b = 4;
+        }
+
+        return unsigned(r) | unsigned(g) << 5 | unsigned(b) << 10;
+    }
 
     // --- species tables (growth cut 3) ----------------------------------
     // Four depth bands by target depth, four named species per band, one
@@ -377,6 +474,93 @@ int main()
 
     bn::sprite_text_generator text_gen(common::variable_8x8_sprite_font);
     text_gen.set_left_alignment();
+
+    // --- the art pass (growth cut 5): the lake, the fish, the rod --------
+
+    // The lake: a full-screen background of ten 16px water bands. The map
+    // is static (band i = tile 1+i, row 0 the surface shimmer); the
+    // GRADIENT lives in the palette, rewritten from gradient_color() as
+    // the line's depth word moves — the whole lake deepens as you sink.
+    constexpr int bg_cols = 32;
+    constexpr int bg_rows = 32;
+
+    alignas(int) bn::regular_bg_map_cell bg_cells[bg_cols * bg_rows] = {};
+    bn::regular_bg_map_item bg_map_item(bg_cells[0],
+                                        bn::size(bg_cols, bg_rows));
+
+    for(int y = 0; y < bg_rows; ++y)
+    {
+        // 20 visible rows -> band = row/2; offscreen rows keep the
+        // deepest band. Row 0 is the dusk surface shimmer tile.
+        int band = y / 2 < gradient_bands ? y / 2 : gradient_bands - 1;
+        int gfx = y == 0 ? 11 : 1 + band;
+
+        for(int x = 0; x < bg_cols; ++x)
+        {
+            bn::regular_bg_map_cell& cell =
+                    bg_cells[bg_map_item.cell_index(x, y)];
+            bn::regular_bg_map_cell_info cell_info(cell);
+            cell_info.set_tile_index(gfx);
+            cell = cell_info.cell();
+        }
+    }
+
+    bn::regular_bg_item bg_item(bn::regular_bg_tiles_items::dc_water,
+                                bn::bg_palette_items::dc_water_palette,
+                                bg_map_item);
+    // create_bg() places the MAP CENTER: cell (0, 0)'s top-left lands on
+    // the screen's top-left (-120, -80).
+    bn::regular_bg_ptr lake_bg = bg_item.create_bg(-120 + bg_cols * 4,
+                                                   -80 + bg_rows * 4);
+    bn::regular_bg_map_ptr lake_map = lake_bg.map();
+    lake_map.reload_cells_ref();
+    bn::bg_palette_ptr lake_palette = lake_bg.palette();
+
+    // The gradient palette writer: entries 1..10 follow the law at the
+    // given depth; 11 the surface glint; the rest inert filler. Only
+    // rewritten when the depth word actually moves.
+    bn::color lake_colors[16];
+    int gradient_depth = -1;
+
+    auto apply_gradient = [&](int d)
+    {
+        if(d == gradient_depth)
+        {
+            return;
+        }
+
+        gradient_depth = d;
+        lake_colors[0] = bn::color(0, 0, 0);        // transparent slot
+
+        for(int i = 0; i < gradient_bands; ++i)
+        {
+            unsigned v = gradient_color(i, d);
+            lake_colors[1 + i] = bn::color(int(v & 31), int(v >> 5 & 31),
+                                           int(v >> 10 & 31));
+        }
+
+        lake_colors[11] = bn::color(24, 29, 30);    // surface glint
+        lake_colors[12] = bn::color(1, 1, 2);
+        lake_colors[13] = bn::color(1, 1, 2);
+        lake_colors[14] = bn::color(1, 1, 2);
+        lake_colors[15] = bn::color(1, 1, 2);
+        lake_palette.set_colors(bn::span<const bn::color>(lake_colors));
+    };
+
+    apply_gradient(0);
+
+    // The silhouette fish (32x16, frame = species index) and the rod
+    // (32x32, frame = bend 0..7). Both sit BELOW the HUD text rows their
+    // states use, so no --assert-text pin is ever overlapped.
+    bn::sprite_ptr fish_sprite = bn::sprite_items::dc_fish.create_sprite(
+            44, 44);
+    fish_sprite.set_visible(false);
+    int fish_frame_shown = 0;
+
+    bn::sprite_ptr rod_sprite = bn::sprite_items::dc_rod.create_sprite(
+            84, 40);
+    rod_sprite.set_visible(false);
+    int rod_frame_shown = 0;
 
     constexpr int text_x = -104;
     constexpr int line_count = 7;
@@ -1011,6 +1195,64 @@ int main()
         }
 
         }
+
+        // --- the art pass (growth cut 5): pure reads of the sim state the
+        // frame just computed — the gradient follows the depth word, the
+        // fish follows the species word, the rod follows tension over the
+        // CURRENT line's snap threshold (the audio ratchet's law).
+
+        apply_gradient(depth);
+
+        bool fish_on = state == st_fight
+                || (state == st_result && result_code == 1);
+        unsigned fish_frame = 255;
+        bool fish_flip = false;
+
+        if(fish_on)
+        {
+            fish_frame = cur_species;
+            fish_flip = state == st_fight && surge != 0;
+
+            if(int(fish_frame) != fish_frame_shown)
+            {
+                fish_frame_shown = int(fish_frame);
+                fish_sprite.set_tiles(bn::sprite_items::dc_fish.tiles_item(),
+                                      fish_frame_shown);
+            }
+        }
+
+        fish_sprite.set_visible(fish_on);
+        fish_sprite.set_horizontal_flip(fish_flip);
+
+        bool rod_on = state == st_charge || state == st_sink
+                || state == st_fight;
+        unsigned rod_frame = 255;
+
+        if(rod_on)
+        {
+            rod_frame = state == st_fight
+                    ? unsigned(tension * (rod_bend_frames - 1)
+                               / line_snap[meta.tier])
+                    : 0u;
+
+            if(int(rod_frame) != rod_frame_shown)
+            {
+                rod_frame_shown = int(rod_frame);
+                rod_sprite.set_tiles(bn::sprite_items::dc_rod.tiles_item(),
+                                     rod_frame_shown);
+            }
+        }
+
+        rod_sprite.set_visible(rod_on);
+
+        dc_artmeta[0] = 0x44415254u;  // 'DART'
+        dc_artmeta[1] = unsigned(depth);
+        dc_artmeta[2] = gradient_color(0, depth);
+        dc_artmeta[3] = gradient_color(9, depth);
+        dc_artmeta[4] = fish_frame;
+        dc_artmeta[5] = rod_frame;
+        dc_artmeta[6] = fish_flip ? 1u : 0u;
+        dc_artmeta[7] = 0;
 
         // --- telemetry mailbox: every slot, every frame
 

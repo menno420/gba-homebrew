@@ -866,3 +866,31 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #125 opened READY on main; no merge/approve/auto-merge calls from
   this session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (undertow-hazards, PR #126)
+
+- Undertow growth cut 5 (`claude/undertow-hazards`, cut from main @
+  `98b9b60`): the concept's "Hazards/creatures in the channel (jellyfish
+  that drift on the seeded RNG)" line, marked BUILT — this completes
+  Undertow's named growth path (all five cuts built); the CONCEPT.md
+  status line weathered to say so.
+- game.js v1.4.0 → v1.5.0: jellyfish spawn from row 40 on via a third
+  side-band RNG stream (`seed ^ JELLY_STREAM`, fixed four draws per
+  generated row — wall and pocket streams draw exactly what they drew
+  in v1.4.0, so a seed's channel AND pocket layout are byte-identical);
+  drift is a bounded sine of the sim instance's own step counter;
+  contact ends the run ("STUNG AT N m" — one-touch death, the game's
+  grammar). SIM change: seed-3 no-input 650/148m (air) → 358/76m
+  (sting); seed-7 no-input/hold-left and zero-pocket seeds 4/8 carry
+  their v1.4.0 numbers verbatim (layout-identity witnesses). Ghost
+  records v2 → v3, stale records dropped cleanly on load.
+- Smoke 41 → 48 assertions (spawn/drift determinism at frame 300 twice,
+  bounded-sine drift, deterministic jelly-hunter dies STUNG with air
+  left, seed-3 sim-change witness, carried fixed points, stale-v2 drop
+  + fresh-v3 write). Run twice against real Chromium: 48/48 PASS both,
+  outputs byte-identical. Pre-change baseline on main: 41/41 PASS.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #126 opened READY on main; no merge/approve/auto-merge calls from
+  this session — the server-side enabler decides on green.

@@ -1,1 +1,0 @@
-- `claude/deepcast` · **console breadth: Deepcast prototype (game #4)** — new GBA fishing/tension-management micro-game games/deepcast/ + headless proof · games/deepcast/**, dist/deepcast.gba, dist/README.md, .sessions/2026-07-13-deepcast.md · 2026-07-13

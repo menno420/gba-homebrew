@@ -1,1 +1,0 @@
-- `claude/drift-garden` · **mobile breadth: Drift Garden playable slice (game #5, foundation-proof)** — evolve games/mobile-foundation/ skeleton into the playable seeded garden game its CONCEPT.md names · games/mobile-foundation/**, tools/mobile-foundation-smoke/**, .sessions/2026-07-13-drift-garden.md · 2026-07-13

@@ -989,3 +989,30 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   chat ~00:58Z 2026-07-14.
 - PR #129 opened READY on main; no merge/approve/auto-merge calls
   from this session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (arcade-refresh, PR #130)
+
+- **⚑ Self-initiated closing upkeep** (`claude/arcade-refresh`, cut
+  from main @ `87680c9`, PR #129 merged): three contained items, one
+  PR. (1) Web-arcade repin: `dist/web/` + `dist/releases/` re-run
+  through the #109 machinery at HEAD — Undertow zip v1.0 -> v1.5
+  (#110/#114/#118/#123/#126), Drift Garden v1.0 -> v1.4
+  (#111/#115/#119/#124), arcade bundle v1.1 -> v1.2; Tiltstone
+  unchanged and its rebuilt zip reproduced the #109 pin byte-exactly.
+  `--verify` green twice; run-twice zips byte-identical.
+  (2) `docs/current-state.md` rewritten to HEAD (the old revision's
+  log ended at session 8): 11-game roster, all four named growth
+  paths complete (#110–#128), committed-proofs convention, dist
+  versions per dist/README.md. (3) Stale-claims sweep: six served
+  claims deleted, each verified merged at live GitHub (#83, #84,
+  #81, #104, #77, #117); the standing `claims-format` advisory on
+  `order-005-scribe.md` cleared with it — strict check now runs
+  with zero claims advisories. No open PR's claim touched
+  (Tiltstone stack #92/#93/#95/#97 and #85 are other lanes').
+- Provenance: LIVE OWNER directive ("see if there is anything else
+  you can come up with or improve…"), owner live in the coordinator
+  chat ~00:58Z 2026-07-14. This is the session's closing upkeep
+  slice — the session stands down after this lands, per the owner's
+  audit close-out.
+- PR #130 opened READY on main; no merge/approve/auto-merge calls
+  from this session — the server-side enabler decides on green.

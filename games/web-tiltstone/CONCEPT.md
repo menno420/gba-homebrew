@@ -59,9 +59,14 @@ if the daily hook shows organic pull.
 
 1. **Juice**: animated falls/merges (the engine already emits per-chain
    collect events; the shell just needs tweening), synth audio.
-2. **Par scoring**: the solver already knows the shortest win — grade the
-   player against it (birdie/par/bogey), the retention hook.
-3. **Undo** (engine states are immutable snapshots — free to add).
+2. **Par scoring** — ✅ SHIPPED (slice 2, session 43): pure `par(level)` /
+   `grade(used, par)` in the engine (PERFECT / GREAT / GOOD / CLEARED), PAR
+   on the HUD, graded win card. Par is the solver's shortest line —
+   BFS-minimality is asserted in the smoke, so PERFECT is exactly optimal.
+3. **Undo** — ✅ SHIPPED (slice 2, session 43): history stack in the shell
+   (states are immutable snapshots), U key/button, works from a BURIED card
+   (won cards stay frozen); undo count rides the win card so grades stay
+   honest.
 4. **New cell types**: locked gems (collect adjacent to free), ice (slides
    sideways), one-way grates — each a pure `settle()` extension.
 5. **Level packs**: curate seeds the solver rates hard (long solutions,

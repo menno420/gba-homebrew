@@ -25,26 +25,49 @@
   var seed = qs.has("seed") ? (parseInt(qs.get("seed"), 10) >>> 0) : DAILY;
   var levelIndex = qs.has("level") ? Math.max(0, parseInt(qs.get("level"), 10) | 0) : 0;
   var state = E.newGame(seed, levelIndex);
+  var history = [];   // immutable prior states — engine states never mutate, so undo is a stack
+  var undos = 0;      // honest take-back count for this attempt (shown on the win card)
 
   function reset(newSeed, newLevel) {
     seed = newSeed >>> 0;
     levelIndex = Math.max(0, newLevel | 0);
     state = E.newGame(seed, levelIndex);
+    history = [];
+    undos = 0;
     setMsg("");
     render();
+  }
+
+  function gradeLine() {
+    var p = E.par(state.level), g = E.grade(state.used, p);
+    return "PAR " + p + " — YOU " + state.used + " — " + g.label +
+      (undos ? " (" + undos + " undo" + (undos === 1 ? "" : "s") + ")" : "");
   }
 
   function act(dir) {
     if (state.status !== "playing") return;
     var prev = state;
     state = E.rotate(state, dir);
+    history.push(prev);
     if (state.events.length) {
       var got = state.collected - prev.collected;
       var chains = state.events[state.events.length - 1].chain;
       setMsg("+" + got + " gem" + (got === 1 ? "" : "s") + (chains > 1 ? " (chain x" + chains + "!)" : ""));
     } else setMsg("");
-    if (state.status === "won") { setMsg("QUOTA MET — cavern cleared! N for the next level."); saveBest(); }
-    if (state.status === "lost") setMsg("Out of rotations. R to try this cavern again.");
+    if (state.status === "won") { setMsg("QUOTA MET — " + gradeLine() + ". N for the next level."); saveBest(); }
+    if (state.status === "lost") setMsg("Out of rotations. U to take one back, R to start this cavern over.");
+    render();
+  }
+
+  // Take back the last rotation. Free on a misread (this is a deliberation
+  // game), honest on the scoreboard (the win card carries the undo count).
+  // Allowed while playing and from a BURIED card (step back instead of a full
+  // restart); a WON card stays frozen like the engine's own terminal rule.
+  function undo() {
+    if (!history.length || state.status === "won") return;
+    state = history.pop();
+    undos++;
+    setMsg("took back a turn (" + undos + " undo" + (undos === 1 ? "" : "s") + " this attempt)");
     render();
   }
 
@@ -103,16 +126,23 @@
       ctx.fillStyle = "rgba(10,7,5,0.72)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = state.status === "won" ? "#d9b96c" : "#d84f4f";
       ctx.font = "bold 34px 'Courier New', monospace"; ctx.textAlign = "center";
-      ctx.fillText(state.status === "won" ? "CLEARED" : "BURIED", canvas.width / 2, canvas.height / 2 - 8);
+      ctx.fillText(state.status === "won" ? "CLEARED" : "BURIED", canvas.width / 2, canvas.height / 2 - 24);
       ctx.fillStyle = "#e8dcc8"; ctx.font = "15px 'Courier New', monospace";
-      ctx.fillText(state.status === "won" ? "press N — deeper cavern" : "press R — same cavern, fresh turns",
-        canvas.width / 2, canvas.height / 2 + 22);
+      if (state.status === "won") {
+        ctx.fillText(gradeLine(), canvas.width / 2, canvas.height / 2 + 8);
+        ctx.fillText("press N — deeper cavern", canvas.width / 2, canvas.height / 2 + 32);
+      } else {
+        ctx.fillText("press U — take a turn back", canvas.width / 2, canvas.height / 2 + 8);
+        ctx.fillText("press R — same cavern, fresh turns", canvas.width / 2, canvas.height / 2 + 32);
+      }
     }
     document.getElementById("hud-gems").textContent = "GEMS " + state.collected + "/" + state.quota;
     document.getElementById("hud-turns").textContent = "TURNS " + state.used + "/" + state.budget;
+    document.getElementById("hud-par").textContent = "PAR " + E.par(state.level);
     document.getElementById("hud-level").textContent = "LV " + (state.levelIndex + 1);
     document.getElementById("hud-seed").textContent = "SEED " + state.seed + (state.seed === DAILY ? "*" : "");
     document.getElementById("btn-next").disabled = state.status !== "won";
+    document.getElementById("btn-undo").disabled = !history.length || state.status === "won";
   }
 
   // --- input -----------------------------------------------------------------
@@ -132,9 +162,11 @@
     else if (k === "arrowright" || k === "d") { ev.preventDefault(); act("cw"); }
     else if (k === "r") reset(seed, levelIndex);
     else if (k === "n") nextLevel();
+    else if (k === "u") undo();
   });
   document.getElementById("btn-ccw").addEventListener("click", function () { act("ccw"); });
   document.getElementById("btn-cw").addEventListener("click", function () { act("cw"); });
+  document.getElementById("btn-undo").addEventListener("click", undo);
   document.getElementById("btn-restart").addEventListener("click", function () { reset(seed, levelIndex); });
   document.getElementById("btn-next").addEventListener("click", nextLevel);
   document.getElementById("btn-daily").addEventListener("click", function () { reset(DAILY, 0); });
@@ -148,6 +180,9 @@
     gridString: function () { return E.gridString(state.grid); },
     rotate: function (dir) { act(dir); return state; },
     reset: function (s, l) { reset(s, l || 0); return state; },
+    undo: function () { undo(); return state; },
+    getUndos: function () { return undos; },
+    getHistoryLength: function () { return history.length; },
     dailySeed: DAILY
   };
 

@@ -100,6 +100,57 @@ try {
   check("page state == pure-Node engine state (same seed, same input)",
     after.grid === engine.gridString(pure.grid) && after.used === pure.used);
 
+  // ------------------------------------------- slice 2: par HUD + undo + grade
+  const par = engine.par(engine.newGame(SEED, 0).level);
+  const parHud = await page.evaluate(() => document.getElementById("hud-par").textContent);
+  check("HUD shows the engine's par", parHud === `PAR ${par}`, `"${parHud}" (engine par=${par})`);
+
+  // U takes back the rotation: grid returns byte-identical to the initial pin
+  await page.keyboard.press("u");
+  const undone = await page.evaluate(() => ({
+    used: window.TILTSTONE.getState().used,
+    grid: window.TILTSTONE.gridString(),
+    undos: window.TILTSTONE.getUndos(),
+    histLen: window.TILTSTONE.getHistoryLength()
+  }));
+  check("U undoes the rotation (used 1 -> 0, grid byte-identical to initial)",
+    undone.used === 0 && undone.grid === init.grid && undone.undos === 1 && undone.histLen === 0,
+    `used=${undone.used} undos=${undone.undos} histLen=${undone.histLen}`);
+
+  // undo with an empty history is a no-op
+  await page.keyboard.press("u");
+  const noop = await page.evaluate(() => ({
+    used: window.TILTSTONE.getState().used, undos: window.TILTSTONE.getUndos()
+  }));
+  check("undo on empty history is a no-op (undo count unchanged)",
+    noop.used === 0 && noop.undos === 1, `used=${noop.used} undos=${noop.undos}`);
+
+  // play the solver line with REAL key presses (solution for seed 42 is all-R)
+  const solution = engine.newGame(SEED, 0).level.solution;
+  for (const ch of solution) await page.keyboard.press(ch === "R" ? "ArrowRight" : "ArrowLeft");
+  const won = await page.evaluate(() => ({
+    status: window.TILTSTONE.getState().status,
+    used: window.TILTSTONE.getState().used,
+    msg: document.getElementById("msg").textContent,
+    nextEnabled: !document.getElementById("btn-next").disabled,
+    undoDisabled: document.getElementById("btn-undo").disabled
+  }));
+  check("solver line by real key presses wins the level",
+    won.status === "won" && won.used === solution.length && won.nextEnabled,
+    `solution="${solution}" -> status=${won.status} used=${won.used}`);
+  check("win message carries the grade (par turns after the undo -> PERFECT + undo count)",
+    won.msg.includes("PERFECT") && won.msg.includes(`PAR ${par}`) && won.msg.includes("1 undo"),
+    `msg="${won.msg}"`);
+
+  // a WON card is frozen: U is a no-op and the button is disabled
+  await page.keyboard.press("u");
+  const frozen = await page.evaluate(() => ({
+    status: window.TILTSTONE.getState().status, used: window.TILTSTONE.getState().used
+  }));
+  check("undo after a win is a no-op (won card frozen)",
+    won.undoDisabled && frozen.status === "won" && frozen.used === solution.length,
+    `status=${frozen.status} used=${frozen.used}`);
+
   if (shotPath) { await page.screenshot({ path: shotPath }); console.log(`(screenshot: ${shotPath})`); }
 } finally {
   await browser.close();

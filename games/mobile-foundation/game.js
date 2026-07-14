@@ -19,6 +19,15 @@
 // and everyone on the planet shares the same weather on the same UTC day.
 // The date is read ONCE at boot to select the parameters; the sim step
 // never touches the wall clock, so reproducibility is untouched.
+//
+// Species: each tier hosts TWO species — a common line (carrying the
+// pre-cut hues/values exactly) and a rarer, brighter line worth more
+// essence. Planted tier-1 motes roll their species on a SIDE-BAND seeded
+// stream (keyed off the round seed), so the gameplay stream's draw count
+// and order are unchanged. Cross-pollination is species-aware: two
+// same-species parents breed the common next-tier species; mixed parents
+// breed the rare one (hybrid vigor) — a pure function of the parents,
+// zero extra random draws.
 
 const STEP_MS = 1000 / 60;      // fixed simulation timestep (60 Hz)
 const MAX_ACCUM_MS = 250;       // spiral-of-death guard
@@ -35,9 +44,35 @@ const WISP_FIRST = 600;         // step of the first wisp spawn
 const WISP_EVERY = 900;         // mean steps between wisp spawns (±300)
 const WISP_CAP = 3;
 const WISP_REPELS = 3;          // drags needed to dissipate a wisp
-const TIER_VALUE = { 1: 5, 2: 15, 3: 40 };
 const TIER_R = { 1: 5, 2: 8, 3: 12 };
-const TIER_HUE = { 1: 130, 2: 200, 3: 52 };
+
+// --- species ---------------------------------------------------------------
+// Two species per tier. Index 0 is the COMMON line and carries the pre-cut
+// per-tier values/hues exactly (old TIER_VALUE 5/15/40, old TIER_HUE
+// 130/200/52); index 1 is the RARE line — a distinct hue, a bright-core
+// render accent, and a higher essence value.
+const SPECIES = {
+  1: [
+    { id: 'fern',    hue: 130, value: 5,  rare: false },
+    { id: 'clover',  hue: 95,  value: 8,  rare: true },
+  ],
+  2: [
+    { id: 'lotus',   hue: 200, value: 15, rare: false },
+    { id: 'iris',    hue: 250, value: 22, rare: true },
+  ],
+  3: [
+    { id: 'aurora',  hue: 52,  value: 40, rare: false },
+    { id: 'solaris', hue: 20,  value: 55, rare: true },
+  ],
+};
+const RARE_CHANCE = 0.25; // tier-1 planting odds of the rare species
+
+// Cross-pollination child: same-species parents breed the common
+// next-tier line, mixed-species parents the rare one (hybrid vigor).
+// Pure in the parents — no random draw.
+function childSpeciesFor(parentTier, idA, idB) {
+  return SPECIES[parentTier + 1][idA === idB ? 0 : 1];
+}
 
 // mulberry32 — tiny seedable PRNG, plenty for a garden.
 function mulberry32(a) {
@@ -123,6 +158,12 @@ export function createGame(canvas, opts = {}) {
   const motes = [];
   const wisps = [];
   let rng = mulberry32(0);
+  // Side-band species stream (the weather-cut discipline, PR #111): keyed
+  // off the round seed with its own mix constant, one draw per tier-1
+  // spawn, so the gameplay stream's draw count/order stay EXACTLY as
+  // before this cut — every prior (seed -> world) mapping is preserved
+  // modulo the species labels themselves.
+  let speciesRng = mulberry32(0);
   let roundStep = 0;
   let nextWisp = WISP_FIRST;
   let wind = { x: 0, y: 0 };
@@ -136,15 +177,19 @@ export function createGame(canvas, opts = {}) {
     canvas.height = Math.max(1, Math.floor(canvas.clientHeight * dpr)) || 480;
   }
 
-  function spawnMote(x, y, tier = 1) {
+  // Tier-1 spawns (taps, boot seeds) roll their species on the side-band
+  // stream; pollination children pass theirs explicitly (pure in parents).
+  function spawnMote(x, y, tier = 1, species = null) {
     if (motes.length >= MAX_ENTITIES) motes.shift();
+    const sp = species || SPECIES[tier][speciesRng() < RARE_CHANCE ? 1 : 0];
     const a = rng() * Math.PI * 2;
     const s = 0.02 + rng() * 0.06;
     motes.push({
       x, y, tier,
+      sp: sp.id, value: sp.value, rare: sp.rare,
       vx: Math.cos(a) * s, vy: Math.sin(a) * s,
       r: TIER_R[tier] + rng() * 2,
-      hue: TIER_HUE[tier] + (rng() - 0.5) * 30,
+      hue: sp.hue + (rng() - 0.5) * 30,
       age: 0,
     });
     state.entities = motes.length;
@@ -175,6 +220,7 @@ export function createGame(canvas, opts = {}) {
   function resetRound(seed) {
     state.seed = seed;
     rng = mulberry32(seed >>> 0);
+    speciesRng = mulberry32((seed ^ 0x85EBCA6B) >>> 0);
     motes.length = 0;
     wisps.length = 0;
     state.phase = 'playing';
@@ -229,7 +275,7 @@ export function createGame(canvas, opts = {}) {
       if (hit.age >= MATURE_AGE) {
         motes.splice(motes.indexOf(hit), 1);
         state.entities = motes.length;
-        state.essence += TIER_VALUE[hit.tier];
+        state.essence += hit.value;
         if (state.essence >= state.quota) endRound('won');
       }
     } else {
@@ -320,9 +366,10 @@ export function createGame(canvas, opts = {}) {
         if (b.tier !== a.tier || b.age < MATURE_AGE) continue;
         if (Math.hypot(a.x - b.x, a.y - b.y) > POLLINATE_R) continue;
         const nx = (a.x + b.x) / 2, ny = (a.y + b.y) / 2, tier = a.tier + 1;
+        const child = childSpeciesFor(a.tier, a.sp, b.sp);
         motes.splice(j, 1);
         motes.splice(i, 1);
-        spawnMote(nx, ny, tier);
+        spawnMote(nx, ny, tier, child);
         return; // at most one merge per step keeps the scan simple
       }
     }
@@ -412,6 +459,13 @@ export function createGame(canvas, opts = {}) {
       ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
       ctx.fillStyle = `hsl(${m.hue}, 70%, ${45 + 8 * m.tier + 8 * Math.sin(m.age / 20)}%)`;
       ctx.fill();
+      if (m.rare) {
+        // rare-species accent: a bright inner core, same idiom as the halo
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, Math.max(1.5, m.r * 0.4), 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${m.hue + 40}, 95%, 85%, 0.9)`;
+        ctx.fill();
+      }
       if (m.age >= MATURE_AGE) {
         ctx.beginPath();
         ctx.arc(m.x, m.y, m.r + 4, 0, Math.PI * 2);
@@ -477,7 +531,7 @@ export function createGame(canvas, opts = {}) {
       essence: state.essence,
       taps: state.taps,
       wisps: wisps.length,
-      motes: motes.map((m) => ({ tier: m.tier, x: r2(m.x), y: r2(m.y) })),
+      motes: motes.map((m) => ({ tier: m.tier, sp: m.sp, x: r2(m.x), y: r2(m.y) })),
     };
   }
 
@@ -540,6 +594,10 @@ export function createGame(canvas, opts = {}) {
     // pure derivation, exposed for headless proofs (no test-only date
     // param in the product — proofs stub Date itself at the boundary)
     weatherFor: (dateNum) => weatherFor(dateNum),
+    // pure species surfaces for proofs: the data table (deep copy) and
+    // the parents -> child derivation (no game state touched)
+    speciesTable: () => JSON.parse(JSON.stringify(SPECIES)),
+    childSpeciesFor: (parentTier, idA, idB) => ({ ...childSpeciesFor(parentTier, idA, idB) }),
   };
   window.__game = game; // headless-proof handle
   return game;

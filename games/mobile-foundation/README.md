@@ -9,11 +9,19 @@ dependencies and no build step**. Framework decision + evidence:
 ## What works (proven headlessly, 2026-07-13)
 
 - **Playable win/lose rounds** — 90 s of daylight per round: tap plants a
-  tier-1 mote, mature motes (halo) harvest for essence (5/15/40 by tier),
-  reach the quota of 100 before dusk to win; a tap after the round ends
-  replants with the next seed.
+  tier-1 mote, mature motes (halo) harvest for essence (by species —
+  common line 5/15/40 per tier, rare line 8/22/55), reach the quota of
+  100 before dusk to win; a tap after the round ends replants with the
+  next seed.
 - **Cross-pollination** — two mature same-tier motes within reach merge
   into one mote of the next tier (up to tier 3, rarer and brighter).
+- **Species** (2026-07-14) — two species per tier (fern/clover,
+  lotus/iris, aurora/solaris), each with its own hue; rare species carry
+  a bright-core accent and a higher essence value. Planted tier-1 motes
+  roll their species on a side-band seeded stream (the gameplay stream's
+  draw order is untouched); cross-pollination children are a pure
+  function of the parents — same-species pairs breed the common next-tier
+  line, mixed pairs the rare one (hybrid vigor).
 - **Drag currents** — dragging herds nearby motes toward your finger (to
   cluster them for pollination) and repels predator **wisps**; three
   repels dissipate a wisp. Wisps spawn from the edges from 10 s in and
@@ -71,10 +79,13 @@ on visible. `run-game.sh` (`game-smoke.mjs`) asserts the game: seeded
 boot, a real dispatched `TouchEvent` planting a mote, a scripted win
 (pollination to tier 2, harvest to quota before dusk), a scripted loss at
 dusk with wisps hunting, byte-identical `snapshot()` determinism for the
-same seed (and divergence for a different one), pause/resume, and the
+same seed (and divergence for a different one), pause/resume, the
 daily-weather cut (pure `weatherFor` derivation, boot under an injected
 fake `Date`, same-date determinism, different dates diverging the world
-on the same seed).
+on the same seed), and the species cut (both tier-1 species appearing
+deterministically at a fixed seed, per-species harvest values, pure-pair
+-> common / hybrid-pair -> rare pollination, and the pure-line ladder
+through tier 3).
 
 ## Files
 

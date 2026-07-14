@@ -13,9 +13,9 @@ What the arcade needs to serve this game:
   strict CSP.
 - **Path-prefix agnostic.** `game.js` is referenced relatively, so the game
   works under any mount point (`/arcade/undertow/`, a hashed folder, etc.).
-- **State:** best score and skin choice persist via `localStorage` when
-  available (guarded — private-mode/blocked storage degrades to in-memory
-  values).
+- **State:** best score, skin choice and the best-run ghost per seed
+  persist via `localStorage` when available (guarded — private-mode/blocked
+  storage degrades to in-memory values).
 
 ## Optional query parameters
 
@@ -35,6 +35,12 @@ What the arcade needs to serve this game:
   cycles skins; the choice persists via guarded `localStorage`
   (`undertow.skin`). Skins never touch the sim — same seed, same run,
   whatever the skin.
+- `?ghost=0` — disables the ghost replay (render-side only). By default,
+  every run records its input timeline and the best run per seed persists
+  via guarded `localStorage` (`undertow.ghost.<seed>`); on later runs of
+  the same seed a translucent ghost diver replays that best run in
+  lockstep. The ghost is a second, independent sim instance — it never
+  touches the live run: same seed, same run, ghost or no ghost.
 - `?headless=1` — does not start the render loop; exposes the sim to
   `window.UNDERTOW` for automated tests. Not intended for players.
 

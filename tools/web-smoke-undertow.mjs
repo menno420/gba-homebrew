@@ -15,8 +15,16 @@
  * persisted skin survives a reload, unknown IDs fall back, and — the sim
  * identity proof — a run under a non-default skin crashes on the
  * IDENTICAL frame at the IDENTICAL depth as the default skin for the
- * same seed. Exits non-zero on any failed assertion; prints one
- * PASS/FAIL line per assertion.
+ * same seed. Also proves the ghost-replay cut (fresh context = clean
+ * storage): a crashed run persists its input timeline as the seed's
+ * ghost record; REPLAY FIDELITY — the stored timeline replayed through
+ * a fresh sim instance reproduces the original crashFrame and depth
+ * exactly; LIVE-RUN IDENTITY — a run with the ghost active is identical
+ * to the cleared-storage baseline, and the lockstep ghost lands on its
+ * recorded numbers during that run; only the best run per seed is kept;
+ * the record survives a reload and re-arms; records are keyed by seed;
+ * ?ghost=0 opts out without touching the run. Exits non-zero on any
+ * failed assertion; prints one PASS/FAIL line per assertion.
  *
  * Deps (NOT vendored — install next to the script or point NODE_PATH at an
  * external install; do not commit node_modules):
@@ -305,6 +313,119 @@ const main = async () => {
   const fallback = await page.evaluate(() => window.UNDERTOW.getSkin());
   check("unknown ?skin=nope falls back to the persisted skin",
     fallback.id === "ghost", `skin=${fallback.id}`);
+
+  // ---- ghost replays (growth cut 3) -----------------------------------------
+  // browser.newPage() = a fresh context = EMPTY localStorage: the ghost
+  // assertions start from a clean slate, so runG1 below is the
+  // cleared-storage (ghost-off) baseline for the identity proof.
+  const gpage = await browser.newPage({ viewport: { width: 520, height: 700 } });
+  gpage.on("pageerror", (e) => { console.error("PAGE ERROR (ghost):", e.message); failures++; });
+  await gpage.goto(baseURL + `?seed=${SEED}&headless=1`);
+
+  // (21) clean slate: no stored ghost, none active
+  const gBoot = await gpage.evaluate(() => window.UNDERTOW.getGhostInfo());
+  check("clean storage: no stored ghost record, none active",
+    gBoot.enabled === true && gBoot.stored === null && gBoot.active === false,
+    JSON.stringify(gBoot));
+
+  // (22) a crashed run records + persists its input timeline as the seed's ghost
+  await gpage.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+  });
+  const runG1 = await runToCrash(gpage);
+  const gAfter = await gpage.evaluate(() => {
+    let raw = null;
+    try { raw = window.localStorage.getItem("undertow.ghost." + window.UNDERTOW.getSeed()); } catch { /* guarded */ }
+    return { info: window.UNDERTOW.getGhostInfo(), rawLen: raw ? raw.length : 0 };
+  });
+  check("crashed run persists a best-run ghost record (depth + crashFrame + input log)",
+    runG1.state === "gameover" && runG1.crashFrame === runA.crashFrame && runG1.score === runA.score
+      && !!gAfter.info.stored && gAfter.info.stored.depth === runG1.score
+      && gAfter.info.stored.crashFrame === runG1.crashFrame && gAfter.rawLen > 0,
+    `stored=${JSON.stringify(gAfter.info.stored)} run(crashFrame=${runG1.crashFrame}, score=${runG1.score}m) rawBytes=${gAfter.rawLen}`);
+
+  // (23) REPLAY FIDELITY: the stored input timeline, replayed through a fresh
+  // sim instance (no freeze guard), reproduces the original run's crash frame
+  // and depth EXACTLY — the determinism selling point.
+  const fidelity = await gpage.evaluate(() => window.UNDERTOW.verifyGhost());
+  check("replay fidelity: stored timeline reproduces the run exactly (crashFrame + depth)",
+    !!fidelity && fidelity.crashed
+      && fidelity.frame === runG1.crashFrame && fidelity.depth === runG1.score
+      && fidelity.frame === fidelity.recCrashFrame && fidelity.depth === fidelity.recDepth,
+    fidelity
+      ? `replay(crashFrame=${fidelity.frame}, depth=${fidelity.depth}m) vs recorded(crashFrame=${fidelity.recCrashFrame}, depth=${fidelity.recDepth}m)`
+      : "verifyGhost returned null");
+
+  // (24) LIVE-RUN IDENTITY with the ghost active: restart the same seed — the
+  // ghost dives alongside — and the live run's crashFrame/depth are IDENTICAL
+  // to the cleared-storage baseline (runG1).
+  await gpage.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+  });
+  const gActive = await gpage.evaluate(() => window.UNDERTOW.getGhostInfo().active);
+  const runG2 = await runToCrash(gpage);
+  check("live-run identity: ghost active vs cleared storage — same crashFrame + depth",
+    gActive === true && runG2.state === "gameover"
+      && runG2.crashFrame === runG1.crashFrame && runG2.score === runG1.score,
+    `ghostActive=${gActive} withGhost(crashFrame=${runG2.crashFrame}, score=${runG2.score}m) vs baseline(crashFrame=${runG1.crashFrame}, score=${runG1.score}m)`);
+
+  // (25) the lockstep ghost itself landed exactly on its recorded numbers
+  // during that live run (in-run replay, not just the offline probe)
+  const ghostEnd = await gpage.evaluate(() => window.UNDERTOW.getGhostRun());
+  check("lockstep ghost lands on its recorded crashFrame + depth during the live run",
+    !!ghostEnd && ghostEnd.crashed
+      && ghostEnd.frame === ghostEnd.recCrashFrame && ghostEnd.depth === ghostEnd.recDepth,
+    ghostEnd
+      ? `ghost(crashFrame=${ghostEnd.frame}, depth=${ghostEnd.depth}m) vs recorded(crashFrame=${ghostEnd.recCrashFrame}, depth=${ghostEnd.recDepth}m)`
+      : "no ghost run state");
+
+  // (26) best run per seed is the keeper: a different (hold-left) run only
+  // replaces the record if it went deeper
+  await gpage.evaluate((s) => {
+    window.UNDERTOW.reset(s);
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+    window.UNDERTOW.setInput({ left: true, right: false });
+  }, SEED);
+  const runG3 = await runToCrash(gpage);
+  await gpage.evaluate(() => window.UNDERTOW.setInput({ left: false, right: false }));
+  const bestStored = await gpage.evaluate(() => window.UNDERTOW.getGhostInfo().stored);
+  const expectBest = Math.max(runG1.score, runG3.score);
+  check("best run per seed is the keeper (shallower run never overwrites)",
+    runG3.state === "gameover" && !!bestStored && bestStored.depth === expectBest,
+    `stored=${bestStored && bestStored.depth}m runs: no-input ${runG1.score}m vs hold-left ${runG3.score}m`);
+
+  // (27) persistence across reload: the record survives and re-arms the ghost
+  await gpage.goto(baseURL + `?seed=${SEED}&headless=1`);
+  const reloaded = await gpage.evaluate(() => {
+    const before = window.UNDERTOW.getGhostInfo();
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+    return { stored: before.stored, activeAfterStart: window.UNDERTOW.getGhostInfo().active };
+  });
+  check("ghost record survives a reload and re-arms on the next dive",
+    !!reloaded.stored && reloaded.stored.depth === expectBest && reloaded.activeAfterStart === true,
+    `stored=${JSON.stringify(reloaded.stored)} activeAfterStart=${reloaded.activeAfterStart}`);
+
+  // (28) records are keyed by seed: another seed has no ghost
+  await gpage.goto(baseURL + "?seed=12345&headless=1");
+  const otherSeed = await gpage.evaluate(() => window.UNDERTOW.getGhostInfo());
+  check("ghost records are keyed by seed (other seed: none stored, none active)",
+    otherSeed.stored === null && otherSeed.active === false,
+    JSON.stringify(otherSeed));
+
+  // (29) ?ghost=0 opts out (record kept, no ghost spawned) and the run is
+  // unchanged — the switch is render-side only
+  await gpage.goto(baseURL + `?seed=${SEED}&ghost=0&headless=1`);
+  const optedOut = await gpage.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+    return window.UNDERTOW.getGhostInfo();
+  });
+  const runG4 = await runToCrash(gpage);
+  check("?ghost=0 opts out (record kept, no ghost) and the run is unchanged",
+    optedOut.enabled === false && optedOut.stored !== null && optedOut.active === false
+      && runG4.state === "gameover"
+      && runG4.crashFrame === runG1.crashFrame && runG4.score === runG1.score,
+    `enabled=${optedOut.enabled} stored=${!!optedOut.stored} active=${optedOut.active} run(crashFrame=${runG4.crashFrame}, score=${runG4.score}m) vs baseline(${runG1.crashFrame}, ${runG1.score}m)`);
+  await gpage.close();
 
   await browser.close();
 

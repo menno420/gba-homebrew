@@ -54,4 +54,13 @@ cheap and is the only version of this game with a reason to return.
   across skins, and the smoke asserts identical crashFrame/depth for the
   same seed under a non-default skin.
 - Ghost replays of your best run — nearly free because the sim is
-  deterministic: store the input timeline, replay it against the same seed.
+  deterministic: store the input timeline, replay it against the same seed —
+  **BUILT** (growth cut 3): every run records its input timeline
+  (run-length encoded steer per frame); the best run per seed persists to
+  guarded `localStorage` (`undertow.ghost.<seed>`); on later runs of the
+  same seed a translucent ghost diver replays it in lockstep — a second
+  sim instance (own RNG, own trench rows) fed the stored inputs,
+  render-only presence with zero contact with the live run's sim or RNG.
+  The live run is byte-identical with the ghost on or off, and a stored
+  timeline replays to the original crash frame and depth exactly (both
+  asserted by the smoke). `?ghost=0` opts out, render-side only.

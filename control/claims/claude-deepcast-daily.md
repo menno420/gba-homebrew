@@ -1,1 +1,0 @@
-- `claude/deepcast-daily` · **Deepcast growth cut 2 (seed-select score-attack)** — title-screen seed picker (L/R/dpad dials the visible seed; same dialed seed = same lake, same fish) + seed on the dusk card + proofs · games/deepcast/**, dist/deepcast.gba, .sessions/2026-07-14-deepcast-daily.md · 2026-07-14

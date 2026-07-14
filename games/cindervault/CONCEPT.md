@@ -69,7 +69,14 @@ players. The presentation is placeholder by design.
   the torch burns down).
 - Item layer: one inventory slot (a lantern that halves burn for 20
   turns, a blade that bumps for 3) picked up like embers — one more
-  decision, zero new verbs.
+  decision, zero new verbs. **BUILT** (growth cut 1, 2026-07-14): each
+  floor spawns one lantern 'o' and one blade '/'; walking onto one
+  picks it up into the single slot (pickup activates it, and picking up
+  the other kind replaces the held one — that swap is the one more
+  decision). Lantern: the torch burns on every second held turn for 20
+  turns (exactly 10 burned — halved), then gutters out. Blade: bumps
+  hit for 3 while held (a 3-HP 'M' dies in one bump). Proven in
+  `games/cindervault/proofs.sh`.
 - Named monster species per depth with distinct chase quirks (the
   greedy step is a plug-in policy).
 - Daily seed + score-attack leaderboard: the deterministic core makes

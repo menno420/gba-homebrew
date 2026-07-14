@@ -13,6 +13,17 @@
  * 100 x floors-cleared + 25 x embers + 10 x kills (+ remaining torch on
  * the win).
  *
+ * ITEM LAYER (growth cut 1 — CONCEPT.md: "one inventory slot (a lantern
+ * that halves burn for 20 turns, a blade that bumps for 3) picked up
+ * like embers — one more decision, zero new verbs"): each floor spawns
+ * one lantern 'o' and one blade '/'. Walking onto one picks it up into
+ * the SINGLE slot — pickup activates it, and picking up the other item
+ * replaces (loses) the held one; that swap is the one more decision.
+ * Lantern: for its 20 held turns the torch burns on every SECOND turn
+ * only (exactly 10 burned over 20 — halved), then it gutters out and
+ * the slot empties. Blade: bumps hit for 3 instead of 2 (a 3-HP 'M'
+ * dies in ONE bump) for as long as it is held.
+ *
  * DETERMINISM CONTRACT (headless proof relies on all of this):
  *   - Integer math only. One xorshift32 PRNG, fixed seed 0xC1DE5EED
  *     (shown on the title card). RNG words are consumed ONLY inside
@@ -28,7 +39,7 @@
  *   - START from win/lose restarts the SAME seeded run.
  *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
- * --elf --watch cv:cv_telemetry:16): a volatile 16-word array with
+ * --elf --watch cv:cv_telemetry:18): a volatile 18-word array with
  * C-linkage symbol `cv_telemetry`, updated every frame:
  *   [0] 0x43494E44 'CIND'   magic     [8]  kills this run
  *   [1] 0x56414C54 'VALT'   magic     [9]  score (live formula)
@@ -39,6 +50,8 @@
  *   [5] player hp                          1 darkness, 2 slain)
  *   [6] torch remaining               [14] monsters alive on floor
  *   [7] embers collected              [15] frames since boot
+ *   [16] item slot (0 empty,          [17] lantern turns remaining
+ *        1 lantern, 2 blade)               (0 unless a lantern is held)
  *
  * Presentation is deliberately trivial (breadth-program one-night slice):
  * the dungeon is drawn as glyph rows in Butano's common FIXED 8x8 sprite
@@ -65,7 +78,7 @@ extern "C"
 {
     // Headless telemetry mailbox — see the layout table in the header
     // comment. volatile so every write really lands for the emulator bus.
-    volatile unsigned cv_telemetry[16];
+    volatile unsigned cv_telemetry[18];
 }
 
 namespace
@@ -115,6 +128,10 @@ namespace
     constexpr int bump_damage = 2;      // player bump: 'm' dies in one hit,
                                         // 'M' takes two (hit-for-1 proved
                                         // unsurvivable vs equal-speed chasers)
+    constexpr int blade_damage = 3;     // bump while holding the blade:
+                                        // 'M' dies in ONE hit (CONCEPT.md:
+                                        // "a blade that bumps for 3")
+    constexpr int lantern_turns = 20;   // held turns of halved burn
     constexpr int max_monsters = 8;
 
     // Monsters per floor 1..5 (floor 3+ also upgrades slot 0 to a big 'M').
@@ -126,6 +143,15 @@ namespace
         t_floor = 1,
         t_ember = 2,
         t_stairs = 3,
+        t_lantern = 4,
+        t_blade = 5,
+    };
+
+    enum item_t : unsigned
+    {
+        it_none = 0,
+        it_lantern = 1,
+        it_blade = 2,
     };
 
     struct monster_t
@@ -192,6 +218,7 @@ int main()
                                           // 240px screen (glyphs clip at the
                                           // right edge and break --assert-text)
     constexpr int hud_y = 40;             // HUD slot is ui_lines[4] in play
+    constexpr int item_y = 20;            // item slot line is ui_lines[3]
     text_line ui_lines[ui_count];
 
     auto clear_lines = [&]()
@@ -222,6 +249,8 @@ int main()
     int kills = 0;
     int turns = 0;
     int lose_reason = 0;                  // 0 none · 1 darkness · 2 slain
+    unsigned item = it_none;              // the single inventory slot
+    int item_turns = 0;                   // lantern countdown (0 otherwise)
 
     auto monster_at = [&](int x, int y) -> int
     {
@@ -351,6 +380,28 @@ int main()
                 }
             }
         }
+
+        // Items (growth cut 1): one lantern, then one blade, on carved
+        // plain-floor tiles clear of the spawn and monsters. Placed LAST so
+        // each floor's pre-item RNG word order is the prototype's; the
+        // extra draws re-seed later floors — a new world version, and the
+        // proofs pin the new world.
+        for(int it = 0; it < 2; ++it)
+        {
+            for(int attempt = 0; attempt < 100; ++attempt)
+            {
+                int i = rng.range(carved_count);
+                int x = carved_x[i];
+                int y = carved_y[i];
+
+                if(tiles[y][x] == t_floor && ! (x == px && y == py)
+                   && monster_at(x, y) < 0)
+                {
+                    tiles[y][x] = it == 0 ? t_lantern : t_blade;
+                    break;
+                }
+            }
+        }
     };
 
     auto reset_run = [&]()
@@ -363,6 +414,8 @@ int main()
         kills = 0;
         turns = 0;
         lose_reason = 0;
+        item = it_none;
+        item_turns = 0;
         state = st_playing;
         generate_floor();
         clear_lines();
@@ -465,9 +518,10 @@ int main()
 
                 if(mi >= 0)
                 {
-                    // Bump combat.
+                    // Bump combat (the blade upgrades the bump to 3).
                     acted = true;
-                    monsters[mi].hp -= bump_damage;
+                    monsters[mi].hp -= item == it_blade ? blade_damage
+                                                        : bump_damage;
 
                     if(monsters[mi].hp <= 0)
                     {
@@ -491,6 +545,16 @@ int main()
                         torch += ember_torch;
                         ++embers;
                     }
+                    else if(tiles[py][px] == t_lantern
+                            || tiles[py][px] == t_blade)
+                    {
+                        // Pickup activates (zero new verbs); the single
+                        // slot means the held item is replaced and lost.
+                        item = tiles[py][px] == t_lantern ? it_lantern
+                                                          : it_blade;
+                        item_turns = item == it_lantern ? lantern_turns : 0;
+                        tiles[py][px] = t_floor;
+                    }
                     else if(tiles[py][px] == t_stairs)
                     {
                         if(floor_no == last_floor)
@@ -513,7 +577,27 @@ int main()
 
                 if(state == st_playing)
                 {
-                    --torch;
+                    bool burn = true;
+
+                    if(item == it_lantern)
+                    {
+                        // Halved burn: the torch burns on every SECOND
+                        // held turn only (odd countdown values are free),
+                        // so exactly 10 of the 20 lantern turns burn.
+                        --item_turns;
+                        burn = (item_turns & 1) == 0;
+
+                        if(item_turns <= 0)
+                        {
+                            item = it_none;  // the lantern gutters out
+                            item_turns = 0;
+                        }
+                    }
+
+                    if(burn)
+                    {
+                        --torch;
+                    }
 
                     if(torch <= 0)
                     {
@@ -577,10 +661,12 @@ int main()
 
                     switch(tiles[y][x])
                     {
-                    case t_floor:  glyph = '.'; break;
-                    case t_ember:  glyph = '*'; break;
-                    case t_stairs: glyph = '>'; break;
-                    default:       glyph = '#'; break;
+                    case t_floor:   glyph = '.'; break;
+                    case t_ember:   glyph = '*'; break;
+                    case t_stairs:  glyph = '>'; break;
+                    case t_lantern: glyph = 'o'; break;
+                    case t_blade:   glyph = '/'; break;
+                    default:        glyph = '#'; break;
                     }
 
                     int mi = monster_at(x, y);
@@ -610,6 +696,26 @@ int main()
             hud.append(" SCORE ");
             hud.append(bn::to_string<8>(score));
             ui_lines[4].set(ui_gen, hud_x, hud_y, hud);
+
+            // The item slot gets its own short line (the HUD line already
+            // reaches near the 240px edge — see the hud_x comment).
+            bn::string<40> item_line("ITEM ");
+
+            if(item == it_lantern)
+            {
+                item_line.append("LANTERN ");
+                item_line.append(bn::to_string<8>(item_turns));
+            }
+            else if(item == it_blade)
+            {
+                item_line.append("BLADE");
+            }
+            else
+            {
+                item_line.append("-");
+            }
+
+            ui_lines[3].set(ui_gen, hud_x, item_y, item_line);
             break;
         }
 
@@ -668,6 +774,8 @@ int main()
         cv_telemetry[13] = unsigned(lose_reason);
         cv_telemetry[14] = unsigned(monsters_alive);
         cv_telemetry[15] = frames;
+        cv_telemetry[16] = item;
+        cv_telemetry[17] = unsigned(item_turns);
 
         bn::core::update();
     }

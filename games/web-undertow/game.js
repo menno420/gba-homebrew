@@ -14,6 +14,17 @@
  * draw style only. The sim step, both RNG streams and their draw order are
  * untouched — a run with any skin is byte-identical to the default skin.
  *
+ * Ghost replays: every run records its effective steer (-1/0/+1) per frame,
+ * run-length encoded; the best run per seed persists to guarded localStorage
+ * ("undertow.ghost.<seed>"). On later runs of the SAME seed a translucent
+ * ghost diver replays that timeline in lockstep — a SECOND sim instance with
+ * its own RNG and its own trench rows, fed the stored inputs. The ghost is
+ * render-only presence: it never touches the live run's sim state or RNG
+ * streams, so a run is byte-identical with the ghost on or off, and (because
+ * the live diver and the ghost execute the SAME physStep) a stored timeline
+ * replays to the original run's crash frame and depth exactly. ?ghost=0
+ * opts out (render-side only).
+ *
  * Test hooks: window.UNDERTOW (always exposed). With ?headless=1 the RAF loop
  * does not start — drive the sim with UNDERTOW.stepFrames(n). Keyboard events
  * dispatched programmatically also work headlessly.
@@ -21,7 +32,7 @@
 (function () {
   "use strict";
 
-  var VERSION = "1.2.0";
+  var VERSION = "1.3.0";
   var W = 480, H = 640;
   var ROW_H = 16;              // pixels per trench row
   var PLAYER_Y = 150;          // fixed screen y of the diver
@@ -134,6 +145,55 @@
     saveSkin();
   }
 
+  // --- ghost replays: best-run input timeline per seed (guarded) -------------
+  // Every run records its effective steer per frame, run-length encoded as
+  // "<count><l|n|r>" segments (e.g. "120n45l30r"). The best run for a seed
+  // persists to localStorage; on later runs of the same seed the stored
+  // timeline drives a translucent ghost diver. ?ghost=0 opts out — a
+  // render-side switch read once at boot, never by the sim.
+  var GHOST_OFF = params.get("ghost") === "0";
+
+  function ghostKey(s) { return "undertow.ghost." + (s >>> 0); }
+
+  function encodeLog(segs) {
+    var out = "";
+    for (var i = 0; i < segs.length; i++) {
+      out += segs[i].n + (segs[i].s === -1 ? "l" : segs[i].s === 1 ? "r" : "n");
+    }
+    return out;
+  }
+  function decodeLog(str) {
+    var segs = [];
+    var re = /(\d+)([lnr])/g;
+    var m;
+    while ((m = re.exec(str)) !== null) {
+      segs.push({ n: +m[1], s: m[2] === "l" ? -1 : m[2] === "r" ? 1 : 0 });
+    }
+    return segs;
+  }
+
+  var ghostRec = null; // {depth, crashFrame, log} for the current seed, or null
+  function loadGhostRec() {
+    ghostRec = null;
+    try {
+      var raw = window.localStorage.getItem(ghostKey(seed));
+      if (!raw) return;
+      var o = JSON.parse(raw);
+      if (o && o.v === 1 && typeof o.log === "string"
+          && typeof o.depth === "number" && o.depth > 0
+          && typeof o.crashFrame === "number" && o.crashFrame > 0) {
+        ghostRec = { depth: Math.floor(o.depth), crashFrame: Math.floor(o.crashFrame), log: o.log };
+      }
+    } catch (e) { /* storage unavailable or corrupt — no ghost */ }
+  }
+  function saveGhostRec(rec) {
+    try {
+      window.localStorage.setItem(ghostKey(seed),
+        JSON.stringify({ v: 1, depth: rec.depth, crashFrame: rec.crashFrame, log: rec.log }));
+    } catch (e) { /* ignore — in-memory ghost only */ }
+  }
+  loadGhostRec();
+
   // --- shareable challenge URL ------------------------------------------------
   var shareMsg = "";            // gameover share feedback ("" until S is pressed)
 
@@ -163,87 +223,147 @@
 
   // --- game state ------------------------------------------------------------
   var state = "title";          // title | playing | gameover
-  var rng = mulberry32(seed);   // gameplay RNG
+
+  // A sim instance owns everything one diver's outcome depends on: its own
+  // gameplay RNG, its own lazily generated trench rows, scroll and x. The
+  // live run and the ghost replay each hold one — they never share state.
+  function makeSim() {
+    return { rng: mulberry32(seed), rows: [], scrollY: 0, x: W / 2, speed: 0 };
+  }
+
+  function rowIn(s, i) {
+    // rows[i] = {c: centerX, h: halfWidth}; each new row consumes exactly one
+    // draw from the instance's OWN gameplay RNG, in sequence — so a row's
+    // value depends only on its index, never on who forced its generation.
+    while (s.rows.length <= i) {
+      var n = s.rows.length;
+      if (n < 12) {
+        s.rows.push({ c: W / 2, h: START_HALF });
+      } else {
+        var prev = s.rows[n - 1];
+        var half = Math.max(MIN_HALF, START_HALF - n * NARROW_RATE);
+        var drift = Math.min(DRIFT_MAX, DRIFT_BASE + n * DRIFT_RAMP);
+        var c = prev.c + (s.rng() * 2 - 1) * drift;
+        var margin = half + 14;
+        if (c < margin) c = margin;
+        if (c > W - margin) c = W - margin;
+        s.rows.push({ c: c, h: half });
+      }
+    }
+    return s.rows[i];
+  }
+
+  // One fixed-timestep physics step for a sim instance under a steer input
+  // (-1 left, 0 none, +1 right). Returns true when the diver crashed. This
+  // is THE step: the live run and the ghost replay execute this same code,
+  // so a recorded input timeline replays to the identical crash frame and
+  // depth by construction.
+  function physStep(s, steer) {
+    var meters = Math.floor(s.scrollY / PX_PER_METER);
+    s.speed = Math.min(MAX_SPEED, BASE_SPEED + meters * SPEED_RAMP);
+    s.scrollY += s.speed;
+    if (steer === -1) s.x -= STEER_SPEED;
+    else if (steer === 1) s.x += STEER_SPEED;
+    if (s.x < PLAYER_R) s.x = PLAYER_R;
+    if (s.x > W - PLAYER_R) s.x = W - PLAYER_R;
+    var r = rowIn(s, Math.floor((s.scrollY + PLAYER_Y) / ROW_H));
+    return (s.x - PLAYER_R < r.c - r.h || s.x + PLAYER_R > r.c + r.h);
+  }
+
+  var sim = makeSim();          // the live run
   var vrng = mulberry32(seed ^ 0x9E3779B9); // visual-only RNG (bubbles)
-  var rows = [];                // rows[i] = {c: centerX, h: halfWidth}
-  var scrollY = 0;              // world pixels scrolled past the top
-  var px = W / 2;               // player x
   var input = { left: false, right: false };
   var frame = 0;                // frames elapsed in the current run
   var crashFrame = -1;
   var bubbles = [];
 
-  function rowAt(i) {
-    while (rows.length <= i) {
-      var n = rows.length;
-      if (n < 12) {
-        rows.push({ c: W / 2, h: START_HALF });
-      } else {
-        var prev = rows[n - 1];
-        var half = Math.max(MIN_HALF, START_HALF - n * NARROW_RATE);
-        var drift = Math.min(DRIFT_MAX, DRIFT_BASE + n * DRIFT_RAMP);
-        var c = prev.c + (rng() * 2 - 1) * drift;
-        var margin = half + 14;
-        if (c < margin) c = margin;
-        if (c > W - margin) c = W - margin;
-        rows.push({ c: c, h: half });
-      }
+  function steerOf(inp) {
+    return (inp.left && !inp.right) ? -1 : (inp.right && !inp.left) ? 1 : 0;
+  }
+
+  // input recording: RLE segments of the per-frame steer, every run
+  var recSegs = [];
+  var recLast = null;
+  function recPush(steer) {
+    if (recLast !== null && recLast.s === steer) recLast.n++;
+    else { recLast = { s: steer, n: 1 }; recSegs.push(recLast); }
+  }
+
+  // the active ghost replay (null: nothing stored, opted out, or on title)
+  var ghost = null;
+  function makeGhostRun(rec) {
+    return { sim: makeSim(), segs: decodeLog(rec.log), si: 0, frame: 0, crashed: false, rec: rec };
+  }
+  function stepGhost(g) {
+    // next steer from the RLE log (0 once exhausted); pure physics, no guard
+    var steer = 0;
+    if (g.si < g.segs.length) {
+      steer = g.segs[g.si].s;
+      if (--g.segs[g.si].n === 0) g.si++;
     }
-    return rows[i];
+    g.frame++;
+    if (physStep(g.sim, steer)) g.crashed = true;
   }
 
   function resetWorld() {
-    rng = mulberry32(seed);
+    sim = makeSim();
     vrng = mulberry32(seed ^ 0x9E3779B9);
-    rows = [];
-    scrollY = 0;
-    px = W / 2;
     frame = 0;
     crashFrame = -1;
     bubbles = [];
     input.left = false;
     input.right = false;
+    recSegs = [];
+    recLast = null;
+    ghost = null;
   }
 
   function startRun() {
     resetWorld();
     shareMsg = "";
+    if (!GHOST_OFF && ghostRec !== null) ghost = makeGhostRun(ghostRec);
     state = "playing";
   }
 
-  function depthMeters() { return Math.floor(scrollY / PX_PER_METER); }
-  function depthRows() { return Math.floor(scrollY / ROW_H); }
+  function depthMeters() { return Math.floor(sim.scrollY / PX_PER_METER); }
+  function depthRows() { return Math.floor(sim.scrollY / ROW_H); }
 
   // --- fixed-timestep simulation --------------------------------------------
   function update() {
     if (state !== "playing") return;
     frame++;
 
-    var meters = depthMeters();
-    var speed = Math.min(MAX_SPEED, BASE_SPEED + meters * SPEED_RAMP);
-    scrollY += speed;
-
-    if (input.left && !input.right) px -= STEER_SPEED;
-    else if (input.right && !input.left) px += STEER_SPEED;
-    if (px < PLAYER_R) px = PLAYER_R;
-    if (px > W - PLAYER_R) px = W - PLAYER_R;
+    var steer = steerOf(input);
+    var crashed = physStep(sim, steer);
+    recPush(steer);
 
     // visual bubbles (deterministic, gameplay-inert)
     if (frame % 9 === 0) {
-      bubbles.push({ x: px + (vrng() * 2 - 1) * 10, y: PLAYER_Y + 6, r: 1 + vrng() * 2.5 });
+      bubbles.push({ x: sim.x + (vrng() * 2 - 1) * 10, y: PLAYER_Y + 6, r: 1 + vrng() * 2.5 });
     }
     for (var i = bubbles.length - 1; i >= 0; i--) {
-      bubbles[i].y -= 1.4 + speed * 0.4;
+      bubbles[i].y -= 1.4 + sim.speed * 0.4;
       if (bubbles[i].y < -8) bubbles.splice(i, 1);
     }
 
-    // collision against the row under the diver
-    var r = rowAt(Math.floor((scrollY + PLAYER_Y) / ROW_H));
-    if (px - PLAYER_R < r.c - r.h || px + PLAYER_R > r.c + r.h) {
+    // ghost replay: lockstep step of its OWN sim instance — zero contact
+    // with the live run's state or RNG streams
+    if (ghost !== null && !ghost.crashed) {
+      stepGhost(ghost);
+      // corrupt-storage guard: freeze a ghost that outlives its record
+      if (!ghost.crashed && ghost.frame > ghost.rec.crashFrame) ghost.crashed = true;
+    }
+
+    if (crashed) {
       crashFrame = frame;
       state = "gameover";
       var score = depthMeters();
       if (score > best) { best = score; saveBest(); }
+      // persist this run's timeline as the seed's ghost when it is the best
+      if (score > 0 && (ghostRec === null || score > ghostRec.depth)) {
+        ghostRec = { depth: score, crashFrame: frame, log: encodeLog(recSegs) };
+        saveGhostRec(ghostRec);
+      }
     }
   }
 
@@ -263,11 +383,11 @@
     ctx.fillRect(0, 0, W, H);
 
     // trench walls
-    var firstRow = Math.floor(scrollY / ROW_H);
-    var offset = scrollY % ROW_H;
+    var firstRow = Math.floor(sim.scrollY / ROW_H);
+    var offset = sim.scrollY % ROW_H;
     ctx.fillStyle = shade("#123048", dark * 0.6);
     for (var i = 0; i <= H / ROW_H + 1; i++) {
-      var r = rowAt(firstRow + i);
+      var r = rowIn(sim, firstRow + i);
       var y = i * ROW_H - offset;
       ctx.fillRect(0, y, r.c - r.h, ROW_H + 1);
       ctx.fillRect(r.c + r.h, y, W - (r.c + r.h), ROW_H + 1);
@@ -301,14 +421,31 @@
       }
     }
 
+    // ghost diver (translucent, render-only presence) — drawn under the live
+    // diver. Its screen y is its own world position relative to the live
+    // scroll: overlapping while both dive, drifting up once the ghost crashed.
+    if (ghost !== null && state !== "title") {
+      var gy = PLAYER_Y + (ghost.sim.scrollY - sim.scrollY);
+      if (gy > -PLAYER_R - 4 && gy < H + PLAYER_R + 4) {
+        ctx.globalAlpha = 0.32;
+        ctx.fillStyle = "#cfe8f5";
+        ctx.beginPath();
+        ctx.arc(ghost.sim.x, gy, PLAYER_R, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#31465a";
+        ctx.fillRect(ghost.sim.x - 3, gy - 2, 6, 3); // visor
+        ctx.globalAlpha = 1;
+      }
+    }
+
     // diver
     if (state !== "title") {
       ctx.fillStyle = skin.body;
       ctx.beginPath();
-      ctx.arc(px, PLAYER_Y, PLAYER_R, 0, Math.PI * 2);
+      ctx.arc(sim.x, PLAYER_Y, PLAYER_R, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = skin.visor;
-      ctx.fillRect(px - 3, PLAYER_Y - 2, 6, 3); // visor
+      ctx.fillRect(sim.x - 3, PLAYER_Y - 2, 6, 3); // visor
     }
 
     // HUD
@@ -318,6 +455,12 @@
     ctx.fillText(meters + " m", 10, 24);
     ctx.textAlign = "right";
     ctx.fillText("best " + best + " m", W - 10, 24);
+    if (ghost !== null && state === "playing") {
+      ctx.fillStyle = "#5f8aa3";
+      ctx.font = "12px 'Courier New', monospace";
+      ctx.fillText("ghost " + ghost.rec.depth + " m", W - 10, 42);
+      ctx.font = "16px 'Courier New', monospace";
+    }
 
     ctx.textAlign = "center";
     if (state === "title") {
@@ -343,6 +486,10 @@
       ctx.textAlign = "left";
       ctx.fillText("skin: " + skin.id + " — C to change", W / 2 - 62, 440);
       ctx.textAlign = "center";
+      if (!GHOST_OFF && ghostRec !== null) {
+        ctx.fillStyle = "#7ea8c0";
+        ctx.fillText("ghost: your best " + ghostRec.depth + " m dives with you", W / 2, 472);
+      }
     } else if (state === "gameover") {
       ctx.fillStyle = "rgba(4,16,28,0.7)";
       ctx.fillRect(0, 200, W, 200);
@@ -425,13 +572,55 @@
     getCrashFrame: function () { return crashFrame; },
     getSkin: function () { var s = SKINS[skinIndex]; return { id: s.id, trailStyle: s.trailStyle, index: skinIndex }; },
     getSkinIds: function () { return SKINS.map(function (s) { return s.id; }); },
+    getGhostInfo: function () {
+      return {
+        enabled: !GHOST_OFF,
+        stored: ghostRec !== null ? { depth: ghostRec.depth, crashFrame: ghostRec.crashFrame } : null,
+        active: ghost !== null
+      };
+    },
+    getGhostRun: function () {
+      if (ghost === null) return null;
+      return {
+        frame: ghost.frame,
+        crashed: ghost.crashed,
+        depth: Math.floor(ghost.sim.scrollY / PX_PER_METER),
+        x: ghost.sim.x,
+        recDepth: ghost.rec.depth,
+        recCrashFrame: ghost.rec.crashFrame
+      };
+    },
+    verifyGhost: function (maxFrames) {
+      // Pure replay-fidelity probe: replays the STORED timeline through a
+      // fresh sim instance (natural physics only — no freeze guard) and
+      // reports where it crashed. Never touches the live run.
+      if (ghostRec === null) return null;
+      var g = makeGhostRun(ghostRec);
+      var cap = (maxFrames && maxFrames > 0) ? maxFrames : 36000;
+      while (!g.crashed && g.frame < cap) stepGhost(g);
+      return {
+        crashed: g.crashed,
+        frame: g.frame,
+        depth: Math.floor(g.sim.scrollY / PX_PER_METER),
+        recDepth: ghostRec.depth,
+        recCrashFrame: ghostRec.crashFrame
+      };
+    },
+    clearGhost: function () {
+      ghost = null;
+      ghostRec = null;
+      try { window.localStorage.removeItem(ghostKey(seed)); } catch (e) { /* ignore */ }
+    },
     stepFrames: function (n) {
       for (var i = 0; i < n; i++) update();
       render(); // rendering is gameplay-inert; keeps headless screenshots useful
       return { state: state, frame: frame, score: depthMeters(), crashFrame: crashFrame };
     },
     reset: function (newSeed) {
-      if (newSeed !== undefined && newSeed !== null && !isNaN(+newSeed)) seed = (+newSeed) >>> 0;
+      if (newSeed !== undefined && newSeed !== null && !isNaN(+newSeed)) {
+        seed = (+newSeed) >>> 0;
+        loadGhostRec(); // ghost records are keyed by seed
+      }
       resetWorld();
       state = "title";
     },

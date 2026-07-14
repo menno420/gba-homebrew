@@ -959,3 +959,33 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #128 opened READY on main; no merge/approve/auto-merge calls from
   this session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (wickroad, PR #129)
+
+- **Game #11 — Wickroad** (`claude/wickroad`, cut from main @
+  `564fa45`): the generative rung. The ORDER-001 concept queue being
+  exhausted, a NEW one-page concept (market-route trading loop: five
+  towns, four goods, a 30-day clock, and a ledger whose ink ages) was
+  written and promoted to a playable prototype slice in one session,
+  per the Courier #96 / Shoal #98 breadth grammar. Dedup argument
+  stated in `games/wickroad/CONCEPT.md` (nearest neighbors named:
+  Cindervault shares turn-based-on-GBA but has no economy; Drift
+  Garden has a wallet but no prices/travel/decisions).
+- Deterministic by construction: turn-based, integer-only, one
+  xorshift32 at fixed seed consumed only at world init; prices are a
+  closed form of (day, market impact). The hook is a watch assert:
+  `wr_telemetry` words 14/15 are a stale-ink witness pair, and the
+  committed proof pins the day the ledger provably lies (ink 27 at
+  age 3 vs world 33).
+- `games/wickroad/proofs.sh` committed from day one: boot/title pins,
+  the committed 13-day winning route (gold 60 -> 328, every leg
+  pinned, win card verbatim, instant restart), the impact ladder +
+  decay, the pass closing at dawn 31. Both routes run twice,
+  watch-logs byte-identical; 166 watch + 26 text assertion passes;
+  suite green at the dist bytes. `dist/wickroad.gba` v0.1 121,708 B,
+  two clean builds byte-identical, sha256 `40bef942…30db`.
+- Provenance: LIVE OWNER directive ("see if there is anything else
+  you can come up with or improve…"), owner live in the coordinator
+  chat ~00:58Z 2026-07-14.
+- PR #129 opened READY on main; no merge/approve/auto-merge calls
+  from this session — the server-side enabler decides on green.

@@ -1165,3 +1165,45 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   `.substrate/guard-fires.jsonl`); no other findings.
 - PR opened READY on main; no merge/approve/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (ORDER 006 EAP closeout, PR #133)
+
+- ts: 2026-07-14T11:41Z (`date -u`); append-only — nothing above edited.
+- **ORDER 006 SERVED** (the final EAP order): it supersedes the
+  never-delivered 2026-07-13→14 night ORDER and ANSWERS the seat's
+  2026-07-13T22:29Z outbox ask — no separate night ORDER is coming.
+- (a) outcomes, each verified live today: Tiltstone stack MERGED to
+  main by the server-side enabler — #92 `d451b79` / #93 `7535d6c` /
+  #95 `1c8e0be` / #97 `b0d2274` (additive conflict-resolving merges +
+  manual base retargets to main; zero denials); #85 CLOSED-cited
+  (superseded by merged #109+#130, decide-and-flag —
+  https://github.com/menno420/gba-homebrew/pull/85#issuecomment-4968446028);
+  juice.js packaging follow-up MERGED — #134 `cf107d3` (web-tiltstone
+  v1.1 zip `3a8b5ce7…`, arcade bundle v1.3 `5174c744…`, `--verify`
+  exit 0, determinism proven run-twice).
+- (b) walkthrough landed: `docs/eap-closeout-walkthrough-2026-07-14.md`
+  (sections A–E, linked from the root README). OWNER ACTIONS live in
+  its §C — checklist verbatim, compact:
+  1. Delete merged branches claude/tiltstone-{par,juice,cells,packs}
+     (**delete**; VERIFY: /branches shows no tiltstone-*).
+  2. Ratify the #85 close via its disposition comment (**ratify**;
+     VERIFY: #85 stays closed, comment read).
+  3. Delete claude/release-packaging after item 2 (**delete**;
+     VERIFY: branch absent).
+  4. PR #133 needs NO merge click (enabler lands green) — ratify the
+     serve by reading the walkthrough (VERIFY: #133 merged).
+  5. Make `nds-rom-build` a required status check — standing ⚑
+     (**add it**; VERIFY: next NDS PR waits on it pre-merge).
+  6. Game direction: Tiltstone daily-leaderboard backend (**park**),
+     next arc (**Wickroad**), device playtests (VERIFY: new inbox
+     ORDER or chat directive).
+  7. External publishing stays owner-only; web-arcade-v1.3.zip is
+     ready (**no action now**).
+- ⚑ contained sweep: served claims deleted — claude-tiltstone-{par,
+  juice,cells,packs} (merged today, shas above) + claude-arcade-refresh
+  (#130 = `d0290d6` on origin/main, verified live).
+- strict check: pre-flip exit 1 (designed born-red hold on this
+  session's card, sole finding); post-flip expected exit 0 (the flip
+  is this branch's last commit). Outbox appended (22:29Z ask closed).
+- PR #133 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

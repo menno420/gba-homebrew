@@ -542,3 +542,32 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #114 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (drift-garden-species, PR #115)
+
+- **ts:** 2026-07-14T03:04:30Z (appended by this dispatch's worker;
+  everything above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Drift Garden growth cut 2 — the concept's "more species" growth line —
+  on branch `claude/drift-garden-species` from main @ `aac62b0`: a
+  data-driven SPECIES table (two per tier — common line fern/lotus/aurora
+  carrying the pre-cut hues/values 5/15/40 exactly, rare line
+  clover/iris/solaris with distinct hues, a bright-core accent, values
+  8/22/55). Tier-1 plants roll species on a side-band mulberry32 stream
+  keyed off the round seed — the gameplay stream's draw count/order are
+  unchanged (the PR #111 contract; all 15 pre-existing assertions green
+  with zero edits). Cross-pollination is species-aware and pure in the
+  parents: same species -> common next-tier line, mixed -> rare (hybrid
+  vigor), zero extra draws. sw.js cache v3 -> v4.
+- `tools/mobile-foundation-smoke/game-smoke.mjs` extended 15 -> 21
+  assertions (pure child derivation, both tier-1 species at a fixed seed
+  under an injected fake Date, per-species harvest values, pure pair ->
+  lotus, pure ladder to tier-3 aurora via the deterministic drag verb,
+  hybrid pair -> iris at +22). Run twice locally against real Chromium:
+  21/21 PASS both runs, deterministic lines byte-identical; foundation
+  run.sh 6/6.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #115 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

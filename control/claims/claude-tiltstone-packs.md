@@ -1,0 +1,1 @@
+- `claude/tiltstone-packs` · **web-arcade: Tiltstone slice 5 (level packs)** — concept growth item 5: curate seeds the solver rates hard (long solutions, low slack) into named packs; engine v1.3.0 → v1.4.0 additive · games/web-tiltstone/**, tools/web-smoke-tiltstone.mjs, .sessions/2026-07-13-tiltstone-packs.md · 2026-07-13

@@ -41,7 +41,7 @@
   else root.TiltstoneEngine = api;
 })(typeof self !== "undefined" ? self : this, function () {
 
-  var VERSION = "1.3.0";
+  var VERSION = "1.4.0";
   var SIZE = 8;          // grid is SIZE x SIZE (square — rotation-safe)
   var EMPTY = 0, WALL = 1, STONE = 2, GEM0 = 3;
   var ICE = 11;          // slice 4 — first code past the 8 reserved gem slots
@@ -482,6 +482,79 @@
     throw new Error("generateLevel: no solvable layout in " + MAX_SALT + " salts (seed=" + seed + ", level=" + levelIndex + ")");
   }
 
+  // ------------------------------------------------ level packs (slice 5) --
+
+  // How hard is a generated level, honestly? Two axes the solver already
+  // measured at generation time: PAR (the BFS-shortest winning line —
+  // longer = more forced reading) and SLACK (best - quota: how many
+  // collectible gems the cavern offers beyond what it demands — fewer
+  // spare gems = less room to waste a pop). Pure integer scalar, higher =
+  // harder: par dominates and slack breaks ties DOWNWARD, so sorting by
+  // score descending is exactly (par desc, slack asc) — the concept doc's
+  // "long solutions, low slack".
+  function difficulty(level) {
+    var p = par(level);
+    var slack = level.best - level.quota;
+    var score = p * 1000 + Math.max(0, 999 - slack);
+    var label = p >= 5 ? "CRUEL" : p === 4 ? "STIFF" : p === 3 ? "TRICKY" : "MILD";
+    return { par: p, slack: slack, score: score, label: label };
+  }
+
+  // Deterministic curation: rate EVERY seed in the def's scan window and
+  // keep the `take` hardest (score desc, seed asc tiebreak — total order,
+  // no RNG beyond the generator's own). Pure function of the def, so
+  // re-running it MUST reproduce the shipped PACKS pin below; the smoke
+  // asserts exactly that, which is what keeps the curated data honest —
+  // never hand-edited, always the solver's own verdict.
+  function curatePack(def) {
+    var rated = [];
+    for (var s = def.scanFrom; s < def.scanFrom + def.scanCount; s++) {
+      var d = difficulty(generateLevel(s, def.levelIndex));
+      rated.push({ seed: s >>> 0, par: d.par, slack: d.slack, score: d.score });
+    }
+    rated.sort(function (a, b) { return b.score - a.score || a.seed - b.seed; });
+    return {
+      id: def.id, name: def.name, levelIndex: def.levelIndex,
+      entries: rated.slice(0, def.take)
+    };
+  }
+
+  // The shipped curation recipes. GRANITE GAUNTLET is base-rules hardcore
+  // (level 0: no slice-4 cells); DEEP CUTS curates the deep caverns
+  // (level 4: ice + locked gems + grates live). Both scan the same 32-seed
+  // window so the two packs are the same population rated at two depths.
+  var PACK_DEFS = [
+    { id: "granite-gauntlet", name: "GRANITE GAUNTLET", levelIndex: 0, scanFrom: 1, scanCount: 32, take: 6 },
+    { id: "deep-cuts",        name: "DEEP CUTS",        levelIndex: 4, scanFrom: 1, scanCount: 32, take: 6 }
+  ];
+
+  // ...and their PINNED result, so the page never re-runs 64 BFS curations
+  // at load time. Computed BY curatePack itself and pinned verbatim; the
+  // engine smoke re-derives both packs and asserts JSON byte-equality.
+  var PACKS = [
+    { id: "granite-gauntlet", name: "GRANITE GAUNTLET", levelIndex: 0, entries: [
+      { seed: 1,  par: 7, slack: 4, score: 7995 },
+      { seed: 3,  par: 6, slack: 4, score: 6995 },
+      { seed: 8,  par: 6, slack: 4, score: 6995 },
+      { seed: 10, par: 5, slack: 4, score: 5995 },
+      { seed: 29, par: 5, slack: 4, score: 5995 },
+      { seed: 32, par: 5, slack: 5, score: 5994 }
+    ] },
+    { id: "deep-cuts", name: "DEEP CUTS", levelIndex: 4, entries: [
+      { seed: 12, par: 8, slack: 5, score: 8994 },
+      { seed: 7,  par: 8, slack: 7, score: 8992 },
+      { seed: 18, par: 7, slack: 6, score: 7993 },
+      { seed: 20, par: 7, slack: 6, score: 7993 },
+      { seed: 4,  par: 7, slack: 7, score: 7992 },
+      { seed: 21, par: 7, slack: 7, score: 7992 }
+    ] }
+  ];
+
+  function packById(id) {
+    for (var i = 0; i < PACKS.length; i++) if (PACKS[i].id === id) return PACKS[i];
+    return null;
+  }
+
   // -------------------------------------------------------------- state --
 
   function newGame(seed, levelIndex) {
@@ -535,6 +608,8 @@
     rotateGrid: rotateGrid, settle: settle, findGroups: findGroups, resolve: resolve,
     settleMoves: settleMoves, resolveTrace: resolveTrace,
     search: search, solve: solve, par: par, grade: grade,
+    difficulty: difficulty, curatePack: curatePack,
+    PACK_DEFS: PACK_DEFS, PACKS: PACKS, packById: packById,
     paramsFor: paramsFor, generateLevel: generateLevel,
     newGame: newGame, rotate: rotate, replay: replay
   };

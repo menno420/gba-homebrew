@@ -82,7 +82,15 @@ if the daily hook shows organic pull.
    generator at level 5+ (levels 1–4 draw the identical RNG stream, so all
    prior pins hold). Rendered as caged gems / glinting ice / arrowed
    grates; the juice layer gained an `unlock` cue on the same honest log.
-5. **Level packs**: curate seeds the solver rates hard (long solutions,
-   low slack) into named packs.
+5. **Level packs** — ✅ SHIPPED (slice 5, session 46): pure
+   `difficulty(level)` rates what the solver already measured (par
+   dominates; low slack — best minus quota — breaks ties), deterministic
+   `curatePack(def)` scans a seed window and keeps the hardest, and the
+   engine ships the PINNED result (`PACKS`: GRANITE GAUNTLET, six
+   base-rule caverns par 5–7; DEEP CUTS, six level-4 caverns par 7–8) —
+   the smoke re-runs the curation and asserts the pin byte-identical, so
+   the curated data is never hand-editable. Shell: pack picker, staged
+   progression (N advances, R restarts the stage), `?pack=&stage=` deep
+   links, guarded per-pack progress persistence.
 6. **Daily leaderboard** needs a backend — out of static-hosting scope;
    local streak tracking works today.

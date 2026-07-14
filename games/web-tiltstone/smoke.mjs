@@ -30,6 +30,13 @@
  *      collect (cascading through the freed gem), settleMoves/resolveTrace
  *      stay exact on kitchen-sink grids, and deep-level generation places
  *      the new cells while levels 0-3 draw the identical RNG stream
+ *  13. level packs (slice 5): difficulty() is the pinned pure rating
+ *      (par dominates, slack breaks ties downward), curatePack() is
+ *      deterministic and REPRODUCES the engine's pinned PACKS data
+ *      byte-for-byte (the honest-curation proof), every curated entry is
+ *      provably winnable by its own solver line, entries are sorted
+ *      hardest-first, and the pinned pars show the packs are genuinely
+ *      harder than the baseline caverns
  *
  * Exits nonzero on any failed assertion; prints one PASS/FAIL line each.
  */
@@ -461,6 +468,78 @@ check("daily seed is a pure date mapping", E.dailySeed("2026-07-13") === 2026071
     check("12-seed sweep at level 4: every deep cavern is provably winnable with the new cells live",
       ok4 === 12, `${ok4}/12 won, worst salt=${worst4}`);
   }
+}
+
+// ------------------------------------------- 13. level packs (slice 5)
+{
+  // difficulty(): pinned pure truth on the pinned seed-42 level
+  const d42 = E.difficulty(g0.level);
+  check("difficulty(seed 42): par=3 slack=4 (best 11 - quota 7) score=3995 TRICKY",
+    d42.par === 3 && d42.slack === 4 && d42.score === 3995 && d42.label === "TRICKY",
+    `par=${d42.par} slack=${d42.slack} score=${d42.score} label=${d42.label}`);
+
+  // label table + the ordering law: par dominates, then LOW slack wins
+  const fake = (sol, best, quota) => ({ solution: sol, best, quota });
+  const labels = ["RR", "RRR", "RRRR", "RRRRR"].map(s => E.difficulty(fake(s, 10, 6)).label).join(",");
+  const parWins = E.difficulty(fake("RRRR", 999 + 6, 6)).score > E.difficulty(fake("RRR", 6, 6)).score;
+  const slackBreaks = E.difficulty(fake("RRR", 8, 6)).score > E.difficulty(fake("RRR", 12, 6)).score;
+  check("difficulty law: labels MILD/TRICKY/STIFF/CRUEL by par; par dominates; low slack breaks ties",
+    labels === "MILD,TRICKY,STIFF,CRUEL" && parWins && slackBreaks, `[${labels}]`);
+
+  // the honest-curation proof: re-running curatePack on each shipped def
+  // reproduces the engine's pinned PACKS byte-for-byte (and twice = twice)
+  const rerun = E.PACK_DEFS.map(def => E.curatePack(def));
+  check("PACKS pin == curatePack(def) re-run, byte-for-byte, for every shipped pack",
+    E.PACKS.length === E.PACK_DEFS.length &&
+    rerun.every((p, i) => JSON.stringify(p) === JSON.stringify(E.PACKS[i])),
+    E.PACKS.map(p => `${p.id}:${p.entries.map(e => e.seed).join("/")}`).join(" · "));
+  check("curatePack is deterministic (same def twice -> identical JSON)",
+    JSON.stringify(E.curatePack(E.PACK_DEFS[0])) === JSON.stringify(rerun[0]));
+
+  // structure: take honored, seeds inside the scan window, hardest-first
+  // (score non-increasing, seed ascending on equal scores)
+  let structOk = true;
+  E.PACKS.forEach((p, i) => {
+    const def = E.PACK_DEFS[i];
+    if (p.entries.length !== def.take || p.levelIndex !== def.levelIndex) structOk = false;
+    for (let j = 0; j < p.entries.length; j++) {
+      const e = p.entries[j];
+      if (e.seed < def.scanFrom || e.seed >= def.scanFrom + def.scanCount) structOk = false;
+      if (j > 0) {
+        const prev = p.entries[j - 1];
+        if (e.score > prev.score || (e.score === prev.score && e.seed < prev.seed)) structOk = false;
+      }
+    }
+  });
+  check("pack structure: take honored, seeds in the scan window, sorted hardest-first", structOk);
+
+  // every curated entry is provably winnable at its pack's depth, and its
+  // stored rating matches a fresh generation of that seed
+  let winnable = 0, ratedOk = 0, total = 0;
+  for (const p of E.PACKS) {
+    for (const e of p.entries) {
+      total++;
+      const lvl = E.generateLevel(e.seed, p.levelIndex);
+      const d = E.difficulty(lvl);
+      if (d.par === e.par && d.slack === e.slack && d.score === e.score) ratedOk++;
+      if (E.replay(E.newGame(e.seed, p.levelIndex), lvl.solution).status === "won") winnable++;
+    }
+  }
+  check("every pack entry: solver line wins + stored rating == fresh generation",
+    winnable === total && ratedOk === total, `${winnable}/${total} winnable, ${ratedOk}/${total} ratings exact`);
+
+  // pinned hardness: the curated pars, hardest-first — visibly above the
+  // baseline caverns (seed-42 level 0 par is 3)
+  const pars = E.PACKS.map(p => p.entries.map(e => e.par).join(""));
+  check("pinned pack pars: granite-gauntlet 766555, deep-cuts 887777 (all > baseline par 3)",
+    pars[0] === "766555" && pars[1] === "887777" &&
+    E.PACKS.every(p => p.entries.every(e => e.par >= 5)),
+    `[${pars.join(" | ")}]`);
+
+  // packById resolves the shipped ids; unknown ids are null
+  check("packById: resolves both shipped ids, unknown -> null",
+    E.packById("granite-gauntlet") === E.PACKS[0] && E.packById("deep-cuts") === E.PACKS[1] &&
+    E.packById("nope") === null);
 }
 
 // ------------------------------------------------------------------- verdict

@@ -35,9 +35,12 @@
   var history = [];   // immutable prior states — engine states never mutate, so undo is a stack
   var undos = 0;      // honest take-back count for this attempt (shown on the win card)
   var anim = null;    // live replay of the last rotation's resolveTrace, or null
+  var pack = null;    // slice 5: the active curated pack object, or null (free play)
+  var stage = 0;      // slice 5: 0-based index into pack.entries
 
   function reset(newSeed, newLevel) {
     cancelAnim();
+    pack = null;                          // any explicit seed/level load exits pack mode
     seed = newSeed >>> 0;
     levelIndex = Math.max(0, newLevel | 0);
     state = E.newGame(seed, levelIndex);
@@ -45,6 +48,28 @@
     undos = 0;
     setMsg("");
     render();
+  }
+
+  // Slice 5: enter (or advance within) a curated pack. A pack stage is just
+  // the generator on the curated seed at the pack's depth — the engine's
+  // pinned PACKS data carries which seeds the solver rated hardest.
+  function startPackStage(p, i) {
+    cancelAnim();
+    pack = p;
+    stage = Math.max(0, Math.min(p.entries.length - 1, i | 0));
+    seed = p.entries[stage].seed >>> 0;
+    levelIndex = p.levelIndex;
+    state = E.newGame(seed, levelIndex);
+    history = [];
+    undos = 0;
+    setMsg(p.name + " — stage " + (stage + 1) + "/" + p.entries.length);
+    render();
+  }
+
+  // Restart the current cavern: the pack stage in pack mode, else free play.
+  function restart() {
+    if (pack) startPackStage(pack, stage);
+    else reset(seed, levelIndex);
   }
 
   function gradeLine() {
@@ -65,7 +90,15 @@
       var chains = state.events[state.events.length - 1].chain;
       setMsg("+" + got + " gem" + (got === 1 ? "" : "s") + (chains > 1 ? " (chain x" + chains + "!)" : ""));
     } else setMsg("");
-    if (state.status === "won") { setMsg("QUOTA MET — " + gradeLine() + ". N for the next level."); saveBest(); }
+    if (state.status === "won") {
+      if (pack) {
+        savePackStage();
+        var last = stage + 1 >= pack.entries.length;
+        setMsg("QUOTA MET — " + gradeLine() + (last
+          ? " — " + pack.name + " CLEAR!"
+          : ". N for stage " + (stage + 2) + "/" + pack.entries.length + "."));
+      } else { setMsg("QUOTA MET — " + gradeLine() + ". N for the next level."); saveBest(); }
+    }
     if (state.status === "lost") setMsg("Out of rotations. U to take one back, R to start this cavern over.");
     updateHud();
     // cosmetic replay of the very trace the engine just resolved
@@ -232,6 +265,13 @@
       if (levelIndex > prev) window.localStorage.setItem(k, String(levelIndex));
     } catch (e) { /* private mode etc. */ }
   }
+  function savePackStage() { // slice 5: highest pack stage cleared, per pack id
+    try {
+      var k = "tiltstone-pack-" + pack.id;
+      var prev = parseInt(window.localStorage.getItem(k) || "0", 10);
+      if (stage + 1 > prev) window.localStorage.setItem(k, String(stage + 1));
+    } catch (e) { /* private mode etc. */ }
+  }
   function loadMuted() {
     try { return window.localStorage.getItem("tiltstone-muted") === "1"; } catch (e) { return false; }
   }
@@ -336,7 +376,10 @@
     document.getElementById("hud-par").textContent = "PAR " + E.par(state.level);
     document.getElementById("hud-level").textContent = "LV " + (state.levelIndex + 1);
     document.getElementById("hud-seed").textContent = "SEED " + state.seed + (state.seed === DAILY ? "*" : "");
-    document.getElementById("btn-next").disabled = state.status !== "won";
+    document.getElementById("hud-pack").textContent =
+      pack ? pack.name + " " + (stage + 1) + "/" + pack.entries.length : "";
+    document.getElementById("btn-next").disabled =
+      state.status !== "won" || !!(pack && stage + 1 >= pack.entries.length);
     document.getElementById("btn-undo").disabled = !history.length || state.status === "won";
   }
 
@@ -361,7 +404,14 @@
   }
 
   // --- input -----------------------------------------------------------------
-  function nextLevel() { if (state.status === "won") reset(seed, levelIndex + 1); }
+  function nextLevel() {
+    if (state.status !== "won") return;
+    if (pack) {                            // advance within the pack; a cleared
+      if (stage + 1 < pack.entries.length) startPackStage(pack, stage + 1);
+      return;                              // pack's final won card stays frozen
+    }
+    reset(seed, levelIndex + 1);
+  }
   function loadSeedBox() {
     var v = document.getElementById("seedbox").value.trim();
     if (v !== "" && isFinite(+v)) reset(+v, 0);
@@ -383,7 +433,7 @@
     var k = ev.key.toLowerCase();
     if (k === "arrowleft" || k === "a") { ev.preventDefault(); act("ccw"); }
     else if (k === "arrowright" || k === "d") { ev.preventDefault(); act("cw"); }
-    else if (k === "r") reset(seed, levelIndex);
+    else if (k === "r") restart();
     else if (k === "n") nextLevel();
     else if (k === "u") undo();
     else if (k === "m") toggleMute();
@@ -391,11 +441,24 @@
   document.getElementById("btn-ccw").addEventListener("click", function () { act("ccw"); });
   document.getElementById("btn-cw").addEventListener("click", function () { act("cw"); });
   document.getElementById("btn-undo").addEventListener("click", undo);
-  document.getElementById("btn-restart").addEventListener("click", function () { reset(seed, levelIndex); });
+  document.getElementById("btn-restart").addEventListener("click", restart);
   document.getElementById("btn-next").addEventListener("click", nextLevel);
   document.getElementById("btn-daily").addEventListener("click", function () { reset(DAILY, 0); });
   document.getElementById("btn-load").addEventListener("click", loadSeedBox);
   document.getElementById("btn-mute").addEventListener("click", toggleMute);
+
+  // slice 5: pack picker — options straight from the engine's pinned PACKS
+  var packbox = document.getElementById("packbox");
+  for (var pi = 0; pi < E.PACKS.length; pi++) {
+    var opt = document.createElement("option");
+    opt.value = E.PACKS[pi].id;
+    opt.textContent = E.PACKS[pi].name + " (" + E.PACKS[pi].entries.length + " stages)";
+    packbox.appendChild(opt);
+  }
+  document.getElementById("btn-pack").addEventListener("click", function () {
+    var p = E.packById(packbox.value);
+    if (p) startPackStage(p, 0);
+  });
 
   // --- test API (harmless for players; used by tools/web-smoke-tiltstone.mjs) --
   window.TILTSTONE = {
@@ -413,8 +476,13 @@
     isAnimating: function () { return !!anim; },
     isMuted: function () { return audio.isMuted(); },
     render: function () { render(); },
+    loadPack: function (id, i) { var p = E.packById(id); if (p) startPackStage(p, i || 0); return state; },
+    getPack: function () { return pack ? { id: pack.id, name: pack.name, stage: stage, size: pack.entries.length } : null; },
     dailySeed: DAILY
   };
 
-  render();
+  // slice 5: ?pack=<id>[&stage=<1-based>] boots straight into a pack stage
+  var bootPack = qs.has("pack") ? E.packById(qs.get("pack")) : null;
+  if (bootPack) startPackStage(bootPack, ((parseInt(qs.get("stage") || "1", 10) || 1) - 1));
+  else render();
 })();

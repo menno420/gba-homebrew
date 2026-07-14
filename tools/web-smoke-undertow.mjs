@@ -33,10 +33,23 @@
  * frame (air-out is the drain schedule, not the seed); a collected
  * pocket extends the run; a pocket-chasing driver witnesses an in-run
  * refill and far outlives the no-input run on the same seed (the
- * "reason to leave the safe line"), deterministically across two runs;
- * stale v1 ghost records (pre-oxygen sim) are dropped cleanly and a
- * crashed run writes a fresh v2 record. Exits non-zero on any failed
- * assertion; prints one PASS/FAIL line per assertion.
+ * "reason to leave the safe line"), deterministically across two runs.
+ * Also proves the jellyfish-hazard cut (growth cut 5 — the LAST named
+ * growth cut, again a SIM change on a THIRD side-band RNG stream:
+ * mulberry32(seed ^ JELLY_STREAM), a fixed four draws per generated
+ * row, so the wall stream AND the pocket stream draw exactly what they
+ * drew in v1.4.0): jellyfish spawn deterministically from row 40 on
+ * and drift on a bounded sine of the sim's own step counter — same
+ * seed yields identical positions at frame N, twice; a jelly-chasing
+ * driver dies STUNG with air left in the tank, deterministically
+ * across two runs; the carried witnesses (hold-left seed-7 wall crash
+ * at frame 37 / 7m; seed-7 no-input air-out at 810 / 191m) land on
+ * their v1.4.0 numbers verbatim, proving both prior layouts untouched;
+ * the seed-3 no-input run is the sim-change witness (650 / 148m air in
+ * v1.4.0 -> 358 / 76m sting); stale v2 ghost records (pre-jellyfish
+ * sim) are dropped cleanly and a crashed run writes a fresh v3 record.
+ * Exits non-zero on any failed assertion; prints one PASS/FAIL line
+ * per assertion.
  *
  * Deps (NOT vendored — install next to the script or point NODE_PATH at an
  * external install; do not commit node_modules):
@@ -179,9 +192,10 @@ const main = async () => {
     `hold-left crashFrame=${runC.crashFrame} vs no-input crashFrame=${runA.crashFrame}`);
 
   // (6b) carried v1.3.0 fixed point: the hold-left run dies on the wall at
-  // frame 37 / 7m — long before oxygen could matter and without touching a
-  // pocket, so this literal carrying verbatim proves the pocket side-band
-  // RNG stream left the channel layout and steering physics byte-identical.
+  // frame 37 / 7m — long before oxygen could matter, without touching a
+  // pocket and above the first jellyfish row (40), so this literal carrying
+  // verbatim proves BOTH side-band RNG streams (pockets AND jellyfish) left
+  // the channel layout and steering physics byte-identical.
   check("carried v1.3.0 fixed point: hold-left seed-7 wall crash at frame 37 / 7m (channel layout untouched)",
     runC.crashFrame === 37 && runC.score === 7 && runC.cause === "wall",
     `crashFrame=${runC.crashFrame} score=${runC.score}m cause=${runC.cause}`);
@@ -569,37 +583,150 @@ const main = async () => {
     `run1(crashFrame=${chase1.crashFrame}, ${chase1.score}m, pockets=${chase1.pockets}) vs run2(crashFrame=${chase2.crashFrame}, ${chase2.score}m, pockets=${chase2.pockets})`);
   await opage.close();
 
-  // (36) stale v1 ghost records (recorded under the oxygen-free sim) are
+  // ---- jellyfish hazards (growth cut 5 — the LAST named growth cut) ---------
+  // A SIM change on a THIRD side-band RNG stream: jellyfish spawn (from row
+  // 40 on) and drift params draw from mulberry32(seed ^ JELLY_STREAM), a
+  // fixed FOUR draws per generated row, so the wall stream and the pocket
+  // stream both draw exactly what they drew in v1.4.0 — a seed's channel
+  // AND pocket layout are byte-identical. Outcomes for seeds whose dive
+  // path meets a jellyfish legitimately moved (that is the feature):
+  // seed-3 no-input went 650 / 148m (air) -> 358 / 76m (sting); the seed-3
+  // pocket-chaser went 2241 / 724m / 48 pockets -> 1157 / 293m / 18
+  // (sting). Seed 7 (no-input AND hold-left) and the zero-pocket seeds
+  // 4 / 8 carry their v1.4.0 numbers verbatim — no jellyfish crosses those
+  // paths, and the carried literals below are the layout-identity witness.
+
+  // (38) carried v1.4.0 fixed point: the seed-7 no-input run (runA, re-run
+  // several times above) still lands on 810 / 191m, out of air — the jelly
+  // stream left the channel layout, the pocket layout and the drain
+  // schedule untouched for a path no jellyfish crosses.
+  check("carried v1.4.0 fixed point: seed-7 no-input air-out at 810 / 191m verbatim (wall + pocket layout untouched)",
+    runA.crashFrame === 810 && runA.score === 191 && runA.cause === "air"
+      && airA.crashFrame === 634 && airB.crashFrame === 634,
+    `seed-7(crashFrame=${runA.crashFrame}, ${runA.score}m, cause=${runA.cause}) zero-pocket air-outs(${airA.crashFrame}, ${airB.crashFrame})`);
+
+  const jpage = await browser.newPage({ viewport: { width: 520, height: 700 } });
+  jpage.on("pageerror", (e) => { console.error("PAGE ERROR (jelly):", e.message); failures++; });
+  await jpage.goto(baseURL + `?seed=${SEED}&headless=1`);
+
+  // sample every jellyfish in rows [40, 100) after running the live sim to
+  // frame `n` — reset first, so each sample is a fresh run of the seed
+  async function jellySample(pg, s, n) {
+    return await pg.evaluate(({ sd, frames }) => {
+      const U = window.UNDERTOW;
+      U.reset(sd);
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+      U.stepFrames(frames);
+      return U.getJellies(40, 60);
+    }, { sd: s, frames: n });
+  }
+
+  // (39) jellyfish spawn from the seeded side-band stream: rows 40+ only,
+  // drift params inside the declared bounds
+  const jelA = await jellySample(jpage, SEED, 300);
+  check("jellyfish spawn in the channel (rows 40+, bounded drift amplitude)",
+    jelA.length > 0 && jelA.every((j) => j.row >= 40 && j.amp >= 10 && j.amp <= 34),
+    `count=${jelA.length} rows=[${jelA.map((j) => j.row).join(",")}] t=${jelA[0] && jelA[0].t}`);
+
+  // (40) spawn/drift determinism: the same seed run to the same frame twice
+  // yields byte-identical jellyfish positions (anchor, amplitude AND the
+  // live drifted x at frame 300)
+  const jelB = await jellySample(jpage, SEED, 300);
+  check("jelly determinism: same seed -> identical positions at frame 300, twice",
+    jelA.length === jelB.length && JSON.stringify(jelA) === JSON.stringify(jelB),
+    `run1[0]=${jelA[0] && jelA[0].x.toFixed(4)} run2[0]=${jelB[0] && jelB[0].x.toFixed(4)} (${jelA.length} jellies)`);
+
+  // (41) the drift is real and bounded: 90 frames later every jelly has
+  // MOVED, and every position stays within its sine amplitude of the anchor
+  const jelC = await jpage.evaluate(() => {
+    window.UNDERTOW.stepFrames(90);
+    return window.UNDERTOW.getJellies(40, 60);
+  });
+  const moved = jelC.length === jelB.length
+    && jelC.every((j, i) => j.row === jelB[i].row && j.x !== jelB[i].x);
+  const bounded = jelB.concat(jelC).every((j) => Math.abs(j.x - j.x0) <= j.amp + 1e-9);
+  check("jellies drift on a bounded sine (moved by frame 390, never beyond anchor +/- amp)",
+    moved && bounded,
+    `row ${jelB[0] && jelB[0].row}: x@300=${jelB[0] && jelB[0].x.toFixed(2)} -> x@390=${jelC[0] && jelC[0].x.toFixed(2)} (anchor=${jelB[0] && jelB[0].x0.toFixed(2)}, amp=${jelB[0] && jelB[0].amp.toFixed(2)})`);
+
+  // greedy jelly-hunter: each frame steer toward the nearest jellyfish below
+  // (via the getJellyProbe hook). Fully deterministic: reads only sim state.
+  async function huntRun(pg, s) {
+    return await pg.evaluate(({ sd, max }) => {
+      const U = window.UNDERTOW;
+      U.reset(sd);
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+      let last = null;
+      for (let f = 0; f < max; f++) {
+        const p = U.getJellyProbe();
+        if (p) U.setInput({ left: p.x < p.diverX - 2, right: p.x > p.diverX + 2 });
+        else U.setInput({ left: false, right: false });
+        last = U.stepFrames(1);
+        if (last.state === "gameover") break;
+      }
+      U.setInput({ left: false, right: false });
+      const o = U.getOxygen();
+      return { ...last, oxygen: o.oxygen };
+    }, { sd: s, max: MAX_FRAMES });
+  }
+
+  // (42) touching a jellyfish ends the run: the hunter steers into one and
+  // dies STUNG with air still in the tank (so the sting, not the tank or a
+  // wall, ended the run) — and well before the no-input air-out
+  const hunt1 = await huntRun(jpage, SEED);
+  check("touching a jellyfish ends the run (hunter dies STUNG with air left in the tank)",
+    hunt1.state === "gameover" && hunt1.cause === "sting" && hunt1.oxygen > 0
+      && hunt1.crashFrame < runA.crashFrame,
+    `crashFrame=${hunt1.crashFrame} score=${hunt1.score}m cause=${hunt1.cause} oxygen=${hunt1.oxygen.toFixed(2)} (no-input air-out=${runA.crashFrame})`);
+
+  // (43) the sting is deterministic: two driven hunts are identical
+  const hunt2 = await huntRun(jpage, SEED);
+  check("sting determinism: two driven hunts identical (crashFrame + depth + cause)",
+    hunt2.cause === hunt1.cause && hunt2.crashFrame === hunt1.crashFrame && hunt2.score === hunt1.score,
+    `run1(crashFrame=${hunt1.crashFrame}, ${hunt1.score}m) vs run2(crashFrame=${hunt2.crashFrame}, ${hunt2.score}m)`);
+
+  // (44) the sim-change witness: seed-3's no-input run drifts into a
+  // jellyfish and now dies STUNG at 358 / 76m — in v1.4.0 it died of air
+  // at 650 / 148m. This is the re-derived baseline for the seed the
+  // feature legitimately moved.
+  const sting3 = await noInputRun(jpage, 3);
+  check("sim-change witness: seed-3 no-input run dies STUNG at 358 / 76m (v1.4.0: 650 / 148m, air)",
+    sting3.state === "gameover" && sting3.cause === "sting"
+      && sting3.crashFrame === 358 && sting3.score === 76,
+    `crashFrame=${sting3.crashFrame} score=${sting3.score}m cause=${sting3.cause} oxygen=${sting3.oxygen.toFixed(2)}`);
+  await jpage.close();
+
+  // (36) stale v2 ghost records (recorded under the jellyfish-free sim) are
   // dropped cleanly on load — their depth/crashFrame no longer mean anything
   const vpage = await browser.newPage({ viewport: { width: 520, height: 700 } });
-  vpage.on("pageerror", (e) => { console.error("PAGE ERROR (ghost-v2):", e.message); failures++; });
+  vpage.on("pageerror", (e) => { console.error("PAGE ERROR (ghost-v3):", e.message); failures++; });
   await vpage.goto(baseURL + `?seed=${SEED}&headless=1`);
   const staleSetup = await vpage.evaluate(() => {
     try {
       window.localStorage.setItem("undertow.ghost." + window.UNDERTOW.getSeed(),
-        JSON.stringify({ v: 1, depth: 999, crashFrame: 9999, log: "9999n" }));
+        JSON.stringify({ v: 2, depth: 999, crashFrame: 9999, log: "9999n" }));
       return true;
     } catch { return false; }
   });
   await vpage.reload();
   const staleInfo = await vpage.evaluate(() => window.UNDERTOW.getGhostInfo());
-  check("stale v1 ghost record (pre-oxygen sim) is dropped cleanly on load (no ghost, no error)",
+  check("stale v2 ghost record (pre-jellyfish sim) is dropped cleanly on load (no ghost, no error)",
     staleSetup === true && staleInfo.stored === null && staleInfo.active === false,
-    `injected v1 record; after reload stored=${JSON.stringify(staleInfo.stored)} active=${staleInfo.active}`);
+    `injected v2 record; after reload stored=${JSON.stringify(staleInfo.stored)} active=${staleInfo.active}`);
 
-  // (37) the next crashed run replaces the stale record with a fresh v2 ghost
+  // (37) the next crashed run replaces the stale record with a fresh v3 ghost
   await vpage.evaluate(() => {
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
   });
   const runV = await runToCrash(vpage);
-  const v2rec = await vpage.evaluate(() => {
+  const v3rec = await vpage.evaluate(() => {
     try { return JSON.parse(window.localStorage.getItem("undertow.ghost." + window.UNDERTOW.getSeed())); }
     catch { return null; }
   });
-  check("a crashed run under the oxygen sim writes a fresh v2 ghost record over the stale one",
-    runV.state === "gameover" && !!v2rec && v2rec.v === 2
-      && v2rec.depth === runV.score && v2rec.crashFrame === runV.crashFrame,
-    `record v=${v2rec && v2rec.v} depth=${v2rec && v2rec.depth} crashFrame=${v2rec && v2rec.crashFrame} run(crashFrame=${runV.crashFrame}, ${runV.score}m)`);
+  check("a crashed run under the jellyfish sim writes a fresh v3 ghost record over the stale one",
+    runV.state === "gameover" && !!v3rec && v3rec.v === 3
+      && v3rec.depth === runV.score && v3rec.crashFrame === runV.crashFrame,
+    `record v=${v3rec && v3rec.v} depth=${v3rec && v3rec.depth} crashFrame=${v3rec && v3rec.crashFrame} run(crashFrame=${runV.crashFrame}, ${runV.score}m)`);
   await vpage.close();
 
   await browser.close();

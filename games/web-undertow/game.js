@@ -38,6 +38,21 @@
  * under the oxygen-free sim are meaningless here: the record version bumped
  * 1 -> 2 and v1 records are dropped cleanly on load (no ghost, no error).
  *
+ * Jellyfish hazards (v1.5.0 — a SIM change; the last named growth cut):
+ * jellyfish spawn in the channel and drift horizontally on a deterministic
+ * sine around their anchor; touching one ends the run like a crash
+ * ("STUNG") — the game's grammar is one-touch death, so a sting is a third
+ * way to die next to the wall and the empty tank. Jellyfish draw from their
+ * OWN side-band RNG stream (mulberry32 of seed ^ JELLY_STREAM), one fixed
+ * quadruple of draws per generated row, so both the wall stream and the
+ * pocket stream draw exactly what they drew in v1.4.0 — the channel layout
+ * AND the pocket layout for a given seed are byte-identical. Run OUTCOMES
+ * for seeds where a jellyfish intersects the dive path legitimately change:
+ * that is the feature. Drift is a pure function of row data and the sim
+ * instance's own step counter (s.t), so the ghost replay stays exact by
+ * construction; ghost records bumped 2 -> 3 (pre-jellyfish timelines would
+ * replay to a different outcome) and v2 records are dropped cleanly on load.
+ *
  * Test hooks: window.UNDERTOW (always exposed). With ?headless=1 the RAF loop
  * does not start — drive the sim with UNDERTOW.stepFrames(n). Keyboard events
  * dispatched programmatically also work headlessly.
@@ -45,7 +60,7 @@
 (function () {
   "use strict";
 
-  var VERSION = "1.4.0";
+  var VERSION = "1.5.0";
   var W = 480, H = 640;
   var ROW_H = 16;              // pixels per trench row
   var PLAYER_Y = 150;          // fixed screen y of the diver
@@ -72,6 +87,16 @@
   var POCKET_CHANCE = 0.10;    // per-row spawn probability
   var POCKET_MARGIN = 15;      // min distance of a pocket center from a wall
   var POCKET_STREAM = 0x1F123BB5; // seed XOR for the pocket side-band RNG
+
+  // --- jellyfish hazards (SIM constants) ------------------------------------
+  var JELLY_R = 10;            // jellyfish collision radius
+  var JELLY_START_ROW = 40;    // first row that may hold a jellyfish
+  var JELLY_CHANCE = 0.07;     // per-row spawn probability
+  var JELLY_MARGIN = 18;       // min distance of a jelly ANCHOR from a wall
+  var JELLY_AMP_MIN = 10;      // horizontal drift amplitude range (px)
+  var JELLY_AMP_MAX = 34;
+  var JELLY_FREQ = 0.02;       // drift angular speed (radians per sim step)
+  var JELLY_STREAM = 0x2E11F15A; // seed XOR for the jelly side-band RNG
 
   // --- seeded RNG (mulberry32) ---------------------------------------------
   function mulberry32(a) {
@@ -196,12 +221,13 @@
     return segs;
   }
 
-  // Record version 2 = the oxygen sim (v1.4.0). v1 records were recorded
-  // under the oxygen-free sim (<= v1.3.0): their timelines would replay to a
-  // DIFFERENT outcome here (air can end the run first), so their depth and
-  // crashFrame no longer mean anything — loadGhostRec drops them cleanly
-  // (no ghost, no error) and the next crashed run writes a fresh v2 record.
-  var GHOST_REC_V = 2;
+  // Record version 3 = the jellyfish sim (v1.5.0). v2 records were recorded
+  // under the jellyfish-free sim (v1.4.0), v1 under the oxygen-free sim
+  // (<= v1.3.0): either timeline would replay to a DIFFERENT outcome here
+  // (a sting can end the run first), so their depth and crashFrame no longer
+  // mean anything — loadGhostRec drops them cleanly (no ghost, no error) and
+  // the next crashed run writes a fresh v3 record.
+  var GHOST_REC_V = 3;
 
   var ghostRec = null; // {depth, crashFrame, log} for the current seed, or null
   function loadGhostRec() {
@@ -256,8 +282,9 @@
   var state = "title";          // title | playing | gameover
 
   // A sim instance owns everything one diver's outcome depends on: its own
-  // gameplay RNG, its own pocket side-band RNG, its own lazily generated
-  // trench rows (walls + air pockets), scroll, x, oxygen and pocket count.
+  // gameplay RNG, its own pocket side-band RNG, its own jelly side-band RNG,
+  // its own lazily generated trench rows (walls + air pockets + jellyfish),
+  // scroll, x, oxygen, pocket count and step counter (jelly drift phase).
   // The live run and the ghost replay each hold one — they never share state.
   function makeSim() {
     return {
@@ -265,21 +292,33 @@
       prng: mulberry32((seed ^ POCKET_STREAM) >>> 0), // pockets ONLY — the
       // wall stream above draws exactly what it drew in v1.3.0, so the
       // channel layout for a given seed is unchanged by this feature
+      jrng: mulberry32((seed ^ JELLY_STREAM) >>> 0), // jellyfish ONLY — its
+      // own side-band, so both streams above draw exactly what they drew
+      // in v1.4.0: channel AND pocket layout per seed are unchanged
       rows: [], scrollY: 0, x: W / 2, speed: 0,
-      oxy: OXY_MAX, pockets: 0
+      oxy: OXY_MAX, pockets: 0, t: 0
     };
   }
 
+  // A jellyfish's x at sim step t: pure function of its row data and t —
+  // no state, no RNG — so the live run, the ghost replay and the renderer
+  // all see the same creature in the same place.
+  function jellyX(j, t) {
+    return j.x0 + j.amp * Math.sin(j.ph + t * JELLY_FREQ);
+  }
+
   function rowIn(s, i) {
-    // rows[i] = {c: centerX, h: halfWidth, p: air pocket or null}; each new
-    // row consumes exactly one draw from the instance's OWN gameplay RNG (the
-    // wall shape) and, from POCKET_START_ROW on, exactly two draws from the
-    // pocket side-band RNG — always two, spawn or not, so every row's value
-    // depends only on its index, never on who forced its generation.
+    // rows[i] = {c: centerX, h: halfWidth, p: air pocket or null, j:
+    // jellyfish or null}; each new row consumes exactly one draw from the
+    // instance's OWN gameplay RNG (the wall shape), from POCKET_START_ROW on
+    // exactly two draws from the pocket side-band RNG, and from
+    // JELLY_START_ROW on exactly four draws from the jelly side-band RNG —
+    // always the same count, spawn or not, so every row's value depends only
+    // on its index, never on who forced its generation.
     while (s.rows.length <= i) {
       var n = s.rows.length;
       if (n < 12) {
-        s.rows.push({ c: W / 2, h: START_HALF, p: null });
+        s.rows.push({ c: W / 2, h: START_HALF, p: null, j: null });
       } else {
         var prev = s.rows[n - 1];
         var half = Math.max(MIN_HALF, START_HALF - n * NARROW_RATE);
@@ -288,13 +327,29 @@
         var margin = half + 14;
         if (c < margin) c = margin;
         if (c > W - margin) c = W - margin;
-        var row = { c: c, h: half, p: null };
+        var row = { c: c, h: half, p: null, j: null };
         if (n >= POCKET_START_ROW) {
           var roll = s.prng();
           var fx = s.prng();
           var span = half - POCKET_MARGIN;
           if (roll < POCKET_CHANCE && span > 0) {
             row.p = { x: c - span + fx * span * 2, taken: false };
+          }
+        }
+        if (n >= JELLY_START_ROW) {
+          // always four draws — spawn or not — so the jelly stream stays
+          // index-locked and never skews itself
+          var jroll = s.jrng();
+          var jfx = s.jrng();
+          var jfa = s.jrng();
+          var jfp = s.jrng();
+          var jspan = half - JELLY_MARGIN;
+          if (jroll < JELLY_CHANCE && jspan > 0) {
+            row.j = {
+              x0: c - jspan + jfx * jspan * 2,                       // anchor
+              amp: JELLY_AMP_MIN + jfa * (JELLY_AMP_MAX - JELLY_AMP_MIN),
+              ph: jfp * Math.PI * 2                                  // phase
+            };
           }
         }
         s.rows.push(row);
@@ -304,13 +359,15 @@
   }
 
   // One fixed-timestep physics step for a sim instance under a steer input
-  // (-1 left, 0 none, +1 right). Returns "wall" or "air" when the diver's
-  // run ended this frame ("wall" wins a same-frame tie), null otherwise —
-  // both are truthy/falsy compatible with the old boolean. This is THE
-  // step: the live run and the ghost replay execute this same code, so a
-  // recorded input timeline replays to the identical crash frame, depth
-  // and cause by construction (oxygen and pockets live inside the sim).
+  // (-1 left, 0 none, +1 right). Returns "wall", "sting" or "air" when the
+  // diver's run ended this frame (same-frame ties resolve in that order),
+  // null otherwise — all truthy/falsy compatible with the old boolean. This
+  // is THE step: the live run and the ghost replay execute this same code,
+  // so a recorded input timeline replays to the identical crash frame,
+  // depth and cause by construction (oxygen, pockets and the jelly drift
+  // clock all live inside the sim instance).
   function physStep(s, steer) {
+    s.t++; // the sim's own step counter — the jelly drift clock
     var meters = Math.floor(s.scrollY / PX_PER_METER);
     s.speed = Math.min(MAX_SPEED, BASE_SPEED + meters * SPEED_RAMP);
     s.scrollY += s.speed;
@@ -339,6 +396,17 @@
     s.oxy -= OXY_DRAIN + meters * OXY_DRAIN_RAMP;
     var r = rowIn(s, ri);
     if (s.x - PLAYER_R < r.c - r.h || s.x + PLAYER_R > r.c + r.h) return "wall";
+    // jellyfish: contact with a drifting jelly in the diver's row band ends
+    // the run — one-touch death, same grammar as the walls
+    var jr = (PLAYER_R + JELLY_R) * (PLAYER_R + JELLY_R);
+    for (var k = (ri > 0 ? ri - 1 : 0); k <= ri + 1; k++) {
+      var w = rowIn(s, k);
+      if (w.j) {
+        var jdx = s.x - jellyX(w.j, s.t);
+        var jdy = wy - (k * ROW_H + ROW_H / 2);
+        if (jdx * jdx + jdy * jdy <= jr) return "sting";
+      }
+    }
     if (s.oxy <= 0) { s.oxy = 0; return "air"; }
     return null;
   }
@@ -485,6 +553,25 @@
         ctx.arc(r.p.x - 3, py - 3, 2.4, 0, Math.PI * 2);
         ctx.fill();
       }
+      // jellyfish: dome + tentacles at the sim-truth drift position — the
+      // renderer READS jellyX(row, sim.t); it never owns creature state
+      if (r.j) {
+        var jx = jellyX(r.j, sim.t);
+        var jy = y + ROW_H / 2;
+        var pulse = 0.55 + 0.2 * Math.sin(r.j.ph + sim.t * JELLY_FREQ * 3);
+        ctx.fillStyle = "rgba(233,150,222," + pulse.toFixed(3) + ")";
+        ctx.beginPath();
+        ctx.arc(jx, jy - 2, JELLY_R - 1, Math.PI, 0);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(233,150,222,0.55)";
+        ctx.lineWidth = 1.4;
+        for (var tn = -1; tn <= 1; tn++) {
+          ctx.beginPath();
+          ctx.moveTo(jx + tn * 5, jy - 2);
+          ctx.lineTo(jx + tn * 6, jy + 7);
+          ctx.stroke();
+        }
+      }
       ctx.fillStyle = shade("#123048", dark * 0.6);
     }
 
@@ -575,12 +662,13 @@
       ctx.font = "16px 'Courier New', monospace";
       ctx.fillText("dive the trench — don't touch the walls", W / 2, 290);
       ctx.fillText("grab air pockets before your tank runs dry", W / 2, 312);
-      ctx.fillText("space / enter / tap to dive", W / 2, 340);
+      ctx.fillText("dodge the jellyfish — one sting ends the dive", W / 2, 334);
+      ctx.fillText("space / enter / tap to dive", W / 2, 358);
       ctx.fillStyle = "#5f8aa3";
-      ctx.fillText((DAILY ? "daily dive " : "seed ") + seed, W / 2, 370);
+      ctx.fillText((DAILY ? "daily dive " : "seed ") + seed, W / 2, 384);
       if (CHALLENGE_DEPTH > 0) {
         ctx.fillStyle = "#ffd35c";
-        ctx.fillText("challenge: beat " + CHALLENGE_DEPTH + " m", W / 2, 400);
+        ctx.fillText("challenge: beat " + CHALLENGE_DEPTH + " m", W / 2, 408);
       }
       // skin preview: swatch diver + label, C cycles
       ctx.fillStyle = skin.body;
@@ -602,7 +690,9 @@
       ctx.fillRect(0, 200, W, 200);
       ctx.fillStyle = "#ff7a6b";
       ctx.font = "bold 30px 'Courier New', monospace";
-      ctx.fillText((crashCause === "air" ? "OUT OF AIR AT " : "CRUSHED AT ") + meters + " m", W / 2, 270);
+      ctx.fillText((crashCause === "air" ? "OUT OF AIR AT "
+        : crashCause === "sting" ? "STUNG AT "
+        : "CRUSHED AT ") + meters + " m", W / 2, 270);
       ctx.fillStyle = "#cfe8f5";
       ctx.font = "16px 'Courier New', monospace";
       ctx.fillText("best " + best + " m", W / 2, 310);
@@ -677,7 +767,7 @@
     getShareFeedback: function () { return shareMsg; },
     dailySeedFor: function (d) { return dailySeed(d instanceof Date ? d : new Date(d)); },
     getCrashFrame: function () { return crashFrame; },
-    getCrashCause: function () { return crashCause; }, // "wall" | "air" | null
+    getCrashCause: function () { return crashCause; }, // "wall" | "sting" | "air" | null
     getOxygen: function () {
       return { oxygen: sim.oxy, max: OXY_MAX, pockets: sim.pockets };
     },
@@ -692,6 +782,40 @@
         if (r.p && !r.p.taken) {
           return {
             x: r.p.x,
+            row: i,
+            dy: (i * ROW_H + ROW_H / 2) - (sim.scrollY + PLAYER_Y),
+            diverX: sim.x
+          };
+        }
+      }
+      return null;
+    },
+    getJellies: function (fromRow, count) {
+      // Test/driver hook: every jellyfish in rows [fromRow, fromRow+count)
+      // with its CURRENT drift position at the live sim's step counter.
+      // Probing may force row generation, but rows depend only on their
+      // index, so it never perturbs the sim.
+      var out = [];
+      var start = Math.floor(fromRow) || 0;
+      var n = (count && count > 0) ? Math.floor(count) : 40;
+      for (var i = start; i < start + n; i++) {
+        var r = rowIn(sim, i);
+        if (r.j) {
+          out.push({ row: i, x: jellyX(r.j, sim.t), x0: r.j.x0, amp: r.j.amp, t: sim.t });
+        }
+      }
+      return out;
+    },
+    getJellyProbe: function (lookRows) {
+      // Test/driver hook: the nearest jellyfish at or below the diver
+      // within lookRows rows (default 40), at its current drift position.
+      var start = Math.floor((sim.scrollY + PLAYER_Y) / ROW_H);
+      var look = (lookRows && lookRows > 0) ? Math.floor(lookRows) : 40;
+      for (var i = start; i <= start + look; i++) {
+        var r = rowIn(sim, i);
+        if (r.j) {
+          return {
+            x: jellyX(r.j, sim.t),
             row: i,
             dy: (i * ROW_H + ROW_H / 2) - (sim.scrollY + PLAYER_Y),
             diverX: sim.x

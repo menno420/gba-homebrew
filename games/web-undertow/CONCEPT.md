@@ -1,6 +1,7 @@
 # Undertow — concept
 
-> **Status:** `reference`
+> **Status:** `reference` — growth path complete: all five named cuts BUILT
+> (daily seed, cosmetics, ghosts, oxygen, jellyfish hazards)
 
 ## Pitch
 
@@ -49,7 +50,21 @@ cheap and is the only version of this game with a reason to return.
   the wall → 810 / 191m out of air). Oxygen and pockets live inside the sim
   instance, so ghost replays stay exact by construction; ghost records were
   re-versioned (v1 → v2) and stale pre-oxygen records are dropped cleanly.
-- Hazards/creatures in the channel (jellyfish that drift on the seeded RNG).
+- Hazards/creatures in the channel (jellyfish that drift on the seeded RNG) —
+  **BUILT** (growth cut 5, the last named cut): jellyfish spawn in the
+  channel from row 40 on, drawn from a third side-band RNG stream derived
+  from the seed (a fixed four draws per row — the wall and pocket streams
+  draw exactly what they drew before, so a seed's channel AND pocket layout
+  are unchanged); each jelly drifts horizontally on a bounded sine of the
+  sim's own step counter (a pure function of row data + time — no state, no
+  extra RNG); touching one ends the run like a crash ("STUNG AT N m") —
+  one-touch death, the game's grammar. This is a SIM change: outcomes for
+  seeds whose dive path meets a jellyfish legitimately moved (seed-3
+  no-input: 650 / 148m out of air → 358 / 76m stung), while paths no jelly
+  crosses carry verbatim (seed-7 no-input: 810 / 191m out of air,
+  unchanged). Drift lives inside the sim instance, so ghost replays stay
+  exact by construction; ghost records re-versioned v2 → v3, stale
+  pre-jellyfish records dropped cleanly.
 - Daily seeded run with a shareable score URL (`?seed=YYYYMMDD`) —
   **BUILT** (growth cut 1): `?daily=1` derives the seed from the UTC date
   as YYYYMMDD (read once at boot, never in the sim step); the gameover

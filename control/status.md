@@ -457,3 +457,32 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   (`run.sh`) 6/6 green before and after.
 - PR #111 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (cindervault-items, PR #112)
+
+- **ts:** 2026-07-14T02:18:10Z (appended by this dispatch's worker;
+  everything above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Cindervault growth cut 1 — the concept's named item-layer line — on
+  branch `claude/cindervault-items` from main @ `39fdc87`: one inventory
+  slot, a lantern (halves burn for 20 turns: torch burns every second
+  held turn) and a blade (bumps for 3: the 3-HP 'M' dies in one hit),
+  one of each spawned per floor, picked up like embers — pickup
+  activates, picking up the other kind replaces the held one, zero new
+  verbs. Item RNG draws appended after each floor's existing generation
+  words (new world version); telemetry 16 → 18 words + an ITEM HUD line.
+- ALSO: the committed-proofs port (the Shoal/Courier gap, closed for
+  Cindervault): `games/cindervault/proofs.sh` (P1 boot, P2 lantern, P3
+  blade; P2/P3 each RUN TWICE, watch-logs byte-identical) + the
+  prototype card's host-side mirror rebuilt as a COMMITTED tool
+  (`games/cindervault/tools/mirror.py`), certified vs the emulator at 0
+  mismatches across all 75 turn states before any pin was transcribed.
+  Local-only + committed, matching Shoal (per-PR CI stays "ROM builds").
+- `dist/cindervault.gba` v0.2 refreshed (121,700 bytes, two clean builds
+  byte-identical, sha256 `b53421ba…`); toolchain first re-certified by
+  rebuilding v0.1 to its committed dist hash exactly.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #112 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

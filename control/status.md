@@ -28,4 +28,5 @@ Ordered reading list:
 
 - Fleet doctrine lives in the owner's fleet-manager repo (docs/prompts/v3/, projects/UNIVERSAL.md) — pointed at, not restated here.
 - Repo-local truth: control/README.md protocol text (keep).
+- Track plan: `docs/concepts/session-1-concepts.md` — the ORDER-001 concept queue (fully built; reference kept here so the doc stays on the read path).
 - Local docs that duplicate fleet doctrine (LISTED, not migrated): docs/ROUTINES.md (wake-chain doctrine), docs/conventions.md (seeded from the gen-2 blueprint), docs/collaboration-model.md, docs/ai-project-workflow.md, docs/helper-policy.md.

@@ -7,7 +7,7 @@
   2026-07-14 — overwrite `control/status.md` as the dormant-seat revival
   entrypoint (revival reading list, routines record, parked-work ledger,
   source-of-truth pointers). No feature work, no code changes.
-- **📊 Model:** Claude Fable family self-report — no version/ID
+- **📊 Model:** Claude Fable family self-report — no version/ID · medium · docs-only seat shutdown
 
 ## What shipped
 

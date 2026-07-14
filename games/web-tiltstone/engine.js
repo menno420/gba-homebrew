@@ -16,6 +16,16 @@
  *   2            stone (falls, never merges — dead weight and plug)
  *   3 + c        gem of color c (0..colors-1); falls, 3+ orthogonally
  *                adjacent same-color gems collect after every settle
+ *   11           ice   (slice 4: falls, never merges, and SLIDES — resting
+ *                ice with an empty side + empty diagonal-below slips off,
+ *                left before right, then keeps falling)
+ *   12 + c       locked gem of color c (slice 4: falls like dead weight,
+ *                never joins a group; a collect popping orthogonally
+ *                adjacent breaks the lock and frees a normal gem)
+ *   20 + o       one-way grate, orientation o (0=up 1=right 2=down 3=left;
+ *                slice 4: fixed like a wall and rotates its arrow with the
+ *                cavern; pieces fall THROUGH it only while it points down,
+ *                and rest ON it otherwise)
  *
  * A level is generated from (seed, levelIndex) and is PROVABLY SOLVABLE:
  * generation runs a breadth-first solver over the rotation tree (branching
@@ -31,12 +41,24 @@
   else root.TiltstoneEngine = api;
 })(typeof self !== "undefined" ? self : this, function () {
 
-  var VERSION = "1.0.0";
+  var VERSION = "1.4.0";
   var SIZE = 8;          // grid is SIZE x SIZE (square — rotation-safe)
   var EMPTY = 0, WALL = 1, STONE = 2, GEM0 = 3;
+  var ICE = 11;          // slice 4 — first code past the 8 reserved gem slots
+  var LOCK0 = 12;        // slice 4 — locked gem of color c is LOCK0 + c
+  var GRATE0 = 20;       // slice 4 — grate orientation o is GRATE0 + o
   var MERGE_MIN = 3;     // orthogonal group size that collects
   var MAX_SALT = 64;     // generation re-tries before giving up (never hit in practice)
   var MIN_BEST = 6;      // a layout must offer at least this many collectible gems
+
+  // Cell-class helpers (slice 4). Gems are exactly the 8 reserved codes
+  // 3..10, so every pre-slice-4 predicate keeps its old meaning on old
+  // content; the new codes live entirely outside that range.
+  function isGem(v)    { return v >= GEM0 && v < ICE; }
+  function isLocked(v) { return v >= LOCK0 && v < LOCK0 + 8; }
+  function isGrate(v)  { return v >= GRATE0 && v < GRATE0 + 4; }
+  function isFixedCell(v) { return v === WALL || isGrate(v); }
+  function gratePasses(v) { return v === GRATE0 + 2; } // arrow points down
 
   // ---------------------------------------------------------------- RNG --
 
@@ -83,7 +105,9 @@
     return out;
   }
 
-  var CHARS = ".#oABCDEFGH"; // index by cell code: gems are A.., stone o, wall #
+  // Index by cell code: gems A.., stone o, wall #; slice 4 adds ice *,
+  // locked gems a.. (lowercase mirror of their color), grates ^ > v <.
+  var CHARS = ".#oABCDEFGH*abcdefgh^>v<";
   function cellChar(v) { return CHARS[v] || "?"; }
 
   // Canonical ASCII serialization — the pinning/hashing surface for proofs.
@@ -97,35 +121,117 @@
     return rows.join("\n");
   }
 
-  // Rotate the WHOLE cavern (walls included) 90 degrees.
+  // Rotate the WHOLE cavern (walls included) 90 degrees. A grate's arrow is
+  // part of the cavern, so its orientation code turns with it (slice 4).
   function rotateGrid(g, dir) {
     var n = g.length, out = emptyGrid(n);
     for (var r = 0; r < n; r++)
-      for (var c = 0; c < n; c++)
-        out[r][c] = dir === "cw" ? g[n - 1 - c][r] : g[c][n - 1 - r];
+      for (var c = 0; c < n; c++) {
+        var v = dir === "cw" ? g[n - 1 - c][r] : g[c][n - 1 - r];
+        if (isGrate(v)) v = GRATE0 + ((v - GRATE0 + (dir === "cw" ? 1 : 3)) % 4);
+        out[r][c] = v;
+      }
     return out;
   }
 
-  // Gravity: movable cells (stone + gems) fall straight down within their
-  // column until the floor, a wall, or another piece stops them. Walls stay
-  // put. Returns a NEW grid.
-  function settle(g) {
-    var n = g.length, out = emptyGrid(n);
+  // Gravity: movable cells (stone, gems, ice, locked gems) fall straight
+  // down within their column until the floor, a fixed cell, or another
+  // piece stops them. Walls and grates stay put; a DOWN-pointing grate is
+  // porous (pieces fall through it and never rest in it), every other
+  // orientation blocks like a wall. Then resting ice slips: an ice cell
+  // whose side + diagonal-below are both empty slides off (left before
+  // right, deterministic) and keeps falling; anything it was carrying
+  // drops after it. Iterates to a fixed point — every slip moves ice
+  // strictly downward, so it terminates. Pure; returns a NEW grid.
+  //
+  // settleCore also tracks each piece's NET movement (original cell ->
+  // final cell) so settleMoves can hand the shell one move per piece —
+  // for old content (no ice/grates) the move list is exactly the
+  // pre-slice-4 one, in the same order.
+
+  // One straight-drop pass — the v1.2.0 column walk extended with grates.
+  // `orig` maps "r,c" of a CURRENT piece position to its original [r,c];
+  // pass null on the first pass (pieces start at their own cells).
+  function straightPass(src, orig) {
+    var n = src.length, out = emptyGrid(n), norig = {};
     for (var c = 0; c < n; c++) {
-      for (var r = 0; r < n; r++) if (g[r][c] === WALL) out[r][c] = WALL;
+      for (var r = 0; r < n; r++) if (isFixedCell(src[r][c])) out[r][c] = src[r][c];
       var write = n - 1;
       for (var r2 = n - 1; r2 >= 0; r2--) {
-        var v = g[r2][c];
-        if (v === WALL) { write = r2 - 1; continue; }
+        var v = src[r2][c];
+        if (isFixedCell(v)) {
+          if (!gratePasses(v)) write = r2 - 1;      // wall / blocking grate: rest on top
+          else if (write === r2) write = r2 - 1;    // porous, but never a resting slot
+          continue;
+        }
         if (v >= STONE) {
-          while (write >= 0 && out[write][c] === WALL) write--;
+          while (write >= 0 && isFixedCell(out[write][c])) write--;
           out[write][c] = v;
+          norig[write + "," + c] = (orig && orig[r2 + "," + c]) || [r2, c];
           write--;
         }
       }
     }
-    return out;
+    return { grid: out, orig: norig };
   }
+
+  // Where a piece entering column c at row r comes to rest: the deepest
+  // EMPTY cell reachable straight down through empties and porous grates.
+  function dropRow(grid, r, c) {
+    var n = grid.length, rest = r;
+    for (var t = r + 1; t < n; t++) {
+      var v = grid[t][c];
+      if (v === EMPTY) { rest = t; continue; }
+      if (gratePasses(v)) continue;   // falls through, cannot rest inside
+      break;
+    }
+    return rest;
+  }
+
+  function canSlip(grid, r, c, d) {
+    var n = grid.length, cc = c + d;
+    return cc >= 0 && cc < n && r + 1 < n &&
+      grid[r][cc] === EMPTY && grid[r + 1][cc] === EMPTY;
+  }
+
+  function settleCore(g) {
+    var n = g.length;
+    var pass = straightPass(g, null);
+    var grid = pass.grid, orig = pass.orig;
+    for (;;) {
+      var slid = false;
+      for (var r = n - 2; r >= 0 && !slid; r--) {       // bottom-up scan
+        for (var c = 0; c < n && !slid; c++) {
+          if (grid[r][c] !== ICE) continue;
+          var d = canSlip(grid, r, c, -1) ? -1 : canSlip(grid, r, c, 1) ? 1 : 0;
+          if (!d) continue;
+          var from = orig[r + "," + c];
+          delete orig[r + "," + c];
+          grid[r][c] = EMPTY;
+          var land = dropRow(grid, r, c + d);
+          grid[land][c + d] = ICE;
+          orig[land + "," + (c + d)] = from;
+          slid = true;
+        }
+      }
+      if (!slid) break;
+      var again = straightPass(grid, orig);             // whatever it carried drops
+      grid = again.grid; orig = again.orig;
+    }
+    // Emit net moves in the legacy order: source column ascending, source
+    // row bottom-up — byte-identical to the v1.2.0 list on old content.
+    var moves = [];
+    for (var rr = 0; rr < n; rr++)
+      for (var cc2 = 0; cc2 < n; cc2++) {
+        var from2 = orig[rr + "," + cc2];
+        if (from2 && (from2[0] !== rr || from2[1] !== cc2))
+          moves.push({ v: grid[rr][cc2], from: [from2[0], from2[1]], to: [rr, cc2] });
+      }
+    moves.sort(function (a, b) { return a.from[1] - b.from[1] || b.from[0] - a.from[0]; });
+    return { grid: grid, moves: moves };
+  }
+
+  function settle(g) { return settleCore(g).grid; }
 
   // Find all orthogonal same-color gem groups of size >= MERGE_MIN.
   // Returns [{color, cells:[[r,c],...]}, ...] in deterministic scan order.
@@ -134,7 +240,7 @@
     for (var r = 0; r < n; r++) {
       for (var c = 0; c < n; c++) {
         var v = g[r][c];
-        if (v < GEM0 || seen[r][c]) continue;
+        if (!isGem(v) || seen[r][c]) continue;  // locked gems / ice never group
         var stack = [[r, c]], cells = [];
         seen[r][c] = 1;
         while (stack.length) {
@@ -153,8 +259,29 @@
     return groups;
   }
 
+  // A collect popping orthogonally adjacent to a locked gem breaks the
+  // lock (slice 4): the cell becomes a normal gem of its color, in place,
+  // and the NEXT cascade round can group through it. Mutates `grid`;
+  // returns the freed cells in deterministic (group-cell, N/S/W/E) order.
+  function unlockAround(grid, cells) {
+    var n = grid.length, freed = [];
+    for (var j = 0; j < cells.length; j++) {
+      var r = cells[j][0], c = cells[j][1];
+      var nb = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
+      for (var i = 0; i < 4; i++) {
+        var rr = nb[i][0], cc = nb[i][1];
+        if (rr < 0 || rr >= n || cc < 0 || cc >= n) continue;
+        var v = grid[rr][cc];
+        if (isLocked(v)) { grid[rr][cc] = GEM0 + (v - LOCK0); freed.push([rr, cc]); }
+      }
+    }
+    return freed;
+  }
+
   // Settle, then repeatedly collect groups and re-settle (cascade chains).
-  // Pure: takes a grid, returns { grid, collected, events }.
+  // Pure: takes a grid, returns { grid, collected, events }. A collect
+  // event gains `unlocked: k` ONLY when it freed k locked gems, so event
+  // objects on lock-free content stay byte-identical to pre-slice-4.
   function resolve(g) {
     var grid = settle(g), collected = 0, events = [], chain = 0;
     for (;;) {
@@ -164,12 +291,63 @@
       for (var i = 0; i < groups.length; i++) {
         var grp = groups[i];
         collected += grp.cells.length;
-        events.push({ type: "collect", color: grp.color, size: grp.cells.length, chain: chain });
+        var ev = { type: "collect", color: grp.color, size: grp.cells.length, chain: chain };
         for (var j = 0; j < grp.cells.length; j++) grid[grp.cells[j][0]][grp.cells[j][1]] = EMPTY;
+        var freed = unlockAround(grid, grp.cells);
+        if (freed.length) ev.unlocked = freed.length;
+        events.push(ev);
       }
       grid = settle(grid);
     }
     return { grid: grid, collected: collected, events: events };
+  }
+
+  // ------------------------------------------------- trace (slice 3 juice) --
+
+  // settle() plus a per-piece move list — the animation surface. Shares
+  // settleCore with settle, so the returned grid is BYTE-IDENTICAL to
+  // settle(g) (asserted in the smoke); `moves` records every piece that
+  // actually moved as { v, from:[r,c], to:[r,c] } — the NET movement, so a
+  // slipping ice gets ONE move that may change column. Froms are all
+  // distinct and tos are all distinct, so clearing every `from` then
+  // writing every `to` on a copy of the input reconstructs the settled
+  // grid (also asserted). Pure.
+  function settleMoves(g) { return settleCore(g); }
+
+  // resolve() plus the ordered intermediate story — what the shell tweens.
+  // Returns { grid, collected, events, phases } where grid/collected/events
+  // are exactly resolve(g)'s (asserted in the smoke; same loop, same scan
+  // order) and phases is the render script:
+  //   { type:'fall',    moves, grid }                        — gravity step
+  //   { type:'collect', color, size, chain, cells, grid }    — one group pops
+  // Every phase carries the grid AFTER it applies; phases[0] is always the
+  // initial fall (possibly zero moves) and the last phase's grid is the
+  // final grid. Pure — no DOM, no clock; timing lives in juice.js.
+  function resolveTrace(g) {
+    var st = settleMoves(g);
+    var grid = st.grid, collected = 0, events = [], chain = 0;
+    var phases = [{ type: "fall", moves: st.moves, grid: cloneGrid(grid) }];
+    for (;;) {
+      var groups = findGroups(grid);
+      if (!groups.length) break;
+      chain++;
+      for (var i = 0; i < groups.length; i++) {
+        var grp = groups[i];
+        collected += grp.cells.length;
+        var ev = { type: "collect", color: grp.color, size: grp.cells.length, chain: chain };
+        for (var j = 0; j < grp.cells.length; j++) grid[grp.cells[j][0]][grp.cells[j][1]] = EMPTY;
+        var freed = unlockAround(grid, grp.cells);   // same rule + order as resolve()
+        if (freed.length) ev.unlocked = freed.length;
+        events.push(ev);
+        var phase = { type: "collect", color: grp.color, size: grp.cells.length, chain: chain, cells: grp.cells, grid: cloneGrid(grid) };
+        if (freed.length) phase.unlocked = freed;    // grid above already shows the freed gems
+        phases.push(phase);
+      }
+      var again = settleMoves(grid);
+      grid = again.grid;
+      phases.push({ type: "fall", moves: again.moves, grid: cloneGrid(grid) });
+    }
+    return { grid: grid, collected: collected, events: events, phases: phases };
   }
 
   // ------------------------------------------------------------- solver --
@@ -216,16 +394,43 @@
     return null;
   }
 
+  // ------------------------------------------------------- par + grading --
+
+  // Par = the length of the SHORTEST winning rotation line for this level.
+  // `generateLevel` stores exactly that: `search` pushes records in BFS
+  // (shortest-first) order and generation keeps the first record meeting the
+  // quota, so `level.solution` is minimal-depth by construction — par is its
+  // length. Pure; never reveals the line itself, only how long it is.
+  function par(level) {
+    return level && level.solution ? level.solution.length : null;
+  }
+
+  // Grade a finished level: how many turns over par did the win take?
+  // Pure integer mapping — par is a floor (the solver's shortest line), so
+  // diff is never negative on a real win; clamped defensively anyway.
+  //   0 over -> PERFECT, 1 -> GREAT, 2 -> GOOD, 3+ -> CLEARED
+  function grade(used, parTurns) {
+    var diff = Math.max(0, (used | 0) - (parTurns | 0));
+    var label = diff === 0 ? "PERFECT" : diff === 1 ? "GREAT" : diff === 2 ? "GOOD" : "CLEARED";
+    return { diff: diff, label: label };
+  }
+
   // --------------------------------------------------------- generation --
 
-  // Level parameters ramp gently with levelIndex (colors 3 -> 4 at level 3).
+  // Level parameters ramp gently with levelIndex (colors 3 -> 4 at level 3;
+  // the slice-4 cell types enter at level 4 — earlier levels place ZERO of
+  // them, so their generation draws the exact pre-slice-4 RNG sequence and
+  // every pinned level stays byte-identical).
   function paramsFor(levelIndex) {
     return {
       colors: levelIndex >= 3 ? 4 : 3,
       gemsPerColor: 5 + (levelIndex >= 2 ? 1 : 0),
       stones: 4,
       walls: 6 + (levelIndex % 3),
-      budget: 10
+      budget: 10,
+      ice: levelIndex >= 4 ? 2 : 0,
+      locks: levelIndex >= 4 ? 2 : 0,
+      grates: levelIndex >= 4 ? 1 : 0
     };
   }
 
@@ -249,6 +454,11 @@
       for (var s = 0; s < P.stones; s++) { var q = take(); grid[q[0]][q[1]] = STONE; }
       for (var col = 0; col < P.colors; col++)
         for (var gph = 0; gph < P.gemsPerColor; gph++) { var t = take(); grid[t[0]][t[1]] = GEM0 + col; }
+      // Slice-4 cells LAST, so levels with zero of them (0..3) consume the
+      // identical RNG stream as before.
+      for (var ic = 0; ic < P.ice; ic++) { var pi = take(); grid[pi[0]][pi[1]] = ICE; }
+      for (var lk = 0; lk < P.locks; lk++) { var pl = take(); grid[pl[0]][pl[1]] = LOCK0 + Math.floor(rng() * P.colors); }
+      for (var gr = 0; gr < P.grates; gr++) { var pg = take(); grid[pg[0]][pg[1]] = GRATE0 + Math.floor(rng() * 4); }
 
       grid = settle(grid);                      // pieces start at rest
       if (findGroups(grid).length) continue;    // no free merges at spawn
@@ -270,6 +480,79 @@
       };
     }
     throw new Error("generateLevel: no solvable layout in " + MAX_SALT + " salts (seed=" + seed + ", level=" + levelIndex + ")");
+  }
+
+  // ------------------------------------------------ level packs (slice 5) --
+
+  // How hard is a generated level, honestly? Two axes the solver already
+  // measured at generation time: PAR (the BFS-shortest winning line —
+  // longer = more forced reading) and SLACK (best - quota: how many
+  // collectible gems the cavern offers beyond what it demands — fewer
+  // spare gems = less room to waste a pop). Pure integer scalar, higher =
+  // harder: par dominates and slack breaks ties DOWNWARD, so sorting by
+  // score descending is exactly (par desc, slack asc) — the concept doc's
+  // "long solutions, low slack".
+  function difficulty(level) {
+    var p = par(level);
+    var slack = level.best - level.quota;
+    var score = p * 1000 + Math.max(0, 999 - slack);
+    var label = p >= 5 ? "CRUEL" : p === 4 ? "STIFF" : p === 3 ? "TRICKY" : "MILD";
+    return { par: p, slack: slack, score: score, label: label };
+  }
+
+  // Deterministic curation: rate EVERY seed in the def's scan window and
+  // keep the `take` hardest (score desc, seed asc tiebreak — total order,
+  // no RNG beyond the generator's own). Pure function of the def, so
+  // re-running it MUST reproduce the shipped PACKS pin below; the smoke
+  // asserts exactly that, which is what keeps the curated data honest —
+  // never hand-edited, always the solver's own verdict.
+  function curatePack(def) {
+    var rated = [];
+    for (var s = def.scanFrom; s < def.scanFrom + def.scanCount; s++) {
+      var d = difficulty(generateLevel(s, def.levelIndex));
+      rated.push({ seed: s >>> 0, par: d.par, slack: d.slack, score: d.score });
+    }
+    rated.sort(function (a, b) { return b.score - a.score || a.seed - b.seed; });
+    return {
+      id: def.id, name: def.name, levelIndex: def.levelIndex,
+      entries: rated.slice(0, def.take)
+    };
+  }
+
+  // The shipped curation recipes. GRANITE GAUNTLET is base-rules hardcore
+  // (level 0: no slice-4 cells); DEEP CUTS curates the deep caverns
+  // (level 4: ice + locked gems + grates live). Both scan the same 32-seed
+  // window so the two packs are the same population rated at two depths.
+  var PACK_DEFS = [
+    { id: "granite-gauntlet", name: "GRANITE GAUNTLET", levelIndex: 0, scanFrom: 1, scanCount: 32, take: 6 },
+    { id: "deep-cuts",        name: "DEEP CUTS",        levelIndex: 4, scanFrom: 1, scanCount: 32, take: 6 }
+  ];
+
+  // ...and their PINNED result, so the page never re-runs 64 BFS curations
+  // at load time. Computed BY curatePack itself and pinned verbatim; the
+  // engine smoke re-derives both packs and asserts JSON byte-equality.
+  var PACKS = [
+    { id: "granite-gauntlet", name: "GRANITE GAUNTLET", levelIndex: 0, entries: [
+      { seed: 1,  par: 7, slack: 4, score: 7995 },
+      { seed: 3,  par: 6, slack: 4, score: 6995 },
+      { seed: 8,  par: 6, slack: 4, score: 6995 },
+      { seed: 10, par: 5, slack: 4, score: 5995 },
+      { seed: 29, par: 5, slack: 4, score: 5995 },
+      { seed: 32, par: 5, slack: 5, score: 5994 }
+    ] },
+    { id: "deep-cuts", name: "DEEP CUTS", levelIndex: 4, entries: [
+      { seed: 12, par: 8, slack: 5, score: 8994 },
+      { seed: 7,  par: 8, slack: 7, score: 8992 },
+      { seed: 18, par: 7, slack: 6, score: 7993 },
+      { seed: 20, par: 7, slack: 6, score: 7993 },
+      { seed: 4,  par: 7, slack: 7, score: 7992 },
+      { seed: 21, par: 7, slack: 7, score: 7992 }
+    ] }
+  ];
+
+  function packById(id) {
+    for (var i = 0; i < PACKS.length; i++) if (PACKS[i].id === id) return PACKS[i];
+    return null;
   }
 
   // -------------------------------------------------------------- state --
@@ -318,10 +601,15 @@
   return {
     VERSION: VERSION, SIZE: SIZE,
     EMPTY: EMPTY, WALL: WALL, STONE: STONE, GEM0: GEM0, MERGE_MIN: MERGE_MIN,
+    ICE: ICE, LOCK0: LOCK0, GRATE0: GRATE0,
+    isGem: isGem, isLocked: isLocked, isGrate: isGrate,
     mulberry32: mulberry32, mixSeed: mixSeed, dailySeed: dailySeed,
     emptyGrid: emptyGrid, cloneGrid: cloneGrid, gridString: gridString,
     rotateGrid: rotateGrid, settle: settle, findGroups: findGroups, resolve: resolve,
-    search: search, solve: solve,
+    settleMoves: settleMoves, resolveTrace: resolveTrace,
+    search: search, solve: solve, par: par, grade: grade,
+    difficulty: difficulty, curatePack: curatePack,
+    PACK_DEFS: PACK_DEFS, PACKS: PACKS, packById: packById,
     paramsFor: paramsFor, generateLevel: generateLevel,
     newGame: newGame, rotate: rotate, replay: replay
   };

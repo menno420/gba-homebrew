@@ -4,8 +4,9 @@
 
 What the arcade needs to serve this game:
 
-- **Files:** `index.html` + `engine.js` + `app.js` only (the `.md` docs and
-  `smoke.mjs` are repo material, not runtime). Copy the directory as-is.
+- **Files:** `index.html` + `engine.js` + `juice.js` + `app.js` only (the
+  `.md` docs and `smoke.mjs` are repo material, not runtime). Copy the
+  directory as-is.
 - **Entry point:** `index.html`.
 - **No build step.** Plain HTML5 canvas + vanilla JS, zero dependencies.
 - **No server-side code.** Any static file host works; opening
@@ -25,3 +26,6 @@ What the arcade needs to serve this game:
 - `?seed=N` — integer seed; the level chain is a pure function of it. No
   seed = today's UTC daily seed (`YYYYMMDD` as a number), same for everyone.
 - `?level=L` — start at level index L of the seed's chain (default 0).
+- `?pack=ID` — boot straight into a curated level pack (`granite-gauntlet`
+  or `deep-cuts`); optional `&stage=S` picks the 1-based stage (default 1).
+  The pack data is pinned inside `engine.js` — no extra files.

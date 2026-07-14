@@ -57,14 +57,40 @@ if the daily hook shows organic pull.
 
 ## Growth path
 
-1. **Juice**: animated falls/merges (the engine already emits per-chain
-   collect events; the shell just needs tweening), synth audio.
-2. **Par scoring**: the solver already knows the shortest win — grade the
-   player against it (birdie/par/bogey), the retention hook.
-3. **Undo** (engine states are immutable snapshots — free to add).
-4. **New cell types**: locked gems (collect adjacent to free), ice (slides
-   sideways), one-way grates — each a pure `settle()` extension.
-5. **Level packs**: curate seeds the solver rates hard (long solutions,
-   low slack) into named packs.
+1. **Juice** — ✅ SHIPPED (slice 3, session 44): the engine grew a pure
+   trace surface (`settleMoves`/`resolveTrace` — byte-identical results to
+   `settle`/`resolve`, asserted), and the shell replays it: board sweep,
+   gems easing down their columns, collect groups popping per chain, all
+   cancelled by new input and skipped under `prefers-reduced-motion`.
+   Synth audio via `juice.js` (WebAudio oscillator sweeps only — no sampled
+   audio, ever): rotate/land/collect (chain-rising pitch)/win/lose/undo,
+   mute persisted; every cue lands in an honest log the smoke pins.
+2. **Par scoring** — ✅ SHIPPED (slice 2, session 43): pure `par(level)` /
+   `grade(used, par)` in the engine (PERFECT / GREAT / GOOD / CLEARED), PAR
+   on the HUD, graded win card. Par is the solver's shortest line —
+   BFS-minimality is asserted in the smoke, so PERFECT is exactly optimal.
+3. **Undo** — ✅ SHIPPED (slice 2, session 43): history stack in the shell
+   (states are immutable snapshots), U key/button, works from a BURIED card
+   (won cards stay frozen); undo count rides the win card so grades stay
+   honest.
+4. **New cell types** — ✅ SHIPPED (slice 4, session 45): locked gems
+   (fall like dead weight, never group; a collect popping adjacent frees a
+   normal gem — cascades chain through it), ice (never merges; slips off
+   piles, left before right, and keeps falling), one-way grates (fixed like
+   walls, porous exactly downward, arrow turns with the cavern) — each a
+   pure `settle()`/`resolve()` extension in the engine, entering the
+   generator at level 5+ (levels 1–4 draw the identical RNG stream, so all
+   prior pins hold). Rendered as caged gems / glinting ice / arrowed
+   grates; the juice layer gained an `unlock` cue on the same honest log.
+5. **Level packs** — ✅ SHIPPED (slice 5, session 46): pure
+   `difficulty(level)` rates what the solver already measured (par
+   dominates; low slack — best minus quota — breaks ties), deterministic
+   `curatePack(def)` scans a seed window and keeps the hardest, and the
+   engine ships the PINNED result (`PACKS`: GRANITE GAUNTLET, six
+   base-rule caverns par 5–7; DEEP CUTS, six level-4 caverns par 7–8) —
+   the smoke re-runs the curation and asserts the pin byte-identical, so
+   the curated data is never hand-editable. Shell: pack picker, staged
+   progression (N advances, R restarts the stage), `?pack=&stage=` deep
+   links, guarded per-pack progress persistence.
 6. **Daily leaderboard** needs a backend — out of static-hosting scope;
    local streak tracking works today.

@@ -17,6 +17,26 @@
  *   8. generation sweep: 12 consecutive seeds all produce solvable levels
  *      whose solver line actually wins
  *   9. daily seed: pure date -> integer mapping
+ *  10. par + grade (slice 2): par == solution length, BFS-verified MINIMAL
+ *      (no shorter winning line exists within budget), grade truth table,
+ *      and par minimality re-verified across the 12-seed sweep
+ *  11. trace + juice (slice 3): settleMoves/resolveTrace agree with
+ *      settle/resolve byte-for-byte (incl. the 12-seed sweep), the phase
+ *      script is well-formed, and juice.js's pure timeline + synth cue
+ *      table are deterministic (chain-rising collect pitch, capped)
+ *  12. new cell types (slice 4): one-way grates pass exactly downward and
+ *      turn with the cavern, ice slips deterministically (left first) and
+ *      drops its cargo, locked gems never group and free on an adjacent
+ *      collect (cascading through the freed gem), settleMoves/resolveTrace
+ *      stay exact on kitchen-sink grids, and deep-level generation places
+ *      the new cells while levels 0-3 draw the identical RNG stream
+ *  13. level packs (slice 5): difficulty() is the pinned pure rating
+ *      (par dominates, slack breaks ties downward), curatePack() is
+ *      deterministic and REPRODUCES the engine's pinned PACKS data
+ *      byte-for-byte (the honest-curation proof), every curated entry is
+ *      provably winnable by its own solver line, entries are sorted
+ *      hardest-first, and the pinned pars show the packs are genuinely
+ *      harder than the baseline caverns
  *
  * Exits nonzero on any failed assertion; prints one PASS/FAIL line each.
  */
@@ -175,6 +195,352 @@ check("initial state is at rest and merge-free",
 // ------------------------------------------------------------- 9. daily seed
 check("daily seed is a pure date mapping", E.dailySeed("2026-07-13") === 20260713,
   `2026-07-13 -> ${E.dailySeed("2026-07-13")}`);
+
+// -------------------------------------------------- 10. par + grade (slice 2)
+{
+  // helper: independently derive the true shortest winning depth via search()
+  const minWinDepth = (level) => {
+    const found = E.search(level.grid, level.budget);
+    let min = Infinity;
+    for (const rec of found.records)
+      if (rec.collected >= level.quota && rec.depth < min) min = rec.depth;
+    return min;
+  };
+
+  const p = E.par(g0.level);
+  check("par == stored solution length", p === g0.level.solution.length,
+    `par=${p} solution="${g0.level.solution}"`);
+  check("par is MINIMAL: BFS finds no shorter winning line (seed 42)",
+    p === minWinDepth(g0.level), `search min win depth=${minWinDepth(g0.level)}`);
+
+  // grade truth table around par (par floors the win, diff clamps at 0)
+  const table = [0, 1, 2, 3, 5].map(d => E.grade(p + d, p).label).join(",");
+  check("grade truth table: 0->PERFECT 1->GREAT 2->GOOD 3+->CLEARED",
+    table === "PERFECT,GREAT,GOOD,CLEARED,CLEARED" && E.grade(p - 1, p).diff === 0,
+    `[${table}], underflow clamps to diff 0`);
+
+  // a PERFECT is reachable by construction: the solver line wins in par turns
+  const perfect = E.replay(E.newGame(SEED, 0), g0.level.solution);
+  check("replaying the solver line is graded PERFECT",
+    perfect.status === "won" && E.grade(perfect.used, p).label === "PERFECT",
+    `used=${perfect.used} par=${p}`);
+
+  // par minimality holds across the same 12-seed sweep as section 8
+  let minimalOk = 0;
+  for (let s = 100; s < 112; s++) {
+    const lvl = E.generateLevel(s, 0);
+    if (E.par(lvl) === minWinDepth(lvl)) minimalOk++;
+  }
+  check("12-seed sweep: every stored par is the true BFS minimum",
+    minimalOk === 12, `${minimalOk}/12 minimal`);
+}
+
+// ----------------------------------------- 11. trace + juice pure (slice 3)
+{
+  const J = require(path.join(here, "juice.js"));
+
+  // settleMoves: same grid as settle, and the move list reconstructs it.
+  // (Fixture from section 2: gem over a wall + gem in an open column.)
+  const w = E.emptyGrid(8); w[4][2] = E.WALL; w[0][2] = E.GEM0; w[0][3] = E.GEM0;
+  const sm = E.settleMoves(w);
+  const rebuilt = E.cloneGrid(w);
+  for (const mv of sm.moves) rebuilt[mv.from[0]][mv.from[1]] = E.EMPTY;
+  for (const mv of sm.moves) rebuilt[mv.to[0]][mv.to[1]] = mv.v;
+  check("settleMoves: grid byte-identical to settle, moves reconstruct it",
+    E.gridString(sm.grid) === E.gridString(E.settle(w)) &&
+    E.gridString(rebuilt) === E.gridString(sm.grid) &&
+    sm.moves.length === 2 && sm.moves.some(m => m.to[0] === 3 && m.to[1] === 2) &&
+    sm.moves.some(m => m.to[0] === 7 && m.to[1] === 3),
+    `moves=${sm.moves.map(m => `[${m.from}]->[${m.to}]`).join(" ")}`);
+
+  // resolveTrace ≡ resolve on every rotation of the seed-42 solver line,
+  // and the phase script is well-formed.
+  let st42 = E.newGame(SEED, 0), traceOk = true, phasesOk = true, detail = "";
+  for (const ch of g0.level.solution) {
+    const rot = E.rotateGrid(st42.grid, ch === "R" ? "cw" : "ccw");
+    const plain = E.resolve(rot), trace = E.resolveTrace(rot);
+    if (E.gridString(trace.grid) !== E.gridString(plain.grid) ||
+        trace.collected !== plain.collected ||
+        JSON.stringify(trace.events) !== JSON.stringify(plain.events)) traceOk = false;
+    if (trace.phases[0].type !== "fall" ||
+        E.gridString(trace.phases[trace.phases.length - 1].grid) !== E.gridString(trace.grid) ||
+        trace.phases.some(p => p.type === "collect" && !(p.chain >= 1 && p.cells.length === p.size))) phasesOk = false;
+    detail += `${ch}:${trace.phases.length}ph/${trace.collected}g `;
+    st42 = E.rotate(st42, ch === "R" ? "cw" : "ccw");
+  }
+  check("resolveTrace ≡ resolve (grid+collected+events) on the seed-42 solver line", traceOk, detail.trim());
+  check("trace phases well-formed (fall-first, last grid == final, collect fields sane)", phasesOk);
+
+  // consistency across the 12-seed sweep: the trace's final grid is exactly
+  // what rotate() puts on the board, every turn of every solver line.
+  let sweepOk = 0, turns = 0;
+  for (let s = 100; s < 112; s++) {
+    let st = E.newGame(s, 0);
+    let all = true;
+    for (const ch of st.level.solution) {
+      const dir = ch === "R" ? "cw" : "ccw";
+      const trace = E.resolveTrace(E.rotateGrid(st.grid, dir));
+      st = E.rotate(st, dir);
+      turns++;
+      if (E.gridString(trace.grid) !== E.gridString(st.grid)) all = false;
+    }
+    if (all) sweepOk++;
+  }
+  check("12-seed sweep: trace final grid == rotate() grid on every solver turn",
+    sweepOk === 12, `${sweepOk}/12 seeds, ${turns} turns checked`);
+
+  // juice timeline: deterministic, sequential, non-overlapping; empty falls
+  // produce no step; total == last step's end.
+  const rot3 = (() => { // the solver line's 3rd rotation — the collecting one
+    let st = E.newGame(SEED, 0);
+    st = E.rotate(st, "cw"); st = E.rotate(st, "cw");
+    return E.rotateGrid(st.grid, "cw");
+  })();
+  const trace3 = E.resolveTrace(rot3);
+  const tl = J.timeline(trace3.phases), tl2 = J.timeline(trace3.phases);
+  let mono = tl.steps.length > 0, prevEnd = 0;
+  for (const s of tl.steps) { if (!(s.t0 >= prevEnd && s.t1 >= s.t0)) mono = false; prevEnd = s.t1; }
+  check("juice timeline: sequential + non-overlapping, total == last end, deterministic",
+    mono && tl.total === prevEnd && JSON.stringify(tl) === JSON.stringify(tl2) &&
+    tl.steps.length === trace3.phases.filter(p => p.type !== "fall" || p.moves.length).length,
+    `${tl.steps.length} steps over ${tl.total}ms`);
+
+  // juice cue schedule on the collecting rotation: land/collect cues in
+  // chronological order, chains rising — the exact log the shell must emit.
+  const cueSeq = [];
+  for (const s of tl.steps) for (const c of s.cues) cueSeq.push(J.cueFor(c.name, c.chain).key);
+  const chainsInSeq = tl.steps.filter(s => s.phase.type === "collect").map(s => s.phase.chain);
+  check("cue schedule of the collecting rotation: collects present, chain x2 keyed",
+    cueSeq.includes("collect") && cueSeq.includes("collect@x2") &&
+    chainsInSeq.every((c, i) => i === 0 || c >= chainsInSeq[i - 1]),
+    `[${cueSeq.join(",")}] chains=[${chainsInSeq.join(",")}]`);
+
+  // cue table: every named cue resolves; collect pitch rises with the chain
+  // and caps; unknown names are null.
+  const names = ["rotate", "land", "collect", "win", "lose", "undo"];
+  const allCues = names.every(n => { const c = J.cueFor(n, 0); return c && c.wave && c.f0 > 0 && c.dur > 0; });
+  const c1 = J.cueFor("collect", 1), c2 = J.cueFor("collect", 2), c3 = J.cueFor("collect", 3);
+  const cCap = J.cueFor("collect", J.CHAIN_CAP + 1), cOver = J.cueFor("collect", J.CHAIN_CAP + 5);
+  check("cue table: all 6 cues resolve, collect pitch rises per chain and caps, unknown -> null",
+    allCues && c2.f0 > c1.f0 && c3.f0 > c2.f0 && cCap.f0 === cOver.f0 &&
+    c1.key === "collect" && c2.key === "collect@x2" && J.cueFor("nope", 0) === null,
+    `f0: x1=${c1.f0} x2=${c2.f0} x3=${c3.f0} cap=${cCap.f0} (juice v${J.VERSION})`);
+}
+
+// ------------------------------------------ 12. new cell types (slice 4)
+{
+  const J = require(path.join(here, "juice.js"));
+
+  // encoding: the new codes render distinct chars and sit OUTSIDE the gem range
+  {
+    const g = E.emptyGrid(8);
+    g[0][0] = E.ICE; g[0][1] = E.LOCK0 + 1;
+    g[0][2] = E.GRATE0; g[0][3] = E.GRATE0 + 1; g[0][4] = E.GRATE0 + 2; g[0][5] = E.GRATE0 + 3;
+    const row = E.gridString(g).split("\n")[0];
+    check("cell codes: ice/locked/grates serialize as * b ^ > v < and are not gems",
+      row.startsWith("*b^>v<") && !E.isGem(E.ICE) && !E.isGem(E.LOCK0) && !E.isGem(E.GRATE0 + 2) &&
+      E.isGem(E.GEM0) && E.isGem(E.GEM0 + 7),
+      `row0="${row}"`);
+  }
+
+  // one-way grate: porous exactly when pointing down, a wall otherwise
+  {
+    const mk = (o) => { const g = E.emptyGrid(8); g[4][2] = E.GRATE0 + o; g[0][2] = E.STONE; return E.settle(g); };
+    const down = mk(2), up = mk(0), right = mk(1), left = mk(3);
+    check("grate one-way: stone falls THROUGH a down grate to the floor, rests ON every other orientation",
+      down[7][2] === E.STONE && down[4][2] === E.GRATE0 + 2 &&
+      up[3][2] === E.STONE && right[3][2] === E.STONE && left[3][2] === E.STONE,
+      `down->row7, up/right/left->row3, grate cell intact`);
+    const floorGrate = E.emptyGrid(8); floorGrate[7][2] = E.GRATE0 + 2; floorGrate[0][2] = E.STONE;
+    const fg = E.settle(floorGrate);
+    check("a piece never rests INSIDE a porous grate (floor grate: stone rests above it)",
+      fg[6][2] === E.STONE && fg[7][2] === E.GRATE0 + 2);
+  }
+
+  // grate arrow turns with the cavern: CW cycles up->right->down->left, 4x = identity
+  {
+    const g = E.emptyGrid(8); g[3][3] = E.GRATE0 + 2; // down
+    const cw = E.rotateGrid(g, "cw"), ccw = E.rotateGrid(g, "ccw");
+    const codeIn = (grid) => [].concat(...grid).filter(v => v !== E.EMPTY)[0];
+    let four = g; for (let i = 0; i < 4; i++) four = E.rotateGrid(four, "cw");
+    check("grate orientation rotates with the cavern (CW down->left, CCW down->right, 4xCW identity)",
+      codeIn(cw) === E.GRATE0 + 3 && codeIn(ccw) === E.GRATE0 + 1 &&
+      E.gridString(four) === E.gridString(g),
+      `cw=${codeIn(cw) - E.GRATE0} ccw=${codeIn(ccw) - E.GRATE0}`);
+  }
+
+  // ice: slips off a pile (left before right), cargo drops after it, and the
+  // move list nets the slide as one diagonal move that still reconstructs
+  {
+    const g = E.emptyGrid(8); g[7][3] = E.STONE; g[6][3] = E.ICE; g[5][3] = E.GEM0;
+    const s = E.settle(g);
+    check("ice slips LEFT off a pile and its cargo drops into the vacated cell",
+      s[7][2] === E.ICE && s[6][3] === E.GEM0 && s[7][3] === E.STONE,
+      `ice@[7,2] gem@[6,3]`);
+    const gr = E.emptyGrid(8); gr[7][2] = E.WALL; gr[7][3] = E.STONE; gr[6][3] = E.ICE;
+    check("left blocked -> ice slips RIGHT (deterministic preference)",
+      E.settle(gr)[7][4] === E.ICE);
+    const boxed = E.emptyGrid(8); boxed[7][2] = E.WALL; boxed[7][4] = E.WALL; boxed[7][3] = E.STONE; boxed[6][3] = E.ICE;
+    check("boxed-in ice stays put (no slip without side + diagonal empty)",
+      E.settle(boxed)[6][3] === E.ICE);
+    const sm = E.settleMoves(g);
+    const rebuilt = E.cloneGrid(g);
+    for (const mv of sm.moves) rebuilt[mv.from[0]][mv.from[1]] = E.EMPTY;
+    for (const mv of sm.moves) rebuilt[mv.to[0]][mv.to[1]] = mv.v;
+    check("settleMoves nets a slip as ONE diagonal move; grid == settle, moves reconstruct",
+      E.gridString(sm.grid) === E.gridString(s) && E.gridString(rebuilt) === E.gridString(s) &&
+      sm.moves.some(m => m.v === E.ICE && m.from[1] !== m.to[1]),
+      `moves=${sm.moves.map(m => `[${m.from}]->[${m.to}]`).join(" ")}`);
+  }
+
+  // locked gems: never group on their own; an adjacent collect frees one and
+  // the freed gem cascades a chain-2 collect
+  {
+    const solo = E.emptyGrid(8); solo[7][0] = E.LOCK0; solo[7][1] = E.LOCK0; solo[7][2] = E.LOCK0;
+    check("three adjacent same-color LOCKED gems never collect",
+      E.findGroups(E.settle(solo)).length === 0 && E.resolve(solo).collected === 0);
+    const g = E.emptyGrid(8);
+    g[7][0] = E.GEM0; g[6][0] = E.GEM0; g[5][0] = E.GEM0;   // red column pops chain 1
+    g[7][1] = E.LOCK0 + 1;                                   // locked blue beside it
+    g[7][2] = E.GEM0 + 1; g[7][3] = E.GEM0 + 1;              // two free blues waiting
+    const res = E.resolve(g);
+    check("adjacent collect FREES a locked gem (event carries unlocked: 1)",
+      res.events.length === 2 && res.events[0].unlocked === 1 && res.events[0].chain === 1,
+      `events=${JSON.stringify(res.events)}`);
+    check("the freed gem completes the group -> chain-2 cascade through the lock",
+      res.collected === 6 && res.events[1].chain === 2 && res.events[1].color === 1 &&
+      res.grid[7][1] === E.EMPTY,
+      `collected=${res.collected}`);
+    const lockFree = E.emptyGrid(8);
+    lockFree[7][0] = E.GEM0; lockFree[6][0] = E.GEM0; lockFree[5][0] = E.GEM0; lockFree[7][5] = E.LOCK0 + 1;
+    const far = E.resolve(lockFree);
+    check("a NON-adjacent collect leaves the lock intact (no unlocked field on the event)",
+      far.grid[7][5] === E.LOCK0 + 1 && far.events.length === 1 && !("unlocked" in far.events[0]));
+  }
+
+  // trace exactness + unlock cue on a kitchen-sink grid
+  {
+    const g = E.emptyGrid(8);
+    g[7][0] = E.GEM0; g[6][0] = E.GEM0; g[5][0] = E.GEM0;    // popping reds
+    g[7][1] = E.LOCK0 + 1; g[7][2] = E.GEM0 + 1; g[7][3] = E.GEM0 + 1; // lock chain
+    g[7][5] = E.STONE; g[6][5] = E.ICE;                      // slipping ice
+    g[4][7] = E.GRATE0 + 2; g[0][7] = E.GEM0 + 2;            // porous grate
+    const plain = E.resolve(g), trace = E.resolveTrace(g);
+    check("resolveTrace ≡ resolve on a kitchen-sink grid (ice + lock + grate + cascade)",
+      E.gridString(trace.grid) === E.gridString(plain.grid) &&
+      trace.collected === plain.collected &&
+      JSON.stringify(trace.events) === JSON.stringify(plain.events),
+      `collected=${trace.collected} events=${trace.events.length}`);
+    const unlockPhase = trace.phases.find(p => p.type === "collect" && p.unlocked);
+    check("the unlocking collect phase carries the freed cells and its grid shows the freed gem",
+      !!unlockPhase && unlockPhase.unlocked.length === 1 &&
+      unlockPhase.grid[unlockPhase.unlocked[0][0]][unlockPhase.unlocked[0][1]] === E.GEM0 + 1);
+    const tl = J.timeline(trace.phases);
+    const cueKeys = [];
+    for (const s of tl.steps) for (const c of s.cues) cueKeys.push(J.cueFor(c.name, c.chain).key);
+    const u = J.cueFor("unlock", 0);
+    check("juice: the unlocking collect schedules an 'unlock' cue; the cue table resolves it",
+      cueKeys.includes("unlock") && u && u.key === "unlock" && u.f0 > 0 && u.dur > 0,
+      `[${cueKeys.join(",")}] (juice v${J.VERSION})`);
+  }
+
+  // generation: levels 0-3 place ZERO new cells (identical RNG stream ->
+  // every pre-slice-4 pin holds); level 4+ places them, still provably solvable
+  {
+    const p0 = E.paramsFor(0), p3 = E.paramsFor(3), p4 = E.paramsFor(4);
+    check("paramsFor: no new cells before level 4; ice 2 / locks 2 / grates 1 from level 4",
+      p0.ice === 0 && p0.locks === 0 && p0.grates === 0 &&
+      p3.ice === 0 && p3.locks === 0 && p3.grates === 0 &&
+      p4.ice === 2 && p4.locks === 2 && p4.grates === 1);
+    const l4 = E.generateLevel(SEED, 4);
+    const gs = E.gridString(l4.grid);
+    check("(seed 42, level 4): generated cavern contains ice, locked gems and a grate",
+      /\*/.test(gs) && /[a-h]/.test(gs) && /[\^>v<]/.test(gs),
+      `salt=${l4.salt} quota=${l4.quota} best=${l4.best} solution="${l4.solution}"`);
+    check("(seed 42, level 4): the generator's own solver line wins it",
+      E.replay(E.newGame(SEED, 4), l4.solution).status === "won");
+    let ok4 = 0, worst4 = 0;
+    for (let s = 100; s < 112; s++) {
+      const lvl = E.generateLevel(s, 4);
+      worst4 = Math.max(worst4, lvl.salt);
+      if (E.replay(E.newGame(s, 4), lvl.solution).status === "won") ok4++;
+    }
+    check("12-seed sweep at level 4: every deep cavern is provably winnable with the new cells live",
+      ok4 === 12, `${ok4}/12 won, worst salt=${worst4}`);
+  }
+}
+
+// ------------------------------------------- 13. level packs (slice 5)
+{
+  // difficulty(): pinned pure truth on the pinned seed-42 level
+  const d42 = E.difficulty(g0.level);
+  check("difficulty(seed 42): par=3 slack=4 (best 11 - quota 7) score=3995 TRICKY",
+    d42.par === 3 && d42.slack === 4 && d42.score === 3995 && d42.label === "TRICKY",
+    `par=${d42.par} slack=${d42.slack} score=${d42.score} label=${d42.label}`);
+
+  // label table + the ordering law: par dominates, then LOW slack wins
+  const fake = (sol, best, quota) => ({ solution: sol, best, quota });
+  const labels = ["RR", "RRR", "RRRR", "RRRRR"].map(s => E.difficulty(fake(s, 10, 6)).label).join(",");
+  const parWins = E.difficulty(fake("RRRR", 999 + 6, 6)).score > E.difficulty(fake("RRR", 6, 6)).score;
+  const slackBreaks = E.difficulty(fake("RRR", 8, 6)).score > E.difficulty(fake("RRR", 12, 6)).score;
+  check("difficulty law: labels MILD/TRICKY/STIFF/CRUEL by par; par dominates; low slack breaks ties",
+    labels === "MILD,TRICKY,STIFF,CRUEL" && parWins && slackBreaks, `[${labels}]`);
+
+  // the honest-curation proof: re-running curatePack on each shipped def
+  // reproduces the engine's pinned PACKS byte-for-byte (and twice = twice)
+  const rerun = E.PACK_DEFS.map(def => E.curatePack(def));
+  check("PACKS pin == curatePack(def) re-run, byte-for-byte, for every shipped pack",
+    E.PACKS.length === E.PACK_DEFS.length &&
+    rerun.every((p, i) => JSON.stringify(p) === JSON.stringify(E.PACKS[i])),
+    E.PACKS.map(p => `${p.id}:${p.entries.map(e => e.seed).join("/")}`).join(" · "));
+  check("curatePack is deterministic (same def twice -> identical JSON)",
+    JSON.stringify(E.curatePack(E.PACK_DEFS[0])) === JSON.stringify(rerun[0]));
+
+  // structure: take honored, seeds inside the scan window, hardest-first
+  // (score non-increasing, seed ascending on equal scores)
+  let structOk = true;
+  E.PACKS.forEach((p, i) => {
+    const def = E.PACK_DEFS[i];
+    if (p.entries.length !== def.take || p.levelIndex !== def.levelIndex) structOk = false;
+    for (let j = 0; j < p.entries.length; j++) {
+      const e = p.entries[j];
+      if (e.seed < def.scanFrom || e.seed >= def.scanFrom + def.scanCount) structOk = false;
+      if (j > 0) {
+        const prev = p.entries[j - 1];
+        if (e.score > prev.score || (e.score === prev.score && e.seed < prev.seed)) structOk = false;
+      }
+    }
+  });
+  check("pack structure: take honored, seeds in the scan window, sorted hardest-first", structOk);
+
+  // every curated entry is provably winnable at its pack's depth, and its
+  // stored rating matches a fresh generation of that seed
+  let winnable = 0, ratedOk = 0, total = 0;
+  for (const p of E.PACKS) {
+    for (const e of p.entries) {
+      total++;
+      const lvl = E.generateLevel(e.seed, p.levelIndex);
+      const d = E.difficulty(lvl);
+      if (d.par === e.par && d.slack === e.slack && d.score === e.score) ratedOk++;
+      if (E.replay(E.newGame(e.seed, p.levelIndex), lvl.solution).status === "won") winnable++;
+    }
+  }
+  check("every pack entry: solver line wins + stored rating == fresh generation",
+    winnable === total && ratedOk === total, `${winnable}/${total} winnable, ${ratedOk}/${total} ratings exact`);
+
+  // pinned hardness: the curated pars, hardest-first — visibly above the
+  // baseline caverns (seed-42 level 0 par is 3)
+  const pars = E.PACKS.map(p => p.entries.map(e => e.par).join(""));
+  check("pinned pack pars: granite-gauntlet 766555, deep-cuts 887777 (all > baseline par 3)",
+    pars[0] === "766555" && pars[1] === "887777" &&
+    E.PACKS.every(p => p.entries.every(e => e.par >= 5)),
+    `[${pars.join(" | ")}]`);
+
+  // packById resolves the shipped ids; unknown ids are null
+  check("packById: resolves both shipped ids, unknown -> null",
+    E.packById("granite-gauntlet") === E.PACKS[0] && E.packById("deep-cuts") === E.PACKS[1] &&
+    E.packById("nope") === null);
+}
 
 // ------------------------------------------------------------------- verdict
 if (failures) {

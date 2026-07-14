@@ -63,6 +63,133 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   SLICES items shipped) — further Gloamline arc work is owner-gated;
   do not invent slices beyond the concept doc.
 
+## Dispatch 2026-07-13 (session 43, dispatched)
+
+- **ts:** 2026-07-13T13:29:20Z (this section APPENDED by the session-43
+  worker; the body above — cycle-5 heartbeat + session-37 footer — is left
+  intact per the dispatch's append-only instruction).
+- **Staleness note:** the body above is STALE vs HEAD; the freshest
+  coordinator heartbeat rides the UNMERGED seat-ender branch
+  `claude/seat-ender-20260713` (PR #90) — this section will conflict
+  trivially with that wholesale rewrite at sweep time (control-file
+  conflicts are the expected, documented cost of the parked-open set).
+- **State at wake (13:18Z):** inbox at HEAD `d87f9ad` has no unexecuted
+  order (ORDER 005 served — tally PR #87, night report PR #89; ORDER 006
+  exists only on PR #88's head and is served by PR #89). 10 PRs open:
+  #82–#90 parked green for the owner sweep + #91 (Brineward slice 8)
+  ACTIVELY being built by session 42 (branch moving at 13:19Z) — left
+  strictly untouched.
+- **Shipped this session:** Tiltstone slice 2 "PAR SCORING + UNDO"
+  (concept growth-path items 2+3, the doc's named retention hook) —
+  pure additive engine `par`/`grade` (v1.1.0, zero edits to
+  gen/rotation: all 19 PR-#81 smoke pins re-passed byte-identical),
+  shell undo stack (U key/button, honest undo counter, BURIED-card
+  step-back, won-card frozen), PAR on the HUD, graded win card.
+  PR #92 (branch `claude/tiltstone-par`): `bcb9e29` card+claim,
+  `ce0d60a` slice. Proof: engine smoke 24/24 + browser smoke 12/12
+  (real Chromium), both local, verbatim in the session card;
+  screenshot `docs/proof/session-43-tiltstone-par-win-card.png`.
+  No GBA/NDS ROM touched (web dir has no Makefile — "ROM builds"
+  unaffected by construction).
+- **Landing path:** PR #92 parked READY, no merge/auto-merge/labels from
+  this session — owner sweep click, alongside #82–#91.
+- **Housekeeping note for the sweeper:** stale claims at HEAD from merged
+  sessions — `control/claims/claude-tiltstone-slice.md` (PR #81 merged)
+  and `control/claims/order-005-scribe.md` (PR #77 merged, also the one
+  advisory nag in `check --strict`) — prunable on sight.
+- **Baton (next 2):** (1) owner sweep + the required-checks setting
+  (night-report asks [a]/[b]) still gate everything — after the sweep,
+  re-verify main and prune the stale claims above; (2) next
+  headless-proven increments if the queue stays empty: Brineward slice 9
+  "saves" AFTER session 42's #91 closes out (do not collide), or
+  Tiltstone growth item 1 "juice"/Undertow daily-seed share URL on the
+  web arcade.
+
+## Dispatch 2026-07-13 (Tiltstone slice 3, dispatched)
+
+- **ts:** 2026-07-13T18:29:21Z (APPENDED by the session-44 worker on
+  coordinator dispatch; everything above left intact per the append-only
+  rule)
+- **Shipped this session:** Tiltstone slice 3 "JUICE" — concept-doc growth
+  item 1: engine trace surface (pure additive `settleMoves`/`resolveTrace`,
+  v1.2.0, results byte-identical to `settle`/`resolve`), shell replay
+  (board sweep, gems easing down columns, per-chain pops; cosmetic —
+  engine state stays immediate; cancelled by input; reduced-motion skip)
+  and `juice.js` synth audio (oscillator sweeps only, chain-rising collect
+  pitch, mute persisted, honest cue log). PR #93 (branch
+  `claude/tiltstone-juice`, stacks on OPEN PR #92 @ `a072be8`), commits
+  `85da0f5` (claim + born-red card), `bc5133d` (slice).
+- **Proofs:** engine smoke 24 → 31 asserts (exit 0; all 24 prior pins
+  byte-identical), browser smoke 12 → 18 (exit 0, real Chromium; cue log
+  == pure-Node composition of the exact inputs, mid-animation frame
+  proof), screenshots `docs/proof/session-44-tiltstone-juice-win{,-mid}.png`.
+  `check --strict` red pre-flip ONLY on this card's designed born-red hold
+  (+ the pre-existing `order-005-scribe.md` advisory) — verified verbatim
+  in substrate-gate run 29273800286: "HOLD (by design) … nothing to
+  investigate".
+- **Inbox at session start (HEAD `48be770`):** ORDERS 001–005 only, all
+  served — standing default applied; no collision (only #92, this lane's
+  own parent, touches Tiltstone).
+- **Follow-up for the packaging lane:** when PR #85 lands, its
+  `tools/package-web-arcade.sh` staging list needs `juice.js` added to the
+  Tiltstone runtime set (HOSTING.md here already updated).
+
+## Dispatch 2026-07-13 (Tiltstone slice 4, dispatched)
+
+- **ts:** 2026-07-13T18:52:50Z (this section APPENDED by the session-45
+  worker on coordinator dispatch; everything above left intact)
+- **Shipped this session:** Tiltstone slice 4 "NEW CELL TYPES" — concept
+  growth item 4: locked gems (collect adjacent to free, cascades chain
+  through the freed gem), ice (slips off piles, left before right), one-way
+  grates (porous exactly downward, arrow turns with the cavern) — pure
+  settle()/resolve() extensions (engine v1.2.0 → 1.3.0, juice v1.0.0 →
+  1.1.0 with an `unlock` cue), entering generation at level 5+ so levels
+  1–4 draw the identical RNG stream. PR #95 (branch
+  `claude/tiltstone-cells`, base `claude/tiltstone-juice` @ `427f165` —
+  stacked on OPEN PR #93 per the standing default). Engine smoke 31 → 50
+  asserts (all 31 carried pins byte-identical), browser smoke 18 → 24
+  checks in real Chromium (LV5 board matches the pure-Node generator
+  byte-for-byte; cue log stays a pure composition), screenshots
+  `docs/proof/session-45-tiltstone-cells{,-mid}.png`,
+  `python3 bootstrap.py check --strict` exit 0 at the flip.
+- **Landing posture:** opened READY, born-red then flipped; no merge /
+  auto-merge / label calls from this session — the live enabler may land
+  it server-side on green.
+- **Baton (next):** Tiltstone growth item 5 "level packs" (curate seeds
+  the solver rates hard — long solutions, low slack — into named packs);
+  item 6 (daily leaderboard) stays out of static-hosting scope. Packaging
+  follow-up for PR #85 still open: Tiltstone staging list needs `juice.js`.
+
+## Dispatch 2026-07-13 (Tiltstone slice 5, dispatched)
+
+- **ts:** 2026-07-13T19:14:01Z (appended by the session-46 worker;
+  everything above left intact per the append-only dispatch rule)
+- **Shipped this session:** Tiltstone slice 5 "LEVEL PACKS" — the
+  concept doc's growth item 5 ("curate seeds the solver rates hard —
+  long solutions, low slack — into named packs"). Engine v1.3.0 →
+  v1.4.0, pure + additive: `difficulty()` (par-dominant, low-slack
+  tiebreak), deterministic `curatePack()`, pinned `PACKS` data
+  (GRANITE GAUNTLET: 6 base-rule caverns par 5–7; DEEP CUTS: 6
+  level-4 caverns par 7–8) with the smoke re-running the curation and
+  asserting the pin byte-identical. Shell: pack picker, staged
+  progression, `?pack=&stage=` deep links, guarded progress. PR #97
+  (branch `claude/tiltstone-packs`), base = `claude/tiltstone-cells`
+  @ `6238f3a` (stacks on #95 ← #93 ← #92). Proofs: engine smoke
+  50 → 58 asserts (all 50 prior pins byte-identical), browser smoke
+  24 → 31 checks in real Chromium, `bootstrap.py check --strict`
+  exit 0; screenshots `docs/proof/session-46-tiltstone-packs*.png`.
+  Tiltstone growth items 1–5 are now ALL shipped — item 6 (daily
+  leaderboard) is out of static-hosting scope per the concept doc, so
+  further Tiltstone arc work is owner-gated.
+- **BACKPRESSURE now binds for this lane:** none of the Tiltstone
+  stack merged during this session — observed open own-lane PRs at
+  19:12Z: **#92, #93, #95, #97 = 4 unmerged** (≥ the 3-PR
+  backpressure line even before #97). Repo-wide open PRs observed: 10
+  (#85, #87, #88, #89, #90, #92, #93, #95, #96, #97). Next Tiltstone
+  slice should NOT be dispatched until the stack starts landing (and
+  the concept queue is empty anyway — see above).
+- **Landing posture:** PR #97 parked READY, no merge/auto-merge calls
+  from this session; the live server-side enabler decides on green.
 ## Dispatch 2026-07-13 (Brineward slice 9 — saves, PR #94)
 
 - **ts:** 2026-07-13T18:46:26Z (appended by the session-43 worker;

@@ -925,3 +925,37 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #127 opened READY on main; no merge/approve/auto-merge calls from
   this session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (deepcast-art, PR #128)
+
+- Deepcast growth cut 5 (`claude/deepcast-art`, cut from main @
+  `9517806`): the concept's "Real art pass: lake gradient by depth,
+  silhouette fish, rod-bend sprite as the analog tension gauge" line,
+  marked BUILT — this completes Deepcast's named growth path (all five
+  named lines built; CONCEPT.md notes it).
+- Presentation ONLY: a ten-band lake background (original procedural
+  assets, games/deepcast/graphics/) whose palette follows a closed-form
+  law of the live depth word (dim = 2*band + depth/8 — the whole lake
+  deepens as the lure sinks), a 32x16 silhouette fish whose frame IS the
+  species index from cut 3 (band = size, rarity = shade; hidden while
+  sinking and on a SNAP card), and a 32x32 rod sprite bending
+  tension*7/snap — the audio ratchet's own law, honest on any line
+  tier. Game state, RNG word order and all three sim mailboxes
+  untouched: P1-P7 pass verbatim (zero re-derived pins, zero adjusted
+  text asserts; text HUD kept alongside).
+- New P8/P9/P10 prove the art off the hardware: a fourth presentation
+  mailbox dc_artmeta + DISPCNT, BG/OBJ palette RAM and VRAM screenblock
+  pins; the gradient witness walks 0x6A05 -> 0x44E2 -> 0x1421 in
+  palette RAM on carried depth pins, the rod witness bends 2/6 (worn)
+  vs 1/5 (braided) at the same tension words on P7's two-SRAM-state
+  pattern. All new legs run twice, watch-logs byte-identical. Suite
+  1330 watch + 189 text asserts, exit 0, at the dist bytes. dist v0.6
+  159,928 bytes, two clean builds byte-identical, sha256 ab9c026b…;
+  toolchain certified first (v0.5 rebuilt to its committed hash from a
+  clean scratch worktree). Before/after screenshots committed under
+  docs/proof/.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #128 opened READY on main; no merge/approve/auto-merge calls from
+  this session — the server-side enabler decides on green.

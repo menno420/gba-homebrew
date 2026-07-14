@@ -25,6 +25,19 @@
  * replays to the original run's crash frame and depth exactly. ?ghost=0
  * opts out (render-side only).
  *
+ * Oxygen + air pockets (v1.4.0 — a SIM change): the diver carries a tank
+ * that drains every frame, faster with depth; hitting zero ends the run like
+ * a crash ("out of air"). Air-pocket pickups spawn inside the channel and
+ * refill the tank on contact — the reason to leave the safe line. Pockets
+ * draw from a SIDE-BAND RNG stream (mulberry32 of seed ^ POCKET_STREAM),
+ * one fixed pair of draws per generated row, so the channel layout for a
+ * given seed is byte-identical to v1.3.0 — but run OUTCOMES for a seed
+ * legitimately change (air can run out before the walls get you). Oxygen,
+ * pockets and the collected count all live inside the sim instance, so the
+ * ghost replay stays exact by construction. Stored ghost records recorded
+ * under the oxygen-free sim are meaningless here: the record version bumped
+ * 1 -> 2 and v1 records are dropped cleanly on load (no ghost, no error).
+ *
  * Test hooks: window.UNDERTOW (always exposed). With ?headless=1 the RAF loop
  * does not start — drive the sim with UNDERTOW.stepFrames(n). Keyboard events
  * dispatched programmatically also work headlessly.
@@ -32,7 +45,7 @@
 (function () {
   "use strict";
 
-  var VERSION = "1.3.0";
+  var VERSION = "1.4.0";
   var W = 480, H = 640;
   var ROW_H = 16;              // pixels per trench row
   var PLAYER_Y = 150;          // fixed screen y of the diver
@@ -48,6 +61,17 @@
   var DRIFT_RAMP = 0.012;      // drift growth per row
   var DRIFT_MAX = 26;
   var PX_PER_METER = 10;       // depth scale for score
+
+  // --- oxygen + air pockets (SIM constants) ---------------------------------
+  var OXY_MAX = 100;           // tank capacity
+  var OXY_DRAIN = 0.11;        // tank drain per frame at the surface
+  var OXY_DRAIN_RAMP = 0.0007; // extra drain per frame per meter of depth
+  var OXY_REFILL = 40;         // tank gained per air pocket (capped at max)
+  var POCKET_R = 9;            // air-pocket pickup radius
+  var POCKET_START_ROW = 24;   // first row that may hold a pocket
+  var POCKET_CHANCE = 0.10;    // per-row spawn probability
+  var POCKET_MARGIN = 15;      // min distance of a pocket center from a wall
+  var POCKET_STREAM = 0x1F123BB5; // seed XOR for the pocket side-band RNG
 
   // --- seeded RNG (mulberry32) ---------------------------------------------
   function mulberry32(a) {
@@ -172,6 +196,13 @@
     return segs;
   }
 
+  // Record version 2 = the oxygen sim (v1.4.0). v1 records were recorded
+  // under the oxygen-free sim (<= v1.3.0): their timelines would replay to a
+  // DIFFERENT outcome here (air can end the run first), so their depth and
+  // crashFrame no longer mean anything — loadGhostRec drops them cleanly
+  // (no ghost, no error) and the next crashed run writes a fresh v2 record.
+  var GHOST_REC_V = 2;
+
   var ghostRec = null; // {depth, crashFrame, log} for the current seed, or null
   function loadGhostRec() {
     ghostRec = null;
@@ -179,7 +210,7 @@
       var raw = window.localStorage.getItem(ghostKey(seed));
       if (!raw) return;
       var o = JSON.parse(raw);
-      if (o && o.v === 1 && typeof o.log === "string"
+      if (o && o.v === GHOST_REC_V && typeof o.log === "string"
           && typeof o.depth === "number" && o.depth > 0
           && typeof o.crashFrame === "number" && o.crashFrame > 0) {
         ghostRec = { depth: Math.floor(o.depth), crashFrame: Math.floor(o.crashFrame), log: o.log };
@@ -189,7 +220,7 @@
   function saveGhostRec(rec) {
     try {
       window.localStorage.setItem(ghostKey(seed),
-        JSON.stringify({ v: 1, depth: rec.depth, crashFrame: rec.crashFrame, log: rec.log }));
+        JSON.stringify({ v: GHOST_REC_V, depth: rec.depth, crashFrame: rec.crashFrame, log: rec.log }));
     } catch (e) { /* ignore — in-memory ghost only */ }
   }
   loadGhostRec();
@@ -225,20 +256,30 @@
   var state = "title";          // title | playing | gameover
 
   // A sim instance owns everything one diver's outcome depends on: its own
-  // gameplay RNG, its own lazily generated trench rows, scroll and x. The
-  // live run and the ghost replay each hold one — they never share state.
+  // gameplay RNG, its own pocket side-band RNG, its own lazily generated
+  // trench rows (walls + air pockets), scroll, x, oxygen and pocket count.
+  // The live run and the ghost replay each hold one — they never share state.
   function makeSim() {
-    return { rng: mulberry32(seed), rows: [], scrollY: 0, x: W / 2, speed: 0 };
+    return {
+      rng: mulberry32(seed),
+      prng: mulberry32((seed ^ POCKET_STREAM) >>> 0), // pockets ONLY — the
+      // wall stream above draws exactly what it drew in v1.3.0, so the
+      // channel layout for a given seed is unchanged by this feature
+      rows: [], scrollY: 0, x: W / 2, speed: 0,
+      oxy: OXY_MAX, pockets: 0
+    };
   }
 
   function rowIn(s, i) {
-    // rows[i] = {c: centerX, h: halfWidth}; each new row consumes exactly one
-    // draw from the instance's OWN gameplay RNG, in sequence — so a row's
-    // value depends only on its index, never on who forced its generation.
+    // rows[i] = {c: centerX, h: halfWidth, p: air pocket or null}; each new
+    // row consumes exactly one draw from the instance's OWN gameplay RNG (the
+    // wall shape) and, from POCKET_START_ROW on, exactly two draws from the
+    // pocket side-band RNG — always two, spawn or not, so every row's value
+    // depends only on its index, never on who forced its generation.
     while (s.rows.length <= i) {
       var n = s.rows.length;
       if (n < 12) {
-        s.rows.push({ c: W / 2, h: START_HALF });
+        s.rows.push({ c: W / 2, h: START_HALF, p: null });
       } else {
         var prev = s.rows[n - 1];
         var half = Math.max(MIN_HALF, START_HALF - n * NARROW_RATE);
@@ -247,17 +288,28 @@
         var margin = half + 14;
         if (c < margin) c = margin;
         if (c > W - margin) c = W - margin;
-        s.rows.push({ c: c, h: half });
+        var row = { c: c, h: half, p: null };
+        if (n >= POCKET_START_ROW) {
+          var roll = s.prng();
+          var fx = s.prng();
+          var span = half - POCKET_MARGIN;
+          if (roll < POCKET_CHANCE && span > 0) {
+            row.p = { x: c - span + fx * span * 2, taken: false };
+          }
+        }
+        s.rows.push(row);
       }
     }
     return s.rows[i];
   }
 
   // One fixed-timestep physics step for a sim instance under a steer input
-  // (-1 left, 0 none, +1 right). Returns true when the diver crashed. This
-  // is THE step: the live run and the ghost replay execute this same code,
-  // so a recorded input timeline replays to the identical crash frame and
-  // depth by construction.
+  // (-1 left, 0 none, +1 right). Returns "wall" or "air" when the diver's
+  // run ended this frame ("wall" wins a same-frame tie), null otherwise —
+  // both are truthy/falsy compatible with the old boolean. This is THE
+  // step: the live run and the ghost replay execute this same code, so a
+  // recorded input timeline replays to the identical crash frame, depth
+  // and cause by construction (oxygen and pockets live inside the sim).
   function physStep(s, steer) {
     var meters = Math.floor(s.scrollY / PX_PER_METER);
     s.speed = Math.min(MAX_SPEED, BASE_SPEED + meters * SPEED_RAMP);
@@ -266,8 +318,29 @@
     else if (steer === 1) s.x += STEER_SPEED;
     if (s.x < PLAYER_R) s.x = PLAYER_R;
     if (s.x > W - PLAYER_R) s.x = W - PLAYER_R;
-    var r = rowIn(s, Math.floor((s.scrollY + PLAYER_Y) / ROW_H));
-    return (s.x - PLAYER_R < r.c - r.h || s.x + PLAYER_R > r.c + r.h);
+    var ri = Math.floor((s.scrollY + PLAYER_Y) / ROW_H);
+    // air pockets: contact with an untaken pocket in the diver's row band
+    // refills the tank (never alters motion — pickups are pure oxygen)
+    var wy = s.scrollY + PLAYER_Y;
+    var rr = (PLAYER_R + POCKET_R) * (PLAYER_R + POCKET_R);
+    for (var i = (ri > 0 ? ri - 1 : 0); i <= ri + 1; i++) {
+      var q = rowIn(s, i);
+      if (q.p && !q.p.taken) {
+        var dx = s.x - q.p.x;
+        var dy = wy - (i * ROW_H + ROW_H / 2);
+        if (dx * dx + dy * dy <= rr) {
+          q.p.taken = true;
+          s.pockets++;
+          s.oxy = Math.min(OXY_MAX, s.oxy + OXY_REFILL);
+        }
+      }
+    }
+    // the tank drains every frame, faster with depth (pressure)
+    s.oxy -= OXY_DRAIN + meters * OXY_DRAIN_RAMP;
+    var r = rowIn(s, ri);
+    if (s.x - PLAYER_R < r.c - r.h || s.x + PLAYER_R > r.c + r.h) return "wall";
+    if (s.oxy <= 0) { s.oxy = 0; return "air"; }
+    return null;
   }
 
   var sim = makeSim();          // the live run
@@ -275,6 +348,7 @@
   var input = { left: false, right: false };
   var frame = 0;                // frames elapsed in the current run
   var crashFrame = -1;
+  var crashCause = null;        // "wall" | "air" once the run ended
   var bubbles = [];
 
   function steerOf(inp) {
@@ -310,6 +384,7 @@
     vrng = mulberry32(seed ^ 0x9E3779B9);
     frame = 0;
     crashFrame = -1;
+    crashCause = null;
     bubbles = [];
     input.left = false;
     input.right = false;
@@ -356,6 +431,7 @@
 
     if (crashed) {
       crashFrame = frame;
+      crashCause = crashed; // "wall" | "air"
       state = "gameover";
       var score = depthMeters();
       if (score > best) { best = score; saveBest(); }
@@ -396,6 +472,19 @@
       ctx.fillStyle = shade("#0d2436", dark * 0.6);
       ctx.fillRect(r.c - r.h - 6 - notch, y + 4, 6 + notch, ROW_H - 8);
       ctx.fillRect(r.c + r.h, y + 4, 6 + notch, ROW_H - 8);
+      // air pocket (untaken): a bright pickup bubble in the channel —
+      // drawn from sim row data, position/existence never depends on render
+      if (r.p && !r.p.taken) {
+        var py = y + ROW_H / 2;
+        ctx.fillStyle = "rgba(214,240,255,0.85)";
+        ctx.beginPath();
+        ctx.arc(r.p.x, py, POCKET_R, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(120,190,230,0.9)";
+        ctx.beginPath();
+        ctx.arc(r.p.x - 3, py - 3, 2.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.fillStyle = shade("#123048", dark * 0.6);
     }
 
@@ -455,6 +544,23 @@
     ctx.fillText(meters + " m", 10, 24);
     ctx.textAlign = "right";
     ctx.fillText("best " + best + " m", W - 10, 24);
+    // oxygen meter (top center): drains as you dive, refilled by air pockets
+    if (state !== "title") {
+      var ow = 130, oh = 9, oxx = (W - ow) / 2, oyy = 15;
+      var frac = Math.max(0, Math.min(1, sim.oxy / OXY_MAX));
+      ctx.strokeStyle = "#5f8aa3";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(oxx - 0.5, oyy - 0.5, ow + 1, oh + 1);
+      ctx.fillStyle = frac < 0.25 ? "#ff7a6b" : "#7ee0c3";
+      ctx.fillRect(oxx, oyy, ow * frac, oh);
+      ctx.fillStyle = "#5f8aa3";
+      ctx.font = "10px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("air", W / 2, oyy + oh + 12);
+      ctx.font = "16px 'Courier New', monospace";
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#cfe8f5";
+    }
     if (ghost !== null && state === "playing") {
       ctx.fillStyle = "#5f8aa3";
       ctx.font = "12px 'Courier New', monospace";
@@ -468,7 +574,8 @@
       ctx.fillText("UNDERTOW", W / 2, 240);
       ctx.font = "16px 'Courier New', monospace";
       ctx.fillText("dive the trench — don't touch the walls", W / 2, 290);
-      ctx.fillText("space / enter / tap to dive", W / 2, 330);
+      ctx.fillText("grab air pockets before your tank runs dry", W / 2, 312);
+      ctx.fillText("space / enter / tap to dive", W / 2, 340);
       ctx.fillStyle = "#5f8aa3";
       ctx.fillText((DAILY ? "daily dive " : "seed ") + seed, W / 2, 370);
       if (CHALLENGE_DEPTH > 0) {
@@ -495,7 +602,7 @@
       ctx.fillRect(0, 200, W, 200);
       ctx.fillStyle = "#ff7a6b";
       ctx.font = "bold 30px 'Courier New', monospace";
-      ctx.fillText("CRUSHED AT " + meters + " m", W / 2, 270);
+      ctx.fillText((crashCause === "air" ? "OUT OF AIR AT " : "CRUSHED AT ") + meters + " m", W / 2, 270);
       ctx.fillStyle = "#cfe8f5";
       ctx.font = "16px 'Courier New', monospace";
       ctx.fillText("best " + best + " m", W / 2, 310);
@@ -570,6 +677,29 @@
     getShareFeedback: function () { return shareMsg; },
     dailySeedFor: function (d) { return dailySeed(d instanceof Date ? d : new Date(d)); },
     getCrashFrame: function () { return crashFrame; },
+    getCrashCause: function () { return crashCause; }, // "wall" | "air" | null
+    getOxygen: function () {
+      return { oxygen: sim.oxy, max: OXY_MAX, pockets: sim.pockets };
+    },
+    getPocketProbe: function (lookRows) {
+      // Test/driver hook: the nearest untaken pocket at or below the diver
+      // within lookRows rows (default 40). Probing may force row generation,
+      // but rows depend only on their index, so it never perturbs the sim.
+      var start = Math.floor((sim.scrollY + PLAYER_Y) / ROW_H);
+      var look = (lookRows && lookRows > 0) ? Math.floor(lookRows) : 40;
+      for (var i = start; i <= start + look; i++) {
+        var r = rowIn(sim, i);
+        if (r.p && !r.p.taken) {
+          return {
+            x: r.p.x,
+            row: i,
+            dy: (i * ROW_H + ROW_H / 2) - (sim.scrollY + PLAYER_Y),
+            diverX: sim.x
+          };
+        }
+      }
+      return null;
+    },
     getSkin: function () { var s = SKINS[skinIndex]; return { id: s.id, trailStyle: s.trailStyle, index: skinIndex }; },
     getSkinIds: function () { return SKINS.map(function (s) { return s.id; }); },
     getGhostInfo: function () {
@@ -614,7 +744,7 @@
     stepFrames: function (n) {
       for (var i = 0; i < n; i++) update();
       render(); // rendering is gameplay-inert; keeps headless screenshots useful
-      return { state: state, frame: frame, score: depthMeters(), crashFrame: crashFrame };
+      return { state: state, frame: frame, score: depthMeters(), crashFrame: crashFrame, cause: crashCause };
     },
     reset: function (newSeed) {
       if (newSeed !== undefined && newSeed !== null && !isNaN(+newSeed)) {

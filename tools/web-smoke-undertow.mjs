@@ -23,8 +23,20 @@
  * to the cleared-storage baseline, and the lockstep ghost lands on its
  * recorded numbers during that run; only the best run per seed is kept;
  * the record survives a reload and re-arms; records are keyed by seed;
- * ?ghost=0 opts out without touching the run. Exits non-zero on any
- * failed assertion; prints one PASS/FAIL line per assertion.
+ * ?ghost=0 opts out without touching the run. Also proves the oxygen +
+ * air-pocket cut (growth cut 4 — a SIM change: the v1.3.0 seed-7
+ * no-input fixed point crashFrame=823/194m (wall) became
+ * crashFrame=810/191m (out of air); the hold-left wall crash at frame
+ * 37 carries verbatim, proving the pocket side-band RNG left the
+ * channel layout untouched): the tank is full at run start and drains
+ * deterministically; two zero-pocket seeds die of air on the identical
+ * frame (air-out is the drain schedule, not the seed); a collected
+ * pocket extends the run; a pocket-chasing driver witnesses an in-run
+ * refill and far outlives the no-input run on the same seed (the
+ * "reason to leave the safe line"), deterministically across two runs;
+ * stale v1 ghost records (pre-oxygen sim) are dropped cleanly and a
+ * crashed run writes a fresh v2 record. Exits non-zero on any failed
+ * assertion; prints one PASS/FAIL line per assertion.
  *
  * Deps (NOT vendored — install next to the script or point NODE_PATH at an
  * external install; do not commit node_modules):
@@ -165,6 +177,14 @@ const main = async () => {
   check("steering changes the outcome (hold-left run differs)",
     runC.state === "gameover" && runC.crashFrame !== runA.crashFrame,
     `hold-left crashFrame=${runC.crashFrame} vs no-input crashFrame=${runA.crashFrame}`);
+
+  // (6b) carried v1.3.0 fixed point: the hold-left run dies on the wall at
+  // frame 37 / 7m — long before oxygen could matter and without touching a
+  // pocket, so this literal carrying verbatim proves the pocket side-band
+  // RNG stream left the channel layout and steering physics byte-identical.
+  check("carried v1.3.0 fixed point: hold-left seed-7 wall crash at frame 37 / 7m (channel layout untouched)",
+    runC.crashFrame === 37 && runC.score === 7 && runC.cause === "wall",
+    `crashFrame=${runC.crashFrame} score=${runC.score}m cause=${runC.cause}`);
 
   // (7) restart loop: after gameover, Space -> playing again, fresh run
   await page.evaluate(() => {
@@ -426,6 +446,161 @@ const main = async () => {
       && runG4.crashFrame === runG1.crashFrame && runG4.score === runG1.score,
     `enabled=${optedOut.enabled} stored=${!!optedOut.stored} active=${optedOut.active} run(crashFrame=${runG4.crashFrame}, score=${runG4.score}m) vs baseline(${runG1.crashFrame}, ${runG1.score}m)`);
   await gpage.close();
+
+  // ---- oxygen + air pockets (growth cut 4) -----------------------------------
+  // A SIM change: run outcomes for a given seed legitimately moved. The
+  // no-input seed-7 baseline (runA above) shifted from the v1.3.0 fixed
+  // point crashFrame=823 / 194m (wall) to crashFrame=810 / 191m (out of
+  // air, one accidental pickup on the way down). These assertions pin the
+  // oxygen mechanics themselves. Fresh context = clean storage.
+  const AIR_SEED_A = 4;  // dev-verified: no-input run collects zero pockets
+  const AIR_SEED_B = 8;  // dev-verified: no-input run collects zero pockets
+  const CHASE_SEED = 3;  // dev-verified: pocket-rich channel for the chaser
+
+  // no-input run of a seed; returns crash numbers + end-of-run oxygen state
+  async function noInputRun(pg, s) {
+    await pg.evaluate((sd) => {
+      window.UNDERTOW.reset(sd);
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+    }, s);
+    const r = await runToCrash(pg);
+    const o = await pg.evaluate(() => window.UNDERTOW.getOxygen());
+    return { ...r, pockets: o.pockets, oxygen: o.oxygen };
+  }
+
+  // greedy pocket-chaser: each frame steer toward the nearest untaken pocket
+  // below the diver (via the getPocketProbe test hook). Fully deterministic:
+  // it reads only sim state, and the sim is seeded.
+  async function chaseRun(pg, s) {
+    return await pg.evaluate(({ sd, max }) => {
+      const U = window.UNDERTOW;
+      U.reset(sd);
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+      let refill = null;
+      let prev = U.getOxygen().oxygen;
+      let last = null;
+      for (let f = 0; f < max; f++) {
+        const p = U.getPocketProbe();
+        if (p) U.setInput({ left: p.x < p.diverX - 2, right: p.x > p.diverX + 2 });
+        else U.setInput({ left: false, right: false });
+        last = U.stepFrames(1);
+        const o = U.getOxygen();
+        if (refill === null && o.oxygen > prev) refill = { frame: last.frame, from: prev, to: o.oxygen };
+        prev = o.oxygen;
+        if (last.state === "gameover") break;
+      }
+      U.setInput({ left: false, right: false });
+      const o = U.getOxygen();
+      return { ...last, pockets: o.pockets, oxygen: o.oxygen, refill };
+    }, { sd: s, max: MAX_FRAMES });
+  }
+
+  const opage = await browser.newPage({ viewport: { width: 520, height: 700 } });
+  opage.on("pageerror", (e) => { console.error("PAGE ERROR (oxygen):", e.message); failures++; });
+  await opage.goto(baseURL + `?seed=${SEED}&headless=1`);
+
+  // (30) tank full at run start, drains as you dive, deterministically
+  const oxyDep = await opage.evaluate(() => {
+    const U = window.UNDERTOW;
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+    const start = U.getOxygen();
+    U.stepFrames(240);
+    const a = U.getOxygen().oxygen;
+    U.reset(U.getSeed());
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+    U.stepFrames(240);
+    const b = U.getOxygen().oxygen;
+    return { start: start.oxygen, max: start.max, a, b };
+  });
+  check("oxygen: tank full at run start, drains as you dive, deterministic at frame 240",
+    oxyDep.start === oxyDep.max && oxyDep.a > 0 && oxyDep.a < oxyDep.max && oxyDep.a === oxyDep.b,
+    `start=${oxyDep.start}/${oxyDep.max} frame240=${oxyDep.a} rerun=${oxyDep.b}`);
+
+  // (31) the seed-7 no-input run now ends OUT OF AIR at the runA numbers —
+  // the sim-change witness (old fixed point: 823 / 194m, wall)
+  const oxyRun = await runToCrash(opage);
+  const oxyEnd = await opage.evaluate(() => ({
+    o: window.UNDERTOW.getOxygen(), cause: window.UNDERTOW.getCrashCause(),
+  }));
+  check("oxygen-out ends the run: seed-7 no-input run dies of air with an empty tank (new baseline)",
+    oxyRun.state === "gameover" && oxyRun.cause === "air" && oxyEnd.cause === "air"
+      && oxyEnd.o.oxygen === 0
+      && oxyRun.crashFrame === runA.crashFrame && oxyRun.score === runA.score,
+    `crashFrame=${oxyRun.crashFrame} score=${oxyRun.score}m cause=${oxyEnd.cause} oxygen=${oxyEnd.o.oxygen} pockets=${oxyEnd.o.pockets} (v1.3.0 fixed point was 823 / 194m, wall)`);
+
+  // (32) zero-pocket air-out is the drain schedule, not the seed: the descent
+  // (and so the drain) is seed-independent, so two seeds whose no-input runs
+  // touch no pocket die of air on the IDENTICAL frame at the identical depth
+  const airA = await noInputRun(opage, AIR_SEED_A);
+  const airB = await noInputRun(opage, AIR_SEED_B);
+  check("zero-pocket seeds die of air on the identical frame (drain schedule is seed-independent)",
+    airA.cause === "air" && airB.cause === "air"
+      && airA.pockets === 0 && airB.pockets === 0
+      && airA.crashFrame === airB.crashFrame && airA.score === airB.score,
+    `seed${AIR_SEED_A}(crashFrame=${airA.crashFrame}, ${airA.score}m, pockets=${airA.pockets}) vs seed${AIR_SEED_B}(crashFrame=${airB.crashFrame}, ${airB.score}m, pockets=${airB.pockets})`);
+
+  // (33) a collected pocket extends the run: seed-7's no-input run drifts
+  // through one pocket on the way down and outlives the zero-pocket air-out
+  check("a collected pocket extends the run (seed-7's accidental pickup outlives the zero-pocket air-out frame)",
+    oxyEnd.o.pockets >= 1 && oxyRun.crashFrame > airA.crashFrame,
+    `seed-7 pockets=${oxyEnd.o.pockets} crashFrame=${oxyRun.crashFrame} vs zero-pocket air-out=${airA.crashFrame}`);
+
+  // (34) pockets refill the tank and are the reason to leave the safe line:
+  // a greedy pocket-chaser witnesses an in-run refill and far outlives the
+  // same seed's no-input run
+  const chaseBase = await noInputRun(opage, CHASE_SEED);
+  const chase1 = await chaseRun(opage, CHASE_SEED);
+  check("air pockets refill the tank (in-run oxygen increase witnessed by the pocket-chaser)",
+    chase1.pockets > 0 && chase1.refill !== null && chase1.refill.to > chase1.refill.from,
+    chase1.refill
+      ? `pockets=${chase1.pockets} first refill @frame ${chase1.refill.frame}: ${chase1.refill.from.toFixed(2)} -> ${chase1.refill.to.toFixed(2)}`
+      : `pockets=${chase1.pockets} no refill witnessed`);
+  check("pockets are a reason to leave the safe line (chaser far outlives the no-input run, same seed)",
+    chase1.state === "gameover" && chaseBase.state === "gameover"
+      && chase1.score > chaseBase.score && chase1.crashFrame > chaseBase.crashFrame,
+    `chaser(crashFrame=${chase1.crashFrame}, ${chase1.score}m, pockets=${chase1.pockets}) vs no-input(crashFrame=${chaseBase.crashFrame}, ${chaseBase.score}m, pockets=${chaseBase.pockets})`);
+
+  // (35) the driven run is deterministic too: run the chaser twice —
+  // identical crash frame, depth, pocket count and final oxygen
+  const chase2 = await chaseRun(opage, CHASE_SEED);
+  check("pocket-chaser determinism: two driven runs are identical (crashFrame, depth, pockets, oxygen)",
+    chase2.crashFrame === chase1.crashFrame && chase2.score === chase1.score
+      && chase2.pockets === chase1.pockets && chase2.oxygen === chase1.oxygen,
+    `run1(crashFrame=${chase1.crashFrame}, ${chase1.score}m, pockets=${chase1.pockets}) vs run2(crashFrame=${chase2.crashFrame}, ${chase2.score}m, pockets=${chase2.pockets})`);
+  await opage.close();
+
+  // (36) stale v1 ghost records (recorded under the oxygen-free sim) are
+  // dropped cleanly on load — their depth/crashFrame no longer mean anything
+  const vpage = await browser.newPage({ viewport: { width: 520, height: 700 } });
+  vpage.on("pageerror", (e) => { console.error("PAGE ERROR (ghost-v2):", e.message); failures++; });
+  await vpage.goto(baseURL + `?seed=${SEED}&headless=1`);
+  const staleSetup = await vpage.evaluate(() => {
+    try {
+      window.localStorage.setItem("undertow.ghost." + window.UNDERTOW.getSeed(),
+        JSON.stringify({ v: 1, depth: 999, crashFrame: 9999, log: "9999n" }));
+      return true;
+    } catch { return false; }
+  });
+  await vpage.reload();
+  const staleInfo = await vpage.evaluate(() => window.UNDERTOW.getGhostInfo());
+  check("stale v1 ghost record (pre-oxygen sim) is dropped cleanly on load (no ghost, no error)",
+    staleSetup === true && staleInfo.stored === null && staleInfo.active === false,
+    `injected v1 record; after reload stored=${JSON.stringify(staleInfo.stored)} active=${staleInfo.active}`);
+
+  // (37) the next crashed run replaces the stale record with a fresh v2 ghost
+  await vpage.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+  });
+  const runV = await runToCrash(vpage);
+  const v2rec = await vpage.evaluate(() => {
+    try { return JSON.parse(window.localStorage.getItem("undertow.ghost." + window.UNDERTOW.getSeed())); }
+    catch { return null; }
+  });
+  check("a crashed run under the oxygen sim writes a fresh v2 ghost record over the stale one",
+    runV.state === "gameover" && !!v2rec && v2rec.v === 2
+      && v2rec.depth === runV.score && v2rec.crashFrame === runV.crashFrame,
+    `record v=${v2rec && v2rec.v} depth=${v2rec && v2rec.depth} crashFrame=${v2rec && v2rec.crashFrame} run(crashFrame=${runV.crashFrame}, ${runV.score}m)`);
+  await vpage.close();
 
   await browser.close();
 

@@ -40,7 +40,10 @@ What the arcade needs to serve this game:
   via guarded `localStorage` (`undertow.ghost.<seed>`); on later runs of
   the same seed a translucent ghost diver replays that best run in
   lockstep. The ghost is a second, independent sim instance — it never
-  touches the live run: same seed, same run, ghost or no ghost.
+  touches the live run: same seed, same run, ghost or no ghost. Records
+  are versioned to the sim (v2 since game v1.4.0, the oxygen cut);
+  records written by older sims are dropped cleanly on load and the next
+  finished run writes a fresh one.
 - `?headless=1` — does not start the render loop; exposes the sim to
   `window.UNDERTOW` for automated tests. Not intended for players.
 

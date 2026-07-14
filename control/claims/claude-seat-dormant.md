@@ -1,1 +1,0 @@
-- `claude/seat-dormant` · **final seat-dormant docs PR** — documentation-only shutdown: control/status.md overwritten as the revival entrypoint + session card · control/status.md, control/claims/**, .sessions/2026-07-14-seat-dormant.md · 2026-07-14

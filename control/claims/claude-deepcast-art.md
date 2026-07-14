@@ -1,0 +1,1 @@
+- `claude/deepcast-art` · **Deepcast growth cut 5 (art pass)** — lake gradient by depth + silhouette fish + rod-bend tension sprite (presentation only; every existing proof carries verbatim) · games/deepcast/**, dist/deepcast.gba, .sessions/2026-07-14-deepcast-art.md · 2026-07-14

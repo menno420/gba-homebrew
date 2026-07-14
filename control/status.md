@@ -598,3 +598,30 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #116 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (deepcast-daily, PR #117)
+
+- **ts:** 2026-07-14T04:02:52Z (appended by this dispatch's worker;
+  everything above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Deepcast growth cut 2 — the concept's "daily seed + score-attack"
+  line, GBA-shaped — on branch `claude/deepcast-daily` from main @
+  `3ca91fc`: the title's seed line is now a dial (UP/DOWN +-1,
+  LEFT/RIGHT +-0x100, L/R +-0x10000, 8 hex digits shown), same dialed
+  seed = same lake, same fish; the dusk score card names the seed so a
+  score is attributable; boot seed 0xDEE9CA57 untouched (no dial = the
+  v0.2 run, every proof pin carried). Leaderboard half noted out of GBA
+  scope in CONCEPT.md per the Tiltstone PR #97 precedent.
+- proofs.sh +P4 (dialed lake 0xDEEACB58: per-step dial pins in dc[4],
+  glyph-exact seed digits on title and dusk card, same input ->
+  different bite frame + a wt-16 fish where the default stream gave 11;
+  RUN TWICE, watch-logs byte-identical) +P5 (dial away and back -> the
+  full P2 route lands on every P2 literal). 212 distinct asserts, 500
+  green lines, exit 0. dist v0.3 (two clean builds byte-identical,
+  proofs re-run at dist bytes; toolchain certified against the v0.2
+  hash first).
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #117 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

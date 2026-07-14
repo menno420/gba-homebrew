@@ -52,7 +52,19 @@ worth growing; the presentation is placeholder.
 - Line upgrades bought with score (thicker line = higher snap threshold,
   slower reel) — a run-to-run meta without breaking determinism.
 - Daily seed + score-attack: the deterministic core makes a shareable
-  "same lake, same fish" challenge free to build.
+  "same lake, same fish" challenge free to build. **BUILT** (growth cut
+  2, 2026-07-14), GBA-shaped: a cartridge has no clock and no server, so
+  "daily" becomes a dialable seed — the title's seed line is a picker
+  (UP/DOWN +-1, LEFT/RIGHT +-0x100, L/R +-0x10000, shown as 8 hex
+  digits). Two players who dial the same digits fish the SAME lake —
+  same bites, same weights, same surge rhythm — and the dusk score card
+  names the seed, so a score is a claim anyone with a cartridge can
+  check. The boot seed 0xDEE9CA57 is untouched: no dial input = the
+  v0.2 run, bit-identical. Proven in `games/deepcast/proofs.sh` (P4:
+  dialed lake, run twice; P5: dial away and back reproduces every
+  default-lake literal). The leaderboard half of this line is out of
+  GBA scope — no network — per the Tiltstone PR #97 precedent; the seed
+  is what makes an off-cartridge leaderboard honest.
 - Audio: reel clicks that speed up with tension — tension readable with
   eyes closed (also a nice accessibility angle). **BUILT** (growth cut 1,
   2026-07-14): while reeling, a dry ratchet click fires on a period that

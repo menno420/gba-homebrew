@@ -13,12 +13,24 @@
  * ends when all 3 lures are gone.
  *
  * DETERMINISM CONTRACT (headless proof relies on all of this):
- *   - Integer math only. One xorshift32 PRNG, fixed seed 0xDEE9CA57
+ *   - Integer math only. One xorshift32 PRNG, boot seed 0xDEE9CA57
  *     (shown on the title card). RNG words are consumed ONLY at pinned
  *     events (cast: bite delay + fish weight; fight: phase lengths), in a
  *     fixed order, so the same input script replays bit-identically.
  *   - Frame-count-driven: no wall clock, no interrupts feeding the sim.
  *   - START from game over restarts the SAME seeded run.
+ *
+ * SEED-SELECT SCORE-ATTACK (growth cut 2 — the concept's "daily seed +
+ * score-attack" line, GBA-shaped: a cartridge has no clock and no server,
+ * so "daily" becomes a DIALABLE seed): on the title, the seed line is a
+ * picker — UP/DOWN dials the seed +-1, LEFT/RIGHT +-0x100, L/R +-0x10000
+ * (all edge-triggered, 32-bit wrapping; the xorshift dead state 0 is
+ * skipped). Two players who dial the same 8 hex digits fish the SAME
+ * lake — same bites, same weights, same surge rhythm — and the seed is
+ * repeated on the dusk score card, so a score is a claim anyone with a
+ * cartridge can check. The boot seed stays 0xDEE9CA57: with no dial
+ * input the game is bit-identical to v0.2. START from game over restarts
+ * the same dialed seed; the picker only lives on the title.
  *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
  * --elf --watch dc:dc_telemetry:16): a volatile 16-word array with
@@ -27,7 +39,8 @@
  *   [1] 0x43415354 'CAST'   magic     [9]  line remaining (catch at 0)
  *   [2] state id (enum State)         [10] current/last fish weight
  *   [3] frames since boot (monotonic) [11] fish phase (1 surge, 0 rest)
- *   [4] PRNG seed constant            [12] lures remaining
+ *   [4] selected PRNG seed (boot      [12] lures remaining
+ *       0xDEE9CA57; title dial live)
  *   [5] charge frames (this cast)     [13] catches this run
  *   [6] lure depth (m)                [14] score this run
  *   [7] target depth (m)              [15] last fight result (1 catch, 2 snap)
@@ -187,6 +200,21 @@ namespace
         out.append("]");
         return out;
     }
+
+    bn::string<40> seed_hex(unsigned value)
+    {
+        // The seed as exactly 8 uppercase hex digits — the shareable
+        // challenge code two players compare on their title screens.
+        bn::string<40> out;
+
+        for(int shift = 28; shift >= 0; shift -= 4)
+        {
+            unsigned digit = (value >> shift) & 0xFu;
+            out.push_back(char(digit < 10 ? '0' + digit : 'A' + digit - 10));
+        }
+
+        return out;
+    }
 }
 
 int main()
@@ -211,6 +239,12 @@ int main()
             lines[i].clear();
         }
     };
+
+    // Seed-select (growth cut 2): the dialed challenge seed. Boot value is
+    // the v0.2 constant, only the title dial changes it, and reset_run()
+    // reads it — so with no dial input every run is the boot run, and a
+    // dialed value survives game over (START reruns the SAME lake).
+    unsigned seed_sel = seed_constant;
 
     // --- run state (all plain ints; reset_run() restores the exact boot run)
     rng_t rng(seed_constant);
@@ -240,7 +274,7 @@ int main()
 
     auto reset_run = [&]()
     {
-        rng.s = seed_constant;
+        rng.s = seed_sel;
         lures = start_lures;
         catches = 0;
         score = 0;
@@ -276,6 +310,54 @@ int main()
             if(bn::keypad::start_pressed())
             {
                 reset_run();
+            }
+            else
+            {
+                // The seed dial (edge-triggered so one press is one step —
+                // a challenge code is a repeatable press sequence). 32-bit
+                // wrap; 0 is xorshift32's dead state, so it is skipped in
+                // whichever direction the dial was turning.
+                unsigned delta = 0;
+
+                if(bn::keypad::up_pressed())
+                {
+                    delta += 1;
+                }
+
+                if(bn::keypad::down_pressed())
+                {
+                    delta -= 1;
+                }
+
+                if(bn::keypad::right_pressed())
+                {
+                    delta += 0x100;
+                }
+
+                if(bn::keypad::left_pressed())
+                {
+                    delta -= 0x100;
+                }
+
+                if(bn::keypad::r_pressed())
+                {
+                    delta += 0x10000;
+                }
+
+                if(bn::keypad::l_pressed())
+                {
+                    delta -= 0x10000;
+                }
+
+                if(delta != 0)
+                {
+                    seed_sel += delta;
+
+                    if(seed_sel == 0)
+                    {
+                        seed_sel += delta;
+                    }
+                }
             }
             break;
 
@@ -465,14 +547,19 @@ int main()
         {
 
         case st_title:
+        {
             lines[0].set(text_gen, text_x, line_y[0], "DEEPCAST");
             lines[1].set(text_gen, text_x, line_y[1], "A QUIET LAKE AT DUSK");
-            lines[2].set(text_gen, text_x, line_y[2], "SEED DEE9CA57");
+            bn::string<40> seed_line("SEED ");
+            seed_line.append(seed_hex(seed_sel));
+            lines[2].set(text_gen, text_x, line_y[2], seed_line);
             lines[3].set(text_gen, text_x, line_y[3],
                          "HOLD A: CAST DEEP, REEL SOFT");
             lines[4].set(text_gen, text_x, line_y[4], "3 LURES. PRESS START");
-            lines[5].set(text_gen, text_x, line_y[5], "B: MUTE");
+            lines[5].set(text_gen, text_x, line_y[5],
+                         "B: MUTE  DPAD L R: DIAL SEED");
             break;
+        }
 
         case st_charge:
         {
@@ -545,7 +632,10 @@ int main()
             bn::string<40> line2("CATCHES ");
             line2.append(bn::to_string<8>(catches));
             lines[2].set(text_gen, text_x, line_y[2], line2);
-            lines[3].set(text_gen, text_x, line_y[3], "PRESS START");
+            bn::string<40> line3("SEED ");
+            line3.append(seed_hex(seed_sel));
+            lines[3].set(text_gen, text_x, line_y[3], line3);
+            lines[4].set(text_gen, text_x, line_y[4], "PRESS START");
             break;
         }
 
@@ -558,7 +648,7 @@ int main()
         dc_telemetry[1] = 0x43415354u;  // 'CAST'
         dc_telemetry[2] = state;
         dc_telemetry[3] = frames;
-        dc_telemetry[4] = seed_constant;
+        dc_telemetry[4] = seed_sel;
         dc_telemetry[5] = unsigned(charge);
         dc_telemetry[6] = unsigned(depth);
         dc_telemetry[7] = unsigned(target);

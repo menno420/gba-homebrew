@@ -5,9 +5,10 @@
 > the concept convention.
 
 Shipped in the slice: seeded 90 s win/lose rounds (plant / herd /
-cross-pollinate to tier 3 / harvest essence vs. quota) + predator wisps;
-the growth path — biomes, daily weather variation, more species, essence
-spending — is still future work.
+cross-pollinate to tier 3 / harvest essence vs. quota) + predator wisps.
+Growth cut 1 shipped 2026-07-14: daily seeded weather (UTC-date-derived
+wind parameters, read once at boot). The rest of the growth path —
+biomes, more species, essence spending — is still future work.
 
 ## Genre
 
@@ -26,7 +27,9 @@ mobile retention. Portrait, offline-first, session length 30 s – 5 min.
    essence, spend essence on new biomes/palettes/species.
 
 Depth ramps: wind patterns per biome, predator wisps to fend off with
-drags, daily seeded "weather" so every player's Tuesday garden differs.
+drags, daily seeded "weather" so every player's Tuesday garden differs
+(BUILT 2026-07-14 — UTC date picks the day's named wind parameters at
+boot; the sim step never reads the clock).
 The skeleton's fixed-timestep loop makes grown gardens reproducible from
 (seed, action log) — the same replay-by-construction proof discipline the
 GBA/NDS arcs use.

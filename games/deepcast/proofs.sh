@@ -129,6 +129,52 @@
 #                              savefile and are UNMODIFIED from v0.4 — a
 #                              zeroed/erased cart boots exactly like v0.4
 #                              (tier 0 IS the v0.4 constants).
+#   P8 lake gradient + rod    — growth cut 5 (the art pass): the P2 route
+#     (art cut)                 with dc_artmeta + DISPCNT/palette-RAM/VRAM
+#                              watches — every P2 pin re-lands while the
+#                              gradient palette follows depth (0x6A05 ->
+#                              0x44E2 -> 0x1421 in palette RAM), the
+#                              silhouette follows the species word, and
+#                              the rod bend follows tension*7/snap.
+#                              RUN TWICE — byte-identical watch-logs.
+#   P9 species silhouettes    — the P6 route with the art watched, every
+#     (art cut)                 P6 pin carried: three species across three
+#                              bands drive frame 7 / 0 / 9; the fish is
+#                              hidden while sinking and on the SNAP card
+#                              (the species keeps its secret).
+#                              RUN TWICE — byte-identical watch-logs.
+#   P10 the honest gauge      — P7's two-SRAM-state pattern re-used on the
+#     (art cut)                 rod law: the SAME hold-only fight bends the
+#                              worn rod 2/6 and the braided rod 1/5 at the
+#                              same tension words — the gauge follows
+#                              lm[3], so it is honest on any line.
+#                              RUN TWICE per leg — byte-identical logs.
+#
+# Growth cut 5 (the art pass — lake gradient by depth, silhouette fish,
+# rod-bend tension sprite) is PRESENTATION ONLY: game state, RNG word order
+# and every dc_telemetry / dc_fishlog / dc_linemeta word are byte-identical
+# to cut 4, so P1-P7 below carried VERBATIM (zero re-derived pins, zero
+# adjusted text asserts — the text HUD stays alongside the art). What the
+# cut adds is proven in P8/P9/P10 through a FOURTH mailbox (dc_artmeta:
+# presentation words only) plus direct hardware-state pins — DISPCNT, BG
+# palette RAM (the gradient law's exact BGR555 halfwords, rewritten as the
+# line sinks), OBJ palette RAM (the committed fish/rod art's colors) and
+# the lake map's VRAM screenblock — all read at GBA bus addresses by the
+# same watch machinery (the Cindervault P8/P9 method). The laws under
+# proof (closed forms of already-pinned sim words, cross-checked offline):
+#
+#   gradient band i (0 surface..9 bottom) at depth d (the dc[6] word):
+#       dim = 2*i + d/8
+#       BGR555 = max(1,5-dim/3) | max(1,16-dim)<<5 | max(4,26-dim)<<10
+#     (d=0 band0 = 0x6A05 dusk blue; d=72 -> 0x44E2; d=172 -> 0x1421 —
+#      the whole lake literally darkens as the line sinks)
+#   fish frame  = the dc_fishlog species word fl[0] (band*4 + tier: band
+#       sets silhouette SIZE, tier its SHADE) while fighting and on the
+#       CATCH card; 255 (hidden) everywhere else — a SNAP card never
+#       shows the fish, the species keeps its secret
+#   rod bend    = tension * 7 / line_snap[tier]  (dc[8] over lm[3] — the
+#       same tension-over-snap law the audio ratchet reads, so the rod is
+#       an honest analog gauge on ANY line tier)
 #
 # Growth cut 3 also threads species witnesses through the EXISTING routes
 # additively: P1 pins the boot sentinels (species/rarity 255, log 0, the
@@ -861,5 +907,227 @@ H "$OUT/p7c2.png" --frames 700 $W $WA $WL $P7C_ROUTE \
 cmp "$OUT/p7c-run1.csv" "$OUT/p7c-run2.csv"
 cmp "$OUT/p7-boot1a.sav" "$OUT/p7-boot1b.sav"
 echo "P7 run C run-twice: byte-identical; savefile untouched by two more boots"
+
+# ---------------------------------------------------------------------------
+# P8/P9/P10 — growth cut 5, the art pass (lake gradient by depth, silhouette
+# fish, rod-bend tension sprite; presentation ONLY — P1-P7 above carried
+# verbatim). The proof reads the art back off the hardware:
+#   dc_artmeta (ELF symbol, 8 words): 'DART' magic · gradient depth word ·
+#     band-0/band-9 BGR555 (the gradient law) · fish frame (255 hidden) ·
+#     rod bend frame (255 hidden) · fish-flipped flag.
+#   0x04000000 DISPCNT: 0xF840 — the lake bg's enable bit is on in every
+#     state (the lake IS the screen; v0.5 had no bg at all).
+#   0x050001E0 BG palette RAM (bank 15, entries 0/1): band-0's halfword in
+#     the high half — 0x6A050000 at depth 0, 0x44E20000 at 72, 0x14210000
+#     at 172: the gradient law IN palette RAM, moving with the sink.
+#   0x050001F4 BG palette RAM (entries 10/11): band-9 + the surface glint
+#     0x7BB8 — 0x7BB82021 at depth 0, 0x7BB81021 once dim saturates.
+#   0x050003C4 OBJ palette RAM: 0x67162E78 = rod tip (24,19,11) + line
+#     (22,24,25) BGR555 — the committed dc_rod art.
+#   0x050003E4 OBJ palette RAM: 0x4E2E3D8A = the UNCOMMON + RARE fish
+#     shades — the committed dc_fish art.
+#   0x06000800 map screenblock: 0xF00BF00B = surface-shimmer cells (tile
+#     11, palette bank 15); 0x06000020: 0x11111111 = band tile 1's solid
+#     4bpp rows — the lake baked into VRAM.
+# All pins transcribed from observed --watch-log runs of THESE routes and
+# cross-checked against an offline replica of the gradient/rod laws.
+# ---------------------------------------------------------------------------
+
+AW='--watch aw:dc_artmeta:8 --watch io:0x04000000:1 --watch grad0:0x050001E0:1 --watch grad9:0x050001F4:1 --watch rodpal:0x050003C4:1 --watch fishpal:0x050003E4:1 --watch vmap:0x06000800:1 --watch vtile:0x06000020:1'
+
+P8_ART_ASSERTS=(
+  # title: the lake at depth 0 — dusk-blue gradient (band0 0x6A05, band9
+  # 0x2021), no fish, no rod; the committed art's colors + cells in RAM
+  --assert-watch 100:aw:0:eq:0x44415254
+  --assert-watch 100:aw:1:eq:0
+  --assert-watch 100:aw:2:eq:0x6A05
+  --assert-watch 100:aw:3:eq:0x2021
+  --assert-watch 100:aw:4:eq:255
+  --assert-watch 100:aw:5:eq:255
+  --assert-watch 100:io:0:eq:0xF840
+  --assert-watch 100:grad0:0:eq:0x6A050000
+  --assert-watch 100:grad9:0:eq:0x7BB82021
+  --assert-watch 100:rodpal:0:eq:0x67162E78
+  --assert-watch 100:fishpal:0:eq:0x4E2E3D8A
+  --assert-watch 100:vmap:0:eq:0xF00BF00B
+  --assert-watch 100:vtile:0:eq:0x11111111
+  # charge: the rod comes up, at rest (bend 0)
+  --assert-watch 240:aw:5:eq:0
+  # the 72m sink: the gradient law lands in the mailbox AND palette RAM —
+  # the lake is literally darker at depth 72 (band0 0x6A05 -> 0x44E2)
+  --assert-watch 430:aw:1:eq:72
+  --assert-watch 430:aw:2:eq:0x44E2
+  --assert-watch 430:grad0:0:eq:0x44E20000
+  --assert-watch 430:grad9:0:eq:0x7BB81021
+  # the bite: the SILHOUETTE appears — frame 7 = the species word fl[0]
+  # (MOON EEL: MIDWATER size, MYTHIC pale shade); rod still at rest
+  --assert-watch 471:aw:4:eq:7
+  --assert-watch 471:aw:5:eq:0
+  # the surge: the fish FLIPS to run (aw[6] rides dc[11])
+  --assert-watch 560:aw:6:eq:1
+  # reeling a rest at tension 98: rod bend 1 = 98*7/600 — the analog
+  # gauge moves with the same word the TENSION bar and the ratchet read
+  --assert-watch 620:aw:5:eq:1
+  --assert-watch 620:aw:6:eq:0
+  # the CATCH card shows the landed fish (frame 7 stays), rod down
+  --assert-watch 680:aw:4:eq:7
+  --assert-watch 680:aw:5:eq:255
+  # cast 2's fight at tension 588: rod bend 6 = 588*7/600 (near-snap);
+  # the result card then hides both sprites
+  --assert-watch 1025:aw:5:eq:6
+  --assert-watch 1027:aw:4:eq:255
+  --assert-watch 1027:aw:5:eq:255
+  # the max-charge 172m cast: mid-sink the lake keeps darkening (depth
+  # 100 -> 0x3881), and at the ABYSS bite the palette RAM holds the law
+  # at 172 (0x1421) with TRENCH MAW's big band-3 silhouette on the line
+  --assert-watch 1450:aw:1:eq:100
+  --assert-watch 1450:aw:2:eq:0x3881
+  --assert-watch 1529:aw:1:eq:172
+  --assert-watch 1529:aw:2:eq:0x1421
+  --assert-watch 1529:grad0:0:eq:0x14210000
+  --assert-watch 1529:aw:4:eq:13
+  --assert-watch 1593:aw:5:eq:6
+  # dusk: the lake surfaces (depth word 0 -> the title's exact palette),
+  # no fish, no rod — and the whole route's sim words landed on P2's
+  # literals below (the art cannot be felt by the sim)
+  --assert-watch 2500:aw:1:eq:0
+  --assert-watch 2500:aw:2:eq:0x6A05
+  --assert-watch 2500:aw:4:eq:255
+  --assert-watch 2500:aw:5:eq:255
+  --assert-watch 2500:grad0:0:eq:0x6A050000
+  --assert-watch 2500:io:0:eq:0xF840
+)
+
+echo "== P8: THE LAKE GRADIENT + ROD BEND — the P2 route with the hardware watched (run 1) =="
+H "$OUT/p8.png" --frames 2520 $W $WA $AW $CORE_ROUTE \
+  --watch-log "$OUT/p8-run1.csv" \
+  --shot "100:$OUT/p8-title.png" --shot "430:$OUT/p8-sink72.png" \
+  --shot "620:$OUT/p8-fight.png" --shot "690:$OUT/p8-catch.png" \
+  --shot "1540:$OUT/p8-abyss.png" \
+  --require-distinct \
+  "${P8_ART_ASSERTS[@]}" \
+  "${P2_ASSERTS[@]}"
+
+echo "== P8: run 2 (must be byte-identical) =="
+H "$OUT/p8b.png" --frames 2520 $W $WA $AW $CORE_ROUTE \
+  --watch-log "$OUT/p8-run2.csv" \
+  "${P8_ART_ASSERTS[@]}" \
+  "${P2_ASSERTS[@]}"
+cmp "$OUT/p8-run1.csv" "$OUT/p8-run2.csv"
+echo "P8 run-twice: byte-identical"
+
+# P9 — THE SPECIES SILHOUETTES: the P6 route (three species across three
+# depth bands) with the art watched, every P6 pin carried. The fish frame
+# IS the species word: 7 (MIDWATER MYTHIC — mid size, palest shade), 0
+# (SHALLOWS COMMON — smallest, darkest), 9 (DEEPS UNCOMMON — big); it is
+# HIDDEN while sinking (the species keeps its secret until the card), and
+# the SNAP card never shows it (fl[0] stays 9 while aw[4] drops to 255).
+P9_ART_ASSERTS=(
+  # cast 1 sinking at depth 10: gradient mid-law 0x65E5, fish HIDDEN
+  # (fl[0] already knows species 7 — the player must not)
+  --assert-watch 365:aw:1:eq:10
+  --assert-watch 365:aw:2:eq:0x65E5
+  --assert-watch 365:aw:4:eq:255
+  --assert-watch 680:aw:4:eq:7
+  --assert-watch 680:aw:5:eq:255
+  # the catch log screen: no rod, no fish, surface palette
+  --assert-watch 830:aw:4:eq:255
+  --assert-watch 830:aw:5:eq:255
+  --assert-watch 830:grad0:0:eq:0x6A050000
+  # cast 2, THE SHALLOWS at 42m: gradient 0x5564 in mailbox AND palette
+  # RAM; MUD BREAM's silhouette (frame 0) through fight and catch card
+  --assert-watch 986:aw:1:eq:42
+  --assert-watch 986:aw:2:eq:0x5564
+  --assert-watch 986:grad0:0:eq:0x55640000
+  --assert-watch 986:aw:4:eq:0
+  --assert-watch 1037:aw:4:eq:0
+  --assert-watch 1037:aw:5:eq:255
+  # cast 3, THE DEEPS at 144m: the law saturates green (0x2021), IRON
+  # GAR's big silhouette (frame 9) bends the rod (168*7/600 = 1 at 1400)
+  --assert-watch 1375:aw:1:eq:144
+  --assert-watch 1375:aw:2:eq:0x2021
+  --assert-watch 1375:grad0:0:eq:0x20210000
+  --assert-watch 1375:aw:4:eq:9
+  --assert-watch 1400:aw:5:eq:1
+  # the SNAP card: the fish vanishes UNREVEALED — the sim's species word
+  # still says 9 (P6 pins it), the screen never showed a name
+  --assert-watch 1444:aw:4:eq:255
+  --assert-watch 1444:aw:5:eq:255
+  # the reopened log: sprites down, lake at the surface
+  --assert-watch 1590:aw:4:eq:255
+  --assert-watch 1590:grad0:0:eq:0x6A050000
+)
+
+echo "== P9: THE SPECIES SILHOUETTES — the P6 route with the art watched (run 1) =="
+H "$OUT/p9.png" --frames 1750 $W $WA $AW $P6_ROUTE \
+  --watch-log "$OUT/p9-run1.csv" \
+  --shot "1400:$OUT/p9-irongar.png" \
+  --require-distinct \
+  "${P9_ART_ASSERTS[@]}" \
+  "${P6_ASSERTS[@]}"
+
+echo "== P9: run 2 (must be byte-identical) =="
+H "$OUT/p9b.png" --frames 1750 $W $WA $AW $P6_ROUTE \
+  --watch-log "$OUT/p9-run2.csv" \
+  "${P9_ART_ASSERTS[@]}" \
+  "${P6_ASSERTS[@]}"
+cmp "$OUT/p9-run1.csv" "$OUT/p9-run2.csv"
+echo "P9 run-twice: byte-identical"
+
+# P10 — THE HONEST GAUGE: the rod-bend law follows the CURRENT line's snap
+# threshold (lm[3]), proven exactly like P7 proved the tradeoff — the SAME
+# hold-only fight under two SRAM states, the savefile the only treatment.
+# Worn line (leg A, no savefile): tension 203 -> bend 2, 573 -> bend 6.
+# Braided line (leg C, P7 run B's savefile): the SAME tension words bend
+# the rod LESS — 203 -> 1, 573 -> 5 — and on frame 542 (the worn line's
+# snap frame) the braided rod is still up at bend 5 under tension 623.
+# P7's own A/C sim asserts are carried verbatim in both legs.
+echo "== P10 leg A: the worn-line rod on a fresh cart (run 1) =="
+P10A_ASSERTS=(
+  --assert-watch 500:aw:5:eq:2
+  --assert-watch 540:aw:5:eq:6
+  --assert-watch 500:aw:4:eq:7
+  --assert-watch 542:aw:4:eq:255
+  --assert-watch 542:aw:5:eq:255
+)
+H "$OUT/p10a.png" --frames 700 $W $WA $WL $AW $P7_FIGHT \
+  --watch-log "$OUT/p10a-run1.csv" \
+  "${P10A_ASSERTS[@]}" \
+  "${P7A_ASSERTS[@]}"
+
+echo "== P10 leg A: run 2 (must be byte-identical) =="
+H "$OUT/p10a2.png" --frames 700 $W $WA $WL $AW $P7_FIGHT \
+  --watch-log "$OUT/p10a-run2.csv" \
+  "${P10A_ASSERTS[@]}" \
+  "${P7A_ASSERTS[@]}"
+cmp "$OUT/p10a-run1.csv" "$OUT/p10a-run2.csv"
+echo "P10 leg A run-twice: byte-identical"
+
+P10C_ASSERTS=(
+  --assert-watch 500:aw:5:eq:1
+  --assert-watch 540:aw:5:eq:5
+  --assert-watch 542:aw:5:eq:5
+  --assert-watch 542:aw:4:eq:7
+  --assert-watch 548:aw:4:eq:255
+  --assert-watch 548:aw:5:eq:255
+)
+
+echo "== P10 leg C: the braided-line rod on P7's savefile — same fight, less bend (run 1) =="
+H "$OUT/p10c.png" --frames 700 $W $WA $WL $AW $P7C_ROUTE \
+  --savefile "$OUT/p7-boot1a.sav" \
+  --watch-log "$OUT/p10c-run1.csv" \
+  --shot "540:$OUT/p10-braided-bend.png" \
+  "${P10C_ASSERTS[@]}" \
+  "${P7C_ASSERTS[@]}"
+
+echo "== P10 leg C: run 2 (must be byte-identical; no dusk = no SRAM write) =="
+H "$OUT/p10c2.png" --frames 700 $W $WA $WL $AW $P7C_ROUTE \
+  --savefile "$OUT/p7-boot1a.sav" \
+  --watch-log "$OUT/p10c-run2.csv" \
+  "${P10C_ASSERTS[@]}" \
+  "${P7C_ASSERTS[@]}"
+cmp "$OUT/p10c-run1.csv" "$OUT/p10c-run2.csv"
+cmp "$OUT/p7-boot1a.sav" "$OUT/p7-boot1b.sav"
+echo "P10 leg C run-twice: byte-identical; savefile untouched"
 
 echo "ALL DEEPCAST PROOFS PASS"

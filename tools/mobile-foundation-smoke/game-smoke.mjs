@@ -25,7 +25,21 @@
 //                    a same-species pair breeds tier-2 'lotus' and the pure
 //                    line ladders to tier-3 'aurora'; a mixed pair breeds
 //                    tier-2 'iris' worth 22
-//   8. PAUSE       — visibilitychange hidden freezes the loop; visible resumes
+//   8. ESSENCE     — essence spending: a won round banks its harvest into
+//                    the persistent wallet (fresh storage starts at 0);
+//                    buyPalette refuses an unaffordable palette (wallet
+//                    unchanged) and a re-buy, and an affordable buy
+//                    deducts/unlocks/activates; dusk-screen shop rows
+//                    driven by the REAL tap verb select owned palettes
+//                    without replanting; a tap off the rows replants with
+//                    the wallet intact; a second round's harvest banks on
+//                    top (accrual across rounds); wallet/unlocks/active
+//                    palette survive a full page reload (guarded
+//                    localStorage); and a scripted run with everything
+//                    unlocked + a non-default palette active is
+//                    byte-identical to the same run on fresh storage
+//                    (palettes are pure render, the wallet is meta)
+//   9. PAUSE       — visibilitychange hidden freezes the loop; visible resumes
 //
 // Scripted rounds run on a page booted "hidden" (visibility overridden
 // BEFORE load, so the game starts paused at frame 0): the rAF loop never
@@ -78,8 +92,10 @@ function check(name, ok, detail) {
 // the game starts paused at frame 0 and only __game.step() advances it.
 // Optional fakeDate {y, m, d}: stub Date itself before load, so the REAL
 // boot path derives that UTC day's weather — the product ships no
-// test-only date parameter.
-async function newScriptedPage(browser, url, fakeDate = null) {
+// test-only date parameter. Optional initMeta: pre-seed the persistent
+// meta wallet/unlocks in localStorage BEFORE the game boots, so the real
+// guarded loadMeta() path reads it (no test-only injection point).
+async function newScriptedPage(browser, url, fakeDate = null, initMeta = null) {
   const ctx = await browser.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
@@ -103,6 +119,12 @@ async function newScriptedPage(browser, url, fakeDate = null) {
       }
       window.Date = FakeDate;
     }, fakeDate);
+  }
+  if (initMeta) {
+    await page.addInitScript((m) => {
+      try { window.localStorage.setItem('driftgarden.meta', JSON.stringify(m)); }
+      catch (e) { /* storage unavailable — the guarded path defaults */ }
+    }, initMeta);
   }
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForFunction(() => window.__gameState && window.__gameState.booted, null, { timeout: 5000 });
@@ -441,7 +463,149 @@ try {
     `seed 9: ${hyb.parents} -> tier-2 '${hyb.childSp}', harvested for +${hyb.irisGain} (want 22)`);
   await hybRig.ctx.close();
 
-  // ---- 8. pause/resume still holds on the live page -----------------------
+  // ---- 8. essence spending --------------------------------------------------
+  // One rig carries the whole meta lifecycle: fresh storage -> win a round
+  // (the section-3 route, seed 42) -> wallet banks the harvest -> API
+  // spend/deny/re-buy -> REAL taps on the dusk-screen shop rows -> replant
+  // off the rows -> a second round banks on top -> reload persists it all.
+  // Weather is pinned with the fake date so the route is byte-stable.
+  const essRig = await newScriptedPage(browser, `${URL_}?seed=42`, DAY_A);
+  const ess = await essRig.page.evaluate(() => {
+    const g = window.__game;
+    const cv = document.getElementById('game');
+    const rect = cv.getBoundingClientRect();
+    const kx = rect.width / cv.width, ky = rect.height / cv.height;
+    const tap = (x, y) => g.tapAt(rect.left + x * kx, rect.top + y * ky);
+    const cw = cv.width, ch = cv.height;
+    const m0 = g.metaState(); // fresh context: defaults
+    // win a round exactly as the WIN assertion does
+    tap(cw * 0.15, ch * 0.45);
+    tap(cw * 0.15 + 26, ch * 0.45);
+    for (const fy of [0.6, 0.72, 0.84]) {
+      for (const fx of [0.1, 0.27, 0.44, 0.61, 0.78, 0.95]) tap(cw * fx, ch * fy);
+    }
+    g.step(310);
+    for (const m of g.snapshot().motes) {
+      if (m.tier !== 1) continue;
+      if (g.snapshot().phase !== 'playing') break;
+      tap(m.x, m.y);
+    }
+    const won = g.snapshot();
+    const m1 = g.metaState(); // wallet after round-end banking
+    // API spend flow: deny the unaffordable, buy the cheapest affordable,
+    // refuse the re-buy
+    const table = g.paletteTable();
+    const afford = table.find((p) => p.cost > 0 && p.cost <= m1.wallet);
+    const tooDear = table.find((p) => p.cost > m1.wallet);
+    const denied = tooDear ? g.buyPalette(tooDear.id) : 'no-priced-palette-above-wallet';
+    const walletAfterDeny = g.metaState().wallet;
+    const bought = g.buyPalette(afford.id);
+    const m2 = g.metaState();
+    const rebuy = g.buyPalette(afford.id);
+    // REAL tap verb on the dusk-screen shop rows (meta UI, no replant)
+    const rowCenter = (id) => {
+      const r = g.shopRows().find((row) => row.id === id);
+      return [rect.left + (r.x + r.w / 2) * kx, rect.top + (r.y + r.h / 2) * ky];
+    };
+    g.tapAt(...rowCenter('verdant'));           // owned default -> select back
+    const afterVerdantTap = { palette: g.metaState().palette, phase: g.snapshot().phase };
+    g.tapAt(...rowCenter(afford.id));            // owned bought one -> reselect
+    const afterAffordTap = { palette: g.metaState().palette, phase: g.snapshot().phase };
+    // a tap OFF the rows replants: new round, wallet intact
+    tap(cw * 0.5, ch * 0.08);
+    const replanted = g.snapshot();
+    const m3 = g.metaState();
+    // second round: harvest one boot-seed mote, let dusk fall -> banks on top
+    g.step(310);
+    const grown = g.snapshot().motes.find((mm) => mm.tier === 1);
+    tap(grown.x, grown.y);
+    const round2Essence = g.snapshot().essence;
+    g.step(5400);
+    const dusk2 = g.snapshot();
+    const m4 = g.metaState();
+    return {
+      m0, won: { phase: won.phase, essence: won.essence }, m1,
+      afford, tooDear: tooDear ? tooDear.id : null, denied, walletAfterDeny,
+      bought, m2, rebuy,
+      afterVerdantTap, afterAffordTap,
+      replanted: { phase: replanted.phase, essence: replanted.essence, seed: replanted.seed },
+      m3, round2Essence, dusk2: { phase: dusk2.phase, essence: dusk2.essence }, m4,
+    };
+  });
+  check('wallet-banks-at-round-end',
+    ess.m0.wallet === 0 && ess.m0.palette === 'verdant' && ess.m0.unlocked.join(',') === 'verdant'
+      && ess.won.phase === 'won' && ess.m1.wallet === ess.won.essence && ess.m1.wallet >= 100,
+    `fresh meta wallet=${ess.m0.wallet}; won with essence=${ess.won.essence} -> wallet=${ess.m1.wallet}`);
+  check('spend-deny-buy-rebuy',
+    ess.denied === false && ess.walletAfterDeny === ess.m1.wallet
+      && ess.bought === true && ess.m2.wallet === ess.m1.wallet - ess.afford.cost
+      && ess.m2.unlocked.includes(ess.afford.id) && ess.m2.palette === ess.afford.id
+      && ess.rebuy === false,
+    `'${ess.tooDear}' denied (wallet ${ess.walletAfterDeny} unchanged); ` +
+    `'${ess.afford.id}' bought for ${ess.afford.cost} -> wallet ${ess.m2.wallet}, active; re-buy=false`);
+  check('shop-taps-select-not-replant',
+    ess.afterVerdantTap.palette === 'verdant' && ess.afterVerdantTap.phase === 'won'
+      && ess.afterAffordTap.palette === ess.afford.id && ess.afterAffordTap.phase === 'won',
+    `row taps: verdant -> active '${ess.afterVerdantTap.palette}' (phase ${ess.afterVerdantTap.phase}), ` +
+    `${ess.afford.id} -> active '${ess.afterAffordTap.palette}' (phase ${ess.afterAffordTap.phase})`);
+  check('replant-keeps-wallet-and-accrues',
+    ess.replanted.phase === 'playing' && ess.replanted.essence === 0 && ess.replanted.seed === 43
+      && ess.m3.wallet === ess.m2.wallet
+      && ess.dusk2.phase === 'lost' && ess.round2Essence > 0
+      && ess.m4.wallet === ess.m3.wallet + ess.dusk2.essence,
+    `off-row tap replanted (seed ${ess.replanted.seed}, essence 0, wallet ${ess.m3.wallet}); ` +
+    `round 2 banked +${ess.dusk2.essence} at dusk -> wallet ${ess.m4.wallet}`);
+
+  // full page reload in the SAME context: guarded localStorage carries the
+  // wallet, the unlock, and the active palette through the real boot path
+  await essRig.page.reload({ waitUntil: 'load' });
+  await essRig.page.waitForFunction(() => window.__gameState && window.__gameState.booted, null, { timeout: 5000 });
+  const persisted = await essRig.page.evaluate(() => ({
+    meta: window.__game.metaState(),
+    state: {
+      wallet: window.__gameState.wallet,
+      palette: window.__gameState.palette,
+      unlocked: window.__gameState.unlocked,
+    },
+  }));
+  check('meta-persists-reload',
+    persisted.meta.wallet === ess.m4.wallet
+      && persisted.meta.palette === ess.afford.id
+      && persisted.meta.unlocked.join(',') === `verdant,${ess.afford.id}`
+      && persisted.state.wallet === ess.m4.wallet && persisted.state.palette === ess.afford.id
+      && persisted.state.unlocked === `verdant,${ess.afford.id}`,
+    `reload -> wallet ${persisted.meta.wallet}, unlocked [${persisted.meta.unlocked.join(',')}], ` +
+    `active '${persisted.meta.palette}' (state mirror agrees)`);
+  await essRig.ctx.close();
+
+  // sim identity: the section-5 script on seed 7, fresh storage vs a
+  // pre-seeded wallet with EVERY palette unlocked and a non-default one
+  // active -> byte-identical snapshots (unlocks are pure render/meta)
+  const freshRig = await newScriptedPage(browser, `${URL_}?seed=7`, DAY_A);
+  const freshRun = await freshRig.page.evaluate(script);
+  const freshPal = await freshRig.page.evaluate(() => window.__gameState.palette);
+  await freshRig.ctx.close();
+  const richMeta = {
+    wallet: 500,
+    unlocked: ['verdant', 'duskbloom', 'moonlit', 'emberdawn'],
+    palette: 'moonlit',
+  };
+  const richRig = await newScriptedPage(browser, `${URL_}?seed=7`, DAY_A, richMeta);
+  const richRun = await richRig.page.evaluate(script);
+  const richState = await richRig.page.evaluate(() => ({
+    palette: window.__gameState.palette,
+    wallet: window.__gameState.wallet,
+    unlocked: window.__gameState.unlocked,
+  }));
+  await richRig.ctx.close();
+  check('unlocks-inert-to-sim',
+    richState.palette === 'moonlit' && richState.wallet === 500
+      && richState.unlocked.split(',').length === 4 && freshPal === 'verdant'
+      && freshRun === richRun,
+    `seed 7 script: fresh storage ('${freshPal}') vs wallet 500 + all palettes + '${richState.palette}' ` +
+    `active -> identical ${freshRun.length}-byte snapshots`);
+
+  // ---- 9. pause/resume still holds on the live page -----------------------
   await live.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
     Object.defineProperty(document, 'hidden', { value: true, configurable: true });

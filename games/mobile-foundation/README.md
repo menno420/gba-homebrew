@@ -37,6 +37,15 @@ dependencies and no build step**. Framework decision + evidence:
   player; a different day, a different garden even on the same `?seed=N`.
   Shown as a small `today: <weather>` label (canvas + `#hud` mirror);
   `__game.weatherFor(YYYYMMDD)` exposes the pure derivation for proofs.
+- **Essence spending** (2026-07-14) — when a round ends (won or lost),
+  its harvested essence banks into a persistent wallet (guarded
+  `localStorage`; storage failure degrades to session-only, play never
+  breaks). The dusk/ascension screen shows a palette shop: tap a row to
+  buy (wallet permitting) or select a garden palette — pure render (a
+  background gradient pair + a draw-time hue shift), so the sim step,
+  both RNG streams, and `snapshot()` are untouched whatever is unlocked.
+  Proof surfaces: `__game.paletteTable/metaState/shopRows/buyPalette/
+  selectPalette`.
 - **Fixed-timestep game loop** — 60 Hz simulation accumulator +
   `requestAnimationFrame` rendering (`game.js`), spiral-of-death guarded.
 - **Touch input** — `touchstart`/`touchmove`/`touchend` first, pointer
@@ -85,7 +94,11 @@ fake `Date`, same-date determinism, different dates diverging the world
 on the same seed), and the species cut (both tier-1 species appearing
 deterministically at a fixed seed, per-species harvest values, pure-pair
 -> common / hybrid-pair -> rare pollination, and the pure-line ladder
-through tier 3).
+through tier 3), and the essence-spending cut (round-end wallet banking,
+deny/buy/re-buy spend flow, real-tap shop rows on the dusk screen,
+accrual across rounds, persistence across a full reload, and
+byte-identical sim snapshots with all palettes unlocked vs fresh
+storage).
 
 ## Files
 

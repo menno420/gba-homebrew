@@ -28,6 +28,15 @@
 // same-species parents breed the common next-tier species; mixed parents
 // breed the rare one (hybrid vigor) — a pure function of the parents,
 // zero extra random draws.
+//
+// Essence spending: when a round ends, its harvested essence banks into a
+// persistent wallet (guarded localStorage — storage failure degrades to
+// session-only meta, never breaks play). On the dusk/ascension screen a
+// small palette shop spends the wallet on garden palettes; a palette is
+// PURE RENDER (a background gradient pair + a hue shift applied at draw
+// time). The wallet, unlocks, and active palette are meta state: the sim
+// step, both RNG streams, their draw order, and snapshot() never touch
+// them — a round is byte-identical whatever is unlocked or active.
 
 const STEP_MS = 1000 / 60;      // fixed simulation timestep (60 Hz)
 const MAX_ACCUM_MS = 250;       // spiral-of-death guard
@@ -72,6 +81,53 @@ const RARE_CHANCE = 0.25; // tier-1 planting odds of the rare species
 // Pure in the parents — no random draw.
 function childSpeciesFor(parentTier, idA, idB) {
   return SPECIES[parentTier + 1][idA === idB ? 0 : 1];
+}
+
+// --- palettes (essence spending — meta, PURE RENDER) -------------------------
+// Garden palettes bought with banked essence. A palette only re-skins the
+// canvas: bg0/bg1 replace the daylight->dusk background gradient endpoints
+// and hueShift rotates every mote hue at DRAW time (per-mote hues stay
+// stored unshifted). Index 0 is the free default and reproduces the
+// pre-cut rendering exactly (bg 16,24,32 -> 6,4,12; shift 0). Nothing
+// here is read by the sim step, the RNG streams, or snapshot().
+const PALETTES = [
+  { id: 'verdant',   name: 'verdant',    cost: 0,   hueShift: 0,   bg0: [16, 24, 32], bg1: [6, 4, 12] },
+  { id: 'duskbloom', name: 'dusk bloom', cost: 40,  hueShift: 45,  bg0: [26, 16, 34], bg1: [10, 4, 16] },
+  { id: 'moonlit',   name: 'moonlit',    cost: 90,  hueShift: 150, bg0: [10, 18, 40], bg1: [2, 6, 18] },
+  { id: 'emberdawn', name: 'ember dawn', cost: 160, hueShift: -95, bg0: [34, 18, 14], bg1: [14, 6, 4] },
+];
+
+// Persistent meta (wallet + palette unlocks) — guarded localStorage, the
+// lane's guarded-access pattern: any storage failure (private mode,
+// headless, quota) degrades to in-memory defaults and play continues.
+const META_KEY = 'driftgarden.meta';
+function loadMeta() {
+  const meta = { wallet: 0, unlocked: ['verdant'], palette: 'verdant' };
+  try {
+    const raw = window.localStorage.getItem(META_KEY);
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (Number.isFinite(p.wallet) && p.wallet >= 0) meta.wallet = Math.floor(p.wallet);
+      if (Array.isArray(p.unlocked)) {
+        for (const id of p.unlocked) {
+          if (PALETTES.some((pl) => pl.id === id) && !meta.unlocked.includes(id)) {
+            meta.unlocked.push(id);
+          }
+        }
+      }
+      if (typeof p.palette === 'string' && meta.unlocked.includes(p.palette)) {
+        meta.palette = p.palette;
+      }
+    }
+  } catch (e) { /* storage unavailable/corrupt — session-only meta */ }
+  return meta;
+}
+function saveMeta(meta) {
+  try {
+    window.localStorage.setItem(META_KEY, JSON.stringify({
+      wallet: meta.wallet, unlocked: meta.unlocked, palette: meta.palette,
+    }));
+  } catch (e) { /* ignore — meta stays in memory for this session */ }
 }
 
 // mulberry32 — tiny seedable PRNG, plenty for a garden.
@@ -133,6 +189,10 @@ export function createGame(canvas, opts = {}) {
   // weather until reload, so a round is never perturbed mid-run.
   const weather = weatherFor(utcDateNum(new Date()));
 
+  // Persistent meta: essence wallet + palette unlocks (guarded storage).
+  // Loaded once at boot; only round-end banking and shop actions write it.
+  const meta = loadMeta();
+
   const state = {
     booted: true,
     frames: 0,        // fixed-step simulation ticks (never reset)
@@ -153,7 +213,42 @@ export function createGame(canvas, opts = {}) {
     wispsDissipated: 0,
     weather: weather.name,     // today's weather (date-derived, boot-only)
     weatherDate: weather.date, // the UTC YYYYMMDD that picked it
+    wallet: meta.wallet,       // banked essence (meta — never read by the sim)
+    palette: meta.palette,     // active palette id (meta — pure render)
+    unlocked: meta.unlocked.join(','), // owned palette ids (meta)
   };
+
+  function syncMetaState() {
+    state.wallet = meta.wallet;
+    state.palette = meta.palette;
+    state.unlocked = meta.unlocked.join(',');
+  }
+
+  function activePalette() {
+    return PALETTES.find((p) => p.id === meta.palette) || PALETTES[0];
+  }
+
+  // Buy an affordable, not-yet-owned palette from the wallet (auto-selects
+  // it); select an owned one. Both are meta-only: no sim state, no RNG.
+  function buyPalette(id) {
+    const pal = PALETTES.find((p) => p.id === id);
+    if (!pal || meta.unlocked.includes(id) || meta.wallet < pal.cost) return false;
+    meta.wallet -= pal.cost;
+    meta.unlocked.push(id);
+    meta.palette = id;
+    saveMeta(meta);
+    syncMetaState();
+    mirror();
+    return true;
+  }
+  function selectPalette(id) {
+    if (!meta.unlocked.includes(id)) return false;
+    meta.palette = id;
+    saveMeta(meta);
+    syncMetaState();
+    mirror();
+    return true;
+  }
 
   const motes = [];
   const wisps = [];
@@ -240,6 +335,33 @@ export function createGame(canvas, opts = {}) {
   function endRound(phase) {
     state.phase = phase;
     state.roundsPlayed += 1;
+    // Bank the round's harvest into the persistent wallet — win or lose,
+    // what you harvested is yours. Meta-only write: the sim never reads
+    // the wallet, so banking cannot perturb the round that produced it.
+    if (state.essence > 0) {
+      meta.wallet += state.essence;
+      saveMeta(meta);
+      syncMetaState();
+    }
+  }
+
+  // --- dusk-screen palette shop (meta UI) -----------------------------------
+  // Row geometry is a pure function of the canvas size, shared by the
+  // renderer and the tap hit-test (and exposed for headless proofs).
+  function shopRows() {
+    const w = canvas.width, h = canvas.height;
+    const rowH = Math.max(24, Math.round(w / 14));
+    const rowW = Math.min(w * 0.82, 360);
+    const top = h / 2 + Math.max(44, Math.round(w / 8));
+    return PALETTES.map((p, i) => ({
+      id: p.id, x: (w - rowW) / 2, y: top + i * (rowH + 6), w: rowW, h: rowH,
+    }));
+  }
+  function shopRowAt(p) {
+    for (const r of shopRows()) {
+      if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) return r;
+    }
+    return null;
   }
 
   // --- input: touch first, pointer events as the fallback path -------------
@@ -266,6 +388,16 @@ export function createGame(canvas, opts = {}) {
     state.taps += 1;
     state.lastTap = { x: Math.round(p.x), y: Math.round(p.y) };
     if (state.phase !== 'playing') {
+      // Dusk-screen shop first: a tap on a palette row buys it (if
+      // affordable) or selects it (if owned) — meta only, the frozen
+      // round is untouched. Any other tap replants, as before.
+      const row = shopRowAt(p);
+      if (row) {
+        if (meta.unlocked.includes(row.id)) selectPalette(row.id);
+        else buyPalette(row.id);
+        mirror();
+        return;
+      }
       resetRound(state.baseSeed + state.roundsPlayed);
       mirror();
       return;
@@ -436,7 +568,13 @@ export function createGame(canvas, opts = {}) {
     state.renders += 1;
     const w = canvas.width, h = canvas.height;
     const dusk = Math.min(1, roundStep / ROUND_STEPS);
-    ctx.fillStyle = `rgb(${Math.round(16 - 10 * dusk)}, ${Math.round(24 - 20 * dusk)}, ${Math.round(32 - 20 * dusk)})`;
+    // active palette: background gradient endpoints + a draw-time hue
+    // shift (pure render — the default palette reproduces the pre-cut
+    // rgb(16-10d, 24-20d, 32-20d) background and shift 0 exactly)
+    const pal = activePalette();
+    const mix = (i) => Math.round(pal.bg0[i] + (pal.bg1[i] - pal.bg0[i]) * dusk);
+    const shift = pal.hueShift;
+    ctx.fillStyle = `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`;
     ctx.fillRect(0, 0, w, h);
     for (const wi of wisps) {
       for (let i = 0; i < wi.trail.length; i++) {
@@ -457,19 +595,19 @@ export function createGame(canvas, opts = {}) {
     for (const m of motes) {
       ctx.beginPath();
       ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
-      ctx.fillStyle = `hsl(${m.hue}, 70%, ${45 + 8 * m.tier + 8 * Math.sin(m.age / 20)}%)`;
+      ctx.fillStyle = `hsl(${m.hue + shift}, 70%, ${45 + 8 * m.tier + 8 * Math.sin(m.age / 20)}%)`;
       ctx.fill();
       if (m.rare) {
         // rare-species accent: a bright inner core, same idiom as the halo
         ctx.beginPath();
         ctx.arc(m.x, m.y, Math.max(1.5, m.r * 0.4), 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${m.hue + 40}, 95%, 85%, 0.9)`;
+        ctx.fillStyle = `hsla(${m.hue + shift + 40}, 95%, 85%, 0.9)`;
         ctx.fill();
       }
       if (m.age >= MATURE_AGE) {
         ctx.beginPath();
         ctx.arc(m.x, m.y, m.r + 4, 0, Math.PI * 2);
-        ctx.strokeStyle = `hsla(${m.hue}, 90%, 75%, 0.9)`;
+        ctx.strokeStyle = `hsla(${m.hue + shift}, 90%, 75%, 0.9)`;
         ctx.lineWidth = 1.5;
         ctx.stroke();
       }
@@ -481,10 +619,10 @@ export function createGame(canvas, opts = {}) {
       `ess:${state.essence}/${state.quota} ${state.timeLeft}s ${state.phase}` +
       `${state.paused ? ' PAUSED' : ''}`,
       8, Math.max(16, Math.round(w / 30)));
-    // small daily-weather label, second HUD line
+    // small daily-weather + wallet label, second HUD line
     ctx.fillStyle = 'hsla(160, 30%, 70%, 0.75)';
     ctx.font = `${Math.max(10, Math.round(w / 48))}px monospace`;
-    ctx.fillText(`today: ${state.weather}`, 8, Math.max(32, Math.round(w / 30) + 16));
+    ctx.fillText(`today: ${state.weather} · bank: ${state.wallet}`, 8, Math.max(32, Math.round(w / 30) + 16));
     if (state.phase !== 'playing') {
       ctx.textAlign = 'center';
       ctx.fillStyle = state.phase === 'won' ? '#ffe08a' : '#b090c8';
@@ -492,6 +630,23 @@ export function createGame(canvas, opts = {}) {
       ctx.fillText(state.phase === 'won' ? 'GARDEN ASCENDS' : 'DUSK FELL', w / 2, h / 2 - 16);
       ctx.font = `${Math.max(13, Math.round(w / 32))}px monospace`;
       ctx.fillText(`essence ${state.essence}/${state.quota} — tap to replant`, w / 2, h / 2 + 20);
+      // palette shop: banked essence + one tappable row per palette
+      ctx.font = `${Math.max(11, Math.round(w / 40))}px monospace`;
+      ctx.fillStyle = '#9fd8c0';
+      const rows = shopRows();
+      ctx.fillText(`essence bank: ${state.wallet}`, w / 2, rows[0].y - 12);
+      for (const r of rows) {
+        const p = PALETTES.find((pl) => pl.id === r.id);
+        const owned = meta.unlocked.includes(p.id);
+        const active = meta.palette === p.id;
+        ctx.strokeStyle = active ? '#ffe08a' : 'hsla(160, 30%, 70%, 0.5)';
+        ctx.lineWidth = active ? 2 : 1;
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+        ctx.fillStyle = owned ? '#9fd8c0' : 'hsla(160, 20%, 55%, 0.9)';
+        ctx.fillText(
+          `${p.name} — ${active ? 'active' : owned ? 'owned' : `${p.cost} essence`}`,
+          r.x + r.w / 2, r.y + r.h / 2 + 4);
+      }
       ctx.textAlign = 'start';
     }
     mirror();
@@ -504,7 +659,7 @@ export function createGame(canvas, opts = {}) {
         `f:${state.frames} e:${state.entities} t:${state.taps} ` +
         `ess:${state.essence}/${state.quota} ${state.timeLeft}s ${state.phase} ` +
         (state.paused ? 'PAUSED' : 'RUNNING') +
-        ` · ${state.weather}`;
+        ` · ${state.weather} · bank ${state.wallet}`;
       hud.dataset.frames = String(state.frames);
       hud.dataset.entities = String(state.entities);
       hud.dataset.paused = String(state.paused);
@@ -513,6 +668,8 @@ export function createGame(canvas, opts = {}) {
       hud.dataset.timeLeft = String(state.timeLeft);
       hud.dataset.weather = state.weather;
       hud.dataset.weatherDate = String(state.weatherDate);
+      hud.dataset.wallet = String(state.wallet);
+      hud.dataset.palette = state.palette;
     }
     window.__gameState = { ...state, lastTap: state.lastTap ? { ...state.lastTap } : null };
   }
@@ -598,6 +755,15 @@ export function createGame(canvas, opts = {}) {
     // the parents -> child derivation (no game state touched)
     speciesTable: () => JSON.parse(JSON.stringify(SPECIES)),
     childSpeciesFor: (parentTier, idA, idB) => ({ ...childSpeciesFor(parentTier, idA, idB) }),
+    // essence-spending surfaces: the palette table (deep copy), the live
+    // meta state (copy), the shop's pure row layout, and the same
+    // buy/select actions the dusk-screen taps drive (meta-only — the
+    // frozen round and the RNG streams are never touched)
+    paletteTable: () => JSON.parse(JSON.stringify(PALETTES)),
+    metaState: () => ({ wallet: meta.wallet, unlocked: [...meta.unlocked], palette: meta.palette }),
+    shopRows: () => shopRows().map((r) => ({ ...r })),
+    buyPalette: (id) => buyPalette(id),
+    selectPalette: (id) => selectPalette(id),
   };
   window.__game = game; // headless-proof handle
   return game;

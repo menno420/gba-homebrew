@@ -9,8 +9,10 @@ cross-pollinate to tier 3 / harvest essence vs. quota) + predator wisps.
 Growth cut 1 shipped 2026-07-14: daily seeded weather (UTC-date-derived
 wind parameters, read once at boot). Growth cut 2 shipped 2026-07-14:
 more species (two per tier, distinct visuals/values; hybrid
-cross-pollination). The rest of the growth path — biomes, essence
-spending — is still future work.
+cross-pollination). Growth cut 3 shipped 2026-07-14: essence spending
+(round harvests bank to a persistent wallet; a dusk-screen shop spends it
+on render-only garden palettes). The remaining growth path — biomes — is
+still future work.
 
 ## Genre
 
@@ -28,7 +30,12 @@ mobile retention. Portrait, offline-first, session length 30 s – 5 min.
    hues/values; mixed-species parents breed the rare next-tier line).
 3. **Return later** — the garden kept drifting (or resumes exactly where
    backgrounded, per the pause discipline); harvest matured motes for
-   essence, spend essence on new biomes/palettes/species.
+   essence, spend essence on new biomes/palettes/species (ESSENCE
+   SPENDING BUILT 2026-07-14 — each round's harvest banks to a persistent
+   wallet, spent in the dusk-screen shop on unlockable garden palettes,
+   pure render; of the listed spend targets, palettes shipped first —
+   biomes remain the named follow-up, and species unlocks would ride the
+   same wallet).
 
 Depth ramps: wind patterns per biome, predator wisps to fend off with
 drags, daily seeded "weather" so every player's Tuesday garden differs

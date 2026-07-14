@@ -32,6 +32,25 @@
  *   [6] lure depth (m)                [14] score this run
  *   [7] target depth (m)              [15] last fight result (1 catch, 2 snap)
  *
+ * AUDIO (growth cut 1 — the concept's named line: "reel clicks that
+ * speed up with tension"): four original synthesized cues
+ * (audio/generate_audio.py — deterministic, no samples ever) played
+ * through Butano's maxmod pipeline as pure DECISIONS on state the sim
+ * already computed. THE cut: while reeling in the fight, a dry ratchet
+ * click fires every click-interval frames, and the interval shrinks
+ * linearly with tension (16 frames at slack -> 4 at the snap point) while
+ * the click's pitch rises — the tension bar, readable with eyes closed.
+ * Supporting cues on the loop's three events: the bite, the catch, the
+ * snap. Nothing feeds back into the sim (no RNG, no state writes).
+ * B toggles MUTE (gates play() ONLY — counters still bump, so the
+ * decision layer stays provable muted or not). Every trigger bumps a
+ * cumulative gl_audio_hook slot (games/common/include/gl_audio_hook.h):
+ *   [0] reel clicks   [1] bites   [2] catches   [3] snaps
+ *   [4] click interval THIS frame (0 = not reeling; the speed-up word)
+ *   [5] mute state
+ * so the headless harness pins the decisions and the maxmod
+ * mixer-memory nonzero watch proves the voicing (docs/capabilities.md).
+ *
  * Presentation is deliberately trivial (breadth-program one-night slice):
  * Butano common sprite-text font over a dusk backdrop color, text bars for
  * charge/tension. All code original; font is Butano's zlib-licensed common
@@ -40,13 +59,17 @@
 
 #include "bn_core.h"
 #include "bn_color.h"
+#include "bn_fixed.h"
 #include "bn_keypad.h"
 #include "bn_string.h"
 #include "bn_vector.h"
 #include "bn_display.h"
 #include "bn_bg_palettes.h"
 #include "bn_sprite_ptr.h"
+#include "bn_sound_items.h"
 #include "bn_sprite_text_generator.h"
+
+#include "gl_audio_hook.h"
 
 #include "common_variable_8x8_sprite_font.h"
 
@@ -107,6 +130,12 @@ namespace
     constexpr int run_surge = 2;           // ...or this while the fish surges
     constexpr int result_frames = 90;      // RESULT card duration
     constexpr int start_lures = 3;
+
+    // Audio (pure decision layer — see the header comment). The reel
+    // click period shrinks linearly with tension: every 16 frames at
+    // slack, every 4 at the snap point (~4 -> ~15 clicks/second).
+    constexpr int click_max_interval = 16; // frames between clicks, tension 0
+    constexpr int click_min_interval = 4;  // ...at tension_snap
 
     // --- text presentation ---------------------------------------------------
 
@@ -203,6 +232,12 @@ int main()
     int result_code = 0;        // 0 none · 1 catch · 2 snap
     int result_timer = 0;
 
+    // Audio decision layer state (presentation-only: never read by the
+    // sim, deliberately NOT reset by reset_run — mute is a player
+    // preference, and the click timer restarts with every reel anyway).
+    bool muted = false;
+    int click_timer = 0;
+
     auto reset_run = [&]()
     {
         rng.s = seed_constant;
@@ -228,6 +263,11 @@ int main()
     while(true)
     {
         bool a_held = bn::keypad::a_held();
+
+        if(bn::keypad::b_pressed())
+        {
+            muted = ! muted;    // gates play() only — counters still bump
+        }
 
         switch(state)
         {
@@ -285,6 +325,13 @@ int main()
                 phase_timer = 45 + rng.range(45);  // opening rest
                 state = st_fight;
                 clear_lines();
+
+                if(! muted)
+                {
+                    bn::sound_items::dc_bite.play(bn::fixed(0.7));
+                }
+
+                gl::count_audio(1);      // bites
             }
             break;
 
@@ -330,6 +377,13 @@ int main()
                 result_timer = result_frames;
                 state = st_result;
                 clear_lines();
+
+                if(! muted)
+                {
+                    bn::sound_items::dc_snap.play(bn::fixed(0.9));
+                }
+
+                gl::count_audio(3);      // snaps
             }
             else if(line <= 0)
             {
@@ -340,6 +394,13 @@ int main()
                 result_timer = result_frames;
                 state = st_result;
                 clear_lines();
+
+                if(! muted)
+                {
+                    bn::sound_items::dc_catch.play(bn::fixed(0.9));
+                }
+
+                gl::count_audio(2);      // catches
             }
             break;
 
@@ -363,6 +424,41 @@ int main()
 
         }
 
+        // --- THE audio cut: reel clicks that speed up with tension.
+        // While reeling (fight + A held), a ratchet click fires every
+        // click_interval frames; the interval shrinks linearly with the
+        // tension the sim just computed, and the click's pitch rises with
+        // it. Reads sim state only — never writes it.
+
+        int click_interval = 0;
+
+        if(state == st_fight && a_held)
+        {
+            click_interval = click_max_interval
+                    - ((click_max_interval - click_min_interval) * tension)
+                      / tension_snap;
+
+            if(click_timer <= 0)
+            {
+                if(! muted)
+                {
+                    // Pitch rides tension too: 1.0x at slack -> 2.0x at
+                    // the snap point (deterministic fixed-point math).
+                    bn::fixed speed = 1 + bn::fixed(tension) / tension_snap;
+                    bn::sound_items::dc_click.play(bn::fixed(0.5), speed, 0);
+                }
+
+                gl::count_audio(0);      // reel clicks
+                click_timer = click_interval;
+            }
+
+            --click_timer;
+        }
+        else
+        {
+            click_timer = 0;    // the first reeling frame always clicks
+        }
+
         // --- draw (text only; lines re-render only when their string changes)
 
         switch(state)
@@ -375,6 +471,7 @@ int main()
             lines[3].set(text_gen, text_x, line_y[3],
                          "HOLD A: CAST DEEP, REEL SOFT");
             lines[4].set(text_gen, text_x, line_y[4], "3 LURES. PRESS START");
+            lines[5].set(text_gen, text_x, line_y[5], "B: MUTE");
             break;
 
         case st_charge:
@@ -473,6 +570,11 @@ int main()
         dc_telemetry[13] = unsigned(catches);
         dc_telemetry[14] = unsigned(score);
         dc_telemetry[15] = unsigned(result_code);
+
+        // Audio evidence hook: per-frame words next to the cumulative
+        // trigger counters (slots 0-3 bump at the play sites above).
+        gl_audio_hook[4] = unsigned(click_interval);
+        gl_audio_hook[5] = muted ? 1u : 0u;
 
         bn::core::update();
     }

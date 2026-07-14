@@ -677,3 +677,35 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #119 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (cindervault-endless, PR #120)
+
+- **ts:** 2026-07-14T05:08:48Z (appended by this dispatch's worker;
+  everything above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Cindervault growth cut 3 — the concept's "Depth banding past floor 5
+  for an endless mode; the vault becomes the first milestone instead of
+  the end" line — on branch `claude/cindervault-endless` from main @
+  `b778d39`: SELECT on the VAULT REACHED screen continues the SAME run
+  onto floor 6 from the RNG state the vault left behind (the +torch win
+  bonus drops back out of the live score); past floor 5 the generator
+  reads a depth-band table (monsters/bigs/embers/carve, one band per 3
+  floors, {4,1,2,220} up to {8,4,1,140}) and the five named species
+  recur on the five-depth cycle. No second win — endless is
+  score-attack. A run that never presses SELECT is bit-identical to
+  v0.3: P1-P4 carried verbatim, zero re-derived pins.
+- Method held: mirror extended FIRST (bands, 'S' continue, choke/sweep
+  helpers, a deterministic beam searcher; verify() upgraded to full
+  state-sequence matching) and re-certified — 0 mismatches across all
+  414 turn states of the four routes. New P5 THE DESCENT: 228 inputs
+  (P4's route + SELECT + 118 deep), band witnesses per parameter,
+  ends alive on floor 10 at hp 1 (beam-optimal wraith toll exactly 2
+  hp). Suite exit 0; P2-P5 each run twice, watch-logs byte-identical.
+- dist/cindervault.gba v0.4: two clean builds byte-identical, 123,172
+  bytes, sha256 7bb878a…bdd4a0; proofs ran at those exact bytes;
+  toolchain certified against v0.3's committed hash before any change.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #120 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

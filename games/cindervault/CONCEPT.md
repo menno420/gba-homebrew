@@ -93,4 +93,18 @@ players. The presentation is placeholder by design.
 - Daily seed + score-attack leaderboard: the deterministic core makes
   "same vault, same monsters" a shareable challenge for free.
 - Depth banding past floor 5 for an endless mode; the vault becomes
-  the first milestone instead of the end.
+  the first milestone instead of the end. **BUILT** (growth cut 3,
+  2026-07-14): SELECT on the VAULT REACHED screen delves deeper — the
+  win (and its +torch score bonus) stands as the first milestone, and
+  the same run continues onto floor 6 from the RNG state the vault
+  left behind, the torch bonus dropping back out of the live score:
+  the price of not stopping. Past floor 5 every floor draws its
+  generator parameters (monster count, big-monster count, embers,
+  carve-walk length) from depth bands — one band per 3 floors, the
+  deepest the floor of the world — and the five named species recur
+  on the five-depth cycle (floor 6 = CINDER RAT again, floor 10 =
+  HOARD SENTINEL, and around). No second win: an endless run ends
+  only in DARKNESS or SLAIN — score-attack, 100 per cleared floor. A
+  run that never presses SELECT is bit-identical to growth cut 2.
+  Proven two bands deep in `games/cindervault/proofs.sh` (P5 — ends
+  standing on floor 10 at hp 1: survivable, but escalating).

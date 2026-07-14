@@ -1028,10 +1028,9 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   (identity/scale measurements, tooling verdicts, walled capabilities
   with verbatim denials, landing + scheduling friction, ceremony
   cost/benefit, self-fixes, ranked remaining pains with paste-ready
-  platform asks, wishlist, honest not-measured gaps). Scope note: the
-  seat's private sibling repo is audited in its own copy of the
-  document; this repo's copy contains public-track and platform
-  material only.
+  platform asks, wishlist, honest not-measured gaps). Scope note: this
+  copy contains this repo's findings plus seat/platform-level material
+  only (the scope statement at the top of the doc has the details).
 - Provenance: owner-directed EAP audit (2026-07-14), relayed via the
   game-lab coordinator.
 - Strict check run once at authoring: exit 1 = the designed born-red

@@ -1,1 +1,0 @@
-- `claude/eap-audit` · **EAP project audit doc (public edition)** — author and land `docs/audits/eap-project-audit-2026-07-14.md`, the owner-directed EAP audit of this repo + seat/platform findings · docs/audits/**, .sessions/2026-07-14-eap-audit.md, control/status.md (append-only dispatch) · 2026-07-14

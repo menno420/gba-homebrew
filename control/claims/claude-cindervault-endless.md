@@ -1,1 +1,0 @@
-- `claude/cindervault-endless` · **Cindervault growth cut 3 (endless depth banding)** — depth bands past floor 5 (monster mix, species recurrence, ember economy, carve density from parameter tables; the vault becomes the first milestone) + proofs · games/cindervault/**, dist/cindervault.gba, .sessions/2026-07-14-cindervault-endless.md · 2026-07-14

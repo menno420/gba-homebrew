@@ -137,15 +137,21 @@ class Monster:
 
 
 class Sim:
-    """The playing-state core. reset() == pressing START on the title."""
+    """The playing-state core. reset() == pressing START on the title.
 
-    def __init__(self):
-        self.rng = Rng(SEED)
+    `seed` mirrors growth cut 4's title dial: main.cpp's reset_run()
+    seeds from the dialed value, so a Sim(seed=...) is the run a player
+    starts after dialing that value (default: the boot constant — the
+    undialed run, bit-identical to growth cut 3)."""
+
+    def __init__(self, seed=SEED):
+        self.seed = seed & MASK
+        self.rng = Rng(self.seed)
         self.monsters = [Monster() for _ in range(MAX_MONSTERS)]
         self.reset()
 
     def reset(self):
-        self.rng.s = SEED
+        self.rng.s = self.seed
         self.floor = 1
         self.hp = START_HP
         self.torch = START_TORCH
@@ -378,9 +384,14 @@ class Sim:
         return sum(1 for m in self.monsters if m.alive)
 
     def words(self):
-        """cv_telemetry[2..14,16,17] as a dict (the game-state words)."""
+        """cv_telemetry[2..14,16,17] as a dict (the game-state words).
+
+        Word 3 is growth cut 4's selected-seed word: constant for the
+        whole run (the dial lives on the title, before the Sim starts),
+        so the mirror publishes the seed it was built with."""
         return {
-            2: self.state, 4: self.floor, 5: self.hp, 6: self.torch,
+            2: self.state, 3: self.seed,
+            4: self.floor, 5: self.hp, 6: self.torch,
             7: self.embers, 8: self.kills, 9: self.score(), 10: self.turns,
             11: self.px, 12: self.py, 13: self.lose_reason,
             14: self.monsters_alive(), 16: self.item, 17: self.item_turns,
@@ -624,9 +635,9 @@ def beam_descend(sim, width=600, depth=60):
     return best[1], best[2]
 
 
-def design(route_name):
+def design(route_name, seed=SEED):
     """The committed proof routes (see games/cindervault/proofs.sh)."""
-    sim = Sim()
+    sim = Sim(seed)
     cmds = ''
     if route_name == 'lantern':
         # P2: clear floor 1, take the lantern, then wait it out — the
@@ -883,10 +894,10 @@ def keys_args(cmds):
 
 # --- verification against an emulator watch-log CSV ---------------------------
 
-GAME_WORDS = (2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17)
+GAME_WORDS = (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17)
 
 
-def verify(cmds, csv_path):
+def verify(cmds, csv_path, seed=SEED):
     """Certify the mirror: the emulator CSV's sequence of DISTINCT
     game-state word tuples must be exactly the mirror's predicted state
     sequence, in order, with nothing extra, nothing missing and nothing
@@ -897,7 +908,7 @@ def verify(cmds, csv_path):
     the turn counter no longer uniquely keys a state. Every state is held
     for >= 4 frames at the committed cadence, so no state can be skipped
     between CSV rows.)"""
-    sim = Sim()
+    sim = Sim(seed)
     expected = [dict(sim.words())]
     for cmd in cmds:
         if sim.step(cmd):
@@ -968,24 +979,28 @@ def main():
                         help='print headless-screenshot.py key spans')
     parser.add_argument('--verify', metavar='CSV',
                         help='certify the mirror against a --watch-log CSV')
+    parser.add_argument('--seed', type=lambda s: int(s, 0), default=SEED,
+                        help='run at this dialed seed (growth cut 4: the '
+                             'title dial; default the boot constant '
+                             '0xC1DE5EED)')
     args = parser.parse_args()
 
     if args.baseline:
         FLOOR_SPECIES[:] = [SP_RAT] * LAST_FLOOR
 
     if args.design:
-        sim, cmds = design(args.design)
+        sim, cmds = design(args.design, seed=args.seed)
         print(f'route {args.design}: {len(cmds)} inputs, '
               f'{sim.turns} turns consumed')
         print(cmds)
     elif args.cmds:
         cmds = args.cmds
-        sim = Sim()
+        sim = Sim(args.seed)
     else:
         parser.error('need --cmds or --design')
 
     if args.trace:
-        sim = Sim()
+        sim = Sim(args.seed)
         print(f'turn 0: {sim.words()}')
         for i, cmd in enumerate(cmds):
             if sim.step(cmd):
@@ -994,7 +1009,7 @@ def main():
     if args.keys:
         print(' \\\n  '.join(keys_args(cmds)))
     if args.verify:
-        if verify(cmds, args.verify):
+        if verify(cmds, args.verify, seed=args.seed):
             sys.exit(1)
 
 

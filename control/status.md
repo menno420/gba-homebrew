@@ -651,3 +651,29 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #118 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (drift-garden-essence, PR #119)
+
+- **ts:** 2026-07-14T04:34:15Z (appended by this dispatch's worker;
+  everything above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Drift Garden growth cut 3 — the concept's "essence spending" line — on
+  branch `claude/drift-garden-essence` from main @ `afd2918`: each
+  round's harvested essence banks into a persistent wallet (guarded
+  localStorage, `driftgarden.meta`), and a dusk-screen palette shop
+  spends it on garden palettes — pure render (background gradient pair +
+  draw-time hue shift), sim step / RNG streams / snapshot() untouched.
+  Of the doc's spend targets (biomes/palettes/species), palettes shipped
+  as the contained cut; biomes remain the named follow-up.
+- sw.js CACHE v4 -> v5. Smoke 21 -> 27 assertions: round-end banking,
+  deny/buy/re-buy spend flow, real-tap shop rows on the dusk screen
+  (select without replanting), off-row replant with wallet intact +
+  cross-round accrual, reload persistence through the real guarded boot
+  path, and byte-identical seed-7 snapshots with all palettes unlocked
+  vs fresh storage. Run twice, 27/27 PASS both, deterministic lines
+  byte-identical; pre-change baseline 21/21; foundation run.sh 6/6.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #119 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

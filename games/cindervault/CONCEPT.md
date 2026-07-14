@@ -52,21 +52,38 @@ are exact transcriptions.
 
 ## Sellability guess (honest)
 
-Near-zero as a paid standalone — a glyph-rendered 5-floor roguelike is
-a tech-sketch next to free genre giants. Its realistic market is the
+Near-zero as a paid standalone — a small 5-floor roguelike (tile-art
+since growth cut 5; glyph-rendered before that) is a tech-sketch next
+to free genre giants. Its realistic market is the
 flash-cart / itch.io homebrew niche: a free or pay-what-you-want curio,
 or one game in a bundled original-homebrew compilation cart. What the
 prototype actually proves is the part that IS worth money in the genre:
 a fully deterministic, replay-checkable descent with a single readable
 resource clock — daily-seed score attack ("same vault, same monsters")
 is free to build on top, and that loop is what retains roguelike
-players. The presentation is placeholder by design.
+players. The presentation was placeholder by design until growth cut 5
+(the art pass) made the torch clock diegetic.
 
 ## Growth path
 
 - Real art pass: tile sprites for walls/floor, a torch-radius light
   fade (the mechanic made diegetic — the screen literally darkens as
-  the torch burns down).
+  the torch burns down). **BUILT** (growth cut 5, 2026-07-14 — the
+  LAST named growth line: the growth path is complete): the glyph rows
+  are replaced by an 8x8 tile background (original procedural assets,
+  `graphics/generate_assets.py` — floor, brick wall, glowing ember,
+  steel stairs, lantern, blade, both monster breeds) and the player is
+  a torch-bearer sprite; the torch drives a hardware-window light
+  circle (the shared `games/common/include/gl_light_window.h`) of
+  radius min(16 + torch/2, 200) px around the player — the light
+  closes in as the torch burns and re-opens on every ember, while the
+  torch-bearer and HUD ride over the darkness (sprites are never
+  clipped: they carry the flame). Presentation ONLY — sim, RNG and all
+  telemetry untouched, every prior proof pin carried verbatim; the art
+  is itself proven headlessly in `games/cindervault/proofs.sh` (P8:
+  radius follows five carried torch pins down to a visibly-dark 48 px,
+  plus DISPCNT/palette-RAM/VRAM pins of the committed art; P9: the
+  ember relight).
 - Item layer: one inventory slot (a lantern that halves burn for 20
   turns, a blade that bumps for 3) picked up like embers — one more
   decision, zero new verbs. **BUILT** (growth cut 1, 2026-07-14): each

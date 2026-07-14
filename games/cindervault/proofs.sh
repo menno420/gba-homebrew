@@ -49,11 +49,31 @@
 # emulator's live seed word must now match the mirror's on every turn
 # state of every certified route).
 #
+# Growth cut 5 (the art pass — tile sprites + torch-radius light fade) is
+# PRESENTATION ONLY: game state, RNG word order and every cv_telemetry
+# word are byte-identical to cut 4, so P1-P7 below carried VERBATIM (zero
+# re-derived pins, zero adjusted text asserts — the HUD/title/end text
+# never moved). What the cut adds is proven in P8/P9 through a SECOND
+# mailbox (cv_light: the light circle's live radius + center, presentation
+# words only) plus direct hardware-state pins — DISPCNT (the dungeon bg's
+# enable bit flips with play state), BG palette RAM (the committed art's
+# exact BGR555 colors), sprite palette RAM (the torch-bearer's), and the
+# bg map's VRAM screenblock (the wall-row cells) — all read at GBA bus
+# addresses by the same watch machinery. The light law under proof:
+#
+#     light_radius_px = min(16 + torch / 2, 200)      (200 = full screen)
+#
+# so the circle SHRINKS as the torch burns (P8: 126 -> 122 -> 120 -> 117
+# -> 115 on the lantern route's own carried torch pins; 97 -> 48 on the
+# deep-burn leg) and RE-OPENS on ember pickup (P9: 126 -> 155 through the
+# dialed vault's +3-ember sweep) — the burn economy, made diegetic and
+# then read back off the hardware.
+#
 # Run from the repo root after building (make -C games/cindervault):
 #     bash games/cindervault/proofs.sh
 # Artifacts land in $CV_PROOF_OUT (default /tmp/cindervault-proofs).
 #
-# The seven proofs (asserts inline below):
+# The nine proofs (asserts inline below):
 #   P1 boot/title            — mailbox magics, seed 0xC1DE5EED on the card,
 #                              title state and text.
 #   P2 THE LANTERN (item cut) — fixed-seed spawn pins (px/py, 2 monsters),
@@ -169,6 +189,37 @@
 #                              dialing is fully reversible and the default
 #                              vault is untouched by the feature (the
 #                              Deepcast P5 precedent).
+#   P8 THE TORCHLIGHT (cut 5) — the art pass, read off the hardware. Leg
+#                              A reruns the FULL P2 route with the light
+#                              and hardware watches added: every P2 pin
+#                              still lands (the sim cannot feel the art),
+#                              the light circle sits on the player's tile
+#                              center, and its radius follows the torch
+#                              through five carried torch pins (220->126,
+#                              213->122, 208->120, 203->117, 198->115 px
+#                              — strictly shrinking); DISPCNT flips
+#                              0xF040 (title: no bg) -> 0xF840 (playing:
+#                              the dungeon bg's enable bit), the BG/OBJ
+#                              palette RAM words hold the committed art's
+#                              exact BGR555 colors, and the bg map's
+#                              screenblock holds the wall-row cells. Leg
+#                              B (THE DEEP BURN) rides the same opening
+#                              then waits ~160 turns: torch 163 -> radius
+#                              97, torch 64 -> radius 48 — at 48px the
+#                              screen is VISIBLY mostly dark (the shots
+#                              are the PR evidence). BOTH legs RUN TWICE
+#                              — watch-log CSVs (now including the light
+#                              words and the hardware reads) must be
+#                              byte-identical.
+#   P9 THE EMBER RELIGHT      — the other direction of the law, on the
+#      (cut 5)                  P6 dialed-vault route with every P6 pin
+#                              carried: full radius 200 on the dialed
+#                              title (the fade only lives in the dungeon),
+#                              126 px on entry (torch 220), 155 px at turn
+#                              16 (torch 279 after the +3-ember sweep —
+#                              the light RE-OPENS when embers feed the
+#                              torch), and 200 again on the death card.
+#                              RUN TWICE — byte-identical watch-logs.
 #
 # Item-spawn determinism is pinned structurally: both routes walk blind,
 # fixed key scripts onto the item tiles of seed 0xC1DE5EED and assert the
@@ -691,5 +742,132 @@ H "$OUT/p7.png" --frames 500 $W $P7_ROUTE \
   --assert-watch 200:cv:3:eq:3252575981 \
   --assert-text "200:SEED C1DE5EED" \
   "${P2_ASSERTS[@]}"
+
+# ---------------------------------------------------------------------------
+# P8/P9 — growth cut 5, the art pass (tile sprites + torch-radius light
+# fade; presentation ONLY — P1-P7 above carried verbatim). The proof reads
+# the art back off the hardware:
+#   cv_light (ELF symbol, 4 words): 'LITE' magic · radius px · center x ·
+#     center y — the law is radius = min(16 + torch/2, 200), center = the
+#     player's tile center in screen pixels (x = 8*px + 72, y = 8*py + 10).
+#   0x04000000 DISPCNT: 0xF040 with no dungeon on screen, 0xF840 playing
+#     (bit 11 = the dungeon bg enabled).
+#   0x050001EC BG palette RAM: 0x1A5F4A33 = ember-bright (248,144,48) +
+#     wall-lit-edge (152,136,144) as BGR555 — the committed cv_tiles art.
+#   0x050003E0 OBJ palette RAM: 0x5FBF7C1F = torch-bearer face/flame-core
+#     (248,232,184) + transparent-magenta slot — the committed cv_player.
+#   0x06000800 bg map screenblock: 0xF002F002 = two wall cells (tile 2,
+#     palette bank 15) — the dungeon's top wall row, baked into VRAM.
+# ---------------------------------------------------------------------------
+
+LIGHT_W='--watch lw:cv_light:4 --watch io:0x04000000:1 --watch bgpal:0x050001EC:1 --watch objpal:0x050003E0:1 --watch vmap:0x06000800:1'
+
+P8_LIGHT_ASSERTS=(
+  # title: no dungeon, full-screen light, center = display center
+  --assert-watch 100:lw:0:eq:0x4C495445
+  --assert-watch 100:lw:1:eq:200
+  --assert-watch 100:lw:2:eq:120
+  --assert-watch 100:lw:3:eq:80
+  --assert-watch 100:io:0:eq:0xF040
+  # entering the vault: the dungeon bg's DISPCNT bit is ON, the art's
+  # exact colors sit in palette RAM, the wall row sits in the map's VRAM
+  # screenblock — and the light snaps to the law: torch 220 -> 126 px,
+  # centered on the P2-pinned spawn (6,1) -> screen (120, 18)
+  --assert-watch 250:io:0:eq:0xF840
+  --assert-watch 250:bgpal:0:eq:0x1A5F4A33
+  --assert-watch 250:objpal:0:eq:0x5FBF7C1F
+  --assert-watch 250:vmap:0:eq:0xF002F002
+  --assert-watch 250:lw:1:eq:126
+  --assert-watch 250:lw:2:eq:120
+  --assert-watch 250:lw:3:eq:18
+  # the shrink, on P2's own carried torch pins (turns 7/17/27/32): every
+  # step is min(16 + torch/2, 200) and every step is SMALLER
+  --assert-watch 340:lw:1:eq:122
+  --assert-watch 400:lw:1:eq:120
+  --assert-watch 460:lw:1:eq:117
+  --assert-watch 490:lw:1:eq:115
+)
+
+echo "== P8a: THE TORCHLIGHT — the P2 route with the hardware watched (run 1) =="
+H "$OUT/p8.png" --frames 500 $W $LIGHT_W $LANTERN_ROUTE \
+  --watch-log "$OUT/p8-run1.csv" \
+  --shot "250:$OUT/p8-floor1.png" \
+  --require-distinct \
+  "${P8_LIGHT_ASSERTS[@]}" \
+  "${P2_ASSERTS[@]}"
+
+echo "== P8a: run 2 (must be byte-identical) =="
+H "$OUT/p8b.png" --frames 500 $W $LIGHT_W $LANTERN_ROUTE \
+  --watch-log "$OUT/p8-run2.csv" \
+  "${P8_LIGHT_ASSERTS[@]}" \
+  "${P2_ASSERTS[@]}"
+cmp "$OUT/p8-run1.csv" "$OUT/p8-run2.csv"
+echo "P8a run-twice: byte-identical"
+
+# Leg B — THE DEEP BURN: the P2 opening (both rats dead by turn 5), then
+# ~160 waited turns. No embers on the path, so the torch runs down and
+# the light closes in: this is "the screen literally darkens as the torch
+# burns down" (CONCEPT.md), pinned at two depths and photographed.
+BURN_ROUTE='--keys 240-242:START --keys-pattern 300-314:6:2:DOWN --keys 318-320:RIGHT --keys 324-326:DOWN --keys-pattern 330-344:6:2:RIGHT --keys-pattern 348-1300:6:2:A'
+
+P8_BURN_ASSERTS=(
+  # mid-burn: torch 163 -> radius 97 (16 + 163/2)
+  --assert-watch 700:cv:6:eq:163
+  --assert-watch 700:lw:1:eq:97
+  # deep burn: torch 64 -> radius 48, run still alive and untouched (the
+  # floor was cleared at turn 5; waiting is safe — only the light moved),
+  # light still centered on the resting tile (9,4) -> screen (144, 42)
+  --assert-watch 1290:cv:2:eq:1
+  --assert-watch 1290:cv:5:eq:10
+  --assert-watch 1290:cv:6:eq:64
+  --assert-watch 1290:lw:1:eq:48
+  --assert-watch 1290:lw:2:eq:144
+  --assert-watch 1290:lw:3:eq:42
+  --assert-watch 1290:io:0:eq:0xF840
+)
+
+echo "== P8b: THE DEEP BURN — torch 220 -> 64, radius 126 -> 48 (run 1) =="
+H "$OUT/p8c.png" --frames 1310 $W $LIGHT_W $BURN_ROUTE \
+  --watch-log "$OUT/p8-burn1.csv" \
+  --shot "700:$OUT/p8-burn-mid.png" --shot "1290:$OUT/p8-burn-low.png" \
+  "${P8_BURN_ASSERTS[@]}"
+
+echo "== P8b: run 2 (must be byte-identical) =="
+H "$OUT/p8d.png" --frames 1310 $W $LIGHT_W $BURN_ROUTE \
+  --watch-log "$OUT/p8-burn2.csv" \
+  "${P8_BURN_ASSERTS[@]}"
+cmp "$OUT/p8-burn1.csv" "$OUT/p8-burn2.csv"
+echo "P8b run-twice: byte-identical"
+
+# P9 — THE EMBER RELIGHT: the P6 dialed-vault route, every P6 pin carried,
+# plus the light law's other direction: embers feed the torch, so the
+# circle RE-OPENS (126 -> 155 px through the turn-16 three-ember sweep),
+# and the fade only lives in the dungeon (200 px on the dialed title AND
+# on the death card).
+P9_ASSERTS=(
+  --assert-watch 200:lw:1:eq:200
+  --assert-watch 250:lw:1:eq:126
+  # turn 16: torch 279 (P6's own pin) -> radius 155: the relight
+  --assert-watch 394:lw:1:eq:155
+  # SLAIN: the death card lifts the fade (full radius, no dungeon bg)
+  --assert-watch 526:lw:1:eq:200
+  --assert-watch 526:io:0:eq:0xF040
+)
+
+echo "== P9: THE EMBER RELIGHT — the dialed vault with the light watched (run 1) =="
+H "$OUT/p9.png" --frames 560 $W $LIGHT_W $P6_ROUTE \
+  --watch-log "$OUT/p9-run1.csv" \
+  --shot "394:$OUT/p9-relight.png" \
+  --require-distinct \
+  "${P9_ASSERTS[@]}" \
+  "${P6_ASSERTS[@]}"
+
+echo "== P9: run 2 (must be byte-identical) =="
+H "$OUT/p9b.png" --frames 560 $W $LIGHT_W $P6_ROUTE \
+  --watch-log "$OUT/p9-run2.csv" \
+  "${P9_ASSERTS[@]}" \
+  "${P6_ASSERTS[@]}"
+cmp "$OUT/p9-run1.csv" "$OUT/p9-run2.csv"
+echo "P9 run-twice: byte-identical"
 
 echo "ALL CINDERVAULT PROOFS PASS"

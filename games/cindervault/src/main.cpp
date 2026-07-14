@@ -110,12 +110,41 @@
  *   [16] item slot (0 empty,          [17] lantern turns remaining
  *        1 lantern, 2 blade)               (0 unless a lantern is held)
  *
- * Presentation is deliberately trivial (breadth-program one-night slice):
- * the dungeon is drawn as glyph rows in Butano's common FIXED 8x8 sprite
- * font (fixed pitch keeps the grid square); HUD/title/end text uses the
- * common variable 8x8 font (the one tools/headless-screenshot.py
- * --assert-text can read). All code original; fonts are Butano's
- * zlib-licensed common assets (third_party/butano/common).
+ * ART PASS (growth cut 5 — CONCEPT.md: "Real art pass: tile sprites for
+ * walls/floor, a torch-radius light fade (the mechanic made diegetic —
+ * the screen literally darkens as the torch burns down)" — the LAST named
+ * growth line, presentation ONLY): the dungeon's glyph rows are replaced
+ * by an 8x8 tile background (original procedurally-generated assets,
+ * graphics/generate_assets.py — floor, brick wall, glowing ember, steel
+ * stairs, lantern, blade, and both monster breeds), baked from the SAME
+ * tiles[][]/monsters[] state the glyphs read; the player is a torch-
+ * bearer sprite. The torch mechanic goes diegetic through the shared
+ * gl_light_window.h (Lumen Drift's hardware-window light circle): the
+ * dungeon background is visible only inside a circle around the player
+ * whose radius follows the torch —
+ *
+ *     light_radius_px = min(16 + torch / 2, 200)
+ *
+ * — so the light literally closes in as the torch burns (and re-opens
+ * +12px on every ember, torch economy made visible). Sprites ride OVER
+ * the window (Butano windows clip backgrounds only), so the HUD text and
+ * the torch-bearer stay lit: they are carrying the flame. Nothing in the
+ * simulation reads any of it — game state, RNG word order and every
+ * cv_telemetry word are byte-identical to growth cut 4, so every
+ * existing proof pin carries verbatim.
+ *
+ * Presentation telemetry for the headless harness (a SECOND mailbox —
+ * cv_telemetry's 18 words are untouched by contract): volatile unsigned
+ * cv_light[4], C linkage, updated every frame:
+ *   [0] 0x4C495445 'LITE' magic     [2] light center screen x (0..239)
+ *   [1] light radius in pixels      [3] light center screen y (0..159)
+ *       (the law above; 200 = full
+ *       screen on title/win/lose)
+ *
+ * HUD/title/end text still uses Butano's common variable 8x8 font (the
+ * one tools/headless-screenshot.py --assert-text can read). All code and
+ * art original; the font is Butano's zlib-licensed common asset
+ * (third_party/butano/common).
  */
 
 #include "bn_core.h"
@@ -124,18 +153,34 @@
 #include "bn_string.h"
 #include "bn_vector.h"
 #include "bn_display.h"
+#include "bn_window.h"
 #include "bn_bg_palettes.h"
 #include "bn_sprite_ptr.h"
 #include "bn_sprite_text_generator.h"
+#include "bn_regular_bg_ptr.h"
+#include "bn_regular_bg_item.h"
+#include "bn_regular_bg_map_ptr.h"
+#include "bn_regular_bg_map_item.h"
+#include "bn_regular_bg_map_cell_info.h"
 
-#include "common_fixed_8x8_sprite_font.h"
+#include "bn_sprite_items_cv_player.h"
+#include "bn_regular_bg_tiles_items_cv_tiles.h"
+#include "bn_bg_palette_items_cv_palette.h"
+
 #include "common_variable_8x8_sprite_font.h"
+
+#include "gl_light_window.h"
 
 extern "C"
 {
     // Headless telemetry mailbox — see the layout table in the header
     // comment. volatile so every write really lands for the emulator bus.
     volatile unsigned cv_telemetry[18];
+
+    // Presentation telemetry (growth cut 5, the art pass) — the light
+    // fade's own mailbox, so cv_telemetry's 18 simulation words stay
+    // untouched by contract. Layout in the header comment.
+    volatile unsigned cv_light[4];
 }
 
 namespace
@@ -323,14 +368,46 @@ int main()
     // Vault-dark backdrop: near-black warm brown, unmistakably not blank.
     bn::bg_palettes::set_transparent_color(bn::color(4, 2, 2));
 
-    bn::sprite_text_generator map_gen(common::fixed_8x8_sprite_font);
-    map_gen.set_left_alignment();
     bn::sprite_text_generator ui_gen(common::variable_8x8_sprite_font);
     ui_gen.set_left_alignment();
 
-    constexpr int map_x = -52;            // 13 cols x 8 px, centered
-    constexpr int map_y0 = -70;           // rows at -70, -60, ... 0
-    text_line map_lines[map_h];
+    // --- the art pass (growth cut 5): tile background + torch light ------
+
+    // The dungeon grid, cell (x, y) rendered as an 8x8 tile with the
+    // grid's top-left at screen-centered (-52, -74) — the same band the
+    // glyph rows occupied (HUD text lives below y -10: no overlap, so
+    // every --assert-text pin is undisturbed).
+    constexpr int grid_px_x = -52;
+    constexpr int grid_px_y = -74;
+    constexpr int bg_cols = 32;
+    constexpr int bg_rows = 32;
+
+    // tiles[][] value -> cv_tiles tile index (monsters bake on top; only
+    // the non-grid cells stay tile 0 = transparent backdrop).
+    constexpr int tile_gfx[6] = {2, 1, 3, 4, 5, 6};  // wall floor ember
+                                                     // stairs lantern blade
+
+    alignas(int) bn::regular_bg_map_cell bg_cells[bg_cols * bg_rows] = {};
+    bn::regular_bg_map_item bg_map_item(bg_cells[0],
+                                        bn::size(bg_cols, bg_rows));
+    bn::regular_bg_item bg_item(bn::regular_bg_tiles_items::cv_tiles,
+                                bn::bg_palette_items::cv_palette,
+                                bg_map_item);
+    // create_bg() places the MAP CENTER, so the map's cell (0, 0) lands
+    // its top-left exactly on (grid_px_x, grid_px_y).
+    bn::regular_bg_ptr dungeon_bg = bg_item.create_bg(
+            grid_px_x + bg_cols * 4, grid_px_y + bg_rows * 4);
+    bn::regular_bg_map_ptr dungeon_map = dungeon_bg.map();
+
+    // The torch-bearer sprite rides OVER the light window (Butano windows
+    // clip backgrounds only) — the player is carrying the flame.
+    bn::sprite_ptr player_sprite =
+            bn::sprite_items::cv_player.create_sprite(0, 0);
+
+    // The torch-radius light fade: the dungeon bg renders only inside the
+    // light circle; outside it falls to the vault-dark backdrop.
+    gl::light_window light;
+    bn::window::outside().set_show_bg(dungeon_bg, false);
 
     constexpr int ui_count = 5;
     constexpr int ui_y[ui_count] = {-50, -30, -10, 10, 30};
@@ -346,11 +423,6 @@ int main()
 
     auto clear_lines = [&]()
     {
-        for(int i = 0; i < map_h; ++i)
-        {
-            map_lines[i].clear();
-        }
-
         for(int i = 0; i < ui_count; ++i)
         {
             ui_lines[i].clear();
@@ -393,6 +465,34 @@ int main()
         }
 
         return -1;
+    };
+
+    // Bake the dungeon state into the tile background (growth cut 5 —
+    // pure presentation: reads the SAME tiles[][]/monsters[] the glyph
+    // rows read, writes only VRAM-bound cells).
+    auto bake_map = [&]()
+    {
+        for(int y = 0; y < map_h; ++y)
+        {
+            for(int x = 0; x < map_w; ++x)
+            {
+                int gfx = tile_gfx[tiles[y][x]];
+                int mi = monster_at(x, y);
+
+                if(mi >= 0)
+                {
+                    gfx = monsters[mi].big ? 8 : 7;
+                }
+
+                bn::regular_bg_map_cell& cell =
+                        bg_cells[bg_map_item.cell_index(x, y)];
+                bn::regular_bg_map_cell_info cell_info(cell);
+                cell_info.set_tile_index(gfx);
+                cell = cell_info.cell();
+            }
+        }
+
+        dungeon_map.reload_cells_ref();
     };
 
     auto generate_floor = [&]()
@@ -924,41 +1024,11 @@ int main()
 
         case st_playing:
         {
-            for(int y = 0; y < map_h; ++y)
-            {
-                bn::string<40> row;
-
-                for(int x = 0; x < map_w; ++x)
-                {
-                    char glyph;
-
-                    switch(tiles[y][x])
-                    {
-                    case t_floor:   glyph = '.'; break;
-                    case t_ember:   glyph = '*'; break;
-                    case t_stairs:  glyph = '>'; break;
-                    case t_lantern: glyph = 'o'; break;
-                    case t_blade:   glyph = '/'; break;
-                    default:        glyph = '#'; break;
-                    }
-
-                    int mi = monster_at(x, y);
-
-                    if(mi >= 0)
-                    {
-                        glyph = monsters[mi].big ? 'M' : 'm';
-                    }
-
-                    if(x == px && y == py)
-                    {
-                        glyph = '@';
-                    }
-
-                    row.append(glyph);
-                }
-
-                map_lines[y].set(map_gen, map_x, map_y0 + 10 * y, row);
-            }
+            // The art pass (growth cut 5): tiles instead of glyphs. The
+            // bake reads the same state the glyph rows read.
+            bake_map();
+            player_sprite.set_position(grid_px_x + 8 * px + 4,
+                                       grid_px_y + 8 * py + 4);
 
             bn::string<40> hud("FLR ");
             hud.append(bn::to_string<8>(floor_no));
@@ -1040,6 +1110,32 @@ int main()
         }
 
         }
+
+        // --- the torch-radius light fade (presentation only): the dungeon
+        // bg and the torch-bearer show only during play, and the light
+        // circle's radius follows the torch — the burn economy on screen.
+        bool in_dungeon = state == st_playing;
+        dungeon_bg.set_visible(in_dungeon);
+        player_sprite.set_visible(in_dungeon);
+
+        int light_x = 0;
+        int light_y = 0;
+        int light_radius = gl::light_window::full_radius();
+
+        if(in_dungeon)
+        {
+            light_x = grid_px_x + 8 * px + 4;   // the player's tile center
+            light_y = grid_px_y + 8 * py + 4;
+            light_radius = bn::min(16 + torch / 2,
+                                   gl::light_window::full_radius());
+        }
+
+        light.set(bn::fixed_point(light_x, light_y), light_radius);
+
+        cv_light[0] = 0x4C495445u;  // 'LITE'
+        cv_light[1] = unsigned(light_radius);
+        cv_light[2] = unsigned(light_x + bn::display::width() / 2);
+        cv_light[3] = unsigned(light_y + bn::display::height() / 2);
 
         // --- telemetry mailbox: every slot, every frame
 

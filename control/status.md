@@ -709,3 +709,38 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #120 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (deepcast-species, PR #121)
+
+- **ts:** 2026-07-14T05:32:47Z (appended by this dispatch's worker;
+  everything above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Deepcast growth cut 3 — the concept's "Fish species tables per depth
+  band with named rarities; a catch log" line — on branch
+  `claude/deepcast-species` from main @ `6c6b089`: four depth bands
+  (named on the sink card), 16 named species, one rarity tier each
+  (COMMON/UNCOMMON/RARE/MYTHIC), drawn at cast time from a SIDE-BAND
+  xorshift32 stream seeded `seed ^ 0x51DEF157` — the main stream's word
+  order untouched, so every v0.2/v0.3 pin carried VERBATIM (the whole
+  v0.3 suite ran green against the new build before any proof changed;
+  zero re-derived pins). Catch card names the landed fish; SELECT opens
+  a per-run catch log (ring of the last 8 landed fish; snaps never
+  log); new `dc_fishlog` telemetry mailbox. Log is session-scope by
+  design — SRAM persistence noted as follow-up at the BUILT mark.
+- Proofs: new P6 (species/rarity/log glyph-exact, mailbox witnesses,
+  snapped-fish-never-logs discriminator; run twice, watch-logs
+  byte-identical) + species witnesses threaded additively through
+  P1-P5 (incl. P4: the DIALED lake's shallow catch is MUD BREAM COMMON
+  where the default lake's was DUSK PERCH UNCOMMON — the seed-select
+  contract now extends to the fish's name). 751 green assert lines,
+  exit 0; side-stream literals cross-checked against an offline
+  xorshift32 replica.
+- dist/deepcast.gba v0.4: two clean builds byte-identical, 131,992
+  bytes, sha256 f87b797…9185f5; proofs ran at those exact bytes;
+  toolchain certified against v0.3's committed hash (clean worktree
+  rebuild) before any change.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #121 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

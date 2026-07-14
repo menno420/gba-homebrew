@@ -1,1 +1,0 @@
-- `claude/deepcast-species` · **Deepcast growth cut 3 (species tables + catch log)** — named fish species per depth band with rarity tiers riding a side-band RNG stream derived from the seed; catch card names the species; SELECT opens a per-run catch log + proofs · games/deepcast/**, dist/deepcast.gba, .sessions/2026-07-14-deepcast-species.md · 2026-07-14

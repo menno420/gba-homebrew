@@ -46,6 +46,19 @@ dependencies and no build step**. Framework decision + evidence:
   both RNG streams, and `snapshot()` are untouched whatever is unlocked.
   Proof surfaces: `__game.paletteTable/metaState/shopRows/buyPalette/
   selectPalette`.
+- **Biomes** (2026-07-14, the last named growth cut) — the wallet also
+  buys **biomes**, each a distinct WIND PATTERN: a parameter set for how
+  the round's wind evolves (gust strength `windMul`, gust cadence
+  `gustEvery`, a deterministic swirl that rotates the wind vector over
+  the round, a sine sway that breathes its amplitude, and how strongly
+  the day's prevailing weather bias couples in) plus a render-only hue
+  tint. The active biome is meta, but it is a real sim input: it is read
+  ONCE at round start (like the day's weather at boot — the sim step
+  never reads meta or the clock), so a given biome + seed + date
+  reproduces exactly, switching biomes only changes the NEXT round, and
+  the free default ('meadow') reproduces pre-biome rounds byte-exactly.
+  Proof surfaces: `__game.biomeTable/biomeRows/buyBiome/selectBiome`;
+  `snapshot()` carries the round's biome.
 - **Fixed-timestep game loop** — 60 Hz simulation accumulator +
   `requestAnimationFrame` rendering (`game.js`), spiral-of-death guarded.
 - **Touch input** — `touchstart`/`touchmove`/`touchend` first, pointer
@@ -98,7 +111,12 @@ through tier 3), and the essence-spending cut (round-end wallet banking,
 deny/buy/re-buy spend flow, real-tap shop rows on the dusk screen,
 accrual across rounds, persistence across a full reload, and
 byte-identical sim snapshots with all palettes unlocked vs fresh
-storage).
+storage), and the biomes cut (default-biome identity with a pinned
+pre-cut baseline, per-biome byte-identical determinism at a fixed
+seed + fake date, four pairwise-distinct worlds on the same seed,
+the spend/deny/re-buy flow, real-tap biome rows leaving the frozen
+round untouched, the round-start read on replant, and persistence
+across reload).
 
 ## Files
 

@@ -11,8 +11,10 @@ wind parameters, read once at boot). Growth cut 2 shipped 2026-07-14:
 more species (two per tier, distinct visuals/values; hybrid
 cross-pollination). Growth cut 3 shipped 2026-07-14: essence spending
 (round harvests bank to a persistent wallet; a dusk-screen shop spends it
-on render-only garden palettes). The remaining growth path — biomes — is
-still future work.
+on render-only garden palettes). Growth cut 4 shipped 2026-07-14: biomes
+(essence-purchasable gardens with distinct wind patterns, read once at
+round start). **The concept's named growth path is complete** — further
+work is new concept, not a listed cut.
 
 ## Genre
 
@@ -33,14 +35,17 @@ mobile retention. Portrait, offline-first, session length 30 s – 5 min.
    essence, spend essence on new biomes/palettes/species (ESSENCE
    SPENDING BUILT 2026-07-14 — each round's harvest banks to a persistent
    wallet, spent in the dusk-screen shop on unlockable garden palettes,
-   pure render; of the listed spend targets, palettes shipped first —
-   biomes remain the named follow-up, and species unlocks would ride the
-   same wallet).
+   pure render; BIOMES BUILT 2026-07-14 — the same wallet buys biomes in
+   a second shop section; species unlocks would ride the same wallet).
 
-Depth ramps: wind patterns per biome, predator wisps to fend off with
-drags, daily seeded "weather" so every player's Tuesday garden differs
-(BUILT 2026-07-14 — UTC date picks the day's named wind parameters at
-boot; the sim step never reads the clock).
+Depth ramps: wind patterns per biome (BUILT 2026-07-14 — the last named
+growth cut: four biomes, each a parameter set for how the round's wind
+evolves — gust strength/cadence, a deterministic swirl, a breathing sway,
+prevailing-bias coupling — bought with essence, read ONCE at round start;
+the free default reproduces pre-biome rounds byte-exactly), predator
+wisps to fend off with drags, daily seeded "weather" so every player's
+Tuesday garden differs (BUILT 2026-07-14 — UTC date picks the day's named
+wind parameters at boot; the sim step never reads the clock).
 The skeleton's fixed-timestep loop makes grown gardens reproducible from
 (seed, action log) — the same replay-by-construction proof discipline the
 GBA/NDS arcs use.

@@ -1,0 +1,1 @@
+- `claude/undertow-daily` · **Undertow growth cut 1 (daily seed + share URL)** — daily UTC-date seed (`?daily=1` → YYYYMMDD) + copyable challenge link, static-only · games/web-undertow/**, tools/web-smoke-undertow.mjs, .sessions/2026-07-14-undertow-daily.md · 2026-07-14

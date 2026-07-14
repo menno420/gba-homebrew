@@ -1,1 +1,0 @@
-- `claude/tiltstone-par` · **Tiltstone slice 2: PAR SCORING + UNDO** — engine `par`/`grade` (pure, additive) + shell undo stack + HUD/win-card grading, extended engine + browser smokes · games/web-tiltstone/**, tools/web-smoke-tiltstone.mjs, .sessions/2026-07-13-tiltstone-par.md · 2026-07-13

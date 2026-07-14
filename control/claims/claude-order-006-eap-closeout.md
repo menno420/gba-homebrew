@@ -1,1 +1,0 @@
-- `claude/order-006-eap-closeout` · **serve ORDER 006 EAP closeout** — EAP final-day closeout: disposition the Tiltstone stack #92←#93←#95←#97 + parked #85, juice.js packaging follow-up, land the EAP closeout walkthrough doc + stamps + heartbeat · docs/**, control/**, .sessions/** · 2026-07-14

@@ -52,6 +52,7 @@ DeSmuME — setup, controls and goal:
 
 | Path | What it is |
 |---|---|
+| [`docs/eap-closeout-walkthrough-2026-07-14.md`](docs/eap-closeout-walkthrough-2026-07-14.md) | **EAP closeout walkthrough (2026-07-14)** — what this seat shipped, how to verify it, and the OWNER ACTIONS checklist. Start here to review the lane. |
 | [`dist/`](dist/) | **Download-and-play ROM builds** (sha256 + provenance in [`dist/README.md`](dist/README.md)); how to play: [`docs/PLAYING.md`](docs/PLAYING.md). |
 | [`control/`](control/) | Manager↔lane coordination — `inbox.md` (manager-written orders), `status.md` (lane-written state). Protocol: [`control/README.md`](control/README.md). |
 | [`docs/conventions.md`](docs/conventions.md) | Repo conventions — **override harness defaults**. Read before any PR. |

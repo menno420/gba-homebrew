@@ -66,7 +66,29 @@ worth growing; the presentation is placeholder.
   glyph-exact + `dc_fishlog` mailbox witnesses, run twice byte-identical)
   with species witnesses threaded through P1-P5.
 - Line upgrades bought with score (thicker line = higher snap threshold,
-  slower reel) — a run-to-run meta without breaking determinism.
+  slower reel) — a run-to-run meta without breaking determinism. **BUILT**
+  (growth cut 4, 2026-07-14): every run's dusk score deposits into a
+  persistent BANK (the `games/common/include/gl_save.h` magic-checked SRAM
+  slot, tag `DCLINE1` — the Lumen Drift save pattern; this is also the SRAM
+  follow-up the species cut named), and the LINE SHOP (SELECT on the title,
+  R at dusk — SELECT closes back, A buys) spends it on three line tiers
+  with the exact tradeoff this line names: WORN LINE (snap 600, reel
+  5/frame — the v0.2 constants), BRAIDED LINE (snap 750, reel 4, cost 15),
+  STEEL LINE (snap 900, reel 3, cost 40). Tension gain, slack decay and
+  every RNG stream are untouched, so a run is a pure function of
+  (seed, line tier) — the dial publishes the seed, the shop publishes the
+  tier — and a fresh/erased cartridge loads as no save = tier 0 = v0.4
+  bit-exact behavior (every committed pin carries on first boot). The
+  click-speed audio law scales with the current line's snap threshold, so
+  the ratchet stays an honest tension bar on any line. Proven in
+  `games/deepcast/proofs.sh` P7 (`dc_linemeta` mailbox: buy + refused buy
+  glyph-exact, two-boot SRAM persistence via `--savefile` on separate
+  emulator boots, and the tradeoff as arithmetic on the SAME hold-only
+  fight: same bite/tension trajectory, line 432-4k vs 432-5k, still
+  fighting at 623 past the worn line's 600, snap at exactly 750), with
+  P1-P6 running unmodified as the fresh-cart identity proof. The lifetime
+  catch log stays a follow-up: this cut spends SRAM on the meta the
+  concept names first.
 - Daily seed + score-attack: the deterministic core makes a shareable
   "same lake, same fish" challenge free to build. **BUILT** (growth cut
   2, 2026-07-14), GBA-shaped: a cartridge has no clock and no server, so

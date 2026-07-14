@@ -90,6 +90,45 @@
 #                              rarity words are pinned in the dc_fishlog
 #                              mailbox at every step.
 #                              RUN TWICE — byte-identical watch-logs.
+#   P7 line upgrades + SRAM   — growth cut 4 (line upgrades bought with
+#     (upgrade cut)             score: thicker line = higher snap threshold,
+#                              slower reel). Run A (NO savefile = the fresh
+#                              cart): the WORN LINE baseline — bank 0 tier 0
+#                              snap 600 reel 5 on the title, and the default
+#                              lake's first cast fought hold-only reels 5
+#                              line/frame (bite+29 -> 432-5*29 = 287) and
+#                              SNAPS at exactly 600 on frame 542. Run B
+#                              (boot 1, factory-fresh savefile): the full P2
+#                              route banks its dusk score (BANK 18 deposited
+#                              at dusk, glyph-exact on the new dusk line), R
+#                              opens the LINE SHOP, A buys BRAIDED LINE for
+#                              15 (bank 18 -> 3, snap 600 -> 750, reel 5 ->
+#                              4, all glyph-exact), a second A is REFUSED
+#                              (STEEL costs 40 > bank 3 — nothing moves),
+#                              SELECT returns to dusk. RUN TWICE from two
+#                              factory-fresh savefiles — watch-logs AND the
+#                              two written savefiles byte-identical. Run C
+#                              (boot 2, a SEPARATE emulator boot on run B's
+#                              savefile — the Lumen Drift two-boot pattern):
+#                              the purchase SURVIVED the power cycle (title
+#                              BANK 3 / BRAIDED on the title shop, tier 1 /
+#                              snap 750 / reel 4 in dc_linemeta), and the
+#                              SAME hold-only fight as run A is the
+#                              TRADEOFF WITNESS, arithmetic on the same
+#                              fight: same bite (frame 471, line 432), same
+#                              tension trajectory (203 at 500, 573 at 540 —
+#                              tension math untouched), but line 316 =
+#                              432-4*29 where the worn line had 287 =
+#                              432-5*29 (slower reel), still FIGHTING on
+#                              frame 542 at tension 623 (past the worn
+#                              line's 600 snap — higher threshold), and the
+#                              snap lands at exactly 750 on frame 548. RUN
+#                              TWICE — byte-identical watch-logs, savefile
+#                              untouched (no dusk = no SRAM write).
+#                              Fresh-cart identity: P1-P6 above run with NO
+#                              savefile and are UNMODIFIED from v0.4 — a
+#                              zeroed/erased cart boots exactly like v0.4
+#                              (tier 0 IS the v0.4 constants).
 #
 # Growth cut 3 also threads species witnesses through the EXISTING routes
 # additively: P1 pins the boot sentinels (species/rarity 255, log 0, the
@@ -643,5 +682,184 @@ H "$OUT/p6b.png" --frames 1750 $W $WA $P6_ROUTE \
   "${P6_ASSERTS[@]}"
 cmp "$OUT/p6-run1.csv" "$OUT/p6-run2.csv"
 echo "P6 run-twice: byte-identical"
+
+# ---------------------------------------------------------------------------
+# P7 — growth cut 4, line upgrades bought with score + the SRAM bank. All
+# pins transcribed from observed --watch-log runs of THESE routes (the
+# listen-then-script method). The tension math is untouched by the cut
+# (reel gain 6 + weight/8 + surge 18, slack decay 9), so runs A and C share
+# every tension literal while the LINE literals diverge by exactly the
+# reel-rate delta — the arithmetic witness the concept's tradeoff names.
+# gl_save.h payload: magic "DCLINE1", {int bank; int tier;}. mGBA wall
+# (docs/PLATFORM-LIMITS.md, quoted not re-probed): core.load_save()
+# segfaults this binding — --savefile is the bus-copy path, per the Lumen
+# Drift two-boot job in .github/workflows/headless-boot.yml.
+# ---------------------------------------------------------------------------
+
+WL='--watch lm:dc_linemeta:8'
+P7_FIGHT='--keys 240-244:START --keys 300-360:A --keys 471-700:A'
+
+# Run A — fresh cart (NO savefile): the WORN LINE baseline. lm magic
+# 'LINE' = 1279872581; tier 0 / bank 0 / snap 600 / reel 5 / next cost 15.
+P7A_ASSERTS=(
+  --assert-watch 100:lm:0:eq:1279872581
+  --assert-watch 100:lm:1:eq:0
+  --assert-watch 100:lm:2:eq:0
+  --assert-watch 100:lm:3:eq:600
+  --assert-watch 100:lm:4:eq:5
+  --assert-watch 100:lm:5:eq:0
+  --assert-watch 100:lm:6:eq:15
+  --assert-watch 100:dc:4:eq:3739863639
+  --assert-text "100:SELECT: LINE SHOP  BANK 0"
+  # the default lake's first cast (72m wt 11), fought hold-only: bite at
+  # 471 with line 432; the worn line reels 5/frame — bite+29 frames held
+  # -> line 432-5*29 = 287; tension 203 at the same frame
+  --assert-watch 471:dc:2:eq:3
+  --assert-watch 471:dc:9:eq:432
+  --assert-watch 500:dc:8:eq:203
+  --assert-watch 500:dc:9:eq:287
+  --assert-watch 540:dc:8:eq:573
+  --assert-watch 540:dc:9:eq:87
+  # the worn line SNAPS at exactly 600 on frame 542
+  --assert-watch 542:dc:2:eq:4
+  --assert-watch 542:dc:15:eq:2
+  --assert-watch 542:dc:8:eq:600
+  --assert-watch 542:dc:9:eq:77
+  --assert-watch 542:dc:12:eq:2
+)
+
+echo "== P7 run A: the worn-line baseline on a fresh cart (no savefile) =="
+H "$OUT/p7a.png" --frames 700 $W $WA $WL $P7_FIGHT \
+  --watch-log "$OUT/p7a-run1.csv" \
+  "${P7A_ASSERTS[@]}"
+
+# Run B — boot 1 on a factory-fresh savefile: the P2 route to dusk (score
+# 18), the dusk deposit, the shop purchase, the refused purchase.
+P7B_ROUTE="$CORE_ROUTE --keys 2560-2562:R --keys 2600-2602:A --keys 2620-2622:A --keys 2660-2662:SELECT"
+
+P7B_ASSERTS=(
+  # factory-fresh SRAM (0xFF) loads as NO save: worn line, bank 0
+  --assert-watch 100:lm:1:eq:0
+  --assert-watch 100:lm:2:eq:0
+  --assert-text "100:SELECT: LINE SHOP  BANK 0"
+  # dusk deposits the run's score into the bank the frame dusk falls
+  --assert-watch 2234:dc:2:eq:5
+  --assert-watch 2234:dc:14:eq:18
+  --assert-watch 2234:lm:2:eq:18
+  --assert-text "2500:SCORE 18"
+  --assert-text "2500:R: LINE SHOP  BANK 18"
+  # R opens the LINE SHOP (state 7, open flag up), glyph-exact: the worn
+  # line, the next tier's price, and the doc's tradeoff published
+  --assert-watch 2559:dc:2:eq:5
+  --assert-watch 2559:lm:5:eq:0
+  --assert-watch 2565:dc:2:eq:7
+  --assert-watch 2565:lm:5:eq:1
+  --assert-text "2590:LINE SHOP"
+  --assert-text "2590:BANK 18"
+  --assert-text "2590:LINE: WORN LINE"
+  --assert-text "2590:NEXT: BRAIDED LINE COST 15"
+  --assert-text "2590:SNAP 600>750  REEL 5>4"
+  --assert-text "2590:A: BUY  SELECT: BACK"
+  # A BUYS the braided line: bank 18-15=3, tier 1, snap 750, reel 4,
+  # next cost 40 — bought with score, the concept's exact words
+  --assert-watch 2605:lm:1:eq:1
+  --assert-watch 2605:lm:2:eq:3
+  --assert-watch 2605:lm:3:eq:750
+  --assert-watch 2605:lm:4:eq:4
+  --assert-watch 2605:lm:6:eq:40
+  # the second A is REFUSED (STEEL costs 40 > bank 3): nothing moves
+  --assert-watch 2640:lm:1:eq:1
+  --assert-watch 2640:lm:2:eq:3
+  --assert-text "2640:BANK 3"
+  --assert-text "2640:LINE: BRAIDED LINE"
+  --assert-text "2640:NEXT: STEEL LINE COST 40"
+  --assert-text "2640:SNAP 750>900  REEL 4>3"
+  # SELECT returns to dusk; the dusk line now shows the spent bank
+  --assert-watch 2665:dc:2:eq:5
+  --assert-watch 2665:lm:5:eq:0
+  --assert-text "2700:R: LINE SHOP  BANK 3"
+)
+
+rm -f "$OUT/p7-boot1a.sav" "$OUT/p7-boot1b.sav"
+
+echo "== P7 run B: boot 1 — dusk banks the score, the shop spends it (run 1) =="
+H "$OUT/p7b.png" --frames 2720 $W $WA $WL $P7B_ROUTE \
+  --savefile "$OUT/p7-boot1a.sav" \
+  --watch-log "$OUT/p7b-run1.csv" \
+  --shot "2590:$OUT/p7-shop-before.png" --shot "2640:$OUT/p7-shop-after.png" \
+  --require-distinct \
+  "${P7B_ASSERTS[@]}"
+
+echo "== P7 run B: run 2 from a second factory-fresh savefile (must be byte-identical, savefile too) =="
+H "$OUT/p7b2.png" --frames 2720 $W $WA $WL $P7B_ROUTE \
+  --savefile "$OUT/p7-boot1b.sav" \
+  --watch-log "$OUT/p7b-run2.csv" \
+  "${P7B_ASSERTS[@]}"
+cmp "$OUT/p7b-run1.csv" "$OUT/p7b-run2.csv"
+cmp "$OUT/p7-boot1a.sav" "$OUT/p7-boot1b.sav"
+echo "P7 run B run-twice: watch-logs AND written savefiles byte-identical"
+
+# Run C — boot 2, a SEPARATE emulator boot on run B's savefile (the Lumen
+# Drift two-boot pattern): the purchase survived the power cycle, and the
+# SAME hold-only fight as run A carries the tradeoff arithmetic.
+P7C_ROUTE="--keys 120-122:SELECT --keys 180-182:SELECT $P7_FIGHT"
+
+P7C_ASSERTS=(
+  # TWO-BOOT PERSISTENCE WITNESS: bank 3 / tier 1 / snap 750 / reel 4
+  # restored from SRAM on a separate boot, on the title before any input
+  --assert-watch 110:lm:1:eq:1
+  --assert-watch 110:lm:2:eq:3
+  --assert-watch 110:lm:3:eq:750
+  --assert-watch 110:lm:4:eq:4
+  --assert-watch 110:dc:4:eq:3739863639
+  --assert-text "110:SELECT: LINE SHOP  BANK 3"
+  # the title shop shows the owned line, glyph-exact
+  --assert-watch 150:dc:2:eq:7
+  --assert-watch 150:lm:5:eq:1
+  --assert-text "150:BANK 3"
+  --assert-text "150:LINE: BRAIDED LINE"
+  --assert-text "150:NEXT: STEEL LINE COST 40"
+  --assert-text "150:SNAP 750>900  REEL 4>3"
+  --assert-watch 200:dc:2:eq:0
+  # THE TRADEOFF WITNESS, arithmetic on the SAME fight as run A: same
+  # lake (seed pinned above), same bite (frame 471, line 432), same
+  # tension trajectory (203 at 500, 573 at 540 — tension math untouched
+  # by the cut) — but the braided line reels 4/frame, not 5: line
+  # 432-4*29 = 316 at frame 500 (run A: 287 = 432-5*29) and 156 at 540
+  # (run A: 87)
+  --assert-watch 471:dc:2:eq:3
+  --assert-watch 471:dc:9:eq:432
+  --assert-watch 500:dc:8:eq:203
+  --assert-watch 500:dc:9:eq:316
+  --assert-watch 540:dc:8:eq:573
+  --assert-watch 540:dc:9:eq:156
+  # on frame 542 — the WORN line's snap frame — the braided line is
+  # still FIGHTING at tension 623, past the old 600 threshold
+  --assert-watch 542:dc:2:eq:3
+  --assert-watch 542:dc:8:eq:623
+  # and it SNAPS at exactly 750 on frame 548: higher snap threshold AND
+  # slower reel, the doc's tradeoff, both halves pinned on one fight
+  --assert-watch 548:dc:2:eq:4
+  --assert-watch 548:dc:15:eq:2
+  --assert-watch 548:dc:8:eq:750
+  --assert-watch 548:dc:9:eq:124
+  --assert-watch 548:dc:12:eq:2
+)
+
+echo "== P7 run C: boot 2 — the purchase survives the power cycle; the tradeoff on the same fight (run 1) =="
+H "$OUT/p7c.png" --frames 700 $W $WA $WL $P7C_ROUTE \
+  --savefile "$OUT/p7-boot1a.sav" \
+  --watch-log "$OUT/p7c-run1.csv" \
+  --shot "150:$OUT/p7-title-shop.png" \
+  "${P7C_ASSERTS[@]}"
+
+echo "== P7 run C: run 2 (must be byte-identical; no dusk = no SRAM write, savefile untouched) =="
+H "$OUT/p7c2.png" --frames 700 $W $WA $WL $P7C_ROUTE \
+  --savefile "$OUT/p7-boot1a.sav" \
+  --watch-log "$OUT/p7c-run2.csv" \
+  "${P7C_ASSERTS[@]}"
+cmp "$OUT/p7c-run1.csv" "$OUT/p7c-run2.csv"
+cmp "$OUT/p7-boot1a.sav" "$OUT/p7-boot1b.sav"
+echo "P7 run C run-twice: byte-identical; savefile untouched by two more boots"
 
 echo "ALL DEEPCAST PROOFS PASS"

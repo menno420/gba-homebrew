@@ -40,6 +40,23 @@
 //                    byte-identical to the same run on fresh storage
 //                    (palettes are pure render, the wallet is meta)
 //   9. PAUSE       — visibilitychange hidden freezes the loop; visible resumes
+//  10. BIOMES      — essence-purchasable biomes with distinct WIND PATTERNS
+//                    (sim parameters read ONCE at round start): the biome
+//                    table's default 'meadow' carries identity parameters and
+//                    a meadow round reproduces the PRE-CUT baseline snapshots
+//                    byte-exactly (fixed point pinned from the pre-biomes
+//                    build); every non-default biome is deterministic (same
+//                    biome + seed + date twice -> byte-identical two-stage
+//                    snapshots) and diverges the world from meadow on the
+//                    SAME seed + date; the spend flow denies the
+//                    unaffordable/re-buys and deducts on buy; REAL taps on
+//                    the dusk-screen biome rows buy/select without replanting
+//                    and WITHOUT touching the frozen round's biome; the
+//                    selected biome is read at the next replant (the new
+//                    round's snapshot carries it); biome unlocks/active
+//                    biome survive a full reload; and owning every biome
+//                    with meadow active is sim-inert (byte-identical to
+//                    fresh storage)
 //
 // Scripted rounds run on a page booted "hidden" (visibility overridden
 // BEFORE load, so the game starts paused at frame 0): the rAF loop never
@@ -122,8 +139,13 @@ async function newScriptedPage(browser, url, fakeDate = null, initMeta = null) {
   }
   if (initMeta) {
     await page.addInitScript((m) => {
-      try { window.localStorage.setItem('driftgarden.meta', JSON.stringify(m)); }
-      catch (e) { /* storage unavailable — the guarded path defaults */ }
+      // Seed the FIRST boot only: init scripts re-run on reload, and a
+      // reload must observe what the game itself persisted, not the seed.
+      try {
+        if (window.localStorage.getItem('driftgarden.meta') === null) {
+          window.localStorage.setItem('driftgarden.meta', JSON.stringify(m));
+        }
+      } catch (e) { /* storage unavailable — the guarded path defaults */ }
     }, initMeta);
   }
   await page.goto(url, { waitUntil: 'load' });
@@ -589,6 +611,10 @@ try {
     wallet: 500,
     unlocked: ['verdant', 'duskbloom', 'moonlit', 'emberdawn'],
     palette: 'moonlit',
+    // every biome OWNED but the default ACTIVE: biome ownership is meta —
+    // only the active biome (read at round start) is a sim input
+    biomes: ['meadow', 'galeridge', 'whorl', 'tideflat'],
+    biome: 'meadow',
   };
   const richRig = await newScriptedPage(browser, `${URL_}?seed=7`, DAY_A, richMeta);
   const richRun = await richRig.page.evaluate(script);
@@ -604,6 +630,191 @@ try {
       && freshRun === richRun,
     `seed 7 script: fresh storage ('${freshPal}') vs wallet 500 + all palettes + '${richState.palette}' ` +
     `active -> identical ${freshRun.length}-byte snapshots`);
+
+  // ---- 10. biomes (wind patterns per biome) ---------------------------------
+  // The round's biome is a sim input read ONCE at round start (like the
+  // day's weather at boot). Two-stage probe: snapshot at step 500 (the
+  // three boot motes' wind-drifted positions) and step 1500 (wisps have
+  // hunted). PRE-CUT fixed point, captured from the pre-biomes build
+  // (main @ 65c3659) at seed 11 under fake DAY_A: the default 'meadow'
+  // biome must reproduce these bytes exactly (modulo the added biome key,
+  // stripped before comparison).
+  const PRECUT_500 = '{"frames":500,"seed":11,"weather":"crosswind","weatherDate":20300607,'
+    + '"phase":"playing","essence":0,"taps":0,"wisps":0,"motes":['
+    + '{"tier":1,"sp":"clover","x":109.21,"y":280.15},'
+    + '{"tier":1,"sp":"fern","x":211.05,"y":283.08},'
+    + '{"tier":1,"sp":"fern","x":302.89,"y":282.29}]}';
+  const PRECUT_1500 = '{"frames":1500,"seed":11,"weather":"crosswind","weatherDate":20300607,'
+    + '"phase":"playing","essence":0,"taps":0,"wisps":2,"motes":[]}';
+  const bioScript = () => {
+    const g = window.__game;
+    g.step(500);
+    const a = JSON.stringify(g.snapshot());
+    g.step(1000);
+    return a + '\n' + JSON.stringify(g.snapshot());
+  };
+  const stripBiome = (two) => two.split('\n').map((s) => {
+    const o = JSON.parse(s);
+    delete o.biome;
+    return JSON.stringify(o);
+  }).join('\n');
+
+  // table + defaults + row geometry (live page: fresh meta, real date)
+  const bio0 = await live.evaluate(() => {
+    const g = window.__game;
+    const t = g.biomeTable();
+    const meadow = t[0];
+    const rows = g.biomeRows();
+    const prows = g.shopRows();
+    const plast = prows[prows.length - 1];
+    return {
+      n: t.length,
+      ids: t.map((b) => b.id).join(','),
+      meadowIdentity: meadow.id === 'meadow' && meadow.cost === 0
+        && meadow.windMul === 1 && meadow.biasMul === 1 && meadow.gustEvery === 600
+        && meadow.swirlRate === 0 && meadow.swayPeriod === 0 && meadow.tint === 0,
+      othersPriced: t.slice(1).every((b) => b.cost > 0),
+      meta: g.metaState(),
+      snapBiome: g.snapshot().biome,
+      roundBiome: window.__gameState.roundBiome,
+      rowsBelowPalettes: rows.length === t.length && rows[0].y > plast.y + plast.h,
+    };
+  });
+  check('biome-table-and-default',
+    bio0.n === 4 && bio0.ids === 'meadow,galeridge,whorl,tideflat'
+      && bio0.meadowIdentity && bio0.othersPriced
+      && bio0.meta.biomes.join(',') === 'meadow' && bio0.meta.biome === 'meadow'
+      && bio0.snapBiome === 'meadow' && bio0.roundBiome === 'meadow'
+      && bio0.rowsBelowPalettes,
+    `${bio0.n} biomes [${bio0.ids}]; meadow = identity params, cost 0; ` +
+    `fresh meta owns/activates 'meadow'; snapshot biome '${bio0.snapBiome}'; ` +
+    `biome rows sit below palette rows=${bio0.rowsBelowPalettes}`);
+
+  // default biome reproduces the PRE-CUT baseline byte-exactly
+  const idRig = await newScriptedPage(browser, `${URL_}?seed=11`, DAY_A);
+  const meadowRun = await idRig.page.evaluate(bioScript);
+  await idRig.ctx.close();
+  const meadowBiomes = meadowRun.split('\n').map((s) => JSON.parse(s).biome).join(',');
+  check('biome-default-precut-identity',
+    stripBiome(meadowRun) === `${PRECUT_500}\n${PRECUT_1500}` && meadowBiomes === 'meadow,meadow',
+    `meadow @ seed 11/${DAY_A.num}: steps 500+1500 match the pre-cut build's ` +
+    `pinned snapshots byte-exactly (biome key '${meadowBiomes.split(',')[0]}' stripped)`);
+
+  // each purchasable biome: same biome + seed + date twice -> identical;
+  // and every biome diverges the world from meadow on the SAME seed + date
+  const biomeRuns = { meadow: meadowRun };
+  for (const id of ['galeridge', 'whorl', 'tideflat']) {
+    const im = { wallet: 0, unlocked: ['verdant'], palette: 'verdant', biomes: ['meadow', id], biome: id };
+    const pair = [];
+    for (let i = 0; i < 2; i++) {
+      const rig = await newScriptedPage(browser, `${URL_}?seed=11`, DAY_A, im);
+      pair.push(await rig.page.evaluate(bioScript));
+      await rig.ctx.close();
+    }
+    biomeRuns[id] = pair[0];
+    biomeRuns[`${id}-repeat-ok`] = pair[0] === pair[1]
+      && pair[0].split('\n').every((s) => JSON.parse(s).biome === id);
+  }
+  check('biome-deterministic-per-biome',
+    biomeRuns['galeridge-repeat-ok'] && biomeRuns['whorl-repeat-ok'] && biomeRuns['tideflat-repeat-ok'],
+    `seed 11/${DAY_A.num} twice per biome -> byte-identical two-stage snapshots ` +
+    `(galeridge ${biomeRuns.galeridge.length}B, whorl ${biomeRuns.whorl.length}B, ` +
+    `tideflat ${biomeRuns.tideflat.length}B), each tagged with its biome`);
+  const worlds = ['meadow', 'galeridge', 'whorl', 'tideflat'].map((id) => stripBiome(biomeRuns[id]));
+  const allDistinct = new Set(worlds).size === 4;
+  const sameInputs = worlds.every((w) => {
+    const o = JSON.parse(w.split('\n')[0]);
+    return o.seed === 11 && o.weatherDate === DAY_A.num;
+  });
+  check('biome-changes-world', allDistinct && sameInputs,
+    `same seed 11 + date ${DAY_A.num}: meadow/galeridge/whorl/tideflat -> ` +
+    `4 pairwise-distinct worlds (biome key stripped before comparing)`);
+
+  // spend flow + REAL dusk-screen taps + round-start read + persistence
+  const bioMeta = { wallet: 300, unlocked: ['verdant'], palette: 'verdant', biomes: ['meadow'], biome: 'meadow' };
+  const bioRig = await newScriptedPage(browser, `${URL_}?seed=5`, DAY_A, bioMeta);
+  const bio = await bioRig.page.evaluate(() => {
+    const g = window.__game;
+    const cv = document.getElementById('game');
+    const rect = cv.getBoundingClientRect();
+    const kx = rect.width / cv.width, ky = rect.height / cv.height;
+    const tap = (x, y) => g.tapAt(rect.left + x * kx, rect.top + y * ky);
+    const cw = cv.width, ch = cv.height;
+    const m0 = g.metaState();
+    g.step(5400); // nobody gardens -> dusk falls, the shop opens
+    const dusk = g.snapshot();
+    // API flow: buy the dearest, get denied on the next, refuse a re-buy
+    // and an unowned select
+    const buyBig = g.buyBiome('tideflat');       // 300 - 220 -> 80
+    const denied = g.buyBiome('whorl');          // 130 > 80
+    const walletAfterDeny = g.metaState().wallet;
+    const rebuy = g.buyBiome('tideflat');
+    const selUnowned = g.selectBiome('whorl');
+    const m1 = g.metaState();
+    // REAL tap verb on the biome rows: buy galeridge (60 <= 80), then
+    // select tideflat back — the frozen round's biome must not move
+    const rowCenter = (id) => {
+      const r = g.biomeRows().find((row) => row.id === id);
+      return [rect.left + (r.x + r.w / 2) * kx, rect.top + (r.y + r.h / 2) * ky];
+    };
+    g.tapAt(...rowCenter('galeridge'));
+    const afterGaleTap = {
+      biome: g.metaState().biome, wallet: g.metaState().wallet,
+      owned: g.metaState().biomes.join(','), phase: g.snapshot().phase,
+      frozenBiome: g.snapshot().biome,
+    };
+    g.tapAt(...rowCenter('tideflat'));
+    const afterTideTap = { biome: g.metaState().biome, phase: g.snapshot().phase };
+    // off the rows: replant — the NEW round reads the selected biome
+    tap(cw * 0.5, ch * 0.05);
+    const replanted = g.snapshot();
+    return {
+      m0, dusk: { phase: dusk.phase, biome: dusk.biome },
+      buyBig, denied, walletAfterDeny, rebuy, selUnowned, m1,
+      afterGaleTap, afterTideTap,
+      replanted: { phase: replanted.phase, seed: replanted.seed, biome: replanted.biome },
+      m2: g.metaState(),
+    };
+  });
+  check('biome-spend-deny-buy',
+    bio.m0.biomes.join(',') === 'meadow' && bio.dusk.phase === 'lost' && bio.dusk.biome === 'meadow'
+      && bio.buyBig === true && bio.m1.wallet === 80 && bio.denied === false
+      && bio.walletAfterDeny === 80 && bio.rebuy === false && bio.selUnowned === false
+      && bio.m1.biome === 'tideflat' && bio.m1.biomes.join(',') === 'meadow,tideflat',
+    `wallet 300: tideflat bought for 220 -> ${bio.m1.wallet}, active; whorl (130) denied ` +
+    `(wallet ${bio.walletAfterDeny} unchanged); re-buy=${bio.rebuy} unowned-select=${bio.selUnowned}`);
+  check('biome-shop-taps-frozen-round',
+    bio.afterGaleTap.biome === 'galeridge' && bio.afterGaleTap.wallet === 20
+      && bio.afterGaleTap.owned === 'meadow,tideflat,galeridge'
+      && bio.afterGaleTap.phase === 'lost' && bio.afterGaleTap.frozenBiome === 'meadow'
+      && bio.afterTideTap.biome === 'tideflat' && bio.afterTideTap.phase === 'lost',
+    `row taps: galeridge bought for 60 -> wallet ${bio.afterGaleTap.wallet}, active; ` +
+    `tideflat re-selected; frozen round stays phase '${bio.afterTideTap.phase}' ` +
+    `biome '${bio.afterGaleTap.frozenBiome}' throughout`);
+  check('biome-read-at-round-start',
+    bio.replanted.phase === 'playing' && bio.replanted.seed === 6
+      && bio.replanted.biome === 'tideflat' && bio.m2.wallet === 20,
+    `off-row tap replanted (seed ${bio.replanted.seed}) -> the new round runs ` +
+    `biome '${bio.replanted.biome}' with wallet ${bio.m2.wallet} intact`);
+
+  // full reload in the SAME context: biome unlocks + active biome persist,
+  // and the booted round reads the persisted choice
+  await bioRig.page.reload({ waitUntil: 'load' });
+  await bioRig.page.waitForFunction(() => window.__gameState && window.__gameState.booted, null, { timeout: 5000 });
+  const bioPersist = await bioRig.page.evaluate(() => ({
+    meta: window.__game.metaState(),
+    roundBiome: window.__gameState.roundBiome,
+    snapBiome: window.__game.snapshot().biome,
+    stateBiomes: window.__gameState.biomes,
+  }));
+  check('biome-persists-reload',
+    bioPersist.meta.biomes.join(',') === 'meadow,tideflat,galeridge'
+      && bioPersist.meta.biome === 'tideflat' && bioPersist.meta.wallet === 20
+      && bioPersist.roundBiome === 'tideflat' && bioPersist.snapBiome === 'tideflat'
+      && bioPersist.stateBiomes === 'meadow,tideflat,galeridge',
+    `reload -> owned [${bioPersist.meta.biomes.join(',')}], active '${bioPersist.meta.biome}', ` +
+    `wallet ${bioPersist.meta.wallet}; the booted round runs '${bioPersist.roundBiome}'`);
+  await bioRig.ctx.close();
 
   // ---- 9. pause/resume still holds on the live page -----------------------
   await live.evaluate(() => {

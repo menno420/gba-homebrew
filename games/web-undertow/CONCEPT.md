@@ -38,7 +38,17 @@ cheap and is the only version of this game with a reason to return.
 
 ## Growth path
 
-- Oxygen meter + air-pocket pickups (adds a reason to leave the safe line).
+- Oxygen meter + air-pocket pickups (adds a reason to leave the safe line) —
+  **BUILT** (growth cut 4): the tank drains every frame, faster with depth;
+  air pockets spawn inside the channel from a side-band RNG stream derived
+  from the seed (a fixed two draws per row — the wall stream draws exactly
+  what it drew before, so a seed's channel layout is unchanged); contact
+  refills the tank (pickups never alter motion); an empty tank ends the run
+  like a crash ("OUT OF AIR"). This is a SIM change — run outcomes for a
+  given seed legitimately moved (seed-7 no-input: crashFrame 823 / 194m on
+  the wall → 810 / 191m out of air). Oxygen and pockets live inside the sim
+  instance, so ghost replays stay exact by construction; ghost records were
+  re-versioned (v1 → v2) and stale pre-oxygen records are dropped cleanly.
 - Hazards/creatures in the channel (jellyfish that drift on the seeded RNG).
 - Daily seeded run with a shareable score URL (`?seed=YYYYMMDD`) —
   **BUILT** (growth cut 1): `?daily=1` derives the seed from the UTC date

@@ -774,3 +774,33 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #122 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (undertow-oxygen, PR #123)
+
+- **ts:** 2026-07-14T06:11:30Z (appended by this dispatch's worker;
+  everything above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Undertow growth cut 4 — the concept's "Oxygen meter + air-pocket
+  pickups" line — on branch `claude/undertow-oxygen` from main @
+  `2137e48`: the tank drains every frame (faster with depth), air
+  pockets spawn inside the channel from a side-band RNG stream
+  (seed ^ POCKET_STREAM, fixed two draws per row — the wall stream is
+  untouched, channel layout per seed unchanged), contact refills the
+  tank, an empty tank ends the run ("OUT OF AIR"). game.js v1.3.0 ->
+  v1.4.0. First SIM-changing cut for this lane: the seed-7 no-input
+  baseline moved crashFrame 823 / 194m (wall) -> 810 / 191m (air).
+  Ghost records re-versioned v1 -> v2; stale pre-oxygen records dropped
+  cleanly on load.
+- Smoke 31 -> 41 assertions: carried v1.3.0 fixed point (hold-left
+  seed-7 wall crash at frame 37 / 7m proves layout identity); tank
+  full/drains/deterministic; zero-pocket seeds 4 and 8 die of air on
+  the identical frame 634; a pickup extends the run; a greedy
+  pocket-chaser witnesses an in-run refill and reaches 724m vs 148m
+  no-input at seed 3, deterministic across two driven runs; stale v1
+  ghost dropped + fresh v2 written. Run twice: 41/41 PASS, outputs
+  byte-identical.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #123 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

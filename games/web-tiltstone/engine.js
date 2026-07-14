@@ -31,7 +31,7 @@
   else root.TiltstoneEngine = api;
 })(typeof self !== "undefined" ? self : this, function () {
 
-  var VERSION = "1.1.0";
+  var VERSION = "1.2.0";
   var SIZE = 8;          // grid is SIZE x SIZE (square — rotation-safe)
   var EMPTY = 0, WALL = 1, STONE = 2, GEM0 = 3;
   var MERGE_MIN = 3;     // orthogonal group size that collects
@@ -170,6 +170,64 @@
       grid = settle(grid);
     }
     return { grid: grid, collected: collected, events: events };
+  }
+
+  // ------------------------------------------------- trace (slice 3 juice) --
+
+  // settle() plus a per-cell move list — the animation surface. Same column
+  // walk as settle, so the returned grid is BYTE-IDENTICAL to settle(g)
+  // (asserted in the smoke); `moves` records every piece that actually
+  // moved as { v, from:[r,c], to:[r,c] }. Froms are all distinct and tos are
+  // all distinct, so clearing every `from` then writing every `to` on a copy
+  // of the input reconstructs the settled grid (also asserted). Pure.
+  function settleMoves(g) {
+    var n = g.length, out = emptyGrid(n), moves = [];
+    for (var c = 0; c < n; c++) {
+      for (var r = 0; r < n; r++) if (g[r][c] === WALL) out[r][c] = WALL;
+      var write = n - 1;
+      for (var r2 = n - 1; r2 >= 0; r2--) {
+        var v = g[r2][c];
+        if (v === WALL) { write = r2 - 1; continue; }
+        if (v >= STONE) {
+          while (write >= 0 && out[write][c] === WALL) write--;
+          out[write][c] = v;
+          if (write !== r2) moves.push({ v: v, from: [r2, c], to: [write, c] });
+          write--;
+        }
+      }
+    }
+    return { grid: out, moves: moves };
+  }
+
+  // resolve() plus the ordered intermediate story — what the shell tweens.
+  // Returns { grid, collected, events, phases } where grid/collected/events
+  // are exactly resolve(g)'s (asserted in the smoke; same loop, same scan
+  // order) and phases is the render script:
+  //   { type:'fall',    moves, grid }                        — gravity step
+  //   { type:'collect', color, size, chain, cells, grid }    — one group pops
+  // Every phase carries the grid AFTER it applies; phases[0] is always the
+  // initial fall (possibly zero moves) and the last phase's grid is the
+  // final grid. Pure — no DOM, no clock; timing lives in juice.js.
+  function resolveTrace(g) {
+    var st = settleMoves(g);
+    var grid = st.grid, collected = 0, events = [], chain = 0;
+    var phases = [{ type: "fall", moves: st.moves, grid: cloneGrid(grid) }];
+    for (;;) {
+      var groups = findGroups(grid);
+      if (!groups.length) break;
+      chain++;
+      for (var i = 0; i < groups.length; i++) {
+        var grp = groups[i];
+        collected += grp.cells.length;
+        events.push({ type: "collect", color: grp.color, size: grp.cells.length, chain: chain });
+        for (var j = 0; j < grp.cells.length; j++) grid[grp.cells[j][0]][grp.cells[j][1]] = EMPTY;
+        phases.push({ type: "collect", color: grp.color, size: grp.cells.length, chain: chain, cells: grp.cells, grid: cloneGrid(grid) });
+      }
+      var again = settleMoves(grid);
+      grid = again.grid;
+      phases.push({ type: "fall", moves: again.moves, grid: cloneGrid(grid) });
+    }
+    return { grid: grid, collected: collected, events: events, phases: phases };
   }
 
   // ------------------------------------------------------------- solver --
@@ -342,6 +400,7 @@
     mulberry32: mulberry32, mixSeed: mixSeed, dailySeed: dailySeed,
     emptyGrid: emptyGrid, cloneGrid: cloneGrid, gridString: gridString,
     rotateGrid: rotateGrid, settle: settle, findGroups: findGroups, resolve: resolve,
+    settleMoves: settleMoves, resolveTrace: resolveTrace,
     search: search, solve: solve, par: par, grade: grade,
     paramsFor: paramsFor, generateLevel: generateLevel,
     newGame: newGame, rotate: rotate, replay: replay

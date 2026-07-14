@@ -1,0 +1,1 @@
+- `claude/tiltstone-juice` · **Tiltstone slice 3: JUICE** — animated falls/merges from engine trace (pure, additive `settleMoves`/`resolveTrace`) + synth audio cue layer (`juice.js`, no sampled assets) + mute, extended engine + browser smokes · games/web-tiltstone/**, tools/web-smoke-tiltstone.mjs, .sessions/2026-07-13-tiltstone-juice.md · 2026-07-13

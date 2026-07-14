@@ -104,6 +104,35 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   "saves" AFTER session 42's #91 closes out (do not collide), or
   Tiltstone growth item 1 "juice"/Undertow daily-seed share URL on the
   web arcade.
+
+## Dispatch 2026-07-13 (Tiltstone slice 3, dispatched)
+
+- **ts:** 2026-07-13T18:29:21Z (APPENDED by the session-44 worker on
+  coordinator dispatch; everything above left intact per the append-only
+  rule)
+- **Shipped this session:** Tiltstone slice 3 "JUICE" — concept-doc growth
+  item 1: engine trace surface (pure additive `settleMoves`/`resolveTrace`,
+  v1.2.0, results byte-identical to `settle`/`resolve`), shell replay
+  (board sweep, gems easing down columns, per-chain pops; cosmetic —
+  engine state stays immediate; cancelled by input; reduced-motion skip)
+  and `juice.js` synth audio (oscillator sweeps only, chain-rising collect
+  pitch, mute persisted, honest cue log). PR #93 (branch
+  `claude/tiltstone-juice`, stacks on OPEN PR #92 @ `a072be8`), commits
+  `85da0f5` (claim + born-red card), `bc5133d` (slice).
+- **Proofs:** engine smoke 24 → 31 asserts (exit 0; all 24 prior pins
+  byte-identical), browser smoke 12 → 18 (exit 0, real Chromium; cue log
+  == pure-Node composition of the exact inputs, mid-animation frame
+  proof), screenshots `docs/proof/session-44-tiltstone-juice-win{,-mid}.png`.
+  `check --strict` red pre-flip ONLY on this card's designed born-red hold
+  (+ the pre-existing `order-005-scribe.md` advisory) — verified verbatim
+  in substrate-gate run 29273800286: "HOLD (by design) … nothing to
+  investigate".
+- **Inbox at session start (HEAD `48be770`):** ORDERS 001–005 only, all
+  served — standing default applied; no collision (only #92, this lane's
+  own parent, touches Tiltstone).
+- **Follow-up for the packaging lane:** when PR #85 lands, its
+  `tools/package-web-arcade.sh` staging list needs `juice.js` added to the
+  Tiltstone runtime set (HOSTING.md here already updated).
 ## Dispatch 2026-07-13 (Brineward slice 9 — saves, PR #94)
 
 - **ts:** 2026-07-13T18:46:26Z (appended by the session-43 worker;

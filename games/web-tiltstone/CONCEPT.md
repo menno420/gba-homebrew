@@ -57,8 +57,14 @@ if the daily hook shows organic pull.
 
 ## Growth path
 
-1. **Juice**: animated falls/merges (the engine already emits per-chain
-   collect events; the shell just needs tweening), synth audio.
+1. **Juice** — ✅ SHIPPED (slice 3, session 44): the engine grew a pure
+   trace surface (`settleMoves`/`resolveTrace` — byte-identical results to
+   `settle`/`resolve`, asserted), and the shell replays it: board sweep,
+   gems easing down their columns, collect groups popping per chain, all
+   cancelled by new input and skipped under `prefers-reduced-motion`.
+   Synth audio via `juice.js` (WebAudio oscillator sweeps only — no sampled
+   audio, ever): rotate/land/collect (chain-rising pitch)/win/lose/undo,
+   mute persisted; every cue lands in an honest log the smoke pins.
 2. **Par scoring** — ✅ SHIPPED (slice 2, session 43): pure `par(level)` /
    `grade(used, par)` in the engine (PERFECT / GREAT / GOOD / CLEARED), PAR
    on the HUD, graded win card. Par is the solver's shortest line —

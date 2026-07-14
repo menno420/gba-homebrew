@@ -1,0 +1,1 @@
+- `claude/cindervault-species` · **Cindervault growth cut 2 (named monster species per depth)** — named species assigned by floor with distinct chase quirks (the greedy step becomes a plug-in policy), mirror-first + committed proofs · games/cindervault/**, dist/cindervault.gba, dist/README.md, .sessions/2026-07-14-cindervault-species.md · 2026-07-14

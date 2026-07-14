@@ -571,3 +571,30 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #115 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (cindervault-species, PR #116)
+
+- **ts:** 2026-07-14T03:42:04Z (appended by this dispatch's worker;
+  everything above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Cindervault growth cut 2 — the concept's "named monster species per
+  depth with distinct chase quirks (the greedy step is a plug-in policy)"
+  line — on branch `claude/cindervault-species` from main @ `a5fec7a`:
+  one named species per depth (CINDER RAT / SOOT WISP / ASH HOUND /
+  VAULT WRAITH / HOARD SENTINEL), each one quirk on the now plugged-in
+  greedy chase step; species consume no RNG (pure function of the
+  floor), so every fixed-seed spawn pin carried; depth's name on its own
+  HUD line ("FOE ...").
+- Mirror-first: tools/mirror.py grew the policies, a --baseline
+  counterfactual and the species route designer; re-certified vs the
+  emulator on all three pinned routes — 0 mismatches / 185 turn states.
+  proofs.sh +P4 (one witness per quirk, ends in the open vault: WIN turn
+  109, hp 3, score 1032 — winnability re-checked); two P3 hp pins
+  re-derived (fewer bites under the quirks), P1/P2 carried verbatim; P2,
+  P3, P4 each run twice, watch-logs byte-identical. dist v0.3 (two clean
+  builds byte-identical, proofs at dist bytes).
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #116 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

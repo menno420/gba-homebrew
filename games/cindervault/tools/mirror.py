@@ -10,7 +10,8 @@ alongside the game:
      xorshift32 at seed 0xC1DE5EED, floor generation (spawn, carve walk,
      stairs, embers, monsters, items — same RNG word order), and the whole
      turn resolution (bump combat + blade, free wall bumps, ember/item
-     pickup, lantern half-burn, stairs, monster chase phase, win/lose).
+     pickup, lantern half-burn, stairs, monster chase phase with the
+     per-depth species policies of growth cut 2, win/lose).
   2. `--verify` certifies the mirror against a real emulator watch-log CSV
      (tools/headless-screenshot.py --watch-log) turn-for-turn: at every
      frame where the turn counter advances, all 14 game-state words must
@@ -53,6 +54,17 @@ BLADE_DAMAGE = 3
 LANTERN_TURNS = 20
 MAX_MONSTERS = 8
 MONSTER_COUNT = [2, 2, 3, 3, 4]
+
+# Species (growth cut 2): one named species per depth, each a quirk on the
+# plugged-in greedy chase step. NO RNG consumed — species is a pure
+# function of the floor number, so floor generation is byte-identical to
+# growth cut 1 and every spawn pin carries.
+SP_RAT, SP_WISP, SP_HOUND, SP_WRAITH, SP_SENTINEL = range(5)
+FLOOR_SPECIES = [SP_RAT, SP_WISP, SP_HOUND, SP_WRAITH, SP_SENTINEL]
+SPECIES_NAME = ['CINDER RAT', 'SOOT WISP', 'ASH HOUND', 'VAULT WRAITH',
+                'HOARD SENTINEL']
+WRAITH_REACH = 2    # cold grasp: bites axis-aligned at this Manhattan dist
+SENTINEL_LEASH = 4  # stands guard until the player is this close
 
 T_WALL, T_FLOOR, T_EMBER, T_STAIRS, T_LANTERN, T_BLADE = range(6)
 IT_NONE, IT_LANTERN, IT_BLADE = range(3)
@@ -176,13 +188,39 @@ class Sim:
                     break
 
     def monster_phase(self):
+        # The greedy step is a plug-in policy (growth cut 2): every monster
+        # on a floor is one named species, and each species is one quirk
+        # wrapped around the same baseline greedy step.
+        sp = FLOOR_SPECIES[self.floor - 1]
+        pack_bite_taken = False
         for m in self.monsters:
             if not m.alive:
+                continue
+            # SOOT WISP flits: on odd turn counts it phases out entirely —
+            # no bite, no step — so it closes (and drains) at half rate.
+            if sp == SP_WISP and (self.turns & 1) == 1:
                 continue
             dx, dy = self.px - m.x, self.py - m.y
             adx, ady = abs(dx), abs(dy)
             if adx + ady == 1:
-                self.hp -= 1  # bite
+                # ASH HOUND pack discipline: at most ONE hound bites per
+                # phase (slot order); the denied biters hold the ring.
+                if sp == SP_HOUND:
+                    if not pack_bite_taken:
+                        self.hp -= 1
+                        pack_bite_taken = True
+                else:
+                    self.hp -= 1  # bite
+                continue
+            # VAULT WRAITH cold grasp: axis-aligned at reach 2 it bites
+            # through the dark INSTEAD of stepping (never needs adjacency).
+            if sp == SP_WRAITH and adx + ady == WRAITH_REACH \
+                    and (dx == 0 or dy == 0):
+                self.hp -= 1
+                continue
+            # HOARD SENTINEL stands its ground until the player crosses
+            # the leash; outside it, it never leaves its post.
+            if sp == SP_SENTINEL and adx + ady > SENTINEL_LEASH:
                 continue
             sx = 1 if dx > 0 else -1 if dx < 0 else 0
             sy = 1 if dy > 0 else -1 if dy < 0 else 0
@@ -361,7 +399,10 @@ DIR_CMD = {(0, -1): 'U', (0, 1): 'D', (-1, 0): 'L', (1, 0): 'R'}
 def drive(sim, targets_fn, done, avoid=frozenset(), limit=400):
     """Greedy policy loop (the prototype card's bot): bump an adjacent
     biter first, else take the BFS step toward the current targets, until
-    `done(sim)`. Returns the cmd string it played."""
+    `done(sim)`. `avoid` may be a frozenset or a callable(sim) recomputed
+    every turn (growth cut 2: species make threat squares move, so a
+    static avoid set is no longer always enough). Returns the cmd string
+    it played."""
     cmds = ''
     for _ in range(limit):
         if done(sim) or sim.state != ST_PLAYING:
@@ -371,12 +412,34 @@ def drive(sim, targets_fn, done, avoid=frozenset(), limit=400):
             cmd = DIR_CMD[(mon.x - sim.px, mon.y - sim.py)]
         else:
             targets = frozenset(targets_fn(sim)) - {(sim.px, sim.py)}
-            cmd = bfs_step(sim, targets, avoid)
+            av = avoid(sim) if callable(avoid) else avoid
+            cmd = bfs_step(sim, targets, av)
             if cmd is None:
                 raise RuntimeError('goal unreachable:\n' + sim.render())
         sim.step(cmd)
         cmds += cmd
     raise RuntimeError('drive() hit the turn limit')
+
+
+def bite_ring(sim):
+    """Squares orthogonally adjacent to a live monster (bite range)."""
+    sq = set()
+    for m in sim.monsters:
+        if m.alive:
+            sq |= {(m.x + 1, m.y), (m.x - 1, m.y),
+                   (m.x, m.y + 1), (m.x, m.y - 1)}
+    return frozenset(sq)
+
+
+def grasp_tiles(sim):
+    """Squares a live VAULT WRAITH cold-grasps (axis-aligned, dist 2)."""
+    sq = set()
+    for m in sim.monsters:
+        if m.alive:
+            for d in (-2, 2):
+                sq.add((m.x + d, m.y))
+                sq.add((m.x, m.y + d))
+    return frozenset(sq)
 
 
 def find_tiles(sim, tile):
@@ -415,8 +478,24 @@ def descend(sim, avoid=None):
                  avoid=avoid)
 
 
+def kill_adjacent(sim):
+    """Bump the currently adjacent monster until it is dead."""
+    want = sim.kills + 1
+    return drive(sim, lambda s: [], lambda s: s.kills >= want)
+
+
+def wait_until_bitten(sim):
+    """Stand still until hp drops (the wraith cold-grasp witness)."""
+    hp0 = sim.hp
+    cmds = ''
+    while sim.hp == hp0 and sim.state == ST_PLAYING:
+        sim.step('W')
+        cmds += 'W'
+    return cmds
+
+
 def design(route_name):
-    """The two committed proof routes (see games/cindervault/proofs.sh)."""
+    """The committed proof routes (see games/cindervault/proofs.sh)."""
     sim = Sim()
     cmds = ''
     if route_name == 'lantern':
@@ -444,6 +523,136 @@ def design(route_name):
             cmds += descend(sim, avoid=lanterns)
         # floor 3: hunt the big M plus the rest — 3 blade bump kills.
         cmds += kill_all(sim, avoid=frozenset(find_tiles(sim, T_LANTERN)))
+    elif route_name == 'species':
+        # P4: one full descent past every species (growth cut 2), one
+        # witness per quirk, ending in the vault — which doubles as the
+        # winnability re-check for the species world.
+        lanterns = lambda s: frozenset(find_tiles(s, T_LANTERN))  # noqa: E731
+
+        def walkable(s, x, y):
+            return s.tiles[y][x] != T_WALL and s.monster_at(x, y) < 0
+
+        def hunt(s, limit=100):
+            # Blade the floor's wraiths down with matador steps: never
+            # stand on a grasp line, wait at diagonal-2 so the closer has
+            # to step in (moving monsters cannot bite), bump on arrival.
+            out = ''
+            for _ in range(limit):
+                if s.monsters_alive() == 0 or s.state != ST_PLAYING:
+                    return out
+                mon = adjacent_monster(s)
+                if mon is not None:
+                    cmd = DIR_CMD[(mon.x - s.px, mon.y - s.py)]
+                else:
+                    near = [m for m in s.monsters if m.alive
+                            and abs(m.x - s.px) + abs(m.y - s.py) == 2]
+                    cmd = None
+                    if near:
+                        m = near[0]
+                        if m.x == s.px or m.y == s.py:
+                            # on a grasp line: any walkable step off every
+                            # grasp line and out of bite range breaks it
+                            gt = grasp_tiles(s)
+                            ring = bite_ring(s)
+                            for (dx, dy), c in DIR_CMD.items():
+                                nt = (s.px + dx, s.py + dy)
+                                if walkable(s, *nt) and nt not in gt \
+                                        and nt not in ring \
+                                        and nt not in lanterns(s):
+                                    cmd = c
+                                    break
+                        else:
+                            cmd = 'W'
+                    if cmd is None:
+                        alive = frozenset((m.x, m.y) for m in s.monsters
+                                          if m.alive)
+                        cmd = bfs_step(s, alive, lanterns(s) | grasp_tiles(s)
+                                       | bite_ring(s)) \
+                            or bfs_step(s, alive,
+                                        lanterns(s) | grasp_tiles(s)) \
+                            or bfs_step(s, alive, lanterns(s)) or 'W'
+                s.step(cmd)
+                out += cmd
+            raise RuntimeError('hunt hit the turn limit')
+
+        def careful_descend(s, limit=200):
+            # Per turn: bump what is adjacent; else the safest stairs
+            # path that still exists (full avoid, then progressively
+            # relaxed); else — the floor's monsters ARE the wall —
+            # advance on them to bait-and-blade them off the cut tiles.
+            frm = s.floor
+            out = ''
+            for _ in range(limit):
+                if s.floor != frm or s.state != ST_PLAYING:
+                    return out
+                mon = adjacent_monster(s)
+                if mon is not None:
+                    cmd = DIR_CMD[(mon.x - s.px, mon.y - s.py)]
+                else:
+                    stairs = frozenset(find_tiles(s, T_STAIRS))
+                    cmd = None
+                    for av in (lanterns(s) | grasp_tiles(s) | bite_ring(s),
+                               lanterns(s) | grasp_tiles(s),
+                               lanterns(s) | bite_ring(s),
+                               lanterns(s)):
+                        cmd = bfs_step(s, stairs, av)
+                        if cmd is not None:
+                            break
+                    if cmd is None:
+                        alive = frozenset((m.x, m.y) for m in s.monsters
+                                          if m.alive)
+                        cmd = bfs_step(s, alive, lanterns(s)) or 'W'
+                s.step(cmd)
+                out += cmd
+            raise RuntimeError('careful_descend hit the turn limit')
+
+        # floor 1 — CINDER RAT: the baseline chase (the carried cut-1
+        # pins are its witness); clear the biters and descend.
+        cmds += kill_all(sim)
+        cmds += descend(sim)
+
+        # floor 2 — SOOT WISP: stand still. They close at HALF rate
+        # (hold on odd turn counts), so adjacency forms at turn 20 but
+        # first blood waits for even turn 22 — the flit turn 21 is
+        # bite-free with a wisp standing adjacent. Kill it with the
+        # answering bump (dead before its phase), then run for the
+        # stairs: the pocket sits behind the floor's blade tile, so the
+        # blade is picked up crossing it; the ember-caged second wisp is
+        # left behind.
+        while sim.turns < 23:
+            sim.step('W')
+            cmds += 'W'
+        cmds += kill_adjacent(sim)
+        cmds += descend(sim, avoid=lambda s: lanterns(s) | bite_ring(s))
+
+        # floor 3 — ASH HOUND: walk to the floor's own blade tile — the
+        # seed puts it exactly where TWO hounds ring the player at once —
+        # sit through two pack turns (hp -1 per turn, never -2: only one
+        # hound bites per phase), then blade the pack down (the 3-HP 'M'
+        # alpha one-bumped) and descend.
+        cmds += take(sim, T_BLADE)
+        for _ in range(2):
+            sim.step('W')
+            cmds += 'W'
+        cmds += kill_all(sim, avoid=lanterns(sim))
+        cmds += descend(sim, avoid=lanterns(sim))
+
+        # floor 4 — VAULT WRAITH: stand at the entry square until the
+        # first wraith cold-grasps from range 2 (hp -1 with nothing
+        # adjacent — unreachable under any one-step chase this early),
+        # then hunt the three down matador-style and take the stairs.
+        cmds += wait_until_bitten(sim)
+        cmds += hunt(sim)
+        cmds += descend(sim, avoid=lanterns(sim))
+
+        # floor 5 — HOARD SENTINEL: stand for eight turns — nothing
+        # moves, nothing bites (a baseline chaser would be biting by
+        # now: the stillness witness) — then walk the vault run,
+        # blade-bumping any guard whose leash the path must cross.
+        for _ in range(8):
+            sim.step('W')
+            cmds += 'W'
+        cmds += careful_descend(sim)
     else:
         raise SystemExit(f'unknown route {route_name!r}')
     return sim, cmds
@@ -531,8 +740,12 @@ def verify(cmds, csv_path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cmds', help='route as a UDLRW string')
-    parser.add_argument('--design', choices=('lantern', 'blade'),
+    parser.add_argument('--design', choices=('lantern', 'blade', 'species'),
                         help='derive a committed proof route with the bot')
+    parser.add_argument('--baseline', action='store_true',
+                        help='counterfactual: run every floor on the CINDER '
+                             'RAT baseline policy (species quirks off) — for '
+                             'first-blood / arrival gap stats, never for pins')
     parser.add_argument('--trace', action='store_true',
                         help='print per-turn game-state words')
     parser.add_argument('--keys', action='store_true',
@@ -540,6 +753,9 @@ def main():
     parser.add_argument('--verify', metavar='CSV',
                         help='certify the mirror against a --watch-log CSV')
     args = parser.parse_args()
+
+    if args.baseline:
+        FLOOR_SPECIES[:] = [SP_RAT] * LAST_FLOOR
 
     if args.design:
         sim, cmds = design(args.design)

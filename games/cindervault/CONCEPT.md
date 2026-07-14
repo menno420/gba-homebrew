@@ -78,7 +78,18 @@ players. The presentation is placeholder by design.
   hit for 3 while held (a 3-HP 'M' dies in one bump). Proven in
   `games/cindervault/proofs.sh`.
 - Named monster species per depth with distinct chase quirks (the
-  greedy step is a plug-in policy).
+  greedy step is a plug-in policy). **BUILT** (growth cut 2,
+  2026-07-14): one species per depth, each one quirk on the now
+  plugged-in greedy step — floor 1 CINDER RAT (the baseline chase),
+  floor 2 SOOT WISP (flits out on odd turn counts — closes and drains
+  at half rate), floor 3 ASH HOUND (pack discipline: at most one hound
+  bites per turn), floor 4 VAULT WRAITH (cold grasp: bites axis-aligned
+  at range 2 instead of stepping), floor 5 HOARD SENTINEL (holds its
+  post until the player crosses its leash of 4). Species consume no
+  RNG (pure function of the floor), the depth's name is on the HUD
+  ("FOE ..."), and every quirk has an arithmetic witness in
+  `games/cindervault/proofs.sh` (P4 — a full descent that ends in the
+  open vault).
 - Daily seed + score-attack leaderboard: the deterministic core makes
   "same vault, same monsters" a shareable challenge for free.
 - Depth banding past floor 5 for an endless mode; the vault becomes

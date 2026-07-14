@@ -24,6 +24,24 @@
  * the slot empties. Blade: bumps hit for 3 instead of 2 (a 3-HP 'M'
  * dies in ONE bump) for as long as it is held.
  *
+ * SPECIES (growth cut 2 — CONCEPT.md: "Named monster species per depth
+ * with distinct chase quirks (the greedy step is a plug-in policy)"): every
+ * monster on a floor is that depth's named species, and each species is one
+ * quirk wrapped around the same plugged-in greedy chase step:
+ *   floor 1  CINDER RAT     — the baseline greedy chase (unchanged).
+ *   floor 2  SOOT WISP      — flits: on odd turn counts it phases out
+ *                             entirely (no bite, no step) — half-rate.
+ *   floor 3  ASH HOUND      — pack: at most ONE hound bites per phase;
+ *                             the denied biters hold the ring.
+ *   floor 4  VAULT WRAITH   — cold grasp: axis-aligned at range 2 it bites
+ *                             through the dark instead of stepping.
+ *   floor 5  HOARD SENTINEL — stands guard: never leaves its post until
+ *                             the player comes within its leash (4).
+ * Species consume NO RNG — the species is a pure function of the floor
+ * number, so floor generation is byte-identical to growth cut 1 and every
+ * fixed-seed spawn pin carries. The current depth's species name is shown
+ * on its own HUD line ("FOE ...").
+ *
  * DETERMINISM CONTRACT (headless proof relies on all of this):
  *   - Integer math only. One xorshift32 PRNG, fixed seed 0xC1DE5EED
  *     (shown on the title card). RNG words are consumed ONLY inside
@@ -137,6 +155,30 @@ namespace
     // Monsters per floor 1..5 (floor 3+ also upgrades slot 0 to a big 'M').
     constexpr int monster_count[last_floor] = {2, 2, 3, 3, 4};
 
+    // Species (growth cut 2): one named species per depth, each one quirk
+    // on the plugged-in greedy chase step (see the header comment). NO RNG
+    // is consumed by species — pure function of the floor number.
+    enum species_t : unsigned char
+    {
+        sp_rat = 0,       // CINDER RAT     — baseline greedy chase
+        sp_wisp = 1,      // SOOT WISP      — flits out on odd turn counts
+        sp_hound = 2,     // ASH HOUND      — one pack bite per phase
+        sp_wraith = 3,    // VAULT WRAITH   — cold grasp at range 2, aligned
+        sp_sentinel = 4,  // HOARD SENTINEL — holds post outside its leash
+    };
+
+    constexpr species_t floor_species[last_floor] = {
+        sp_rat, sp_wisp, sp_hound, sp_wraith, sp_sentinel,
+    };
+
+    constexpr const char* species_name[last_floor] = {
+        "CINDER RAT", "SOOT WISP", "ASH HOUND", "VAULT WRAITH",
+        "HOARD SENTINEL",
+    };
+
+    constexpr int wraith_reach = 2;    // cold-grasp Manhattan distance
+    constexpr int sentinel_leash = 4;  // guard wakes inside this distance
+
     enum tile_t : unsigned char
     {
         t_wall = 0,
@@ -219,6 +261,7 @@ int main()
                                           // right edge and break --assert-text)
     constexpr int hud_y = 40;             // HUD slot is ui_lines[4] in play
     constexpr int item_y = 20;            // item slot line is ui_lines[3]
+    constexpr int foe_y = 10;             // species line is ui_lines[2]
     text_line ui_lines[ui_count];
 
     auto clear_lines = [&]()
@@ -423,11 +466,24 @@ int main()
 
     auto monster_phase = [&]()
     {
+        // The greedy step is a plug-in policy (growth cut 2): every monster
+        // on a floor is that depth's named species, and each species is one
+        // quirk wrapped around the same baseline greedy step below.
+        species_t sp = floor_species[floor_no - 1];
+        bool pack_bite_taken = false;
+
         for(int i = 0; i < max_monsters; ++i)
         {
             monster_t& m = monsters[i];
 
             if(! m.alive)
+            {
+                continue;
+            }
+
+            // SOOT WISP flits: on odd turn counts it phases out entirely —
+            // no bite, no step — so it closes (and drains) at half rate.
+            if(sp == sp_wisp && (turns & 1) == 1)
             {
                 continue;
             }
@@ -439,7 +495,37 @@ int main()
 
             if(adx + ady == 1)
             {
-                --hp;  // bite
+                // ASH HOUND pack discipline: at most ONE hound bites per
+                // phase (slot order); the denied biters hold the ring.
+                if(sp == sp_hound)
+                {
+                    if(! pack_bite_taken)
+                    {
+                        --hp;
+                        pack_bite_taken = true;
+                    }
+                }
+                else
+                {
+                    --hp;  // bite
+                }
+
+                continue;
+            }
+
+            // VAULT WRAITH cold grasp: axis-aligned at reach 2 it bites
+            // through the dark INSTEAD of stepping (never needs adjacency).
+            if(sp == sp_wraith && adx + ady == wraith_reach
+               && (dx == 0 || dy == 0))
+            {
+                --hp;
+                continue;
+            }
+
+            // HOARD SENTINEL stands its ground until the player crosses
+            // the leash; outside it, it never leaves its post.
+            if(sp == sp_sentinel && adx + ady > sentinel_leash)
+            {
                 continue;
             }
 
@@ -716,6 +802,12 @@ int main()
             }
 
             ui_lines[3].set(ui_gen, hud_x, item_y, item_line);
+
+            // The depth's named species (growth cut 2) — "named" is
+            // player-visible, not just a policy index.
+            bn::string<40> foe_line("FOE ");
+            foe_line.append(species_name[floor_no - 1]);
+            ui_lines[2].set(ui_gen, hud_x, foe_y, foe_line);
             break;
         }
 

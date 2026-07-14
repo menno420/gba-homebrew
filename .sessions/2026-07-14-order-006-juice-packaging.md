@@ -1,6 +1,6 @@
 # Session — ORDER 006(a): juice.js packaging follow-up (web-tiltstone v1.1, arcade bundle repin)
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-14 (branch `claude/order-006-juice-packaging`, started
   11:27Z — from `date -u` at write time, BEFORE this card was written)
@@ -24,7 +24,37 @@
 
 ## What this session did
 
-(filled at the flip)
+1. Claim + born-red card first (`467cc83`), cut from main @ `b0d2274`
+   (the Tiltstone stack's final merge, #97).
+2. **Staged juice.js**: `tools/package-web-arcade.sh` Tiltstone cp
+   line now copies `index.html`, `engine.js`, `juice.js`, `app.js` —
+   the four-file runtime contract `games/web-tiltstone/HOSTING.md`
+   declares post-#93. Script header rewritten: the standing "when #93
+   lands" follow-up note is retired (it is served, not pending).
+3. **Versions**: `web-tiltstone-v1.0.zip` → `web-tiltstone-v1.1.zip`
+   (staged runtime grew a file and every member changed across the
+   #92-#97 stack); `web-arcade-v1.2.zip` → `web-arcade-v1.3.zip`
+   (its Tiltstone members changed). Undertow v1.5 and Drift Garden
+   v1.4 untouched.
+4. **Determinism, proven run-twice**: script run twice, all four zips
+   byte-identical (`cmp`). Free cross-cut witness: the UNCHANGED
+   artifacts — `web-undertow-v1.5.zip` (a2f9def0…),
+   `drift-garden-v1.4.zip` (fd3559d4…), `dist/web/index.html`
+   (13219faf…) and the other eight non-Tiltstone staged files —
+   reproduced their #130 pins exactly.
+5. **Manifest re-pinned + asserted**: `docs/RELEASES.md` badge
+   rewritten (ORDER 006 repin, supersedes the #130 ledger), new pins:
+   `web-tiltstone-v1.1.zip` 3a8b5ce7…, `web-arcade-v1.3.zip`
+   5174c744…, staged `tiltstone/{app,engine,juice}.js` + `index.html`
+   re-pinned (now 17 machine-checked lines).
+   `tools/package-web-arcade.sh --verify` → exit 0, every pin
+   matches. `dist/README.md` web section notes the repin chain.
+6. `python3 bootstrap.py check --strict` pre-flip: exit 1 purely on
+   this card's designed born-red hold, zero other findings; post-flip
+   expected green (the only red was the badge).
+7. Claim `control/claims/claude-order-006-juice-packaging.md` retired
+   with this flip. PR opened READY on main; no merge/approve/
+   auto-merge calls from this session.
 
 ## 💡 Session idea
 

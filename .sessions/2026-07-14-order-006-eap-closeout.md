@@ -1,6 +1,6 @@
 # Session — ORDER 006: EAP final-day closeout
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-14 (branch `claude/order-006-eap-closeout`, started
   2026-07-14T10:58:46Z — from `date -u` at write time)

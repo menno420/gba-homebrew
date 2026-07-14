@@ -380,3 +380,31 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   further gba breadth is owner-routed.
 - PR #108 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (web-arcade pack, PR #109)
+
+- **ts:** 2026-07-14T00:07:32Z (appended by the session-55 worker; everything
+  above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- **⚑ Self-initiated** (rung 4, coordinator-directed): web-arcade
+  packaging refreshed from main @ `982b23a` — **supersedes the
+  stale PR #85 pending owner disposition** (#85 is conflicted and
+  packaged the pre-#84 Drift Garden foundation; it was not touched,
+  closed, or commented on).
+- `tools/package-web-arcade.sh` now stages main's ACTUAL shipped
+  set: Undertow v1.0, Tiltstone v1.0 (pre-juice — the #92←#93←#95←#97
+  stack is still open; juice.js staging + version bump noted as the
+  pending follow-up), Drift Garden **v1.0 as the playable seeded
+  round game** (#84, merge `7ffcf1c`), arcade bundle v1.1.
+  Determinism: fixed epoch + LC_ALL=C-sorted `zip -X`, two runs
+  byte-identical; `docs/RELEASES.md` pins every zip AND staged file
+  sha256, machine-asserted by the new `--verify` mode.
+- With this slice: **Shoal v1.0 and Clockwork Courier v1.0 are both
+  CONCEPT-COMPLETE** (PRs #98-#103, #96+#105-#108), the web arcade
+  package is current, and no inbox ORDER is unserved (001-005 all
+  served; the EAP night ORDER never arrived — the #104 outbox ask to
+  the manager stands). Open non-lane PRs: Tiltstone stack
+  #92/#93/#95/#97 + control #85/#87/#88/#89/#90.
+- PR #109 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.
+- **The lane STANDS DOWN pending owner input.**

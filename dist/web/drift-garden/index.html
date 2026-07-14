@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#101820">
+  <title>Drift Garden</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #101820; }
+    #game { display: block; width: 100vw; height: 100vh; touch-action: none; }
+    #hud {
+      position: fixed; top: env(safe-area-inset-top, 0); left: 0;
+      font: 12px/1.4 monospace; color: #9fd8c0; padding: 4px 8px;
+      pointer-events: none; user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="hud" aria-live="polite">booting…</div>
+  <script type="module">
+    import { createGame } from './game.js';
+    const game = createGame(document.getElementById('game'), {
+      hud: document.getElementById('hud'),
+    });
+    game.start();
+    if ('serviceWorker' in navigator) {
+      // Registration failure (e.g. file:// or headless) must never block play.
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>

@@ -42,6 +42,24 @@
  * fixed-seed spawn pin carries. The current depth's species name is shown
  * on its own HUD line ("FOE ...").
  *
+ * ENDLESS DEPTH BANDING (growth cut 3 — CONCEPT.md: "Depth banding past
+ * floor 5 for an endless mode; the vault becomes the first milestone
+ * instead of the end"): descending floor 5 still opens the vault — the
+ * win screen, the banked score with its +torch bonus, all of it stands,
+ * and pressing START still restarts the same seeded run. But SELECT on
+ * the VAULT REACHED screen now DELVES DEEPER: floor 6 is generated from
+ * the RNG state the vault left behind, hp/torch/items/turn count all
+ * carry, and the +torch win bonus drops back out of the live score — the
+ * price of not stopping. Past floor 5 every floor draws its generator
+ * parameters (monster count, big-monster count, embers, carve-walk
+ * length) from DEPTH BANDS — one band per 3 floors, each meaner than the
+ * last, the deepest band the floor of the world — and the five named
+ * species RECUR on the same five-depth cycle (floor 6 = CINDER RAT
+ * again, ... floor 10 = HOARD SENTINEL, and around). There is no second
+ * win: an endless run ends only in DARKNESS or SLAIN, banking 100 per
+ * cleared floor plus embers and kills — score-attack. A run that never
+ * presses SELECT is bit-identical to growth cut 2.
+ *
  * DETERMINISM CONTRACT (headless proof relies on all of this):
  *   - Integer math only. One xorshift32 PRNG, fixed seed 0xC1DE5EED
  *     (shown on the title card). RNG words are consumed ONLY inside
@@ -64,7 +82,7 @@
  *   [2] state (0 title, 1 playing,    [10] turn count
  *       2 win, 3 lose)                [11] player x (grid)
  *   [3] PRNG seed constant            [12] player y (grid)
- *   [4] floor (1..5)                  [13] lose reason (0 none,
+ *   [4] floor (1..5; 6+ endless)      [13] lose reason (0 none,
  *   [5] player hp                          1 darkness, 2 slain)
  *   [6] torch remaining               [14] monsters alive on floor
  *   [7] embers collected              [15] frames since boot
@@ -178,6 +196,31 @@ namespace
 
     constexpr int wraith_reach = 2;    // cold-grasp Manhattan distance
     constexpr int sentinel_leash = 4;  // guard wakes inside this distance
+
+    // Endless depth bands (growth cut 3): past floor 5 every floor draws
+    // its generator parameters from this table — one band per band_floors
+    // floors, the last band is the floor of the world. Species recur on
+    // the same five-depth cycle: (floor - 1) % last_floor is the species
+    // law for EVERY floor, floors 1-5 included, unchanged.
+    constexpr int band_floors = 3;
+
+    struct band_t
+    {
+        unsigned char monsters;
+        unsigned char bigs;
+        unsigned char embers;
+        short carve;
+    };
+
+    constexpr band_t depth_bands[] = {
+        {4, 1, 2, 220},  // band 1: floors  6-8
+        {5, 2, 2, 200},  // band 2: floors  9-11
+        {6, 2, 1, 180},  // band 3: floors 12-14
+        {7, 3, 1, 160},  // band 4: floors 15-17
+        {8, 4, 1, 140},  // band 5: floors 18+
+    };
+
+    constexpr int band_count = sizeof(depth_bands) / sizeof(depth_bands[0]);
 
     enum tile_t : unsigned char
     {
@@ -310,6 +353,34 @@ int main()
 
     auto generate_floor = [&]()
     {
+        // Per-floor generator parameters: the classic tables for floors
+        // 1-5 verbatim (the default vault run is bit-identical to growth
+        // cut 2), depth_bands past the vault (growth cut 3). Same RNG
+        // word order either way — only the loop bounds move.
+        int mon_count, bigs, ember_count, carve;
+
+        if(floor_no <= last_floor)
+        {
+            mon_count = monster_count[floor_no - 1];
+            bigs = floor_no >= 3 ? 1 : 0;
+            ember_count = embers_per_floor;
+            carve = carve_steps;
+        }
+        else
+        {
+            int b = (floor_no - last_floor - 1) / band_floors;
+
+            if(b > band_count - 1)
+            {
+                b = band_count - 1;
+            }
+
+            mon_count = depth_bands[b].monsters;
+            bigs = depth_bands[b].bigs;
+            ember_count = depth_bands[b].embers;
+            carve = depth_bands[b].carve;
+        }
+
         for(int y = 0; y < map_h; ++y)
         {
             for(int x = 0; x < map_w; ++x)
@@ -339,7 +410,7 @@ int main()
         carved_y[carved_count] = cy;
         ++carved_count;
 
-        for(int step = 0; step < carve_steps; ++step)
+        for(int step = 0; step < carve; ++step)
         {
             int dir = rng.range(4);
             int nx = cx + (dir == 2 ? -1 : dir == 3 ? 1 : 0);
@@ -380,7 +451,7 @@ int main()
         tiles[carved_y[best]][carved_x[best]] = t_stairs;
 
         // Embers on carved plain-floor tiles (never the spawn).
-        for(int e = 0; e < embers_per_floor; ++e)
+        for(int e = 0; e < ember_count; ++e)
         {
             for(int attempt = 0; attempt < 100; ++attempt)
             {
@@ -397,11 +468,12 @@ int main()
         }
 
         // Monsters on carved plain-floor tiles, Manhattan > 3 from spawn.
-        int count = monster_count[floor_no - 1];
-
-        for(int m = 0; m < count; ++m)
+        // The first `bigs` slots are 3-HP bigs (floors 1-5: slot 0 from
+        // floor 3 — unchanged); bigs roll no HP word, so the bigs count
+        // is part of the floor's pinned RNG word order.
+        for(int m = 0; m < mon_count; ++m)
         {
-            bool big = floor_no >= 3 && m == 0;
+            bool big = m < bigs;
             int mhp = big ? big_monster_hp : 1 + rng.range(2);
 
             for(int attempt = 0; attempt < 100; ++attempt)
@@ -469,7 +541,7 @@ int main()
         // The greedy step is a plug-in policy (growth cut 2): every monster
         // on a floor is that depth's named species, and each species is one
         // quirk wrapped around the same baseline greedy step below.
-        species_t sp = floor_species[floor_no - 1];
+        species_t sp = floor_species[(floor_no - 1) % last_floor];
         bool pack_bite_taken = false;
 
         for(int i = 0; i < max_monsters; ++i)
@@ -561,6 +633,19 @@ int main()
             if(bn::keypad::start_pressed())
             {
                 reset_run();  // same seed -> the identical run, by contract
+            }
+            else if(state == st_win && bn::keypad::select_pressed())
+            {
+                // DELVE DEEPER (growth cut 3): the vault win stands as the
+                // first milestone; the endless descent continues from the
+                // exact RNG state the vault left behind. hp/torch/items/
+                // turn count all carry; the +torch win bonus drops back
+                // out of the live score (it pays only if you stop here).
+                // Consumes NO turn — a menu edge, not a dungeon turn.
+                ++floor_no;
+                generate_floor();
+                state = st_playing;
+                clear_lines();
             }
         }
         else  // st_playing: one turn per input edge, nothing else moves
@@ -806,7 +891,7 @@ int main()
             // The depth's named species (growth cut 2) — "named" is
             // player-visible, not just a policy index.
             bn::string<40> foe_line("FOE ");
-            foe_line.append(species_name[floor_no - 1]);
+            foe_line.append(species_name[(floor_no - 1) % last_floor]);
             ui_lines[2].set(ui_gen, hud_x, foe_y, foe_line);
             break;
         }
@@ -824,6 +909,7 @@ int main()
             line2.append("  TORCH ");
             line2.append(bn::to_string<8>(torch));
             ui_lines[2].set(ui_gen, ui_x, ui_y[2], line2);
+            ui_lines[3].set(ui_gen, ui_x, ui_y[3], "SELECT DELVES DEEPER");
             ui_lines[4].set(ui_gen, ui_x, ui_y[4], "PRESS START");
             break;
         }

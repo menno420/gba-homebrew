@@ -744,3 +744,33 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #121 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (cindervault-seed, PR #122)
+
+- **ts:** 2026-07-14T05:54:30Z (appended by this dispatch's worker;
+  everything above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Cindervault growth cut 4 — the concept's "daily seed + score-attack
+  leaderboard" line, GBA-shaped per the Deepcast PR #117 precedent — on
+  branch `claude/cindervault-seed` from main @ `d60b08f`: the title's
+  seed line is now a dial (UP/DOWN +-1, LEFT/RIGHT +-0x100, L/R
+  +-0x10000, 8 hex digits shown; none clash with the title's only other
+  input, START), same dialed seed = same vault, same monsters; the death
+  card (the score-attack card — endless runs end only there) names the
+  seed so a score is attributable; boot seed 0xC1DE5EED untouched (no
+  dial = the v0.4 run, every proof pin carried). Leaderboard half noted
+  out of GBA scope in CONCEPT.md per the Tiltstone PR #97 precedent.
+- proofs.sh +P6 (dialed vault 0xC1DF5FEE: per-step dial pins in cv[3],
+  glyph-exact seed digits on title and death card, floor 1 differs from
+  the default's in the words P2 pins at the same frame; RUN TWICE,
+  watch-logs byte-identical) +P7 (dial away and back -> the full P2
+  route lands on every P2 literal). Suite exit 0, 446 watch + 78 text
+  asserts green; mirror re-certified seed-aware with cv[3] in the word
+  set (0 mismatches across 453 turn states of five routes). dist v0.5
+  (two clean builds byte-identical, proofs re-run at dist bytes;
+  toolchain certified against the v0.4 hash first).
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #122 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

@@ -60,8 +60,26 @@
  * cleared floor plus embers and kills — score-attack. A run that never
  * presses SELECT is bit-identical to growth cut 2.
  *
+ * SEED-SELECT SCORE-ATTACK (growth cut 4 — the concept's "daily seed +
+ * score-attack leaderboard" line, GBA-shaped per the Deepcast precedent:
+ * a cartridge has no clock and no server, so "daily" becomes a DIALABLE
+ * seed): on the title, the seed line is a dial — UP/DOWN adjusts the
+ * seed +-1, LEFT/RIGHT +-0x100, L/R +-0x10000 (all edge-triggered,
+ * 32-bit wrapping; the xorshift dead state 0 is skipped in the dial's
+ * own direction). None of these keys clash with the title's only other
+ * input, START. Two players who dial the same 8 hex digits dive the
+ * SAME vault — same floors, same monsters, same embers — and the seed
+ * is repeated on the death card (endless runs end only there: the
+ * score-attack card), so a score is a claim anyone with a cartridge
+ * can check. The boot seed stays 0xC1DE5EED: with no dial input the
+ * game is bit-identical to growth cut 3. START from win/lose restarts
+ * the same dialed seed; the dial only lives on the title. The
+ * leaderboard half of the concept line is out of GBA scope (no
+ * network) per the Tiltstone precedent — the seed is what makes an
+ * off-cartridge leaderboard honest.
+ *
  * DETERMINISM CONTRACT (headless proof relies on all of this):
- *   - Integer math only. One xorshift32 PRNG, fixed seed 0xC1DE5EED
+ *   - Integer math only. One xorshift32 PRNG, boot seed 0xC1DE5EED
  *     (shown on the title card). RNG words are consumed ONLY inside
  *     floor generation (spawn, carve walk, embers, monsters), in a fixed
  *     order, so the same input script replays bit-identically.
@@ -72,7 +90,9 @@
  *     a spawn->stairs path exists BY CONSTRUCTION (the stairs tile is
  *     the carved tile farthest from spawn); embers and monsters are
  *     placed only on carved tiles.
- *   - START from win/lose restarts the SAME seeded run.
+ *   - START from win/lose restarts the SAME seeded run (the dialed
+ *     seed, growth cut 4; the boot seed when the dial was never
+ *     touched).
  *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
  * --elf --watch cv:cv_telemetry:18): a volatile 18-word array with
@@ -81,7 +101,8 @@
  *   [1] 0x56414C54 'VALT'   magic     [9]  score (live formula)
  *   [2] state (0 title, 1 playing,    [10] turn count
  *       2 win, 3 lose)                [11] player x (grid)
- *   [3] PRNG seed constant            [12] player y (grid)
+ *   [3] selected PRNG seed (boot      [12] player y (grid)
+ *       0xC1DE5EED; title dial live)
  *   [4] floor (1..5; 6+ endless)      [13] lose reason (0 none,
  *   [5] player hp                          1 darkness, 2 slain)
  *   [6] torch remaining               [14] monsters alive on floor
@@ -277,6 +298,22 @@ namespace
             dirty_clear = true;
         }
     };
+
+    bn::string<40> seed_hex(unsigned value)
+    {
+        // The seed as exactly 8 uppercase hex digits — the shareable
+        // challenge code two players compare on their title screens
+        // (growth cut 4).
+        bn::string<40> out;
+
+        for(int shift = 28; shift >= 0; shift -= 4)
+        {
+            unsigned digit = (value >> shift) & 0xFu;
+            out.push_back(char(digit < 10 ? '0' + digit : 'A' + digit - 10));
+        }
+
+        return out;
+    }
 }
 
 int main()
@@ -319,6 +356,13 @@ int main()
             ui_lines[i].clear();
         }
     };
+
+    // Seed-select (growth cut 4): the dialed challenge seed. Boot value
+    // is the classic constant, only the title dial changes it, and
+    // reset_run() reads it — so with no dial input every run is the boot
+    // run, and a dialed value survives win/lose (START reruns the SAME
+    // dialed vault).
+    unsigned seed_sel = seed_constant;
 
     // --- run state (reset_run() restores the exact boot run)
     rng_t rng(seed_constant);
@@ -521,7 +565,7 @@ int main()
 
     auto reset_run = [&]()
     {
-        rng.s = seed_constant;
+        rng.s = seed_sel;
         floor_no = 1;
         hp = start_hp;
         torch = start_torch;
@@ -646,6 +690,56 @@ int main()
                 generate_floor();
                 state = st_playing;
                 clear_lines();
+            }
+            else if(state == st_title)
+            {
+                // The seed dial (growth cut 4; edge-triggered so one
+                // press is one step — a challenge code is a repeatable
+                // press sequence). 32-bit wrap; 0 is xorshift32's dead
+                // state, so it is skipped in whichever direction the
+                // dial was turning. The dial only lives on the title:
+                // these keys are dungeon verbs everywhere else.
+                unsigned delta = 0;
+
+                if(bn::keypad::up_pressed())
+                {
+                    delta += 1;
+                }
+
+                if(bn::keypad::down_pressed())
+                {
+                    delta -= 1;
+                }
+
+                if(bn::keypad::right_pressed())
+                {
+                    delta += 0x100;
+                }
+
+                if(bn::keypad::left_pressed())
+                {
+                    delta -= 0x100;
+                }
+
+                if(bn::keypad::r_pressed())
+                {
+                    delta += 0x10000;
+                }
+
+                if(bn::keypad::l_pressed())
+                {
+                    delta -= 0x10000;
+                }
+
+                if(delta != 0)
+                {
+                    seed_sel += delta;
+
+                    if(seed_sel == 0)
+                    {
+                        seed_sel += delta;
+                    }
+                }
             }
         }
         else  // st_playing: one turn per input edge, nothing else moves
@@ -813,12 +907,20 @@ int main()
         {
 
         case st_title:
+        {
             ui_lines[0].set(ui_gen, ui_x, ui_y[0], "CINDERVAULT");
-            ui_lines[1].set(ui_gen, ui_x, ui_y[1], "SEED C1DE5EED");
+            bn::string<40> seed_line("SEED ");
+            seed_line.append(seed_hex(seed_sel));
+            ui_lines[1].set(ui_gen, ui_x, ui_y[1], seed_line);
             ui_lines[2].set(ui_gen, ui_x, ui_y[2], "EVERY STEP BURNS THE TORCH");
             ui_lines[3].set(ui_gen, ui_x, ui_y[3], "DIVE 5 FLOORS TO THE VAULT");
-            ui_lines[4].set(ui_gen, ui_x, ui_y[4], "PRESS START");
+            // The dial hint shares the START line (rendered from the HUD
+            // margin so the longer line still clears the 240px edge —
+            // see the hud_x comment).
+            ui_lines[4].set(ui_gen, hud_x, ui_y[4],
+                            "PRESS START  DPAD L R: DIAL SEED");
             break;
+        }
 
         case st_playing:
         {
@@ -927,6 +1029,12 @@ int main()
             line2.append("  TURNS ");
             line2.append(bn::to_string<8>(turns));
             ui_lines[2].set(ui_gen, ui_x, ui_y[2], line2);
+            // Score attribution (growth cut 4): endless runs end only
+            // here, so the death card is the score-attack card — it
+            // names the seed the score was dived on.
+            bn::string<40> line3("SEED ");
+            line3.append(seed_hex(seed_sel));
+            ui_lines[3].set(ui_gen, ui_x, ui_y[3], line3);
             ui_lines[4].set(ui_gen, ui_x, ui_y[4], "PRESS START");
             break;
         }
@@ -939,7 +1047,7 @@ int main()
         cv_telemetry[0] = 0x43494E44u;  // 'CIND'
         cv_telemetry[1] = 0x56414C54u;  // 'VALT'
         cv_telemetry[2] = state;
-        cv_telemetry[3] = seed_constant;
+        cv_telemetry[3] = seed_sel;
         cv_telemetry[4] = unsigned(floor_no);
         cv_telemetry[5] = unsigned(hp);
         cv_telemetry[6] = unsigned(torch);

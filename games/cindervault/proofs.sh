@@ -38,11 +38,22 @@
 # either would shift every ember/monster/item placement P5's blind route
 # then walks onto at exact turns (same law that pins item spawns, cut 1).
 #
+# Growth cut 4 (seed-select score-attack) changes WHICH stream a run draws
+# from — so the carry is proven the Deepcast way: the feature's DEFAULT is
+# the old constant (cv[3] boots at 0xC1DE5EED and only the title dial
+# moves it), P1-P5 carried VERBATIM (zero re-derived pins — a run that
+# never dials is bit-identical to cut 3), P7's dial-away-and-back run
+# re-lands every P2 literal, and the dialed vault's own pins (P6) were
+# derived through the mirror re-certified AT THE DIALED SEED (mirror.py
+# grew a --seed parameter, and the verifier's word set grew cv[3]: the
+# emulator's live seed word must now match the mirror's on every turn
+# state of every certified route).
+#
 # Run from the repo root after building (make -C games/cindervault):
 #     bash games/cindervault/proofs.sh
 # Artifacts land in $CV_PROOF_OUT (default /tmp/cindervault-proofs).
 #
-# The five proofs (asserts inline below):
+# The seven proofs (asserts inline below):
 #   P1 boot/title            — mailbox magics, seed 0xC1DE5EED on the card,
 #                              title state and text.
 #   P2 THE LANTERN (item cut) — fixed-seed spawn pins (px/py, 2 monsters),
@@ -130,6 +141,35 @@
 #                              Survivable, but escalating. RUN TWICE —
 #                              byte-identical watch-logs.
 #
+#   P6 THE DIALED VAULT      — growth cut 4 (seed-select score-attack —
+#     (cut 4)                  the concept's "daily seed" line, GBA-shaped
+#                              per the Deepcast precedent): UP/RIGHT/R at
+#                              the title dial the seed +1/+0x100/+0x10000
+#                              (each step pinned in telemetry word cv[3],
+#                              which now publishes the LIVE dial) to
+#                              0xC1DF5FEE, shown glyph-exact on the title.
+#                              START dives the DIALED vault: floor 1
+#                              differs from the default seed's in the same
+#                              telemetry words P2 pins at the same frame
+#                              (spawn (1,4) vs (6,1)), while every law
+#                              carries — the rats die at bump arithmetic,
+#                              the ember economy pays +25, the wisp flit
+#                              law holds on floor 2 (hp constant on odd
+#                              turns, -2 on even beats with two adjacent).
+#                              The route ends SLAIN at turn 38 and the
+#                              death card — the score-attack card — NAMES
+#                              the seed ("SEED C1DF5FEE"), so the score
+#                              220 is attributable to its vault.
+#                              RUN TWICE — byte-identical watch-logs.
+#   P7 dial away and back     — UP/RIGHT/R then L/LEFT/DOWN returns the
+#                              dial to 0xC1DE5EED (each magnitude
+#                              down-step pinned in cv[3]), the title shows
+#                              the default seed again, and the FULL P2
+#                              route then lands on EVERY P2 literal —
+#                              dialing is fully reversible and the default
+#                              vault is untouched by the feature (the
+#                              Deepcast P5 precedent).
+#
 # Item-spawn determinism is pinned structurally: both routes walk blind,
 # fixed key scripts onto the item tiles of seed 0xC1DE5EED and assert the
 # slot word flips at the exact scripted turn — a shifted spawn fails loud.
@@ -157,7 +197,8 @@ H "$OUT/p1.png" --frames 120 $W \
   --assert-text "100:CINDERVAULT" \
   --assert-text "100:SEED C1DE5EED" \
   --assert-text "100:EVERY STEP BURNS THE TORCH" \
-  --assert-text "100:PRESS START"
+  --assert-text "100:PRESS START" \
+  --assert-text "100:PRESS START  DPAD L R: DIAL SEED"
 
 # Mirror route (games/cindervault/tools/mirror.py --design lantern):
 #   DDDRDRRRWWWWWWWWWWWWWWWWWWWWWWWW
@@ -535,5 +576,120 @@ echo "== P5: run 2 (must be byte-identical) =="
 H "$OUT/p5b.png" --frames 1700 $W $ENDLESS_ROUTE   --watch-log "$OUT/p5-run2.csv"   "${P5_ASSERTS[@]}"
 cmp "$OUT/p5-run1.csv" "$OUT/p5-run2.csv"
 echo "P5 run-twice: byte-identical"
+
+# ---------------------------------------------------------------------------
+# P6/P7 — growth cut 4, seed-select score-attack. The dial: on the title,
+# UP/DOWN adjusts the seed +-1, LEFT/RIGHT +-0x100, L/R +-0x10000
+# (edge-triggered, 32-bit wrap, xorshift dead state 0 skipped; the dial
+# lives ONLY on the title — these keys are dungeon verbs everywhere else).
+# Pins from an observed run of THIS route through the re-certified mirror
+# (mirror.py --seed 0xC1DF5FEE --cmds ... --verify: 0 mismatches across
+# all 39 turn states, with cv[3] added to the verifier's word set):
+# 0xC1DE5EED=3252575981 · +1=3252575982 · +0x101=3252576238 ·
+# +0x10101 = 0xC1DF5FEE = 3252641774.
+# ---------------------------------------------------------------------------
+
+DIAL_UP='--keys 150-152:UP --keys 154-156:RIGHT --keys 158-160:R'
+DIAL_BACK='--keys 170-172:L --keys 174-176:LEFT --keys 178-180:DOWN'
+
+# The dialed-vault route (mirror.py --seed 0xC1DF5FEE: kill_all +
+# sweep_embers + descend + walk into the wisps' bite ring + stand until
+# SLAIN), 38 inputs:
+#   DDRURRRUUUURRRDRURURRRDDDRRRRRWWWWWWWW
+P6_ROUTE=$DIAL_UP' --keys 240-242:START --keys-pattern 300-308:6:2:DOWN --keys 312-314:RIGHT --keys 318-320:UP --keys-pattern 324-338:6:2:RIGHT --keys-pattern 342-362:6:2:UP --keys-pattern 366-380:6:2:RIGHT --keys 384-386:DOWN --keys 390-392:RIGHT --keys 396-398:UP --keys 402-404:RIGHT --keys 408-410:UP --keys-pattern 414-428:6:2:RIGHT --keys-pattern 432-446:6:2:DOWN --keys-pattern 450-476:6:2:RIGHT --keys-pattern 480-524:6:2:A'
+
+P6_ASSERTS=(
+  # the dial, step by step in the telemetry seed word (boot value first;
+  # cv[3] publishes the LIVE dial, so each keypress is its own literal)
+  --assert-watch 149:cv:3:eq:3252575981
+  --assert-watch 153:cv:3:eq:3252575982
+  --assert-watch 157:cv:3:eq:3252576238
+  --assert-watch 200:cv:3:eq:3252641774
+  # the dialed seed on the title, glyph-exact; dialing consumes nothing
+  --assert-text "200:SEED C1DF5FEE"
+  --assert-watch 200:cv:2:eq:0
+  # START dives the DIALED vault: floor 1 differs from the default
+  # seed's IN THE WORDS P2 PINS AT THIS SAME FRAME — spawn (1,4) here
+  # vs (6,1) there — while the laws carry: 2 monsters, full torch,
+  # empty slot, and floor 1 is still CINDER RAT (species is a function
+  # of depth, not seed)
+  --assert-watch 250:cv:2:eq:1
+  --assert-watch 250:cv:3:eq:3252641774
+  --assert-watch 250:cv:4:eq:1
+  --assert-watch 250:cv:5:eq:10
+  --assert-watch 250:cv:6:eq:220
+  --assert-watch 250:cv:11:eq:1
+  --assert-watch 250:cv:12:eq:4
+  --assert-watch 250:cv:14:eq:2
+  --assert-watch 250:cv:16:eq:0
+  --assert-text "250:FOE CINDER RAT"
+  --assert-text "250:FLR 1 HP 10 TORCH 220 SCORE 0"
+  # turn 8: this vault's rats roll 2 HP (default floor 1 rolls 1s) —
+  # both die to the bump-2 arithmetic, and the exchange costs 2 hp
+  --assert-watch 346:cv:8:eq:2
+  --assert-watch 346:cv:14:eq:0
+  --assert-watch 346:cv:5:eq:8
+  # turn 16: the ember economy carries to any seed — three sweeps at
+  # +25 each (torch 212 -> 279 net of burn), score 95
+  --assert-watch 394:cv:7:eq:3
+  --assert-watch 394:cv:6:eq:279
+  --assert-watch 394:cv:9:eq:95
+  # turn 21: floor 2 of the dialed vault, entry pinned, two wisps up
+  --assert-watch 424:cv:4:eq:2
+  --assert-watch 424:cv:11:eq:1
+  --assert-watch 424:cv:12:eq:2
+  --assert-watch 424:cv:14:eq:2
+  --assert-text "424:FOE SOOT WISP"
+  # turns 31-32: the wisp flit law holds at any seed — odd turn 31 is
+  # bite-free (hp 7 flat), even turn 32 costs -2 (two adjacent wisps,
+  # one bite each)
+  --assert-watch 484:cv:5:eq:7
+  --assert-watch 484:cv:10:eq:31
+  --assert-watch 490:cv:5:eq:5
+  --assert-watch 490:cv:10:eq:32
+  # turn 38: SLAIN — and the death card (endless runs end only here:
+  # the score-attack card) NAMES the seed, so score 220 is attributable
+  # to vault C1DF5FEE
+  --assert-watch 526:cv:2:eq:3
+  --assert-watch 526:cv:13:eq:2
+  --assert-watch 526:cv:9:eq:220
+  --assert-watch 526:cv:10:eq:38
+  --assert-watch 526:cv:7:eq:4
+  --assert-watch 526:cv:8:eq:2
+  --assert-watch 526:cv:3:eq:3252641774
+  --assert-text "526:SLAIN IN THE DEEP"
+  --assert-text "526:SCORE 220"
+  --assert-text "526:SEED C1DF5FEE"
+)
+
+echo "== P6: THE DIALED VAULT — seed-select score-attack, same laws, different world (run 1) =="
+H "$OUT/p6.png" --frames 560 $W $P6_ROUTE \
+  --watch-log "$OUT/p6-run1.csv" \
+  --shot "200:$OUT/p6-title.png" --shot "250:$OUT/p6-floor1.png" \
+  --require-distinct \
+  "${P6_ASSERTS[@]}"
+
+echo "== P6: run 2 (must be byte-identical) =="
+H "$OUT/p6b.png" --frames 560 $W $P6_ROUTE \
+  --watch-log "$OUT/p6-run2.csv" \
+  "${P6_ASSERTS[@]}"
+cmp "$OUT/p6-run1.csv" "$OUT/p6-run2.csv"
+echo "P6 run-twice: byte-identical"
+
+# P7: dial away, dial back, and the ENTIRE default run must reproduce —
+# every P2 literal (spawn, lantern pickup turn, half-burn arithmetic,
+# gutter-out, end HUD) on the same frames. One run: P2 already proved
+# this route's run-twice identity; this proves the dial can't leave a
+# mark (the Deepcast P5 precedent).
+P7_ROUTE=$DIAL_UP' '$DIAL_BACK' '$LANTERN_ROUTE
+
+echo "== P7: dial away and back — the default vault reproduces on every P2 literal =="
+H "$OUT/p7.png" --frames 500 $W $P7_ROUTE \
+  --assert-watch 165:cv:3:eq:3252641774 \
+  --assert-watch 171:cv:3:eq:3252576238 \
+  --assert-watch 175:cv:3:eq:3252575982 \
+  --assert-watch 200:cv:3:eq:3252575981 \
+  --assert-text "200:SEED C1DE5EED" \
+  "${P2_ASSERTS[@]}"
 
 echo "ALL CINDERVAULT PROOFS PASS"

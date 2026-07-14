@@ -91,7 +91,22 @@ players. The presentation is placeholder by design.
   `games/cindervault/proofs.sh` (P4 — a full descent that ends in the
   open vault).
 - Daily seed + score-attack leaderboard: the deterministic core makes
-  "same vault, same monsters" a shareable challenge for free.
+  "same vault, same monsters" a shareable challenge for free. **BUILT**
+  (growth cut 4, 2026-07-14), GBA-shaped per the Deepcast precedent: a
+  cartridge has no clock and no server, so "daily" becomes a dialable
+  seed — the title's seed line is a picker (UP/DOWN +-1, LEFT/RIGHT
+  +-0x100, L/R +-0x10000, shown as 8 hex digits; none of these clash
+  with the title's only other input, START). Two players who dial the
+  same digits dive the SAME vault — same floors, same monsters, same
+  embers — and the death card (the score-attack card: endless runs end
+  only there) names the seed, so a score is a claim anyone with a
+  cartridge can check. The boot seed 0xC1DE5EED is untouched: no dial
+  input = the v0.4 run, bit-identical. Proven in
+  `games/cindervault/proofs.sh` (P6: the dialed vault, run twice; P7:
+  dial away and back reproduces every default-vault literal). The
+  leaderboard half of this line is out of GBA scope — no network — per
+  the Tiltstone PR #97 precedent; the seed is what makes an
+  off-cartridge leaderboard honest.
 - Depth banding past floor 5 for an endless mode; the vault becomes
   the first milestone instead of the end. **BUILT** (growth cut 3,
   2026-07-14): SELECT on the VAULT REACHED screen delves deeper — the

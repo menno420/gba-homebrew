@@ -71,6 +71,36 @@
 #                              EVERY P2 literal — dialing is fully
 #                              reversible and the default lake is untouched
 #                              by the feature.
+#   P6 species + catch log    — growth cut 3 (species tables per depth band
+#     (species cut)             with named rarities; a catch log): the
+#                              default lake's first catch is the MIDWATER
+#                              MYTHIC (MOON EEL, species 7 — one side-band
+#                              word per cast, stream seeded from
+#                              seed^0x51DEF157, main stream untouched);
+#                              SELECT opens the catch log ("CATCH LOG 1",
+#                              the entry glyph-exact) and SELECT closes it
+#                              back to the charge screen. A shallow cast
+#                              lands THE SHALLOWS COMMON (MUD BREAM wt 9,
+#                              packed log entry 9), a deeps cast hooks
+#                              IRON GAR (THE DEEPS on the sink card,
+#                              species 9 in the mailbox) and SNAPS — a
+#                              snapped line never logs (fl[2] stays 2,
+#                              slot fl[6] stays 0). The log ring, the
+#                              side-band stream state, and the species /
+#                              rarity words are pinned in the dc_fishlog
+#                              mailbox at every step.
+#                              RUN TWICE — byte-identical watch-logs.
+#
+# Growth cut 3 also threads species witnesses through the EXISTING routes
+# additively: P1 pins the boot sentinels (species/rarity 255, log 0, the
+# derived side seed 2402761472 live on the title), P2/P5 pin the default
+# lake's species on both catch cards (MOON EEL MYTHIC / DUSK PERCH
+# UNCOMMON, glyph-exact) + the full log ring at dusk, P3 pins that mute
+# doesn't touch the log, and P4 pins that the DIALED lake draws from a
+# DIFFERENT side-band stream (derived seed 2402564623: its shallow catch
+# is MUD BREAM COMMON where the default lake's was DUSK PERCH UNCOMMON).
+# All pins below were transcribed from observed --watch-log runs and
+# cross-checked against an offline xorshift32 replica of the side stream.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
@@ -80,7 +110,7 @@ OUT="${DC_PROOF_OUT:-/tmp/deepcast-proofs}"
 mkdir -p "$OUT"
 
 H() { python3 tools/headless-screenshot.py "$ROM" "$@"; }
-W='--elf games/deepcast/deepcast.elf --watch dc:dc_telemetry:16'
+W='--elf games/deepcast/deepcast.elf --watch dc:dc_telemetry:16 --watch fl:dc_fishlog:16'
 # Audio evidence (docs/capabilities.md method): cumulative decision
 # counters + per-frame click-interval/mute words + the maxmod
 # mixer-memory activity word (count of nonzero u32 words — 0 exactly
@@ -102,6 +132,12 @@ H "$OUT/p1.png" --frames 120 $W $WA \
   --assert-watch 100:h:4:eq:0 \
   --assert-watch 100:h:5:eq:0 \
   --assert-watch 100:mix:0:eq:0 \
+  --assert-watch 100:fl:0:eq:255 \
+  --assert-watch 100:fl:1:eq:255 \
+  --assert-watch 100:fl:2:eq:0 \
+  --assert-watch 100:fl:3:eq:0 \
+  --assert-watch 100:fl:12:eq:2402761472 \
+  --assert-watch 100:fl:13:eq:1179210568 \
   --assert-text "100:DEEPCAST" \
   --assert-text "100:A QUIET LAKE AT DUSK" \
   --assert-text "100:SEED DEE9CA57" \
@@ -152,7 +188,16 @@ P2_ASSERTS=(
   --assert-watch 620:h:4:eq:15
   --assert-watch 620:mix:0:gt:0
   --assert-text "620:IT RESTS. REEL, GENTLY"
-  # frame 680 CATCH +11 (tension peak 278): catch counted, cue voiced
+  # frame 680 CATCH +11 (tension peak 278): catch counted, cue voiced —
+  # and (growth cut 3) the catch card NAMES the fish: the 72m cast is
+  # MIDWATER, the default lake's first side-band word rolls MYTHIC ->
+  # species 7 MOON EEL, logged as ring entry 0 (7*256+11 = 1803)
+  --assert-watch 680:fl:0:eq:7
+  --assert-watch 680:fl:1:eq:3
+  --assert-watch 680:fl:2:eq:1
+  --assert-watch 680:fl:4:eq:1803
+  --assert-text "690:MOON EEL"
+  --assert-text "690:MYTHIC"
   --assert-watch 680:dc:2:eq:4
   --assert-watch 680:dc:15:eq:1
   --assert-watch 680:dc:13:eq:1
@@ -187,6 +232,12 @@ P2_ASSERTS=(
   --assert-watch 1400:dc:5:eq:160
   --assert-watch 1400:dc:7:eq:172
   --assert-watch 1400:dc:10:eq:30
+  # the 172m cast sinks through THE ABYSS (band named on the sink card);
+  # its fish is TRENCH MAW (species 13, UNCOMMON) — it will snap, so it
+  # must NEVER reach the log
+  --assert-text "1450:THE ABYSS"
+  --assert-watch 1450:fl:0:eq:13
+  --assert-watch 1450:fl:1:eq:1
   --assert-watch 1529:dc:2:eq:3
   --assert-watch 1529:dc:9:eq:1032
   --assert-watch 1529:h:1:eq:3
@@ -205,6 +256,15 @@ P2_ASSERTS=(
   --assert-watch 1774:dc:13:eq:2
   --assert-watch 1774:dc:14:eq:18
   --assert-watch 1774:h:2:eq:2
+  # the shallow catch card: THE SHALLOWS' UNCOMMON, DUSK PERCH (species
+  # 1), ring entry 1 packed 1*256+7 = 263 — and the two snaps between
+  # the catches left no mark on the log (fl[2] went 1 -> 2 directly)
+  --assert-watch 1774:fl:0:eq:1
+  --assert-watch 1774:fl:1:eq:1
+  --assert-watch 1774:fl:2:eq:2
+  --assert-watch 1774:fl:5:eq:263
+  --assert-text "1780:DUSK PERCH"
+  --assert-text "1780:UNCOMMON"
   # cast 5 (92m again off the re-walked stream) snaps -> lures 0, dusk
   --assert-watch 1955:dc:2:eq:2
   --assert-watch 1955:dc:7:eq:92
@@ -232,6 +292,17 @@ P2_ASSERTS=(
   --assert-watch 2500:h:4:eq:0
   --assert-watch 2500:h:5:eq:0
   --assert-watch 2500:mix:0:eq:0
+  # dusk (growth cut 3): the run logged exactly its two catches — ring
+  # slots 0/1 pinned, slot 2 empty, five casts consumed five side-band
+  # words (stream state 489620607), last cast was SILVER TROUT COMMON
+  --assert-watch 2500:fl:0:eq:4
+  --assert-watch 2500:fl:1:eq:0
+  --assert-watch 2500:fl:2:eq:2
+  --assert-watch 2500:fl:4:eq:1803
+  --assert-watch 2500:fl:5:eq:263
+  --assert-watch 2500:fl:6:eq:0
+  --assert-watch 2500:fl:12:eq:489620607
+  --assert-watch 2500:fl:13:eq:1179210568
   --assert-text "2500:DUSK FALLS. LURES GONE"
   --assert-text "2500:SCORE 18"
   --assert-text "2500:CATCHES 2"
@@ -284,6 +355,10 @@ P3_ASSERTS=(
   --assert-watch 2500:h:3:eq:3
   --assert-watch 2500:h:5:eq:1
   --assert-watch 2500:mix:0:eq:0
+  # mute never touches the catch log either
+  --assert-watch 2500:fl:2:eq:2
+  --assert-watch 2500:fl:4:eq:1803
+  --assert-watch 2500:fl:5:eq:263
   --assert-text "2500:SCORE 18"
 )
 
@@ -321,10 +396,14 @@ P4_ASSERTS=(
   --assert-watch 153:dc:4:eq:3739863640
   --assert-watch 157:dc:4:eq:3739863896
   --assert-watch 200:dc:4:eq:3739929432
-  # the dialed seed on the title, glyph-exact; dialing itself is silent
+  # the dialed seed on the title, glyph-exact; dialing itself is silent —
+  # and (growth cut 3) the species side-band stream FOLLOWS the dial
+  # live: fl[12] is already the dialed lake's derived side seed
   --assert-text "200:SEED DEEACB58"
   --assert-watch 200:h:0:eq:0
   --assert-watch 200:mix:0:eq:0
+  --assert-watch 200:fl:12:eq:2402564623
+  --assert-watch 200:fl:0:eq:255
   # same charge input as P2 -> same 72m cast, DIFFERENT lake: at 471 (the
   # default lake's pinned bite frame) this lake is still SINKING, no bite
   # counted; it bites at 489 instead — and the audio law carries to any
@@ -356,6 +435,16 @@ P4_ASSERTS=(
   --assert-watch 841:dc:14:eq:6
   --assert-watch 841:dc:8:eq:198
   --assert-watch 841:h:2:eq:1
+  # the dialed lake's shallow catch is MUD BREAM, COMMON (species 0,
+  # ring entry 0*256+6 = 6) where the DEFAULT lake's shallow catch was
+  # DUSK PERCH, UNCOMMON — same input grammar, different world, down to
+  # the fish's name
+  --assert-watch 841:fl:0:eq:0
+  --assert-watch 841:fl:1:eq:0
+  --assert-watch 841:fl:2:eq:1
+  --assert-watch 841:fl:4:eq:6
+  --assert-text "850:MUD BREAM"
+  --assert-text "850:COMMON"
   --assert-watch 843:mix:0:gt:0
   # cast 3 (72m again) snaps
   --assert-watch 1050:dc:2:eq:2
@@ -388,6 +477,14 @@ P4_ASSERTS=(
   --assert-watch 1720:h:2:eq:1
   --assert-watch 1720:h:3:eq:3
   --assert-watch 1720:mix:0:eq:0
+  # dusk on the dialed lake: one catch logged, four side-band words
+  # consumed from the DIALED stream, last cast TWILIGHT PIKE UNCOMMON
+  --assert-watch 1720:fl:0:eq:5
+  --assert-watch 1720:fl:1:eq:1
+  --assert-watch 1720:fl:2:eq:1
+  --assert-watch 1720:fl:4:eq:6
+  --assert-watch 1720:fl:5:eq:0
+  --assert-watch 1720:fl:12:eq:1019259156
   --assert-text "1720:DUSK FALLS. LURES GONE"
   --assert-text "1720:SCORE 6"
   --assert-text "1720:CATCHES 1"
@@ -421,5 +518,130 @@ H "$OUT/p5.png" --frames 2520 $W $WA $P5_ROUTE \
   --assert-watch 200:dc:4:eq:3739863639 \
   --assert-text "200:SEED DEE9CA57" \
   "${P2_ASSERTS[@]}"
+
+# ---------------------------------------------------------------------------
+# P6 — growth cut 3, species tables per depth band + the catch log. Default
+# seed. Cast 1 is P2's exact first cast (72m, MIDWATER -> the side stream's
+# first word rolls MYTHIC: MOON EEL, wt 11); SELECT then opens the catch
+# log between casts and SELECT closes it. Cast 2 is shallow (42m, THE
+# SHALLOWS -> COMMON: MUD BREAM, wt 9). Cast 3 is one continuous hold that
+# charges 132 frames -> 144m, THE DEEPS -> UNCOMMON: IRON GAR (species 9)
+# — and SNAPS at exactly 600, proving a snapped line never logs. The log
+# is then reopened with both entries glyph-exact. Pins transcribed from an
+# observed --watch-log run of THIS route (the listen-then-script method)
+# and cross-checked against an offline xorshift32 replica of the side
+# stream (derived seed 0xDEE9CA57^0x51DEF157 = 2402761472; words
+# 1656154699 -> 1074094900 -> 1611740581).
+# ---------------------------------------------------------------------------
+
+P6_ROUTE='--keys 240-244:START --keys 300-360:A --keys-pattern 471-536:4:3:A --keys-pattern 591-690:4:3:A --keys 800-802:SELECT --keys 860-862:SELECT --keys 900-930:A --keys 940-1260:A --keys 1380-1520:A --keys 1560-1562:SELECT --keys 1650-1652:SELECT'
+
+P6_ASSERTS=(
+  # cast 1 = P2's first cast: the side-band word is drawn AT the cast —
+  # species 7 (MIDWATER MYTHIC, MOON EEL), stream advanced one word;
+  # the sink card names the band
+  --assert-watch 365:dc:7:eq:72
+  --assert-watch 365:dc:10:eq:11
+  --assert-watch 365:fl:0:eq:7
+  --assert-watch 365:fl:1:eq:3
+  --assert-watch 365:fl:12:eq:1656154699
+  --assert-text "430:MIDWATER"
+  # the catch card names the fish, glyph-exact, and logs ring entry 0
+  # (7*256 + 11 = 1803)
+  --assert-watch 680:dc:2:eq:4
+  --assert-watch 680:dc:15:eq:1
+  --assert-watch 680:fl:2:eq:1
+  --assert-watch 680:fl:4:eq:1803
+  --assert-text "690:CATCH! +11"
+  --assert-text "690:MOON EEL"
+  --assert-text "690:MYTHIC"
+  # SELECT between casts opens the CATCH LOG (state 6, open flag up, no
+  # RNG consumed — fl[12] unmoved); the one entry is glyph-exact;
+  # SELECT closes it back to the charge screen (which advertises the key)
+  --assert-watch 798:dc:2:eq:1
+  --assert-watch 798:fl:3:eq:0
+  --assert-text "798:SELECT: CATCH LOG"
+  --assert-watch 830:dc:2:eq:6
+  --assert-watch 830:fl:3:eq:1
+  --assert-watch 830:fl:12:eq:1656154699
+  --assert-text "830:CATCH LOG 1"
+  --assert-text "830:MOON EEL MYTHIC 11"
+  --assert-text "830:SELECT: BACK"
+  --assert-watch 880:dc:2:eq:1
+  --assert-watch 880:fl:3:eq:0
+  # cast 2: 30 charge frames -> 42m, THE SHALLOWS; the second side-band
+  # word rolls COMMON -> MUD BREAM (species 0), wt 9 off the main stream
+  --assert-watch 932:dc:2:eq:2
+  --assert-watch 932:dc:7:eq:42
+  --assert-watch 932:dc:10:eq:9
+  --assert-watch 932:fl:0:eq:0
+  --assert-watch 932:fl:1:eq:0
+  --assert-watch 932:fl:12:eq:1074094900
+  --assert-text "945:THE SHALLOWS"
+  # bite at 986, hold-only catch at 1037 (tension 357): ring entry 1 is
+  # the packed 0*256 + 9 = 9, card glyph-exact
+  --assert-watch 986:dc:2:eq:3
+  --assert-watch 986:dc:9:eq:252
+  --assert-watch 1037:dc:2:eq:4
+  --assert-watch 1037:dc:15:eq:1
+  --assert-watch 1037:dc:13:eq:2
+  --assert-watch 1037:dc:14:eq:20
+  --assert-watch 1037:dc:8:eq:357
+  --assert-watch 1037:fl:2:eq:2
+  --assert-watch 1037:fl:5:eq:9
+  --assert-text "1040:CATCH! +9"
+  --assert-text "1040:MUD BREAM"
+  --assert-text "1040:COMMON"
+  # cast 3: the same hold keeps charging out of the result card — 132
+  # frames -> 144m, THE DEEPS; the third side-band word rolls UNCOMMON
+  # -> IRON GAR (species 9), wt 16
+  --assert-watch 1260:dc:2:eq:2
+  --assert-watch 1260:dc:7:eq:144
+  --assert-watch 1260:dc:10:eq:16
+  --assert-watch 1260:fl:0:eq:9
+  --assert-watch 1260:fl:1:eq:1
+  --assert-watch 1260:fl:12:eq:1611740581
+  --assert-text "1300:THE DEEPS"
+  # hold-only fight SNAPS at exactly 600 — the snapped IRON GAR never
+  # reaches the log: entry count stays 2, ring slot 2 stays empty
+  --assert-watch 1375:dc:2:eq:3
+  --assert-watch 1444:dc:2:eq:4
+  --assert-watch 1444:dc:15:eq:2
+  --assert-watch 1444:dc:8:eq:600
+  --assert-watch 1444:dc:12:eq:2
+  --assert-watch 1444:fl:2:eq:2
+  --assert-watch 1444:fl:6:eq:0
+  # the reopened log still shows exactly the two LANDED fish
+  --assert-watch 1590:dc:2:eq:6
+  --assert-watch 1590:fl:3:eq:1
+  --assert-watch 1590:fl:2:eq:2
+  --assert-watch 1590:fl:4:eq:1803
+  --assert-watch 1590:fl:5:eq:9
+  --assert-text "1590:CATCH LOG 2"
+  --assert-text "1590:MOON EEL MYTHIC 11"
+  --assert-text "1590:MUD BREAM COMMON 9"
+  --assert-watch 1680:dc:2:eq:1
+  --assert-watch 1680:fl:3:eq:0
+  # the mailbox magic + main-stream words never flinched: same lures /
+  # catches / score as the sim said at the cards
+  --assert-watch 1700:dc:13:eq:2
+  --assert-watch 1700:dc:14:eq:20
+  --assert-watch 1700:dc:12:eq:2
+  --assert-watch 1700:fl:13:eq:1179210568
+)
+
+echo "== P6: species tables + catch log — the fish have names, the log remembers (run 1) =="
+H "$OUT/p6.png" --frames 1750 $W $WA $P6_ROUTE \
+  --watch-log "$OUT/p6-run1.csv" \
+  --shot "830:$OUT/p6-log1.png" --shot "1590:$OUT/p6-log2.png" \
+  --require-distinct \
+  "${P6_ASSERTS[@]}"
+
+echo "== P6: run 2 (must be byte-identical) =="
+H "$OUT/p6b.png" --frames 1750 $W $WA $P6_ROUTE \
+  --watch-log "$OUT/p6-run2.csv" \
+  "${P6_ASSERTS[@]}"
+cmp "$OUT/p6-run1.csv" "$OUT/p6-run2.csv"
+echo "P6 run-twice: byte-identical"
 
 echo "ALL DEEPCAST PROOFS PASS"

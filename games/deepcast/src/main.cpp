@@ -32,6 +32,27 @@
  * input the game is bit-identical to v0.2. START from game over restarts
  * the same dialed seed; the picker only lives on the title.
  *
+ * SPECIES TABLES + CATCH LOG (growth cut 3 — the concept's "fish species
+ * tables per depth band with named rarities; a catch log" line): the lake
+ * is split into four DEPTH BANDS by target depth (THE SHALLOWS < 52m,
+ * MIDWATER < 102m, THE DEEPS < 152m, THE ABYSS beyond — the band is named
+ * on screen while the lure sinks), and each band holds four named species,
+ * one per rarity tier (COMMON / UNCOMMON / RARE / MYTHIC — 16 species
+ * total). Which species bites is decided at cast time by ONE word from a
+ * SIDE-BAND xorshift32 stream seeded from `seed_sel ^ 0x51DEF157` (dead
+ * state 0 falls back to the salt): the MAIN stream's word order is
+ * untouched, so every pinned literal of the default and dialed lakes
+ * carries verbatim, while the same dialed seed still lands the same
+ * species on the same casts — the score-attack contract extends to the
+ * fish's name. Species are revealed on the CATCH card (you don't know
+ * what is on the line until you land it); a snapped line never logs.
+ * SELECT (the one unused key) opens the CATCH LOG between casts and at
+ * dusk: a per-run ring of the last 8 catches (species, rarity, weight),
+ * newest last. The log is session-scope by design — SRAM persistence is
+ * a separate growth cut. The log screen freezes nothing that matters:
+ * the sim only advances on cast/fight states, and no RNG word is
+ * consumed by opening it.
+ *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
  * --elf --watch dc:dc_telemetry:16): a volatile 16-word array with
  * C-linkage symbol `dc_telemetry`, updated every frame:
@@ -44,6 +65,20 @@
  *   [5] charge frames (this cast)     [13] catches this run
  *   [6] lure depth (m)                [14] score this run
  *   [7] target depth (m)              [15] last fight result (1 catch, 2 snap)
+ *
+ * Second mailbox `dc_fishlog` (--watch fl:dc_fishlog:16), growth cut 3,
+ * updated every frame:
+ *   [0]  species index of the current/last cast (band*4 + tier, 0..15;
+ *        255 = no cast yet this run)
+ *   [1]  rarity tier of the current/last cast (0 common .. 3 mythic;
+ *        255 = no cast yet this run)
+ *   [2]  catches logged this run (total, monotonic; ring keeps last 8)
+ *   [3]  1 while the catch-log screen is open, else 0
+ *   [4..11] the log ring: entry n lives in slot n%8, packed as
+ *        species*256 + weight (0 = empty slot)
+ *   [12] side-band RNG stream state (live: the derived seed on the
+ *        title — it follows the dial — then advances one word per cast)
+ *   [13] 0x46495348 'FISH' magic   [14..15] 0
  *
  * AUDIO (growth cut 1 — the concept's named line: "reel clicks that
  * speed up with tension"): four original synthesized cues
@@ -88,9 +123,10 @@
 
 extern "C"
 {
-    // Headless telemetry mailbox — see the layout table in the header
+    // Headless telemetry mailboxes — see the layout tables in the header
     // comment. volatile so every write really lands for the emulator bus.
     volatile unsigned dc_telemetry[16];
+    volatile unsigned dc_fishlog[16];
 }
 
 namespace
@@ -127,6 +163,7 @@ namespace
         st_fight = 3,   // hold A reel / release run
         st_result = 4,  // CATCH / SNAP card, auto-advances
         st_over = 5,    // dusk falls: final score, START restarts
+        st_log = 6,     // catch log (SELECT from charge/dusk; SELECT back)
     };
 
     // Tuning (all integers; see CONCEPT.md for the intended strategy space).
@@ -149,6 +186,53 @@ namespace
     // slack, every 4 at the snap point (~4 -> ~15 clicks/second).
     constexpr int click_max_interval = 16; // frames between clicks, tension 0
     constexpr int click_min_interval = 4;  // ...at tension_snap
+
+    // --- species tables (growth cut 3) ----------------------------------
+    // Four depth bands by target depth, four named species per band, one
+    // per rarity tier. Pure data + one side-band RNG word per cast: the
+    // fight math never reads any of this (weight stays the main stream's
+    // word), so every existing pin carries by construction.
+
+    constexpr unsigned side_salt = 0x51DEF157;  // 'SIDE-FISH' stream salt
+    constexpr int band_count = 4;
+    constexpr int tier_count = 4;
+    constexpr int log_ring = 8;            // catch log keeps the last 8
+
+    // Tier roll (side-band word % 100): <55 common, <83 uncommon,
+    // <96 rare, else mythic.
+    constexpr int tier_uncommon = 55;
+    constexpr int tier_rare = 83;
+    constexpr int tier_mythic = 96;
+
+    constexpr const char* band_names[band_count] = {
+        "THE SHALLOWS",     // target <  52m
+        "MIDWATER",         // target < 102m
+        "THE DEEPS",        // target < 152m
+        "THE ABYSS",        // target beyond
+    };
+
+    constexpr const char* rarity_names[tier_count] = {
+        "COMMON", "UNCOMMON", "RARE", "MYTHIC",
+    };
+
+    // species index = band*4 + tier
+    constexpr const char* species_names[band_count * tier_count] = {
+        "MUD BREAM",    "DUSK PERCH",    "GHOST KOI",    "LANTERN CARP",
+        "SILVER TROUT", "TWILIGHT PIKE", "VEIL SALMON",  "MOON EEL",
+        "STONE CATFISH","IRON GAR",      "BLIND ANGLER", "DROWNED KING",
+        "PALE LURKER",  "TRENCH MAW",    "VOID SIREN",   "THE NAMELESS",
+    };
+
+    constexpr int depth_band(int target)
+    {
+        return target < 52 ? 0 : target < 102 ? 1 : target < 152 ? 2 : 3;
+    }
+
+    constexpr unsigned derive_side_seed(unsigned seed)
+    {
+        unsigned s = seed ^ side_salt;
+        return s != 0 ? s : side_salt;   // skip xorshift32's dead state
+    }
 
     // --- text presentation ---------------------------------------------------
 
@@ -248,6 +332,7 @@ int main()
 
     // --- run state (all plain ints; reset_run() restores the exact boot run)
     rng_t rng(seed_constant);
+    rng_t side(derive_side_seed(seed_constant));  // species stream (cut 3)
     unsigned state = st_title;
     unsigned frames = 0;        // monotonic since boot, never reset
     int lures = start_lures;
@@ -266,6 +351,15 @@ int main()
     int result_code = 0;        // 0 none · 1 catch · 2 snap
     int result_timer = 0;
 
+    // Species + catch log state (growth cut 3). cur_* are 255 until the
+    // run's first cast; the log is a ring of the last log_ring catches.
+    unsigned cur_species = 255;
+    unsigned cur_rarity = 255;
+    int log_species[log_ring] = {};
+    int log_weight[log_ring] = {};
+    int log_total = 0;
+    unsigned log_return = st_charge;   // state SELECT returns to
+
     // Audio decision layer state (presentation-only: never read by the
     // sim, deliberately NOT reset by reset_run — mute is a player
     // preference, and the click timer restarts with every reel anyway).
@@ -275,6 +369,17 @@ int main()
     auto reset_run = [&]()
     {
         rng.s = seed_sel;
+        side.s = derive_side_seed(seed_sel);
+        cur_species = 255;
+        cur_rarity = 255;
+        log_total = 0;
+
+        for(int i = 0; i < log_ring; ++i)
+        {
+            log_species[i] = 0;
+            log_weight[i] = 0;
+        }
+
         lures = start_lures;
         catches = 0;
         score = 0;
@@ -358,6 +463,11 @@ int main()
                         seed_sel += delta;
                     }
                 }
+
+                // The species stream follows the dial live (the daily
+                // cut's publish-the-choice-when-it-exists idea): fl[12]
+                // shows the derived side seed for whatever is dialed.
+                side.s = derive_side_seed(seed_sel);
             }
             break;
 
@@ -371,13 +481,33 @@ int main()
             }
             else if(charge > 0)
             {
-                // Cast. Both RNG words are consumed HERE, in this order —
-                // the pinned event the determinism contract promises.
+                // Cast. Both MAIN RNG words are consumed HERE, in this
+                // order — the pinned event the determinism contract
+                // promises. The species word (growth cut 3) comes from
+                // the SIDE-BAND stream, so the main stream's word order
+                // is exactly the v0.3 order.
                 target = min_depth + charge;
                 bite_delay = 20 + rng.range(80);
                 weight = 2 + target / 12 + rng.range(2 + target / 10);
+
+                int roll = side.range(100);
+                int tier = roll < tier_uncommon ? 0
+                         : roll < tier_rare ? 1
+                         : roll < tier_mythic ? 2 : 3;
+                cur_species = unsigned(depth_band(target) * tier_count
+                                       + tier);
+                cur_rarity = unsigned(tier);
+
                 depth = 0;
                 state = st_sink;
+                clear_lines();
+            }
+            else if(bn::keypad::select_pressed())
+            {
+                // Catch log (growth cut 3): only between casts, so the
+                // log can never interleave a fight. No RNG is consumed.
+                log_return = st_charge;
+                state = st_log;
                 clear_lines();
             }
             break;
@@ -473,6 +603,12 @@ int main()
                 result_code = 1;  // CATCH
                 ++catches;
                 score += weight;
+
+                // The catch log (growth cut 3): only LANDED fish are
+                // logged — a snapped line keeps its secret.
+                log_species[log_total % log_ring] = int(cur_species);
+                log_weight[log_total % log_ring] = weight;
+                ++log_total;
                 result_timer = result_frames;
                 state = st_result;
                 clear_lines();
@@ -501,6 +637,20 @@ int main()
             if(bn::keypad::start_pressed())
             {
                 reset_run();  // same seed -> the identical run, by contract
+            }
+            else if(bn::keypad::select_pressed())
+            {
+                log_return = st_over;
+                state = st_log;
+                clear_lines();
+            }
+            break;
+
+        case st_log:
+            if(bn::keypad::select_pressed())
+            {
+                state = log_return;
+                clear_lines();
             }
             break;
 
@@ -572,6 +722,7 @@ int main()
                          charge > 0 ? "CHARGING..." : "HOLD A TO CAST");
             lines[2].set(text_gen, text_x, line_y[2],
                          bar_string("CAST", charge, max_charge));
+            lines[5].set(text_gen, text_x, line_y[5], "SELECT: CATCH LOG");
             break;
         }
 
@@ -585,6 +736,8 @@ int main()
             lines[0].set(text_gen, text_x, line_y[0], line0);
             lines[1].set(text_gen, text_x, line_y[1],
                          depth < target ? "THE LURE SINKS..." : "WAITING...");
+            lines[2].set(text_gen, text_x, line_y[2],
+                         band_names[depth_band(target)]);
             break;
         }
 
@@ -615,6 +768,10 @@ int main()
                 bn::string<40> line1("SCORE ");
                 line1.append(bn::to_string<8>(score));
                 lines[1].set(text_gen, text_x, line_y[1], line1);
+                lines[2].set(text_gen, text_x, line_y[2],
+                             species_names[cur_species]);
+                lines[3].set(text_gen, text_x, line_y[3],
+                             rarity_names[cur_rarity]);
             }
             else
             {
@@ -636,6 +793,40 @@ int main()
             line3.append(seed_hex(seed_sel));
             lines[3].set(text_gen, text_x, line_y[3], line3);
             lines[4].set(text_gen, text_x, line_y[4], "PRESS START");
+            lines[5].set(text_gen, text_x, line_y[5], "SELECT: CATCH LOG");
+            break;
+        }
+
+        case st_log:
+        {
+            bn::string<40> header("CATCH LOG ");
+            header.append(bn::to_string<8>(log_total));
+            lines[0].set(text_gen, text_x, line_y[0], header);
+
+            if(log_total == 0)
+            {
+                lines[1].set(text_gen, text_x, line_y[1], "NOTHING YET");
+            }
+            else
+            {
+                // The last up-to-4 catches, oldest of them first. The
+                // ring keeps log_ring entries; entry n is slot n%ring.
+                int shown = log_total < 4 ? log_total : 4;
+
+                for(int i = 0; i < shown; ++i)
+                {
+                    int entry = log_total - shown + i;
+                    int slot = entry % log_ring;
+                    bn::string<40> row(species_names[log_species[slot]]);
+                    row.append(" ");
+                    row.append(rarity_names[log_species[slot] % tier_count]);
+                    row.append(" ");
+                    row.append(bn::to_string<8>(log_weight[slot]));
+                    lines[1 + i].set(text_gen, text_x, line_y[1 + i], row);
+                }
+            }
+
+            lines[5].set(text_gen, text_x, line_y[5], "SELECT: BACK");
             break;
         }
 
@@ -660,6 +851,24 @@ int main()
         dc_telemetry[13] = unsigned(catches);
         dc_telemetry[14] = unsigned(score);
         dc_telemetry[15] = unsigned(result_code);
+
+        // Species + catch-log mailbox (growth cut 3): every slot, every
+        // frame — see the layout table in the header comment.
+        dc_fishlog[0] = cur_species;
+        dc_fishlog[1] = cur_rarity;
+        dc_fishlog[2] = unsigned(log_total);
+        dc_fishlog[3] = state == st_log ? 1u : 0u;
+
+        for(int i = 0; i < log_ring; ++i)
+        {
+            dc_fishlog[4 + i] = log_weight[i] > 0
+                    ? unsigned(log_species[i] * 256 + log_weight[i]) : 0u;
+        }
+
+        dc_fishlog[12] = side.s;
+        dc_fishlog[13] = 0x46495348u;  // 'FISH'
+        dc_fishlog[14] = 0;
+        dc_fishlog[15] = 0;
 
         // Audio evidence hook: per-frame words next to the cumulative
         // trigger counters (slots 0-3 bump at the play sites above).

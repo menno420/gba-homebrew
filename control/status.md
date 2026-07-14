@@ -408,3 +408,28 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
 - PR #109 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
 - **The lane STANDS DOWN pending owner input.**
+
+## Dispatch 2026-07-14 (undertow-daily, PR #110)
+
+- **ts:** 2026-07-14T01:42:02Z (appended by this dispatch's worker; everything
+  above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Undertow growth cut 1 — the concept's named daily-seed line — on
+  branch `claude/undertow-daily` from main @ `6cb85ee`: `?daily=1`
+  derives the seed from the UTC date as YYYYMMDD (read once at boot,
+  never in the sim step); gameover offers a copyable challenge link
+  (`?seed=N&depth=M`, seed pinned explicitly, `depth` render-only).
+  Static hosting only — no server, no leaderboard. game.js v1.1.0.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- Smoke `tools/web-smoke-undertow.mjs` extended (+9 assertions, incl.
+  `?daily=1` boot under an injected fake Date and daily≡seeded run
+  equivalence); run twice locally: 17/17 PASS both runs, identical
+  crash frames (823 / 458).
+- Follow-up pointer: `dist/web` Undertow copy now trails main —
+  next package refresh bumps web-undertow to v1.1 and re-pins
+  `docs/RELEASES.md` (session-55 guard recipe; `--verify` red until
+  then is the designed reminder).
+- PR #110 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

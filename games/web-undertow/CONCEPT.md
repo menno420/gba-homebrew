@@ -40,7 +40,12 @@ cheap and is the only version of this game with a reason to return.
 
 - Oxygen meter + air-pocket pickups (adds a reason to leave the safe line).
 - Hazards/creatures in the channel (jellyfish that drift on the seeded RNG).
-- Daily seeded run with a shareable score URL (`?seed=YYYYMMDD`).
+- Daily seeded run with a shareable score URL (`?seed=YYYYMMDD`) —
+  **BUILT** (growth cut 1): `?daily=1` derives the seed from the UTC date
+  as YYYYMMDD (read once at boot, never in the sim step); the gameover
+  screen shares a `?seed=N&depth=M` challenge link (`S` copies it; the
+  `depth` param is render-only — a title-screen score to beat). Static
+  hosting only — the URL itself is the share, no server, no leaderboard.
 - Cosmetics (diver skins, bubble trails) — pure render-side, zero sim risk.
 - Ghost replays of your best run — nearly free because the sim is
   deterministic: store the input timeline, replay it against the same seed.

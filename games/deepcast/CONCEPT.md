@@ -49,6 +49,22 @@ worth growing; the presentation is placeholder.
 - Real art pass: lake gradient by depth, silhouette fish, rod-bend sprite
   as the analog tension gauge (HUD bar becomes diegetic).
 - Fish species tables per depth band with named rarities; a catch log.
+  **BUILT** (growth cut 3, 2026-07-14): four depth bands by target depth
+  (THE SHALLOWS / MIDWATER / THE DEEPS / THE ABYSS — the band is named on
+  the sink card), four named species per band, one per rarity tier
+  (COMMON / UNCOMMON / RARE / MYTHIC; 16 species, MUD BREAM to THE
+  NAMELESS). The species is drawn at cast time from a SIDE-BAND xorshift32
+  stream seeded from `seed ^ 0x51DEF157`, so the main stream's word order
+  is untouched — every v0.2/v0.3 pin carries verbatim, and the seed-select
+  contract extends to the fish's name (same dialed seed = same species on
+  the same casts). The catch card names the landed fish; SELECT (the one
+  unused key) opens a per-run CATCH LOG (ring of the last 8 landed fish —
+  snapped lines never log). The log is session-scope by design: SRAM
+  persistence of a lifetime log is its own growth cut (follow-up), since
+  battery-save plumbing + save-versioning is a bigger slice than a data
+  table. Proven in `games/deepcast/proofs.sh` P6 (species/rarity/log
+  glyph-exact + `dc_fishlog` mailbox witnesses, run twice byte-identical)
+  with species witnesses threaded through P1-P5.
 - Line upgrades bought with score (thicker line = higher snap threshold,
   slower reel) — a run-to-run meta without breaking determinism.
 - Daily seed + score-attack: the deterministic core makes a shareable

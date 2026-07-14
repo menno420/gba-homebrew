@@ -1016,3 +1016,25 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   audit close-out.
 - PR #130 opened READY on main; no merge/approve/auto-merge calls
   from this session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (eap-audit)
+
+- ts: 2026-07-14T09:21Z (`date -u` at write time); append-only per the
+  session-37 convention — nothing above this section was edited.
+- **EAP project audit, public edition** (`claude/eap-audit`, cut from
+  main @ `d0290d6`, PR #130 merged): authored
+  `docs/audits/eap-project-audit-2026-07-14.md` — a point-in-time,
+  fully cited audit of this repo + seat/platform-level findings
+  (identity/scale measurements, tooling verdicts, walled capabilities
+  with verbatim denials, landing + scheduling friction, ceremony
+  cost/benefit, self-fixes, ranked remaining pains with paste-ready
+  platform asks, wishlist, honest not-measured gaps). Scope note: this
+  copy contains this repo's findings plus seat/platform-level material
+  only (the scope statement at the top of the doc has the details).
+- Provenance: owner-directed EAP audit (2026-07-14), relayed via the
+  game-lab coordinator.
+- Strict check run once at authoring: exit 1 = the designed born-red
+  hold on this session's in-progress card (guard fire recorded in
+  `.substrate/guard-fires.jsonl`); no other findings.
+- PR opened READY on main; no merge/approve/auto-merge calls from this
+  session — the server-side enabler decides on green.

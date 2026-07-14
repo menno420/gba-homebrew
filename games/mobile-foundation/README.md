@@ -22,6 +22,13 @@ dependencies and no build step**. Framework decision + evidence:
   UTC-date seed) feeds ALL randomness, so (seed + action sequence)
   reproduces the garden exactly; `window.__game.snapshot()` exposes the
   comparable core state.
+- **Daily seeded weather** (2026-07-14) — the UTC date (YYYYMMDD)
+  deterministically picks the day's named weather (wind-strength
+  multiplier + prevailing-wind bias from its own PRNG stream) ONCE at
+  boot, never inside the sim step: same UTC day, same weather for every
+  player; a different day, a different garden even on the same `?seed=N`.
+  Shown as a small `today: <weather>` label (canvas + `#hud` mirror);
+  `__game.weatherFor(YYYYMMDD)` exposes the pure derivation for proofs.
 - **Fixed-timestep game loop** — 60 Hz simulation accumulator +
   `requestAnimationFrame` rendering (`game.js`), spiral-of-death guarded.
 - **Touch input** — `touchstart`/`touchmove`/`touchend` first, pointer
@@ -64,7 +71,10 @@ on visible. `run-game.sh` (`game-smoke.mjs`) asserts the game: seeded
 boot, a real dispatched `TouchEvent` planting a mote, a scripted win
 (pollination to tier 2, harvest to quota before dusk), a scripted loss at
 dusk with wisps hunting, byte-identical `snapshot()` determinism for the
-same seed (and divergence for a different one), and pause/resume.
+same seed (and divergence for a different one), pause/resume, and the
+daily-weather cut (pure `weatherFor` derivation, boot under an injected
+fake `Date`, same-date determinism, different dates diverging the world
+on the same seed).
 
 ## Files
 

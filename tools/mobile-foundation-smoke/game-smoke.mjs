@@ -12,7 +12,13 @@
 //                    with wisps spawned and motes eaten along the way
 //   5. DETERMINISM — two fresh loads with ?seed=7 + identical scripted
 //                    input give byte-identical snapshot() JSON; seed 8 differs
-//   6. PAUSE       — visibilitychange hidden freezes the loop; visible resumes
+//   6. WEATHER     — daily seeded weather: weatherFor(YYYYMMDD) is pure and
+//                    date-distinct; a boot under an INJECTED FAKE Date derives
+//                    that date's weather (no test-only date param in the
+//                    product); same fake date + same seed + same script is
+//                    byte-identical; a different fake date diverges the world
+//                    on the SAME seed
+//   7. PAUSE       — visibilitychange hidden freezes the loop; visible resumes
 //
 // Scripted rounds run on a page booted "hidden" (visibility overridden
 // BEFORE load, so the game starts paused at frame 0): the rAF loop never
@@ -63,7 +69,10 @@ function check(name, ok, detail) {
 
 // Boot a page whose document reports hidden BEFORE any game code runs:
 // the game starts paused at frame 0 and only __game.step() advances it.
-async function newScriptedPage(browser, url) {
+// Optional fakeDate {y, m, d}: stub Date itself before load, so the REAL
+// boot path derives that UTC day's weather — the product ships no
+// test-only date parameter.
+async function newScriptedPage(browser, url, fakeDate = null) {
   const ctx = await browser.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
@@ -74,6 +83,20 @@ async function newScriptedPage(browser, url) {
     Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
     Object.defineProperty(document, 'hidden', { value: true, configurable: true });
   });
+  if (fakeDate) {
+    await page.addInitScript((f) => {
+      const RealDate = Date;
+      const FIXED = RealDate.UTC(f.y, f.m - 1, f.d, 12, 34, 56);
+      class FakeDate extends RealDate {
+        constructor(...args) {
+          if (args.length === 0) super(FIXED);
+          else super(...args);
+        }
+        static now() { return FIXED; }
+      }
+      window.Date = FakeDate;
+    }, fakeDate);
+  }
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForFunction(() => window.__gameState && window.__gameState.booted, null, { timeout: 5000 });
   return { ctx, page };
@@ -209,7 +232,66 @@ try {
   check('seed-changes-world', runs[0] !== runs[2],
     `seed 7 vs seed 8 snapshots differ (${runs[0].length}B vs ${runs[2].length}B)`);
 
-  // ---- 6. pause/resume still holds on the live page -----------------------
+  // ---- 6. daily seeded weather ---------------------------------------------
+  // Two fixed fake dates with distinct derived weather kinds (pinned below).
+  const DAY_A = { y: 2030, m: 6, d: 7, num: 20300607 };  // -> crosswind
+  const DAY_B = { y: 2030, m: 6, d: 8, num: 20300608 };  // -> halcyon drift
+
+  // pure derivation: same date twice -> identical params; dates differ
+  const wx = await live.evaluate(([a, b]) => {
+    const g = window.__game;
+    return {
+      dayA: JSON.stringify(g.weatherFor(a)),
+      dayAAgain: JSON.stringify(g.weatherFor(a)),
+      dayB: JSON.stringify(g.weatherFor(b)),
+      today: JSON.stringify(g.weatherFor(window.__gameState.weatherDate)),
+      state: { weather: window.__gameState.weather, weatherDate: window.__gameState.weatherDate },
+    };
+  }, [DAY_A.num, DAY_B.num]);
+  const todayName = JSON.parse(wx.today).name;
+  check('weather-pure-derivation',
+    wx.dayA === wx.dayAAgain && wx.dayA !== wx.dayB
+      && wx.state.weather === todayName
+      && String(wx.state.weatherDate).length === 8,
+    `weatherFor(${DAY_A.num}) stable, differs from ${DAY_B.num}; ` +
+    `boot weather '${wx.state.weather}' (date ${wx.state.weatherDate}) matches derivation`);
+
+  // fake-date boot: the REAL boot path derives DAY_A's weather
+  const wxBootRig = await newScriptedPage(browser, `${URL_}?seed=11`, DAY_A);
+  const wxBoot = await wxBootRig.page.evaluate((a) => ({
+    weather: window.__gameState.weather,
+    weatherDate: window.__gameState.weatherDate,
+    derived: window.__game.weatherFor(a).name,
+    seed: window.__gameState.seed,
+  }), DAY_A.num);
+  check('weather-fake-date-boot',
+    wxBoot.weatherDate === DAY_A.num && wxBoot.weather === wxBoot.derived && wxBoot.seed === 11,
+    `injected ${DAY_A.num} -> weatherDate=${wxBoot.weatherDate} weather='${wxBoot.weather}' (derived '${wxBoot.derived}') seed=${wxBoot.seed}`);
+  await wxBootRig.ctx.close();
+
+  // same date + same seed + same script -> byte-identical; a DIFFERENT date
+  // diverges the world on the SAME seed (weather is a real sim input)
+  const wxScript = () => {
+    const g = window.__game;
+    g.step(1500);
+    return JSON.stringify(g.snapshot());
+  };
+  const wxRuns = [];
+  for (const day of [DAY_A, DAY_A, DAY_B]) {
+    const rig = await newScriptedPage(browser, `${URL_}?seed=11`, day);
+    wxRuns.push(await rig.page.evaluate(wxScript));
+    await rig.ctx.close();
+  }
+  check('weather-same-date-deterministic', wxRuns[0] === wxRuns[1],
+    `${DAY_A.num} twice (seed 11) -> identical ${wxRuns[0].length}-byte snapshots: ${wxRuns[0].slice(0, 96)}...`);
+  check('weather-changes-world',
+    wxRuns[0] !== wxRuns[2]
+      && JSON.parse(wxRuns[0]).seed === JSON.parse(wxRuns[2]).seed
+      && JSON.parse(wxRuns[0]).weather !== JSON.parse(wxRuns[2]).weather,
+    `same seed 11, ${DAY_A.num} ('${JSON.parse(wxRuns[0]).weather}') vs ${DAY_B.num} ` +
+    `('${JSON.parse(wxRuns[2]).weather}') -> snapshots differ`);
+
+  // ---- 7. pause/resume still holds on the live page -----------------------
   await live.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
     Object.defineProperty(document, 'hidden', { value: true, configurable: true });

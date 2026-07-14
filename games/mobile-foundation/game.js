@@ -12,6 +12,13 @@
 // Reach the essence quota before dusk to win; a tap after dusk replants.
 // Every random draw comes from one seeded stream (?seed=N or the UTC
 // date), so (seed + action sequence) reproduces the garden exactly.
+//
+// Daily weather: the UTC calendar date (YYYYMMDD) deterministically picks
+// the day's weather — a wind-strength multiplier plus a prevailing-wind
+// bias — so every player's Tuesday garden differs from their Monday one,
+// and everyone on the planet shares the same weather on the same UTC day.
+// The date is read ONCE at boot to select the parameters; the sim step
+// never touches the wall clock, so reproducibility is untouched.
 
 const STEP_MS = 1000 / 60;      // fixed simulation timestep (60 Hz)
 const MAX_ACCUM_MS = 250;       // spiral-of-death guard
@@ -46,12 +53,50 @@ function mulberry32(a) {
 function seedFromUrl() {
   const q = new URLSearchParams(window.location.search).get('seed');
   if (q !== null && q !== '' && Number.isFinite(Number(q))) return Number(q);
-  return Number(new Date().toISOString().slice(0, 10).replace(/-/g, ''));
+  return utcDateNum(new Date());
+}
+
+// --- daily weather ----------------------------------------------------------
+// Named weather kinds: a multiplier on the round's wind draws plus the
+// magnitude of a prevailing-wind bias (direction is picked per day below).
+const WEATHERS = [
+  { name: 'still air', windMul: 0.35, biasMag: 0 },
+  { name: 'breeze', windMul: 1.0, biasMag: 0.0004 },
+  { name: 'gusts', windMul: 1.9, biasMag: 0.0002 },
+  { name: 'crosswind', windMul: 0.9, biasMag: 0.0009 },
+  { name: 'halcyon drift', windMul: 0.6, biasMag: 0.0006 },
+];
+
+// UTC calendar date -> YYYYMMDD as a number (e.g. 20260714).
+function utcDateNum(d) {
+  return (d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate()) >>> 0;
+}
+
+// Pure date -> weather parameters. Uses its OWN mulberry32 stream (seeded
+// by the golden-ratio-mixed date) so weather selection never consumes from
+// — or perturbs — the round's gameplay RNG. Same UTC date, same weather,
+// for every player; only ever called at boot, never inside the sim step.
+function weatherFor(dateNum) {
+  const r = mulberry32((dateNum ^ 0x9E3779B9) >>> 0);
+  const kind = WEATHERS[Math.floor(r() * WEATHERS.length)];
+  const dir = r() * Math.PI * 2; // the day's prevailing-wind direction
+  return {
+    date: dateNum,
+    name: kind.name,
+    windMul: kind.windMul,
+    biasX: Math.cos(dir) * kind.biasMag,
+    biasY: Math.sin(dir) * kind.biasMag,
+  };
 }
 
 export function createGame(canvas, opts = {}) {
   const hud = opts.hud || null;
   const ctx = canvas.getContext('2d');
+
+  // Today's weather — computed ONCE here at boot from the UTC date and
+  // never re-read: a garden left running across midnight keeps its
+  // weather until reload, so a round is never perturbed mid-run.
+  const weather = weatherFor(utcDateNum(new Date()));
 
   const state = {
     booted: true,
@@ -71,6 +116,8 @@ export function createGame(canvas, opts = {}) {
     motesLost: 0,     // eaten by wisps, lifetime
     wispsAlive: 0,
     wispsDissipated: 0,
+    weather: weather.name,     // today's weather (date-derived, boot-only)
+    weatherDate: weather.date, // the UTC YYYYMMDD that picked it
   };
 
   const motes = [];
@@ -115,6 +162,16 @@ export function createGame(canvas, opts = {}) {
     state.wispsAlive = wisps.length;
   }
 
+  // One wind draw, shaped by today's weather: the seeded stream still
+  // supplies the randomness (two rng() calls, exactly as before the
+  // weather cut), the daily parameters only scale and bias it.
+  function drawWind() {
+    return {
+      x: (rng() - 0.5) * 0.002 * weather.windMul + weather.biasX,
+      y: (rng() - 0.5) * 0.002 * weather.windMul + weather.biasY,
+    };
+  }
+
   function resetRound(seed) {
     state.seed = seed;
     rng = mulberry32(seed >>> 0);
@@ -126,7 +183,7 @@ export function createGame(canvas, opts = {}) {
     state.wispsAlive = 0;
     roundStep = 0;
     nextWisp = WISP_FIRST;
-    wind = { x: (rng() - 0.5) * 0.002, y: (rng() - 0.5) * 0.002 };
+    wind = drawWind();
     // a few seed motes so first paint is alive
     for (let i = 0; i < 3; i++) {
       spawnMote(canvas.width * (0.25 + 0.25 * i), canvas.height * 0.35, 1);
@@ -310,7 +367,7 @@ export function createGame(canvas, opts = {}) {
     roundStep += 1;
     state.timeLeft = Math.ceil((ROUND_STEPS - roundStep) / 60);
     if (roundStep % 600 === 0) {
-      wind = { x: (rng() - 0.5) * 0.002, y: (rng() - 0.5) * 0.002 };
+      wind = drawWind();
     }
     for (const m of motes) {
       m.age += 1;
@@ -370,6 +427,10 @@ export function createGame(canvas, opts = {}) {
       `ess:${state.essence}/${state.quota} ${state.timeLeft}s ${state.phase}` +
       `${state.paused ? ' PAUSED' : ''}`,
       8, Math.max(16, Math.round(w / 30)));
+    // small daily-weather label, second HUD line
+    ctx.fillStyle = 'hsla(160, 30%, 70%, 0.75)';
+    ctx.font = `${Math.max(10, Math.round(w / 48))}px monospace`;
+    ctx.fillText(`today: ${state.weather}`, 8, Math.max(32, Math.round(w / 30) + 16));
     if (state.phase !== 'playing') {
       ctx.textAlign = 'center';
       ctx.fillStyle = state.phase === 'won' ? '#ffe08a' : '#b090c8';
@@ -388,23 +449,30 @@ export function createGame(canvas, opts = {}) {
       hud.textContent =
         `f:${state.frames} e:${state.entities} t:${state.taps} ` +
         `ess:${state.essence}/${state.quota} ${state.timeLeft}s ${state.phase} ` +
-        (state.paused ? 'PAUSED' : 'RUNNING');
+        (state.paused ? 'PAUSED' : 'RUNNING') +
+        ` · ${state.weather}`;
       hud.dataset.frames = String(state.frames);
       hud.dataset.entities = String(state.entities);
       hud.dataset.paused = String(state.paused);
       hud.dataset.essence = String(state.essence);
       hud.dataset.phase = state.phase;
       hud.dataset.timeLeft = String(state.timeLeft);
+      hud.dataset.weather = state.weather;
+      hud.dataset.weatherDate = String(state.weatherDate);
     }
     window.__gameState = { ...state, lastTap: state.lastTap ? { ...state.lastTap } : null };
   }
 
-  // JSON-safe deterministic core (no render counters, no wall-clock).
+  // JSON-safe deterministic core (no render counters, no wall-clock —
+  // weather is a boot-time sim INPUT, so it belongs in the comparable core:
+  // two runs only claim equality if they shared the same day's weather).
   function snapshot() {
     const r2 = (v) => Math.round(v * 100) / 100;
     return {
       frames: state.frames,
       seed: state.seed,
+      weather: state.weather,
+      weatherDate: state.weatherDate,
       phase: state.phase,
       essence: state.essence,
       taps: state.taps,
@@ -469,6 +537,9 @@ export function createGame(canvas, opts = {}) {
       render();
     },
     snapshot,
+    // pure derivation, exposed for headless proofs (no test-only date
+    // param in the product — proofs stub Date itself at the boundary)
+    weatherFor: (dateNum) => weatherFor(dateNum),
   };
   window.__game = game; // headless-proof handle
   return game;

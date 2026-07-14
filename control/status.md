@@ -517,3 +517,28 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #113 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (undertow-cosmetics, PR #114)
+
+- **ts:** 2026-07-14T02:47:47Z (appended by this dispatch's worker;
+  everything above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Undertow growth cut 2 — the concept's named cosmetics line ("diver
+  skins, bubble trails — pure render-side, zero sim risk") — on branch
+  `claude/undertow-cosmetics` from main @ `46b5fd4`: four skins
+  (classic/abyss/ember/ghost — diver body/visor colors + a bubble-trail
+  draw style each), selected via `?skin=ID` or a `C` key-cycle on
+  title/gameover, persisted to guarded `localStorage` (`undertow.skin`).
+  game.js v1.1.0 -> v1.2.0; rendering only — the sim step and both RNG
+  streams are untouched.
+- `tools/web-smoke-undertow.mjs` extended 17 -> 22 assertions, headline:
+  sim identity across skins — a `?skin=ember` run crashes on the
+  identical frame at the identical depth as the default skin for the same
+  seed (crashFrame=823 / 194m, unchanged from the pre-change v1.1.0
+  baseline). Run twice locally against real Chromium: 22/22 PASS both
+  runs, outputs byte-identical.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #114 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

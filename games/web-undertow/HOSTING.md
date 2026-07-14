@@ -13,8 +13,9 @@ What the arcade needs to serve this game:
   strict CSP.
 - **Path-prefix agnostic.** `game.js` is referenced relatively, so the game
   works under any mount point (`/arcade/undertow/`, a hashed folder, etc.).
-- **State:** best score persists via `localStorage` when available
-  (guarded — private-mode/blocked storage degrades to in-memory best).
+- **State:** best score and skin choice persist via `localStorage` when
+  available (guarded — private-mode/blocked storage degrades to in-memory
+  values).
 
 ## Optional query parameters
 
@@ -28,6 +29,12 @@ What the arcade needs to serve this game:
   `index.html?daily=1` to run it as a daily challenge.
 - `?depth=M` — render-only challenge target carried by share links; shown
   on the title screen as a score to beat. Never read by the sim.
+- `?skin=ID` — render-only cosmetic: diver colors + bubble-trail style
+  (`classic`, `abyss`, `ember`, `ghost`). Unknown IDs fall back to the
+  persisted choice (then `classic`). `C` on the title/gameover screens
+  cycles skins; the choice persists via guarded `localStorage`
+  (`undertow.skin`). Skins never touch the sim — same seed, same run,
+  whatever the skin.
 - `?headless=1` — does not start the render loop; exposes the sim to
   `window.UNDERTOW` for automated tests. Not intended for players.
 

@@ -9,6 +9,11 @@
  * Fixed-timestep simulation (60 updates/sec) driven by requestAnimationFrame
  * through an accumulator; the sim step never reads the wall clock.
  *
+ * Cosmetics (?skin=ID, C cycles on title/gameover, persisted to
+ * localStorage) are PURE RENDER: skins pick diver colors and a bubble-trail
+ * draw style only. The sim step, both RNG streams and their draw order are
+ * untouched — a run with any skin is byte-identical to the default skin.
+ *
  * Test hooks: window.UNDERTOW (always exposed). With ?headless=1 the RAF loop
  * does not start — drive the sim with UNDERTOW.stepFrames(n). Keyboard events
  * dispatched programmatically also work headlessly.
@@ -16,7 +21,7 @@
 (function () {
   "use strict";
 
-  var VERSION = "1.1.0";
+  var VERSION = "1.2.0";
   var W = 480, H = 640;
   var ROW_H = 16;              // pixels per trench row
   var PLAYER_Y = 150;          // fixed screen y of the diver
@@ -92,6 +97,42 @@
     catch (e) { /* ignore */ }
   }
   loadBest();
+
+  // --- cosmetics: diver skins + bubble-trail styles (PURE RENDER) ----------
+  // Skins never touch the sim: they pick fill/stroke colors for the diver
+  // and a draw style for the (already deterministic, gameplay-inert)
+  // bubbles. Selection happens outside the sim step: at boot (?skin= param,
+  // else guarded localStorage) or on a C keypress on title/gameover.
+  var SKINS = [
+    { id: "classic", body: "#ffd35c", visor: "#04101c", trail: "rgba(200,230,245,0.35)", trailStyle: "bubble" },
+    { id: "abyss",   body: "#7ee0c3", visor: "#052018", trail: "rgba(126,224,195,0.45)", trailStyle: "ring"   },
+    { id: "ember",   body: "#ff8a5c", visor: "#2a0a04", trail: "rgba(255,176,120,0.40)", trailStyle: "streak" },
+    { id: "ghost",   body: "#e4f2fb", visor: "#31465a", trail: "rgba(224,240,252,0.18)", trailStyle: "bubble" }
+  ];
+  function skinIndexOf(id) {
+    for (var i = 0; i < SKINS.length; i++) if (SKINS[i].id === id) return i;
+    return -1;
+  }
+  function loadSkinIndex() {
+    // Resolution order: explicit ?skin=ID, else persisted choice, else default.
+    var p = params.get("skin");
+    var i = (p !== null) ? skinIndexOf(p) : -1;
+    if (i !== -1) return i;
+    try {
+      i = skinIndexOf(window.localStorage.getItem("undertow.skin"));
+      if (i !== -1) return i;
+    } catch (e) { /* storage unavailable — default skin */ }
+    return 0;
+  }
+  function saveSkin() {
+    try { window.localStorage.setItem("undertow.skin", SKINS[skinIndex].id); }
+    catch (e) { /* ignore */ }
+  }
+  var skinIndex = loadSkinIndex();
+  function cycleSkin() {
+    skinIndex = (skinIndex + 1) % SKINS.length;
+    saveSkin();
+  }
 
   // --- shareable challenge URL ------------------------------------------------
   var shareMsg = "";            // gameover share feedback ("" until S is pressed)
@@ -238,21 +279,35 @@
       ctx.fillStyle = shade("#123048", dark * 0.6);
     }
 
-    // bubbles
-    ctx.fillStyle = "rgba(200,230,245,0.35)";
+    // bubbles — trail STYLE is cosmetic; positions/sizes come from the sim
+    // state unchanged, so every skin draws the same underlying particles.
+    var skin = SKINS[skinIndex];
     for (var b = 0; b < bubbles.length; b++) {
+      var bb = bubbles[b];
       ctx.beginPath();
-      ctx.arc(bubbles[b].x, bubbles[b].y, bubbles[b].r, 0, Math.PI * 2);
-      ctx.fill();
+      if (skin.trailStyle === "ring") {
+        ctx.strokeStyle = skin.trail;
+        ctx.lineWidth = 1.2;
+        ctx.arc(bb.x, bb.y, bb.r + 0.8, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (skin.trailStyle === "streak") {
+        ctx.fillStyle = skin.trail;
+        ctx.ellipse(bb.x, bb.y, bb.r * 0.55, bb.r * 1.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else { // "bubble"
+        ctx.fillStyle = skin.trail;
+        ctx.arc(bb.x, bb.y, bb.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     // diver
     if (state !== "title") {
-      ctx.fillStyle = "#ffd35c";
+      ctx.fillStyle = skin.body;
       ctx.beginPath();
       ctx.arc(px, PLAYER_Y, PLAYER_R, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#04101c";
+      ctx.fillStyle = skin.visor;
       ctx.fillRect(px - 3, PLAYER_Y - 2, 6, 3); // visor
     }
 
@@ -277,6 +332,17 @@
         ctx.fillStyle = "#ffd35c";
         ctx.fillText("challenge: beat " + CHALLENGE_DEPTH + " m", W / 2, 400);
       }
+      // skin preview: swatch diver + label, C cycles
+      ctx.fillStyle = skin.body;
+      ctx.beginPath();
+      ctx.arc(W / 2 - 78, 435, PLAYER_R, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = skin.visor;
+      ctx.fillRect(W / 2 - 81, 433, 6, 3);
+      ctx.fillStyle = "#5f8aa3";
+      ctx.textAlign = "left";
+      ctx.fillText("skin: " + skin.id + " — C to change", W / 2 - 62, 440);
+      ctx.textAlign = "center";
     } else if (state === "gameover") {
       ctx.fillStyle = "rgba(4,16,28,0.7)";
       ctx.fillRect(0, 200, W, 200);
@@ -310,6 +376,7 @@
     if (e.code === "ArrowLeft" || e.key === "ArrowLeft" || e.code === "KeyA" || e.key === "a" || e.key === "A") input.left = true;
     if (e.code === "ArrowRight" || e.key === "ArrowRight" || e.code === "KeyD" || e.key === "d" || e.key === "D") input.right = true;
     if ((e.code === "KeyS" || e.key === "s" || e.key === "S") && state === "gameover") copyShare();
+    if ((e.code === "KeyC" || e.key === "c" || e.key === "C") && (state === "title" || state === "gameover")) cycleSkin();
     if (isStartKey(e) && (state === "title" || state === "gameover")) startRun();
     if (e.preventDefault) e.preventDefault();
   }
@@ -356,6 +423,8 @@
     getShareFeedback: function () { return shareMsg; },
     dailySeedFor: function (d) { return dailySeed(d instanceof Date ? d : new Date(d)); },
     getCrashFrame: function () { return crashFrame; },
+    getSkin: function () { var s = SKINS[skinIndex]; return { id: s.id, trailStyle: s.trailStyle, index: skinIndex }; },
+    getSkinIds: function () { return SKINS.map(function (s) { return s.id; }); },
     stepFrames: function (n) {
       for (var i = 0; i < n; i++) update();
       render(); // rendering is gameplay-inert; keeps headless screenshots useful

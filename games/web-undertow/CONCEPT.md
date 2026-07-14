@@ -46,6 +46,12 @@ cheap and is the only version of this game with a reason to return.
   screen shares a `?seed=N&depth=M` challenge link (`S` copies it; the
   `depth` param is render-only — a title-screen score to beat). Static
   hosting only — the URL itself is the share, no server, no leaderboard.
-- Cosmetics (diver skins, bubble trails) — pure render-side, zero sim risk.
+- Cosmetics (diver skins, bubble trails) — pure render-side, zero sim risk —
+  **BUILT** (growth cut 2): four skins (diver colors + a bubble-trail draw
+  style each), selected via `?skin=ID` or a `C` key-cycle on the
+  title/gameover screens, persisted to guarded `localStorage`. Skins touch
+  rendering only — the sim step and both RNG streams are byte-identical
+  across skins, and the smoke asserts identical crashFrame/depth for the
+  same seed under a non-default skin.
 - Ghost replays of your best run — nearly free because the sim is
   deterministic: store the input timeline, replay it against the same seed.

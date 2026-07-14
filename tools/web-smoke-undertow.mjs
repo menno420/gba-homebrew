@@ -10,8 +10,13 @@
  * feedback, dailySeedFor derives YYYYMMDD, ?daily=1 boots on the UTC date
  * (via an injected fake Date), a daily run is identical to the explicit
  * ?seed=YYYYMMDD run, explicit seed beats ?daily=1, and the ?depth= param
- * is render-only (does not perturb the sim). Exits non-zero on any failed
- * assertion; prints one PASS/FAIL line per assertion.
+ * is render-only (does not perturb the sim). Also proves the cosmetics
+ * cut: ?skin=ID selects, C cycles and persists to localStorage, the
+ * persisted skin survives a reload, unknown IDs fall back, and — the sim
+ * identity proof — a run under a non-default skin crashes on the
+ * IDENTICAL frame at the IDENTICAL depth as the default skin for the
+ * same seed. Exits non-zero on any failed assertion; prints one
+ * PASS/FAIL line per assertion.
  *
  * Deps (NOT vendored — install next to the script or point NODE_PATH at an
  * external install; do not commit node_modules):
@@ -257,6 +262,49 @@ const main = async () => {
     challenge === 123 && runE.state === "gameover"
       && runE.crashFrame === runA.crashFrame && runE.score === runA.score,
     `challengeDepth=${challenge} crashFrame=${runE.crashFrame} (bare=${runA.crashFrame}) score=${runE.score}m (bare=${runA.score}m)`);
+
+  // (16) ?skin=ember selects the ember skin (render-side cosmetic)
+  await page.goto(baseURL + `?seed=${SEED}&skin=ember&headless=1`);
+  const emberBoot = await page.evaluate(() => ({
+    skin: window.UNDERTOW.getSkin(), ids: window.UNDERTOW.getSkinIds(),
+  }));
+  check("?skin=ember selects the ember skin",
+    emberBoot.skin.id === "ember" && emberBoot.ids.includes("classic"),
+    `skin=${emberBoot.skin.id} trail=${emberBoot.skin.trailStyle} ids=[${emberBoot.ids.join(",")}]`);
+
+  // (17) SIM IDENTITY ACROSS SKINS: the same seed under a non-default skin
+  // crashes on the identical frame at the identical depth as the default
+  // skin (runA). Cosmetics are pure render — this is the zero-sim-risk proof.
+  await page.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+  });
+  const runSkin = await runToCrash(page);
+  check("sim identity across skins: ember run == default-skin run (same crashFrame + depth)",
+    runSkin.state === "gameover" && runSkin.crashFrame === runA.crashFrame && runSkin.score === runA.score,
+    `ember(crashFrame=${runSkin.crashFrame}, score=${runSkin.score}m) vs default(crashFrame=${runA.crashFrame}, score=${runA.score}m)`);
+
+  // (18) C on gameover cycles the skin and persists it to localStorage
+  const afterCycle = await page.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyC", key: "c", bubbles: true }));
+    let stored = null;
+    try { stored = window.localStorage.getItem("undertow.skin"); } catch { /* guarded */ }
+    return { skin: window.UNDERTOW.getSkin(), stored };
+  });
+  check("C cycles the skin (ember -> ghost) and persists it",
+    afterCycle.skin.id === "ghost" && afterCycle.stored === "ghost",
+    `skin=${afterCycle.skin.id} localStorage=${afterCycle.stored}`);
+
+  // (19) persisted skin is restored on a reload without ?skin=
+  await page.goto(baseURL + `?seed=${SEED}&headless=1`);
+  const persisted = await page.evaluate(() => window.UNDERTOW.getSkin());
+  check("persisted skin restored on reload without ?skin=",
+    persisted.id === "ghost", `skin=${persisted.id}`);
+
+  // (20) unknown ?skin= falls back (to the persisted choice here, never crashes)
+  await page.goto(baseURL + `?seed=${SEED}&skin=nope&headless=1`);
+  const fallback = await page.evaluate(() => window.UNDERTOW.getSkin());
+  check("unknown ?skin=nope falls back to the persisted skin",
+    fallback.id === "ghost", `skin=${fallback.id}`);
 
   await browser.close();
 

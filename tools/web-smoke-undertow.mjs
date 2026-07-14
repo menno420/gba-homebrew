@@ -5,7 +5,12 @@
  * event, depth accrues under the fixed-step sim, a no-input run crashes,
  * the same seed + same inputs reproduces the identical crash frame and
  * final score (determinism), steering changes the outcome, and the
- * gameover -> restart transition works. Exits non-zero on any failed
+ * gameover -> restart transition works. Also proves the daily/share cut:
+ * share URL pins ?seed=N&depth=M from the finished run, S yields share
+ * feedback, dailySeedFor derives YYYYMMDD, ?daily=1 boots on the UTC date
+ * (via an injected fake Date), a daily run is identical to the explicit
+ * ?seed=YYYYMMDD run, explicit seed beats ?daily=1, and the ?depth= param
+ * is render-only (does not perturb the sim). Exits non-zero on any failed
  * assertion; prints one PASS/FAIL line per assertion.
  *
  * Deps (NOT vendored — install next to the script or point NODE_PATH at an
@@ -50,7 +55,11 @@ const CHUNK = 600;
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const indexPath = path.resolve(here, "..", "games", "web-undertow", "index.html");
-const pageURL = pathToFileURL(indexPath).href + `?seed=${SEED}&headless=1`;
+const baseURL = pathToFileURL(indexPath).href;
+const pageURL = baseURL + `?seed=${SEED}&headless=1`;
+
+// Fake "today" injected into the daily-mode page: 2030-06-07 UTC.
+const FAKE_TODAY = { y: 2030, m: 6, d: 7, seed: 20300607 };
 
 const shotIdx = process.argv.indexOf("--shot");
 const shotPath = shotIdx !== -1 ? process.argv[shotIdx + 1] : null;
@@ -155,6 +164,99 @@ const main = async () => {
   }));
   check("gameover -> Space restarts a fresh run", restart.state === "playing" && restart.score === 0,
     `state=${restart.state} score=${restart.score}m`);
+
+  // (8) share URL after a crash pins ?seed=N&depth=M from the finished run
+  const runD = await runToCrash(page);
+  const share = await page.evaluate(() => window.UNDERTOW.getShareURL());
+  check("share URL pins ?seed=N&depth=M from the finished run",
+    runD.state === "gameover" && runD.score === runA.score
+      && share.endsWith(`?seed=${SEED}&depth=${runD.score}`),
+    `...${share.slice(share.indexOf("?"))} (score=${runD.score}m, runA=${runA.score}m)`);
+
+  // (9) S on gameover yields share feedback (clipboard confirmation, or the
+  // visible link where the clipboard is unavailable — both are the guarded paths)
+  await page.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyS", key: "s", bubbles: true }));
+  });
+  let feedback = "";
+  try {
+    await page.waitForFunction(() => window.UNDERTOW.getShareFeedback() !== "", null, { timeout: 3000 });
+    feedback = await page.evaluate(() => window.UNDERTOW.getShareFeedback());
+  } catch { /* feedback stayed empty — the check below fails with detail */ }
+  check("S on gameover yields share feedback (copied, or visible link fallback)",
+    feedback === "challenge link copied" || feedback === share,
+    feedback === "" ? "no feedback within 3s" : `feedback=${feedback.slice(0, 60)}`);
+
+  // (10) pure daily-seed derivation from an arbitrary injected date
+  const derived = await page.evaluate(() => window.UNDERTOW.dailySeedFor(new Date(Date.UTC(2031, 0, 5))));
+  check("dailySeedFor derives UTC YYYYMMDD (2031-01-05 -> 20310105)",
+    derived === 20310105, `derived=${derived}`);
+
+  // (11) ?daily=1 boots with seed = UTC YYYYMMDD — fake Date injected before load
+  const dailyPage = await browser.newPage({ viewport: { width: 520, height: 700 } });
+  dailyPage.on("pageerror", (e) => { console.error("PAGE ERROR (daily):", e.message); failures++; });
+  await dailyPage.addInitScript((f) => {
+    const RealDate = Date;
+    const FIXED = RealDate.UTC(f.y, f.m - 1, f.d, 12, 34, 56);
+    class FakeDate extends RealDate {
+      constructor(...args) {
+        if (args.length === 0) super(FIXED);
+        else super(...args);
+      }
+      static now() { return FIXED; }
+    }
+    window.Date = FakeDate;
+  }, FAKE_TODAY);
+  await dailyPage.goto(baseURL + "?daily=1&headless=1");
+  const dailyBoot = await dailyPage.evaluate(() => ({
+    seed: window.UNDERTOW.getSeed(), mode: window.UNDERTOW.getMode(),
+  }));
+  check(`?daily=1 boots with seed = UTC YYYYMMDD (fake today ${FAKE_TODAY.seed})`,
+    dailyBoot.seed === FAKE_TODAY.seed && dailyBoot.mode === "daily",
+    `seed=${dailyBoot.seed} mode=${dailyBoot.mode}`);
+
+  // (12) the daily run IS the ?seed=YYYYMMDD run — date only feeds seed selection
+  await dailyPage.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+  });
+  const runDaily = await runToCrash(dailyPage);
+  await page.goto(baseURL + `?seed=${FAKE_TODAY.seed}&headless=1`);
+  await page.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+  });
+  const runRef = await runToCrash(page);
+  check("daily run identical to explicit ?seed=YYYYMMDD run (same crash frame + score)",
+    runDaily.state === "gameover" && runRef.state === "gameover"
+      && runDaily.crashFrame === runRef.crashFrame && runDaily.score === runRef.score,
+    `daily(crashFrame=${runDaily.crashFrame}, score=${runDaily.score}m) vs seeded(crashFrame=${runRef.crashFrame}, score=${runRef.score}m)`);
+
+  // (13) daily share link pins the explicit seed, never ?daily=1
+  const dailyShare = await dailyPage.evaluate(() => window.UNDERTOW.getShareURL());
+  check("daily share link pins ?seed=YYYYMMDD (no daily param)",
+    dailyShare.endsWith(`?seed=${FAKE_TODAY.seed}&depth=${runDaily.score}`) && !dailyShare.includes("daily"),
+    `...${dailyShare.slice(dailyShare.indexOf("?"))}`);
+
+  // (14) explicit ?seed=N beats ?daily=1 (a shared link replays on any day)
+  await dailyPage.goto(baseURL + `?seed=${SEED}&daily=1&headless=1`);
+  const seededBoot = await dailyPage.evaluate(() => ({
+    seed: window.UNDERTOW.getSeed(), mode: window.UNDERTOW.getMode(),
+  }));
+  check("explicit ?seed=N wins over ?daily=1",
+    seededBoot.seed === SEED && seededBoot.mode === "seeded",
+    `seed=${seededBoot.seed} mode=${seededBoot.mode}`);
+  await dailyPage.close();
+
+  // (15) ?depth=M is render-only: challenge shown, sim untouched
+  await page.goto(baseURL + `?seed=${SEED}&depth=123&headless=1`);
+  const challenge = await page.evaluate(() => window.UNDERTOW.getChallengeDepth());
+  await page.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+  });
+  const runE = await runToCrash(page);
+  check("?depth=123 is render-only (challenge shown, run identical to bare seed)",
+    challenge === 123 && runE.state === "gameover"
+      && runE.crashFrame === runA.crashFrame && runE.score === runA.score,
+    `challengeDepth=${challenge} crashFrame=${runE.crashFrame} (bare=${runA.crashFrame}) score=${runE.score}m (bare=${runA.score}m)`);
 
   await browser.close();
 

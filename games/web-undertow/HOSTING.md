@@ -19,6 +19,21 @@ What the arcade needs to serve this game:
 ## Optional query parameters
 
 - `?seed=N` — integer seed; all gameplay randomness is derived from it, so
-  the same seed + same inputs is the identical run (daily-challenge ready).
+  the same seed + same inputs is the identical run. Wins over `?daily=1`
+  (a shared link must replay the same run whenever it is opened).
+- `?daily=1` — daily dive: the seed derives from the UTC calendar date as
+  `YYYYMMDD` (e.g. `20260714`), so everyone gets the same trench on the
+  same UTC day. The date is read once at boot to pick the seed — the sim
+  itself never reads the clock. Link the arcade tile to
+  `index.html?daily=1` to run it as a daily challenge.
+- `?depth=M` — render-only challenge target carried by share links; shown
+  on the title screen as a score to beat. Never read by the sim.
 - `?headless=1` — does not start the render loop; exposes the sim to
   `window.UNDERTOW` for automated tests. Not intended for players.
+
+## Sharing a run
+
+On the gameover screen, `S` copies a challenge link
+(`?seed=N&depth=M` — the seed pinned explicitly, plus the depth to beat).
+Where the clipboard is unavailable (blocked, `file://`), the link is drawn
+on the canvas instead. No server involved: the URL itself is the share.

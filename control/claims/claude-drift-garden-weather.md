@@ -1,1 +1,0 @@
-- `claude/drift-garden-weather` · **Drift Garden growth cut 1 (daily seeded weather)** — UTC-date-derived daily weather parameters (wind strength/direction modifiers) feeding the seeded sim at boot only, plus a small weather label · games/mobile-foundation/**, tools/mobile-foundation-smoke/**, .sessions/2026-07-14-drift-garden-weather.md · 2026-07-14

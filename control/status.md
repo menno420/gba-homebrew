@@ -433,3 +433,27 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   then is the designed reminder).
 - PR #110 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (drift-garden-weather, PR #111)
+
+- **ts:** 2026-07-14T01:55:46Z (appended by this dispatch's worker;
+  everything above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Drift Garden growth cut 1 — the concept's named daily-weather line — on
+  branch `claude/drift-garden-weather` from main @ `49b8bdf`: the UTC
+  date (YYYYMMDD) deterministically picks the day's named weather (five
+  kinds: wind-strength multiplier + prevailing-wind bias, own mulberry32
+  stream) ONCE at boot, never inside the sim step; surfaced as a small
+  `today: <weather>` HUD label. Pure-parameter cut: no new persistence,
+  screens, server, or URL params; `sw.js` cache v2 → v3.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- Smoke `tools/mobile-foundation-smoke/game-smoke.mjs` extended
+  (+4 assertions, incl. boot under an injected fake Date — no test-only
+  date param in the product, per #110's boundary-injection discipline —
+  and different-date divergence on the SAME seed); run twice locally:
+  15/15 PASS both runs, deterministic lines identical. Foundation smoke
+  (`run.sh`) 6/6 green before and after.
+- PR #111 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

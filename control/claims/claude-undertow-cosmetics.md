@@ -1,1 +1,0 @@
-- `claude/undertow-cosmetics` · **Undertow growth cut 2 (cosmetics, render-side)** — diver skins + bubble-trail styles, pure render layer, sim byte-identical across skins · games/web-undertow/**, tools/web-smoke-undertow.mjs, .sessions/2026-07-14-undertow-cosmetics.md · 2026-07-14

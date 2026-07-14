@@ -47,6 +47,30 @@
 #                              same literals as P2 — audio is a pure
 #                              decision layer; mute gates voicing only.
 #                              RUN TWICE — byte-identical watch-logs.
+#   P4 the dialed lake        — growth cut 2 (seed-select score-attack):
+#     (seed-select cut)         UP/RIGHT/R at the title dial the seed
+#                              +1/+0x100/+0x10000 (each step pinned in
+#                              telemetry word dc[4]) to 0xDEEACB58, shown
+#                              glyph-exact on the title. Same charge input
+#                              as P2's first cast, DIFFERENT lake: at frame
+#                              471 (the default lake's bite frame) this
+#                              lake is still sinking; it bites at 489, and
+#                              a later 72m cast pulls a wt-16 fish where
+#                              the default stream gave 11. Four casts to
+#                              dusk: score 6 / catches 1, ledger 21 clicks
+#                              / 4 bites / 1 catch / 3 snaps, and the dusk
+#                              card names its seed ("SEED DEEACB58") so
+#                              the score is attributable. The audio laws
+#                              carry to any seed (first reeling frame
+#                              clicks at interval 16, cues voiced).
+#                              RUN TWICE — byte-identical watch-logs.
+#   P5 dial away and back     — UP/RIGHT/R then L/LEFT/DOWN returns the
+#                              dial to 0xDEE9CA57 (each magnitude down-step
+#                              exercised), the title shows the default seed
+#                              again, and the FULL P2 route then lands on
+#                              EVERY P2 literal — dialing is fully
+#                              reversible and the default lake is untouched
+#                              by the feature.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
@@ -83,7 +107,8 @@ H "$OUT/p1.png" --frames 120 $W $WA \
   --assert-text "100:SEED DEE9CA57" \
   --assert-text "100:HOLD A: CAST DEEP, REEL SOFT" \
   --assert-text "100:3 LURES. PRESS START" \
-  --assert-text "100:B: MUTE"
+  --assert-text "100:B: MUTE" \
+  --assert-text "100:B: MUTE  DPAD L R: DIAL SEED"
 
 # The committed core-loop route (the prototype card's seeded run, carried):
 # START at 240; 60f charge -> 72m cast (wt 11); duty-cycle reel through the
@@ -210,6 +235,8 @@ P2_ASSERTS=(
   --assert-text "2500:DUSK FALLS. LURES GONE"
   --assert-text "2500:SCORE 18"
   --assert-text "2500:CATCHES 2"
+  # growth cut 2: the dusk card names the seed the score was fished on
+  --assert-text "2500:SEED DEE9CA57"
 )
 
 echo "== P2: the seeded run — core loop + reel clicks that speed up with tension (run 1) =="
@@ -271,5 +298,128 @@ H "$OUT/p3b.png" --frames 2520 $W $WA $MUTE_ROUTE \
   "${P3_ASSERTS[@]}"
 cmp "$OUT/p3-run1.csv" "$OUT/p3-run2.csv"
 echo "P3 run-twice: byte-identical"
+
+# ---------------------------------------------------------------------------
+# P4/P5 — growth cut 2, seed-select score-attack. The dial: on the title,
+# UP/DOWN adjusts the seed +-1, LEFT/RIGHT +-0x100, L/R +-0x10000
+# (edge-triggered, 32-bit wrap, xorshift dead state 0 skipped). Pins from
+# an observed run of THIS route (the listen-then-script method):
+# 0xDEE9CA57=3739863639 · +1=3739863640 · +0x101=3739863896 ·
+# +0x10101 = 0xDEEACB58 = 3739929432.
+# ---------------------------------------------------------------------------
+
+DIAL_UP='--keys 150-152:UP --keys 154-156:RIGHT --keys 158-160:R'
+DIAL_BACK='--keys 170-172:L --keys 174-176:LEFT --keys 178-180:DOWN'
+
+# The dialed-lake route: same START + first-cast charge input as P2, then
+# four scripted casts (snap / shallow catch / snap / snap) to dusk.
+P4_ROUTE=$DIAL_UP' --keys 240-244:START --keys 300-360:A --keys 362-600:A --keys 700-715:A --keys 717-900:A --keys 990-1050:A --keys 1052-1250:A --keys 1350-1410:A --keys 1412-1700:A'
+
+P4_ASSERTS=(
+  # the dial, step by step in the telemetry seed word (boot value first)
+  --assert-watch 149:dc:4:eq:3739863639
+  --assert-watch 153:dc:4:eq:3739863640
+  --assert-watch 157:dc:4:eq:3739863896
+  --assert-watch 200:dc:4:eq:3739929432
+  # the dialed seed on the title, glyph-exact; dialing itself is silent
+  --assert-text "200:SEED DEEACB58"
+  --assert-watch 200:h:0:eq:0
+  --assert-watch 200:mix:0:eq:0
+  # same charge input as P2 -> same 72m cast, DIFFERENT lake: at 471 (the
+  # default lake's pinned bite frame) this lake is still SINKING, no bite
+  # counted; it bites at 489 instead — and the audio law carries to any
+  # seed (first reeling frame clicks at the slack interval 16)
+  --assert-watch 360:dc:2:eq:2
+  --assert-watch 360:dc:7:eq:72
+  --assert-watch 471:dc:2:eq:2
+  --assert-watch 471:h:1:eq:0
+  --assert-watch 489:dc:2:eq:3
+  --assert-watch 489:dc:9:eq:432
+  --assert-watch 489:h:1:eq:1
+  --assert-watch 489:h:4:eq:16
+  # hold-only fight 1 snaps at exactly 600 (frame 546; default lake at 620
+  # is still mid-fight — this one is already on the result card)
+  --assert-watch 546:dc:2:eq:4
+  --assert-watch 546:dc:15:eq:2
+  --assert-watch 546:dc:8:eq:600
+  --assert-watch 546:dc:12:eq:2
+  --assert-watch 546:h:3:eq:1
+  --assert-watch 548:mix:0:gt:0
+  --assert-watch 620:dc:2:eq:4
+  # cast 2 shallow 27m (wt 6) CATCHES +6 — the dialed lake's score
+  --assert-watch 715:dc:2:eq:2
+  --assert-watch 715:dc:7:eq:27
+  --assert-watch 715:dc:10:eq:6
+  --assert-watch 841:dc:2:eq:4
+  --assert-watch 841:dc:15:eq:1
+  --assert-watch 841:dc:13:eq:1
+  --assert-watch 841:dc:14:eq:6
+  --assert-watch 841:dc:8:eq:198
+  --assert-watch 841:h:2:eq:1
+  --assert-watch 843:mix:0:gt:0
+  # cast 3 (72m again) snaps
+  --assert-watch 1050:dc:2:eq:2
+  --assert-watch 1050:dc:7:eq:72
+  --assert-watch 1109:dc:2:eq:3
+  --assert-watch 1109:h:1:eq:3
+  --assert-watch 1182:dc:2:eq:4
+  --assert-watch 1182:dc:15:eq:2
+  --assert-watch 1182:dc:12:eq:1
+  --assert-watch 1182:h:3:eq:2
+  # cast 4: the SAME 72m cast the default stream answers with wt 11 pulls
+  # a wt-16 fish here — same formula, different world
+  --assert-watch 1410:dc:2:eq:2
+  --assert-watch 1410:dc:7:eq:72
+  --assert-watch 1410:dc:10:eq:16
+  --assert-watch 1473:dc:2:eq:3
+  --assert-watch 1473:h:1:eq:4
+  --assert-watch 1539:dc:2:eq:4
+  --assert-watch 1539:dc:15:eq:2
+  --assert-watch 1539:dc:12:eq:0
+  --assert-watch 1539:h:3:eq:3
+  # dusk: full ledger, seed word still the dialed one, and the dusk card
+  # NAMES the seed — the score is attributable to its lake
+  --assert-watch 1720:dc:2:eq:5
+  --assert-watch 1720:dc:13:eq:1
+  --assert-watch 1720:dc:14:eq:6
+  --assert-watch 1720:dc:4:eq:3739929432
+  --assert-watch 1720:h:0:eq:21
+  --assert-watch 1720:h:1:eq:4
+  --assert-watch 1720:h:2:eq:1
+  --assert-watch 1720:h:3:eq:3
+  --assert-watch 1720:mix:0:eq:0
+  --assert-text "1720:DUSK FALLS. LURES GONE"
+  --assert-text "1720:SCORE 6"
+  --assert-text "1720:CATCHES 1"
+  --assert-text "1720:SEED DEEACB58"
+)
+
+echo "== P4: the dialed lake — seed-select score-attack, same input, different world (run 1) =="
+H "$OUT/p4.png" --frames 1750 $W $WA $P4_ROUTE \
+  --watch-log "$OUT/p4-run1.csv" \
+  --shot "200:$OUT/p4-title.png" \
+  "${P4_ASSERTS[@]}"
+
+echo "== P4: run 2 (must be byte-identical) =="
+H "$OUT/p4b.png" --frames 1750 $W $WA $P4_ROUTE \
+  --watch-log "$OUT/p4-run2.csv" \
+  "${P4_ASSERTS[@]}"
+cmp "$OUT/p4-run1.csv" "$OUT/p4-run2.csv"
+echo "P4 run-twice: byte-identical"
+
+# P5: dial away, dial back, and the ENTIRE default run must reproduce —
+# every P2 literal (game state, audio ledger, click-interval law, dusk
+# card) on the same frames. One run: P2 already proved this route's
+# run-twice identity; this proves the dial can't leave a mark.
+P5_ROUTE=$DIAL_UP' '$DIAL_BACK' '$CORE_ROUTE
+
+echo "== P5: dial away and back — the default lake reproduces on every P2 literal =="
+H "$OUT/p5.png" --frames 2520 $W $WA $P5_ROUTE \
+  --assert-watch 165:dc:4:eq:3739929432 \
+  --assert-watch 171:dc:4:eq:3739863896 \
+  --assert-watch 175:dc:4:eq:3739863640 \
+  --assert-watch 200:dc:4:eq:3739863639 \
+  --assert-text "200:SEED DEE9CA57" \
+  "${P2_ASSERTS[@]}"
 
 echo "ALL DEEPCAST PROOFS PASS"

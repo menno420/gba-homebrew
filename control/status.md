@@ -894,3 +894,34 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #126 opened READY on main; no merge/approve/auto-merge calls from
   this session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (cindervault-art, PR #127)
+
+- Cindervault growth cut 5 (`claude/cindervault-art`, cut from main @
+  `0912a1c`): the concept's "Real art pass: tile sprites for
+  walls/floor, a torch-radius light fade" line, marked BUILT — this
+  completes Cindervault's named growth path (all five named lines
+  built; CONCEPT.md notes it).
+- Presentation ONLY: the glyph map becomes a dynamic tile background
+  (original procedural assets, games/cindervault/graphics/), the
+  player a torch-bearer sprite, and the shared gl_light_window.h
+  drives a light circle of radius min(16 + torch/2, 200) px around
+  the player — the screen literally darkens as the torch burns and
+  re-opens on embers. Game state, RNG word order and all 18
+  cv_telemetry words untouched: P1-P7 pass verbatim (zero re-derived
+  pins, zero adjusted text asserts).
+- New P8/P9 prove the art off the hardware: a second presentation
+  mailbox cv_light (radius/center) + DISPCNT, BG/OBJ palette RAM and
+  VRAM screenblock pins; the radius witness runs 126 -> 48 px over
+  carried torch pins (deep burn) and 126 -> 155 px on the ember
+  relight. All new legs run twice, watch-logs byte-identical. Suite
+  622 watch + 104 text asserts, exit 0, re-run green at the dist
+  bytes. dist v0.6 138,692 bytes, two clean builds byte-identical,
+  sha256 db7d5918…; toolchain certified first (v0.5 rebuilt to its
+  committed hash from a clean tree). Before/after screenshots
+  committed under docs/proof/.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #127 opened READY on main; no merge/approve/auto-merge calls from
+  this session — the server-side enabler decides on green.

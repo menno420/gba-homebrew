@@ -486,3 +486,34 @@ narrative in git history (`0a76b546` boot, `d06456f2` c2, `a7d2e113` c3, `baa39b
   ~00:58Z 2026-07-14.
 - PR #112 opened READY on main; no merge/auto-merge calls from this
   session — the server-side enabler decides on green.
+
+## Dispatch 2026-07-14 (deepcast-audio, PR #113)
+
+- **ts:** 2026-07-14T02:37:03Z (appended by this dispatch's worker;
+  everything above left intact per the append-only dispatch rule; ts from
+  `date -u` at write time; PR number confirmed against the live PR)
+- Deepcast growth cut 1 — the concept's named audio line ("reel clicks
+  that speed up with tension") — on branch `claude/deepcast-audio` from
+  main @ `2f2bf68`: while reeling, a dry ratchet click fires on a period
+  that shrinks linearly with tension (16 frames at slack -> 4 at the snap
+  point) with pitch rising the same way; yielding is silent. Bite/catch/
+  snap event cues; B mutes (gates play() only). Four original synthesized
+  sounds (`games/deepcast/audio/generate_audio.py`, stdlib-only,
+  byte-exact regeneration), maxmod soundbank, pure decision layer counted
+  into `gl_audio_hook` (clicks/bites/catches/snaps + per-frame click
+  interval + mute) — the Shoal (PR #103) / Courier (PR #108) playbook.
+- ALSO: the committed-proofs port (the Shoal/Courier/Cindervault gap,
+  closed for Deepcast): `games/deepcast/proofs.sh` (P1 silent title, P2
+  the prototype card's seeded run + the audio ledger, P3 the mute
+  discriminator; P2/P3 each RUN TWICE, watch-logs byte-identical).
+  Enabling the mixer did not shift Deepcast's boot clock — every
+  prototype game-state literal carried verbatim. Local-only + committed,
+  matching Shoal (per-PR CI stays "ROM builds").
+- `dist/deepcast.gba` v0.2 refreshed (132,412 bytes, two clean builds
+  byte-identical, sha256 `f5e33083…`); toolchain first re-certified by
+  rebuilding v0.1 to its committed dist hash exactly.
+- Provenance: LIVE OWNER directive ("see if there is anything else you
+  can come up with or improve…"), owner live in the coordinator chat
+  ~00:58Z 2026-07-14.
+- PR #113 opened READY on main; no merge/auto-merge calls from this
+  session — the server-side enabler decides on green.

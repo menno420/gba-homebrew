@@ -54,4 +54,12 @@ worth growing; the presentation is placeholder.
 - Daily seed + score-attack: the deterministic core makes a shareable
   "same lake, same fish" challenge free to build.
 - Audio: reel clicks that speed up with tension — tension readable with
-  eyes closed (also a nice accessibility angle).
+  eyes closed (also a nice accessibility angle). **BUILT** (growth cut 1,
+  2026-07-14): while reeling, a dry ratchet click fires on a period that
+  shrinks linearly with tension (every 16 frames at slack -> every 4 at
+  the snap point) with its pitch rising the same way; yielding is
+  silent, so the click train IS the tension bar. Plus the loop's three
+  event cues (bite plunge, catch resolve, snap twang) — four original
+  synthesized sounds (`audio/generate_audio.py`, deterministic, no
+  samples), B mutes. Proven in `games/deepcast/proofs.sh` (decision
+  ledger + mixer-memory voicing watch).

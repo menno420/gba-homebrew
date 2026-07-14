@@ -1,0 +1,1 @@
+- `claude/cindervault-art` · **Cindervault growth cut 5 (art pass)** — tile-sprite dungeon rendering + torch-radius light fade via the shared `gl_light_window.h` (presentation only: game state, RNG and telemetry words untouched, every sim pin carries) · games/cindervault/**, dist/cindervault.gba, .sessions/2026-07-14-cindervault-art.md · 2026-07-14

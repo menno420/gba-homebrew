@@ -1,0 +1,1 @@
+- `claude/cindervault-seed` · **Cindervault growth cut 4 (seed-select score-attack)** — title-screen seed dial (dpad/L/R dials the visible seed; same dialed seed = same vault, same monsters) + proofs · games/cindervault/**, dist/cindervault.gba, .sessions/2026-07-14-cindervault-seed.md · 2026-07-14

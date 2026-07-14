@@ -7,7 +7,7 @@
     "soft_target_sessions": 50
   },
   "graduation_proposed": false,
-  "kit_version": "1.15.0",
+  "kit_version": "1.16.0",
   "last_compaction_session": 0,
   "mode": "active",
   "mode_history": [
@@ -20,15 +20,15 @@
   "open_questions": [],
   "planted_doc_hashes": {
     ".session-journal.md": "733512309398d2a33ba407ecd3081db6636fed0ba572c94407f8aad5fb59c033",
-    "CONSTITUTION.md": "b14bc8fc7d501f993a083f50019ccbf53fa176f8ca4b22cb9b565dbe9a8c58b3",
-    "control/claims/README.md": "6dc6854e77077fe3d2138e8273ad3f4eaa46f1ce96ce61d49f96264ca7f007ae",
-    "docs/AGENT_ORIENTATION.md": "f11c99991a5a146d65bbcfd1f0a0fd50eb84d69cdaad051920427daa0108b90d",
-    "docs/CAPABILITIES.md": "32a6bb4d217677443322f6e1cf2531ee4c9045ec352878fae31d05bdd2832191",
-    "docs/ROUTINES.md": "76094eb30b50e6a1e55e6c2e2adc518ce69d76d3d4c583fe68f584d0e16c9821",
-    "docs/SKILLS.md": "2df4b17b686c5948ef6ef548d9db0b7d3ba8b959196c973efad0d7b656a62847",
+    "CONSTITUTION.md": "b9b3d63cc74798c62f073eec8bdd6498f7301c39183f1e2484b715b2ae36dcb5",
+    "control/claims/README.md": "75563eec6c26411c903d32e0d4a5a691bef3d13d6cd6b0c3a9d5419677f771ca",
+    "docs/AGENT_ORIENTATION.md": "8bb4e48d536715ad3d9a1de3f1a4bdcc18ae57c870c2fb2f4283e6a3757cdac7",
+    "docs/CAPABILITIES.md": "9c8a5fe5f32716d87e363219464512f1961b846098b49138cdcabf02f68d5f1e",
+    "docs/ROUTINES.md": "239ed588387e3a9d4e48175a390e2dac5314a8b52a4f00da80342f103b49ebef",
+    "docs/SKILLS.md": "00b4ab4b71d3ff8c8de920103f64cafc4559e4c67c280580e937042bf64a6263",
     "docs/ai-project-workflow.md": "da120902c31bd15970cc88c2ae640d0d187e5d453982384ce52b0970ba6e9590",
     "docs/architecture.md": "71f28e51098f14f6eb3b69f9c900dad18436b82eea8577e47a4f92ce38ae5920",
-    "docs/collaboration-model.md": "a60ded90a5231f98c89486850c2f5048844b000875349bd6ff687a5133311681",
+    "docs/collaboration-model.md": "096c81e92ca336b63f0a4802c7d9a04c20f68d35e83ad9247f26d4c195f02560",
     "docs/current-state.md": "3c89e7f55f134f7eca995f49b73e10dbbf66949b76bd768a5fd29b02ea6c9ed8",
     "docs/decisions.md": "19fc1bdd6b836a3912e430e855ef069be440051a48de43d1d901999f2745e181",
     "docs/helper-policy.md": "f9519d2b3602c0821514b8287525bb6cdb937820a0b08adc26e662f33b06ac06",
@@ -36,9 +36,10 @@
     "docs/owner-profile.md": "b8d231f159efd1a98c5e9b17a63ed1fadd4907a4c77a688a0ce9067328cd8fc0",
     "docs/ownership.md": "c4939a07c0c8a16202f1f867e955777e7cf09927eacba10b93921527205921e8",
     "docs/question-router.md": "c8a3052d47d78163a5ad905815c176323c8090f5828f007074ca081245421076",
+    "docs/reading-path.md": "9f0c170a9fcb74c83cc48a18980698b782a7503a61b1e91584c7c355c0cdccb7",
     "docs/repo-navigation-map.md": "1a15951e2ebfaeb6821053438dfca908953b7913d48f107af7dea526c78424ad",
     "docs/runtime_contracts.md": "3362373df19331af1f0b5c26bac63a5fbc4a0b46bba236ed0455a2dd601fd021",
-    "docs/seat-digest.md": "a7d06d58de53395ac0c4e141dde7b65394042117894e062c7fac99df510cf66b",
+    "docs/seat-digest.md": "b6c75eb3c8ebcf20bfdaea01ff188418138e2ac453f52ad52b429d3977279f22",
     "scripts/env-setup.sh": "cd2145129fcba288ff9399ad44146a09017d85813e282c16bcba22340b613a2c"
   },
   "project_id": "9dbe6fc2bf0e",
@@ -71,6 +72,21 @@
       "question_id": "Q-011",
       "source": "user",
       "value": "Docs follow reality: on doc/code drift, fix the doc in the same PR that reveals it; binding conventions change only via a deliberate PR that says so; control-file drift is governed by control/README.md writer-ownership"
+    },
+    "fleet_dark_repos": {
+      "question_id": "Q-016",
+      "source": "user",
+      "value": "every fleet sibling is public and raw-readable EXCEPT pokemon-mod-lab (PRIVATE/dark \u2014 never read it, never guess about its contents; raw fetch 404s it)"
+    },
+    "fleet_siblings": {
+      "question_id": "Q-015",
+      "source": "user",
+      "value": "superbot (hub \u2014 prod Discord bot + fleet memory; truth: docs/current-state.md, no heartbeat) \u00b7 fleet-manager (Project Manager; docs/roster.md, docs/owner-queue.md, control/inbox.md ORDERs, docs/capabilities.md walls master) \u00b7 substrate-kit (Self Improvement; the portable kit \u2014 pin release tags, never HEAD) \u00b7 superbot-next (SuperBot 2.0 rebuild; control/status.md parity program) \u00b7 superbot-mineverse (SuperBot World flagship; its control/status.md also carries the games/idle cross-repo notes) \u00b7 superbot-games + superbot-idle (SuperBot World engines/themes; their status files are FROZEN archives \u2014 current World state lives in mineverse's heartbeat) \u00b7 websites (control plane + review site + arcade; docs/owner/OWNER-ACTIONS.md ask ledger) \u00b7 idea-engine (Ideas Lab generate; ideas/** one file per head) \u00b7 sim-lab (Ideas Lab verify; sims/<slug>/ verdicts) \u00b7 venture-lab (Venture Lab; products + publish queue) \u00b7 trading-strategy (Venture Lab, parked; weekly grading) \u00b7 curious-research (maker/3D-print research; heartbeat control/status.md) \u00b7 pokemon-mod-lab (Game Lab Track A \u2014 PRIVATE, see dark-repos line). Each sibling's live truth file is its control/status.md heartbeat unless noted."
+    },
+    "fleet_status_command": {
+      "question_id": "Q-014",
+      "source": "user",
+      "value": "clone the hub and run its fleet table: git clone https://github.com/menno420/superbot && python3.10 superbot/scripts/fleet_status.py (per-seat heartbeat table; --all adds parked seats, --repo X prints one heartbeat in full) \u2014 no local fleet-status script exists in gba-homebrew itself"
     },
     "integration_mode": {
       "question_id": "Q-001",
@@ -127,6 +143,9 @@
     "architecture_layers": "filled",
     "doc_roots": "filled",
     "drift_resolution": "filled",
+    "fleet_dark_repos": "filled",
+    "fleet_siblings": "filled",
+    "fleet_status_command": "filled",
     "integration_mode": "filled",
     "mutation_seam": "filled",
     "new_area_ownership": "filled",

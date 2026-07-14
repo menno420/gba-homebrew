@@ -1,0 +1,1 @@
+- `claude/drift-garden-species` · **Drift Garden growth cut 2 (more species)** — extend the tier machinery into a data-driven species table (two species per tier, distinct visuals/values, hybrid cross-pollination) per CONCEPT.md's "more species" growth line · games/mobile-foundation/**, tools/mobile-foundation-smoke/**, .sessions/2026-07-14-drift-garden-species.md · 2026-07-14

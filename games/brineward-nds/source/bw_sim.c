@@ -66,6 +66,61 @@ static const int32_t BW_TURN_OF[3] = {
     BW_TURN_BATTLE, BW_TURN_HALF, BW_TURN_FULL,
 };
 
+// --- wind tables (slice 6; all one-constant owner-tunables) --------------------
+// Weather per seed-hash bucket: calm a quarter of the waters, breeze
+// half, gale a quarter. BW_WIND_SALT is pinned so every committed
+// anchor seed buckets to CALM (the pin-carry rule in bw_sim.h).
+static const int32_t BW_WIND_LEVEL_OF[4] = {
+    BW_WIND_CALM, BW_WIND_BREEZE, BW_WIND_BREEZE, BW_WIND_GALE,
+};
+// push per weather, units/frame at FULL canvas (calm MUST be 0: the
+// bit-identity of every committed story rides on it)
+static const int32_t BW_WIND_PUSH_OF[BW_WIND_STATES] = { 0, 12, 24 };
+// canvas quarters per trim: battle sail shows 1/4 of the push, half
+// 2/4, full 4/4 — the doc's "trim interacts with it"
+static const int32_t BW_WIND_CANVAS_OF[3] = { 1, 2, 4 };
+
+int32_t bw_wind_heading(const BwDuel *d)
+{
+    return (d->wind_base + (int32_t)(d->frame >> BW_WIND_TURN_SHIFT))
+           & (BW_CIRCLE - 1);
+}
+
+int32_t bw_wind_push(const BwDuel *d)
+{
+    return BW_WIND_PUSH_OF[d->wind_level];
+}
+
+// --- danger-band tables (slice 7; all one-constant owner-tunables) --------------
+// Band 0 IS the slice-6 water: every band-0 entry equals the legacy
+// constant, so all recorded routes and carried proof pins stay
+// bit-valid (check-brine.py asserts the identities loudly). Deeper
+// rum-runners run heavier hulls and faster gun crews; deeper crates
+// are worth more (the concept doc's ~5g band 0 -> ~25g band 2 shape,
+// monster salvage richer still); deeper waters roll one weather level
+// worse per band (applied in bw_water_init, min-clamped at gale).
+static const int32_t BW_BAND_EHULL_OF[BW_BANDS] = { BW_HULL_MAX, 130, 160 };
+static const int32_t BW_BAND_ERELOAD_OF[BW_BANDS] = {
+    BW_RELOAD_ENEMY, 120, 100,
+};
+static const int32_t BW_BAND_LOOT_VALUE_OF[BW_BANDS] = {
+    BW_LOOT_VALUE, 12, 25,
+};
+static const int32_t BW_BAND_MAW_VALUE_OF[BW_BANDS] = {
+    BW_MAW_LOOT_VALUE, 30, 50,
+};
+static const int32_t BW_BAND_REEF_OF[BW_BANDS] = { 0, 3, 5 };
+
+int32_t bw_band_enemy_hull(int32_t band)
+{
+    return BW_BAND_EHULL_OF[band];
+}
+
+int32_t bw_band_enemy_reload(int32_t band)
+{
+    return BW_BAND_ERELOAD_OF[band];
+}
+
 // --- upgrade tier tables (slice 4; player only, tier 0 = the slice-2
 // sloop EXACTLY — check-brine.py asserts the tier-0 identities so the
 // recorded routes and carried pins stay bit-valid) -----------------------------
@@ -98,7 +153,11 @@ int32_t bw_up_price(int32_t tier)
 }
 
 // sail_tier: the SAIL upgrade tier of this ship (enemy always 0).
-static void bw_ship_step(BwShip *s, const BwInputs *in, int32_t sail_tier)
+// wind_hdg/wind_push: the water's wind this frame (slice 6) — BOTH
+// ships sail the same weather; a calm water (push 0) is bit-identical
+// to the slice-5 step.
+static void bw_ship_step(BwShip *s, const BwInputs *in, int32_t sail_tier,
+                         int32_t wind_hdg, int32_t wind_push)
 {
     s->trim = clamp32(s->trim + in->trim_delta, BW_TRIM_BATTLE, BW_TRIM_FULL);
     s->heading = (s->heading
@@ -107,6 +166,13 @@ static void bw_ship_step(BwShip *s, const BwInputs *in, int32_t sail_tier)
                  & (BW_CIRCLE - 1);
 
     int32_t target = BW_SPEED_OF[s->trim] + BW_UP_SPEED_OF[sail_tier];
+    // Point of sail (slice 6): the wind fills or fights the canvas —
+    // cos of (heading - wind) scales the push, the trim's canvas
+    // quarters scale how much of the weather the rig catches. Shifts
+    // only (the signed-division rule: >> floors identically in gcc/ARM
+    // and the Python mirror).
+    int32_t wrel = ((s->heading - wind_hdg) & (BW_CIRCLE - 1)) >> 2;
+    target += (bw_cos(wrel) * wind_push * BW_WIND_CANVAS_OF[s->trim]) >> 10;
     s->speed += clamp32(target - s->speed, -BW_ACCEL, BW_ACCEL);
 
     int32_t brad = s->heading >> 2;
@@ -199,7 +265,8 @@ static void bw_balls_step(BwDuel *d)
                 d->maw.slain = 1;
                 d->maw.state = BW_MAW_DOWN;
                 bw_loot_spawn_at(d, d->maw.x, d->maw.y,
-                                 BW_MAW_LOOT_DROPS, BW_MAW_LOOT_VALUE);
+                                 BW_MAW_LOOT_DROPS,
+                                 BW_BAND_MAW_VALUE_OF[d->band]);
             }
             ball->live = 0;
             continue;
@@ -251,7 +318,7 @@ static void bw_loot_spawn_at(BwDuel *d, int32_t wx, int32_t wy,
 static void bw_loot_spawn(BwDuel *d)
 {
     bw_loot_spawn_at(d, d->enemy.x, d->enemy.y,
-                     BW_LOOT_DROPS, BW_LOOT_VALUE);
+                     BW_LOOT_DROPS, BW_BAND_LOOT_VALUE_OF[d->band]);
 }
 
 // Scoop pass: sail within BW_SCOOP_RANGE of a crate and it comes aboard,
@@ -286,6 +353,79 @@ int32_t bw_dock_step(BwDuel *d)
     d->hold = 0;
     d->hold_gold = 0;
     return banked;
+}
+
+// --- reefs (slice 7) --------------------------------------------------------------
+
+// Lay this water's rocks: BW_BAND_REEF_OF[band] reefs at pure
+// f(seed) positions. Each rock hashes up to BW_REEF_TRIES candidate
+// positions (x off one hash, y off a second hash chained from the
+// first — the whole sea reachable) and takes the first one clear of
+// the anchorage (BW_REEF_CLEAR) and of the pier harbor
+// (BW_MAW_HARBOR — the sanctuary ring is charted water, no rocks);
+// if every try fouls a rail, the rock lands on the fixed far-north
+// fallback shelf, which is provably clear of both by construction.
+// Rock-rock spread is best-effort via the hash stream, never a rail.
+static void bw_reef_spawn(BwDuel *d, uint32_t seed)
+{
+    int32_t n = BW_BAND_REEF_OF[d->band];
+    for (int32_t k = 0; k < n; k++)
+    {
+        BwReef *r = &d->reefs[k];
+        r->x = (BW_REEF_SHELF_X + BW_REEF_SHELF_STEP * k) * BW_ONE;
+        r->y = BW_REEF_SHELF_Y * BW_ONE;
+        for (int32_t t = 0; t < BW_REEF_TRIES; t++)
+        {
+            uint32_t hx = bw_hash(seed, BW_REEF_SALT
+                                        + (uint32_t)(k * BW_REEF_TRIES + t));
+            uint32_t hy = bw_hash(hx, BW_REEF_Y_SALT);
+            int32_t x = BW_SEA_X_MIN
+                        + (int32_t)(hx % (uint32_t)(BW_SEA_X_MAX
+                                                    - BW_SEA_X_MIN + 1));
+            int32_t y = BW_SEA_Y_MIN
+                        + (int32_t)(hy % (uint32_t)(BW_SEA_Y_MAX
+                                                    - BW_SEA_Y_MIN + 1));
+            if (bw_chebyshev(x, y, BW_PLAYER_START_X, BW_PLAYER_START_Y)
+                    < BW_REEF_CLEAR)
+                continue;
+            if (bw_chebyshev(x, y, BW_PIER_X, BW_PIER_Y) < BW_MAW_HARBOR)
+                continue;
+            r->x = x;
+            r->y = y;
+            break;
+        }
+        r->live = 1;
+        r->scraped = 0;
+    }
+}
+
+// One reef pass: a rock scrapes the PLAYER's keel (the rum-runners and
+// the Maw know these waters) for BW_REEF_DMG hull, ONCE per contact —
+// the scraped latch clears only when clear of the rock. Groundings can
+// sink you (the callers' hull checks flip d->over). Band 0 has no
+// reefs, so every slice-2..6 story is untouched.
+static void bw_reefs_step(BwDuel *d)
+{
+    for (int32_t i = 0; i < BW_MAX_REEFS; i++)
+    {
+        BwReef *r = &d->reefs[i];
+        if (!r->live)
+            continue;
+        if (bw_chebyshev(d->player.x, d->player.y, r->x, r->y)
+                < BW_REEF_RANGE)
+        {
+            if (!r->scraped)
+            {
+                d->player.hull -= BW_REEF_DMG;
+                if (d->player.hull < 0)
+                    d->player.hull = 0;
+                r->scraped = 1;
+                d->groundings++;
+            }
+        }
+        else
+            r->scraped = 0;
+    }
 }
 
 // --- the Maw (slice 5) ----------------------------------------------------------
@@ -548,13 +688,49 @@ void bw_duel_init(BwDuel *d, uint32_t seed)
     d->maw.stirs = 0;
     d->maw.slain = 0;
     d->maw.bit = 0;
+    for (int32_t i = 0; i < BW_MAX_REEFS; i++)
+    {
+        d->reefs[i].x = 0;               // slice 7: the band-0 water is
+        d->reefs[i].y = 0;               //   open sea — no rocks; deeper
+        d->reefs[i].live = 0;            //   waters lay theirs in
+        d->reefs[i].scraped = 0;         //   bw_water_init
+    }
     d->hold = 0;                         // caller re-injects a carried hold
     d->hold_gold = 0;                    // (sinking forfeits: no re-inject)
     d->up_hull = 0;                      // caller re-injects the bought
     d->up_cannon = 0;                    //   tiers (upgrades are NEVER
     d->up_sail = 0;                      //   lost — main.c's Score owns them)
+    // Slice 6: this water's weather, pure f(seed) like the spawn ring —
+    // printed on the HUD (the seed rule: any run reproducible).
+    d->wind_level = BW_WIND_LEVEL_OF[bw_hash(seed, BW_WIND_SALT) & 3u];
+    d->wind_base = (int32_t)(bw_hash(seed, BW_WIND_DIR_SALT)
+                             & (BW_CIRCLE - 1));
+    d->band = 0;                         // slice 7: this IS the band-0
+    d->groundings = 0;                   //   water (bw_water_init deepens)
     d->frame = 0;
     d->over = BW_DUEL_RUNNING;
+}
+
+void bw_water_init(BwDuel *d, uint32_t seed, int32_t band)
+{
+    if (band < 0)
+        band = 0;
+    if (band > BW_BANDS - 1)
+        band = BW_BANDS - 1;
+    bw_duel_init(d, seed);
+    d->band = band;
+    // Deeper waters roll one weather level worse per band ("the worse
+    // the weather"), min-clamped at gale — band 0 is untouched, and no
+    // band exceeds the gale the slice-6 escape rails are proven at.
+    d->wind_level = d->wind_level + band > BW_WIND_GALE
+                        ? BW_WIND_GALE
+                        : d->wind_level + band;
+    // The band's rum-runner: heavier hull, faster crews (band 0 rows
+    // are the legacy constants — state-identical by construction).
+    d->enemy.hull = BW_BAND_EHULL_OF[band];
+    d->enemy.reload_l = BW_BAND_ERELOAD_OF[band] / 2;   // same grace rule
+    d->enemy.reload_r = BW_BAND_ERELOAD_OF[band] / 2;
+    bw_reef_spawn(d, seed);
 }
 
 void bw_duel_step(BwDuel *d, const BwInputs *in)
@@ -565,8 +741,12 @@ void bw_duel_step(BwDuel *d, const BwInputs *in)
     BwInputs ai;
     bw_ai(&d->enemy, &d->player, &ai);
 
-    bw_ship_step(&d->player, in, d->up_sail);
-    bw_ship_step(&d->enemy, &ai, 0);
+    int32_t wind_hdg = bw_wind_heading(d);   // slice 6: one wind, both
+    int32_t wind_push = bw_wind_push(d);     //   ships sail it
+    bw_ship_step(&d->player, in, d->up_sail, wind_hdg, wind_push);
+    bw_ship_step(&d->enemy, &ai, 0, wind_hdg, wind_push);
+    bw_reefs_step(d);                    // slice 7: the rocks take their
+                                         //   toll where the keel just went
 
     if (in->fire_l && d->player.reload_l == 0)
     {
@@ -581,12 +761,12 @@ void bw_duel_step(BwDuel *d, const BwInputs *in)
     if (ai.fire_l && d->enemy.reload_l == 0)
     {
         bw_fire(d, &d->enemy, 1, -1);
-        d->enemy.reload_l = BW_RELOAD_ENEMY;
+        d->enemy.reload_l = BW_BAND_ERELOAD_OF[d->band];
     }
     if (ai.fire_r && d->enemy.reload_r == 0)
     {
         bw_fire(d, &d->enemy, 1, 1);
-        d->enemy.reload_r = BW_RELOAD_ENEMY;
+        d->enemy.reload_r = BW_BAND_ERELOAD_OF[d->band];
     }
 
     bw_balls_step(d);
@@ -609,7 +789,9 @@ void bw_salvage_step(BwDuel *d, const BwInputs *in)
     if (d->over != BW_DUEL_ENEMY_SUNK)
         return;
 
-    bw_ship_step(&d->player, in, d->up_sail);
+    bw_ship_step(&d->player, in, d->up_sail,
+                 bw_wind_heading(d), bw_wind_push(d));
+    bw_reefs_step(d);                    // slice 7: rocks scrape salvage
     bw_maw_step(d);                      // slice 5: the water is not empty
 
     // The batteries WAKE while the Maw is up (any awake state — firing
@@ -637,4 +819,149 @@ void bw_salvage_step(BwDuel *d, const BwInputs *in)
         d->over = BW_DUEL_PLAYER_SUNK;   // sunk with the salvage aboard
 
     d->frame++;
+}
+
+// --- synthesized audio (slice 8) -----------------------------------------------
+
+uint32_t bw_amb_tier(int32_t maw_up, int32_t wind_level)
+{
+    if (maw_up)
+        return BW_AMB_MAW;               // the deep overrides the weather
+    if (wind_level <= BW_WIND_CALM)
+        return BW_AMB_CALM;
+    if (wind_level >= BW_WIND_GALE)
+        return BW_AMB_GALE;
+    return BW_AMB_BREEZE;
+}
+
+// Ambience drone rows, indexed by tier: { freq Hz, duty code, vol }.
+// One row per tier — the owner-tunable table. The drone is a low
+// square wave: the calm swell is a barely-there hum, the canvas fills
+// as the weather rises (pitch/duty/volume climb), and the Maw's throb
+// sits above the lot — dark water has a pulse.
+static const uint16_t BW_AMB_ROWS[BW_AMB_TIERS][3] = {
+    { 49, 0, 8 },                        // CALM: the swell against the hull
+    { 62, 1, 16 },                       // BREEZE: the canvas fills
+    { 78, 3, 30 },                       // GALE: the rigging howls
+    { 104, 4, 42 },                      // MAW: the deep has a pulse
+};
+
+uint32_t bw_amb_freq(uint32_t tier)
+{
+    return BW_AMB_ROWS[tier < BW_AMB_TIERS ? tier : 0][0];
+}
+
+uint32_t bw_amb_duty(uint32_t tier)
+{
+    return BW_AMB_ROWS[tier < BW_AMB_TIERS ? tier : 0][1];
+}
+
+uint32_t bw_amb_vol(uint32_t tier)
+{
+    return BW_AMB_ROWS[tier < BW_AMB_TIERS ? tier : 0][2];
+}
+
+// One-shot cue rows, indexed by cue id: { freq Hz, len frames, duty
+// code or BW_CUE_ON_NOISE, vol, freq2 }. One row per sound — the
+// owner-tunable table. Row 0 (BW_CUE_NONE) is all zeros: a no-op cue.
+// The dock chime is the one two-note row (C5 -> G5, freq2 nonzero).
+static const uint16_t BW_CUE_ROWS[BW_CUE_COUNT][5] = {
+    { 0, 0, 0, 0, 0 },                       // NONE
+    { 700, 7, BW_CUE_ON_NOISE, 96, 0 },      // CANNON: the thump
+    { 1800, 10, BW_CUE_ON_NOISE, 40, 0 },    // SPLASH: a spent rake hisses
+    { 587, 9, 4, 70, 0 },                    // SCOOP: D5, a crate aboard
+    { 240, 12, BW_CUE_ON_NOISE, 90, 0 },     // CRACK: timber gives
+    { 120, 26, BW_CUE_ON_NOISE, 84, 0 },     // SCRAPE: the keel grates
+    { 90, 36, BW_CUE_ON_NOISE, 100, 0 },     // WRECK: she goes under
+    { 523, 28, 4, 88, 784 },                 // DOCK: C5 -> G5, the chime
+    { 73, 30, 6, 104, 0 },                   // MAWRISE: D2, the deep speaks
+    { 160, 22, BW_CUE_ON_NOISE, 112, 0 },    // BITE: the jaws close
+    { 200, 60, BW_CUE_ON_NOISE, 116, 0 },    // SUNK: the long cold rattle
+};
+
+uint32_t bw_cue_freq(uint32_t cue)
+{
+    return BW_CUE_ROWS[cue < BW_CUE_COUNT ? cue : 0][0];
+}
+
+uint32_t bw_cue_len(uint32_t cue)
+{
+    return BW_CUE_ROWS[cue < BW_CUE_COUNT ? cue : 0][1];
+}
+
+uint32_t bw_cue_duty(uint32_t cue)
+{
+    return BW_CUE_ROWS[cue < BW_CUE_COUNT ? cue : 0][2];
+}
+
+uint32_t bw_cue_vol(uint32_t cue)
+{
+    return BW_CUE_ROWS[cue < BW_CUE_COUNT ? cue : 0][3];
+}
+
+uint32_t bw_cue_freq2(uint32_t cue)
+{
+    return BW_CUE_ROWS[cue < BW_CUE_COUNT ? cue : 0][4];
+}
+
+// --- the Graywake ledger save (slice 9) ------------------------------------------
+
+uint32_t bw_save_checksum(const uint32_t words[BW_SAVE_WORDS])
+{
+    uint32_t h = BW_SAVE_SALT;
+    for (int i = 0; i < BW_SAVE_WORDS - 1; i++)
+        h = bw_hash(h, words[i]);
+    return h;
+}
+
+void bw_save_encode(uint32_t gold, int32_t up_hull, int32_t up_cannon,
+                    int32_t up_sail, uint32_t best_band,
+                    uint8_t out[BW_SAVE_BYTES])
+{
+    uint32_t w[BW_SAVE_WORDS] = {
+        BW_SAVE_MAGIC, BW_SAVE_VERSION, gold,
+        (uint32_t)up_hull | ((uint32_t)up_cannon << 8)
+                          | ((uint32_t)up_sail << 16),
+        best_band, 0, 0, 0,
+    };
+    w[BW_SAVE_WORDS - 1] = bw_save_checksum(w);
+    for (int i = 0; i < BW_SAVE_WORDS; i++)          // little-endian words
+    {
+        out[4 * i + 0] = (uint8_t)(w[i] & 0xFFu);
+        out[4 * i + 1] = (uint8_t)((w[i] >> 8) & 0xFFu);
+        out[4 * i + 2] = (uint8_t)((w[i] >> 16) & 0xFFu);
+        out[4 * i + 3] = (uint8_t)((w[i] >> 24) & 0xFFu);
+    }
+}
+
+int bw_save_decode(const uint8_t in[BW_SAVE_BYTES], uint32_t *gold,
+                   int32_t *up_hull, int32_t *up_cannon,
+                   int32_t *up_sail, uint32_t *best_band)
+{
+    uint32_t w[BW_SAVE_WORDS];
+    for (int i = 0; i < BW_SAVE_WORDS; i++)
+        w[i] = (uint32_t)in[4 * i + 0]
+             | ((uint32_t)in[4 * i + 1] << 8)
+             | ((uint32_t)in[4 * i + 2] << 16)
+             | ((uint32_t)in[4 * i + 3] << 24);
+    if (w[0] != BW_SAVE_MAGIC)
+        return 0;                                    // blank/garbage chip
+    if (w[1] != BW_SAVE_VERSION)
+        return 0;                                    // layout changed: reset
+    if (w[BW_SAVE_WORDS - 1] != bw_save_checksum(w))
+        return 0;                                    // corrupt: reset
+    uint32_t hull = w[3] & 0xFFu;
+    uint32_t cannon = (w[3] >> 8) & 0xFFu;
+    uint32_t sail = (w[3] >> 16) & 0xFFu;
+    if (hull >= BW_UP_TIERS || cannon >= BW_UP_TIERS
+        || sail >= BW_UP_TIERS || (w[3] >> 24) != 0)
+        return 0;                                    // impossible tiers: reset
+    if (w[4] >= BW_BANDS)
+        return 0;                                    // impossible chart: reset
+    *gold = w[2];
+    *up_hull = (int32_t)hull;
+    *up_cannon = (int32_t)cannon;
+    *up_sail = (int32_t)sail;
+    *best_band = w[4];
+    return 1;
 }

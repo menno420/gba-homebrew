@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>menno420 game-lab — web arcade</title>
+<style>
+  body { margin: 0; background: #10141c; color: #d8dee8;
+         font-family: Georgia, 'Times New Roman', serif; }
+  main { max-width: 40em; margin: 0 auto; padding: 2.5em 1.25em 4em; }
+  h1 { font-size: 1.6em; letter-spacing: 0.04em; color: #f0f4fa; }
+  p.lede { color: #9aa5b5; }
+  ul.games { list-style: none; padding: 0; }
+  ul.games li { margin: 1.4em 0; padding: 1em 1.2em;
+                background: #171d29; border: 1px solid #2a3242;
+                border-radius: 6px; }
+  ul.games a { color: #7fd4ff; font-size: 1.15em; text-decoration: none; }
+  ul.games a:hover { text-decoration: underline; }
+  ul.games span.desc { display: block; margin-top: 0.35em;
+                       color: #b9c2d0; font-size: 0.95em; }
+  footer { margin-top: 3em; color: #6b7484; font-size: 0.85em;
+           border-top: 1px solid #2a3242; padding-top: 1em; }
+</style>
+</head>
+<body>
+<main>
+<h1>Web arcade</h1>
+<p class="lede">Three original games. No accounts, no downloads, no
+external requests &mdash; each one is plain HTML and vanilla JS.</p>
+<ul class="games">
+  <li>
+    <a href="undertow/">Undertow</a>
+    <span class="desc">One-hand arcade survival: free-dive a bottomless
+    trench whose walls squeeze tighter the deeper you go &mdash; depth is
+    the only score, and the same seed always plays out identically.</span>
+  </li>
+  <li>
+    <a href="tiltstone/">Tiltstone</a>
+    <span class="desc">Turn-based gravity puzzle: your only verb is turning
+    the whole cavern 90&deg;. Everything falls, three gems of a kind
+    collect, and every seed is provably winnable.</span>
+  </li>
+  <li>
+    <a href="drift-garden/">Drift Garden</a>
+    <span class="desc">Ambient touch strategy in a pocket garden: plant
+    drifting motes, shepherd them into pollinating pairs, and harvest the
+    day&rsquo;s quota before dusk sends the wisps hunting. Seeded rounds
+    &mdash; the same seed is the same garden. Installable, offline-capable
+    PWA.</span>
+  </li>
+</ul>
+<footer>menno420 game-lab &mdash; built from main</footer>
+</main>
+</body>
+</html>

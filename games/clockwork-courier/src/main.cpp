@@ -1,0 +1,941 @@
+/*
+ * CLOCKWORK COURIER (game-lab Track B, breadth program game #7)
+ *
+ * Rewind-ghost puzzle platformer, original IP — the ORDER-001 concept
+ * queue's item 2 (docs/concepts/session-1-concepts.md), prototype
+ * slice. A courier robot in a clockwork tower: LEFT/RIGHT walk, A
+ * jump (fixed-point gravity + tile collision on one handcrafted
+ * single-screen level). THE HOOK: R rewinds YOU 5 seconds (300
+ * frames) but leaves a GHOST that replays exactly what you just did.
+ * The door 'D' stays open only while the pressure switch 'o' is held
+ * down — and the switch counts the ghost's weight, so the solve is to
+ * act out your future partner (walk onto the switch, stand there),
+ * rewind, and run the parcel 'P' through the door to the chute 'v'
+ * while your past self holds it. Deliver = win card, clock stamped;
+ * START restarts. No lose state — the tower is patient.
+ *
+ * THE RUSH ORDER (growth rung 2 — "multiple parcels/chutes with
+ * timing windows", the pitch's "timed chutes"): SELECT starts a run
+ * with TWO parcels (the classic ledge one plus one waiting on the
+ * step) and the chute KEEPS HOURS — its shutter is open only while
+ * (run_frames %% 240) < 60 (1 s in every 4). Both parcels through an
+ * open window = the rush is done. Pure data + clock: no physics
+ * constant moves (the rung-1 reachability rail is load-bearing), and
+ * the classic START run never evaluates any of it, so every carried
+ * pin holds by construction.
+ *
+ * PROTOTYPE RULES (deliberate cuts documented in CONCEPT.md):
+ *   - One ghost at a time; R fires only when the pose buffer is FULL
+ *     (300 recorded playing-frames — the HUD says REWIND READY) and
+ *     no ghost is already out. A rewind empties the buffer.
+ *   - The ghost replays recorded POSES (not re-simulated inputs), so
+ *     replay exactness is BY CONSTRUCTION; it vanishes when its 300
+ *     frames run out. It presses switches; it is not (yet) a platform.
+ *   - The door never crushes: while any part of the player overlaps a
+ *     door cell the door stays open regardless of the switch.
+ *
+ * DETERMINISM CONTRACT (headless proof relies on all of this):
+ *   - No RNG anywhere: a handcrafted level + input-driven physics.
+ *     Integer/fixed-point math only (positions in 8.8 pixels).
+ *   - The sim steps once per frame off the input latched that frame;
+ *     the same input script replays bit-identically — the concept
+ *     doc's own bet ("the headless harness can literally assert it"),
+ *     and the ghost contract is asserted ON CAMERA: the ghost's
+ *     replayed positions pin to the SAME literals as the original
+ *     walk 300 frames earlier.
+ *
+ * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
+ * --elf --watch cc:cc_telemetry:16): a volatile 16-word array with
+ * C-linkage symbol `cc_telemetry`, updated every frame:
+ *   [0] 0x434C4B57 'CLKW' magic      [8]  ghost active (0/1)
+ *   [1] 0x434F5552 'COUR' magic      [9]  ghost x (8.8 px)
+ *   [2] state (0 title, 1 playing,   [10] ghost y (8.8 px)
+ *       2 delivered)                 [11] switch held (0/1)
+ *   [3] frames since boot            [12] door open (0/1)
+ *   [4] player x (8.8 px, feet mid)  [13] parcel carried (0/1)
+ *   [5] player y (8.8 px, feet)     [14] rewinds used this run
+ *   [6] on ground (0/1)              [15] run frames elapsed (the
+ *   [7] pose buffer fill (0..300)         clock the chute stamps)
+ *   [16] standing on the ghost (0/1) — growth rung 1
+ *   [17] mode (0 classic START / 1 THE RUSH ORDER, SELECT / 2 the
+ *        tower levels, L) — rungs 2-3
+ *   [18] parcels delivered this run (rush)   [19] chute window open
+ *   [20] level index (0-2, tower levels only; 0 otherwise) — rung 3
+ *
+ * AUDIO (growth rung 4, the concept's LAST cut): six original
+ * synthesized cues (audio/generate_audio.py — deterministic, no
+ * samples ever) via maxmod, fired as pure DECISIONS on events the sim
+ * already computed: run start (deferred one frame off the transition
+ * — the Shoal boot-lag rule), parcel pickup, rewind fired, the door
+ * opening, delivery, and the chute-window tick. Nothing feeds back
+ * into the sim. Every trigger bumps a cumulative gl_audio_hook slot:
+ *   [0] starts  [1] pickups  [2] rewinds  [3] door-openings
+ *   [4] deliveries  [5] window ticks  [6] mute state (B toggles;
+ *   gates play() ONLY — the counters always bump)
+ * so the harness pins the decisions and the mixer-memory nonzero
+ * watch proves the voicing (docs/capabilities.md).
+ *
+ * Presentation is deliberately trivial (breadth-program slice): the
+ * tower is glyph rows in Butano's common FIXED 8x8 sprite font; the
+ * courier '@' and ghost 'g' are single-glyph pixel-positioned text
+ * sprites; HUD/title/win text uses the common variable 8x8 font (the
+ * one --assert-text can read). All code original; fonts are Butano's
+ * zlib-licensed common assets (third_party/butano/common).
+ */
+
+#include "bn_core.h"
+#include "bn_color.h"
+#include "bn_keypad.h"
+#include "bn_string.h"
+#include "bn_vector.h"
+#include "bn_display.h"
+#include "bn_bg_palettes.h"
+#include "bn_sprite_ptr.h"
+#include "bn_sound_items.h"
+#include "bn_sprite_text_generator.h"
+
+#include "common_fixed_8x8_sprite_font.h"
+#include "common_variable_8x8_sprite_font.h"
+
+#include "gl_audio_hook.h"
+
+extern "C"
+{
+    // Headless telemetry mailbox — see the layout table in the header
+    // comment. volatile so every write really lands for the emulator bus.
+    volatile unsigned cc_telemetry[21];
+}
+
+namespace
+{
+    enum state_t : unsigned
+    {
+        st_title = 0,
+        st_playing = 1,
+        st_delivered = 2,
+    };
+
+    // --- the tower (one handcrafted single-screen level; NO RNG) -----------
+    // 16 columns x 9 rows of 8px cells. '#' solid, 'P' parcel ledge prize,
+    // 'o' the pressure switch, 'D' door cells (solid while closed), 'v'
+    // the delivery chute, '.' air. The door column is capped by '#' at
+    // (12,5) so the only way through is the switch.
+    constexpr int map_w = 16;
+    constexpr int map_h = 9;
+    // The door column is capped by '#' at (12,4) AND (12,5): a max jump
+    // rises 26.6 px (feet 64 -> 37.4), so the body always overlaps the
+    // row-4 cap while airborne beside it — the door is provably not
+    // jumpable (probe-measured: a ONE-cell cap was, and the ghost was
+    // optional; the two-cell cap closes that exploit).
+    constexpr char level[map_h][map_w + 1] = {
+        "################",
+        "#...........#..#",
+        "#P..........#..#",
+        "####........#..#",
+        "#...........#.##",
+        "#....##.....#..#",   // (6,4) hosts the rush parcel Q
+        "#...........D..#",
+        "#..o........D.v#",
+        "################",
+    };
+
+    constexpr int cell_px = 8;
+
+    // Named cells (must match the level art above).
+    constexpr int switch_cx = 3, switch_cy = 7;
+    constexpr int parcel_cx = 1, parcel_cy = 2;
+    constexpr int parcel2_cx = 6, parcel2_cy = 4;   // on the step (rush)
+    constexpr int window_period = 240;              // the chute's hours:
+    constexpr int window_open_frames = 60;          //   1 s in every 4
+
+    constexpr int chute_cx = 14, chute_cy = 7;
+    constexpr int door_cx = 12;
+    constexpr int door_cy0 = 6, door_cy1 = 7;
+
+    // --- THE TOWER SHIFTS (growth rung 3: "more levels") -------------------
+    // Three new floors on the L verb, each a NEW tile map with its own
+    // literals (per-level from day one — the rung-2 note), combining the
+    // shipped mechanics. The classic/rush verbs never read this table.
+    // Reachability law (untouchable): ground apex = feet 38.76 px, so a
+    // ledge whose top is 32 px (row 4) is in the ghost-boost-exclusive
+    // band; door caps two rows deep are unjumpable (the #96 argument).
+    // LV1 THE HIGH SHELF — teach the boost: the parcel sits on a shelf
+    //     only a boosted jump reaches; the chute keeps no hours.
+    // LV2 THE NIGHT SHIFT — door + switch + TIMED chute: the ghost holds
+    //     the door and the window must still be caught on the far side.
+    // LV3 THE FULL ROUND — everything: boost parcel, ghost-held door,
+    //     timed window; two rewinds in one delivery.
+    constexpr char lv1_map[map_h][map_w + 1] = {
+        "################",
+        "#..............#",
+        "#..............#",
+        "#.....P........#",
+        "#.....#........#",
+        "#..............#",
+        "#..............#",
+        "#.............v#",
+        "################",
+    };
+    constexpr char lv2_map[map_h][map_w + 1] = {
+        "################",
+        "#..............#",
+        "#..............#",
+        "#..............#",
+        "#........#.....#",
+        "#P.......#.....#",
+        "##.......D.....#",
+        "#..o.....D...v.#",
+        "################",
+    };
+    constexpr char lv3_map[map_h][map_w + 1] = {
+        "################",
+        "#..............#",
+        "#..............#",
+        "#.P............#",
+        "#.#.......#....#",
+        "#.........#....#",
+        "#.........D....#",
+        "#....o....D..v.#",
+        "################",
+    };
+
+    struct floor_def
+    {
+        const char* name;
+        const char (*map)[map_w + 1];
+        int sw_x, sw_y;                  // pressure switch (-1 = none)
+        int p_x, p_y;                    // the parcel
+        int p2_x, p2_y;                  // second parcel (-1 = none)
+        int ch_x, ch_y;                  // the chute
+        int d_x, d_y0, d_y1;             // door column (-1 = none)
+        bool timed;                      // the chute keeps hours
+    };
+
+    constexpr int floor_count = 3;
+    constexpr floor_def floor_defs[floor_count] = {
+        {"THE HIGH SHELF", lv1_map, -1, -1, 6, 3, -1, -1, 14, 7,
+         -1, -1, -1, false},
+        {"THE NIGHT SHIFT", lv2_map, 3, 7, 1, 5, -1, -1, 13, 7,
+         9, 6, 7, true},
+        {"THE FULL ROUND", lv3_map, 5, 7, 2, 3, -1, -1, 13, 7,
+         10, 6, 7, true},
+    };
+
+    // The base tower as a def too, so every mode reads ONE current-floor
+    // view: classic and rush pass the original literals verbatim (their
+    // sims are bit-identical by construction).
+    constexpr floor_def base_classic = {
+        "THE TOWER", level, switch_cx, switch_cy, parcel_cx, parcel_cy,
+        -1, -1, chute_cx, chute_cy, door_cx, door_cy0, door_cy1, false};
+    constexpr floor_def base_rush = {
+        "THE TOWER", level, switch_cx, switch_cy, parcel_cx, parcel_cy,
+        parcel2_cx, parcel2_cy, chute_cx, chute_cy, door_cx, door_cy0,
+        door_cy1, true};
+
+    // --- fixed-point physics (8.8 pixels; all owner-tunable integers) ------
+    constexpr int fp = 256;
+    constexpr int walk_speed = 320;      // 1.25 px/frame
+    constexpr int gravity = 38;          // px/frame^2 in 1/256
+    constexpr int jump_v = -720;         // 2.8125 px/frame up = ~3.3 cells
+    constexpr int fall_cap = 768;        // terminal 3 px/frame
+    constexpr int half_w = 3 * fp;       // hitbox: 6px wide, 8px tall
+    constexpr int body_h = 8 * fp;       //   (feet-center anchored)
+
+    // --- the rewind (the whole hook) ----------------------------------------
+    constexpr int rewind_frames = 300;   // 5 seconds at 60 fps
+
+    // Spawn: feet-center, standing on the ground row (cells y=7).
+    constexpr int spawn_x = 8 * cell_px * fp + 4 * fp;   // middle of cell 8
+    constexpr int spawn_y = 8 * cell_px * fp;            // ground top
+
+    struct pose_t
+    {
+        int x = 0;
+        int y = 0;
+    };
+
+    struct text_line
+    {
+        bn::vector<bn::sprite_ptr, 20> sprites;
+        bn::string<40> cached;
+        bool dirty_clear = false;
+
+        void set(bn::sprite_text_generator& gen, int x, int y,
+                 const bn::string<40>& text)
+        {
+            if(! dirty_clear && cached == text)
+            {
+                return;
+            }
+
+            dirty_clear = false;
+            cached = text;
+            sprites.clear();
+            gen.generate(x, y, text, sprites);
+        }
+
+        void clear()
+        {
+            cached.clear();
+            sprites.clear();
+            dirty_clear = true;
+        }
+    };
+}
+
+int main()
+{
+    bn::core::init();
+
+    // Brass-dark clockwork backdrop: unmistakably not blank.
+    bn::bg_palettes::set_transparent_color(bn::color(4, 3, 1));
+
+    bn::sprite_text_generator map_gen(common::fixed_8x8_sprite_font);
+    map_gen.set_left_alignment();
+    bn::sprite_text_generator ui_gen(common::variable_8x8_sprite_font);
+    ui_gen.set_left_alignment();
+
+    // The tower drawn cell-true: 16x8px wide = 128px centered, rows 8px
+    // apart (collision matches what you see).
+    constexpr int map_x = -64;
+    constexpr int map_y0 = -56;          // row centers at -56, -48, ... 8
+    text_line map_lines[map_h];
+
+    constexpr int ui_count = 9;
+    constexpr int ui_y[ui_count] = {-70, 24, 40, 52, 64, 76, 88, 100, 112};
+    constexpr int ui_x = -110;
+    text_line ui_lines[ui_count];
+
+    text_line player_glyph;              // '@' at pixel position
+    text_line ghost_glyph;               // 'g' at pixel position
+
+    auto clear_lines = [&]()
+    {
+        for(int i = 0; i < map_h; ++i)
+        {
+            map_lines[i].clear();
+        }
+
+        for(int i = 0; i < ui_count; ++i)
+        {
+            ui_lines[i].clear();
+        }
+
+        player_glyph.clear();
+        ghost_glyph.clear();
+    };
+
+    // --- run state (reset_run() restores the exact boot run: no RNG) -------
+    unsigned state = st_title;
+    unsigned frames = 0;                 // monotonic since boot, never reset
+    int px = spawn_x;
+    int py = spawn_y;
+    int vy = 0;
+    bool on_ground = true;
+    bool carried = false;
+    bool p2_carried = false;             // the rush parcel (rung 2)
+    unsigned delivered_n = 0;            // rush deliveries this run
+    unsigned mode = 0;                   // 0 classic (START) / 1 rush
+                                         // (SELECT) / 2 tower levels (L)
+    unsigned level = 0;                  // tower-levels index (mode 2)
+    const floor_def* cur = &base_classic;// the ONE current-floor view
+    bool muted = false;                  // B gates play() only
+    bool start_cue_pending = false;      // fires on the FIRST playing
+                                         // frame, never the transition
+    bool door_open = false;
+    bool switch_held = false;
+    unsigned rewinds = 0;
+    unsigned run_frames = 0;
+
+    pose_t buffer[rewind_frames];
+    int buf_fill = 0;                    // 0..rewind_frames (ring when full)
+    int buf_head = 0;                    // next write slot
+
+    bool ghost_active = false;
+    bool on_ghost = false;               // standing on the ghost's head
+                                         // (growth rung 1)
+    pose_t ghost_track[rewind_frames];
+    int ghost_at = 0;                    // replay cursor
+    int gx = 0;
+    int gy = 0;
+
+    auto reset_run = [&]()
+    {
+        px = spawn_x;
+        py = spawn_y;
+        vy = 0;
+        on_ground = true;
+        carried = false;
+        p2_carried = false;
+        delivered_n = 0;
+        door_open = false;
+        switch_held = false;
+        rewinds = 0;
+        run_frames = 0;
+        buf_fill = 0;
+        buf_head = 0;
+        ghost_active = false;
+        on_ghost = false;
+        gx = 0;
+        gy = 0;
+    };
+
+    // Solid test for the PLAYER's collision (the door is solid while
+    // closed; everything '#' always is).
+    auto solid_cell = [&](int cx, int cy) -> bool
+    {
+        if(cx < 0 || cx >= map_w || cy < 0 || cy >= map_h)
+        {
+            return true;
+        }
+
+        char t = cur->map[cy][cx];
+
+        if(t == '#')
+        {
+            return true;
+        }
+
+        if(t == 'D' && ! door_open)
+        {
+            return true;
+        }
+
+        return false;
+    };
+
+    // Does the player AABB at (x, y) overlap any solid cell? Feet-center
+    // anchor: box spans [x-half_w, x+half_w) x [y-body_h, y) in 8.8 px.
+    auto blocked_at = [&](int x, int y) -> bool
+    {
+        int left = (x - half_w) / fp;
+        int right = (x + half_w - 1) / fp;
+        int top = (y - body_h) / fp;
+        int bottom = (y - 1) / fp;
+
+        for(int pyc = top / cell_px; pyc <= bottom / cell_px; ++pyc)
+        {
+            for(int pxc = left / cell_px; pxc <= right / cell_px; ++pxc)
+            {
+                if(solid_cell(pxc, pyc))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    };
+
+    auto feet_cell_x = [&](int x) { return (x / fp) / cell_px; };
+    auto feet_cell_y = [&](int y) { return ((y - 1) / fp) / cell_px; };
+
+    while(true)
+    {
+        bool start = bn::keypad::start_pressed();
+        bool select = bn::keypad::select_pressed();
+        bool lkey = bn::keypad::l_pressed();
+
+        if(bn::keypad::b_pressed())
+        {
+            muted = ! muted;
+        }
+
+        switch(state)
+        {
+
+        case st_title:
+        case st_delivered:
+            if(start || select || lkey)
+            {
+                unsigned prev_mode = mode;          // SELECT: rush /
+                mode = select ? 1 : (lkey ? 2 : 0); // L: the tower levels
+
+                if(mode == 2)
+                {
+                    // L from a level's win card advances (wraps after
+                    // the last floor); from anywhere else, floor 1.
+                    level = (prev_mode == 2 && state == st_delivered)
+                          ? (level + 1) % floor_count : 0;
+                }
+
+                cur = mode == 0 ? &base_classic
+                    : mode == 1 ? &base_rush : &floor_defs[level];
+                reset_run();
+                clear_lines();
+                start_cue_pending = true;
+                state = st_playing;
+            }
+            break;
+
+        case st_playing:
+        {
+            ++run_frames;
+
+            if(start_cue_pending)
+            {
+                start_cue_pending = false;
+
+                if(! muted)
+                {
+                    bn::sound_items::cc_start.play(bn::fixed(0.7));
+                }
+
+                gl::count_audio(0);      // starts
+            }
+
+            // --- the ghost replays first (pure pose playback) --------------
+            if(ghost_active)
+            {
+                gx = ghost_track[ghost_at].x;
+                gy = ghost_track[ghost_at].y;
+                ++ghost_at;
+
+                if(ghost_at >= rewind_frames)
+                {
+                    ghost_active = false;     // its 5 seconds are spent
+                }
+            }
+
+            // --- the rewind verb (R): only on a FULL buffer, one ghost ----
+            if(bn::keypad::r_pressed() && ! ghost_active
+               && buf_fill >= rewind_frames)
+            {
+                // Oldest-first copy of the ring into the ghost's track.
+                for(int i = 0; i < rewind_frames; ++i)
+                {
+                    ghost_track[i] = buffer[(buf_head + i) % rewind_frames];
+                }
+
+                // YOU snap back 5 seconds; the ghost sets off from there.
+                px = ghost_track[0].x;
+                py = ghost_track[0].y;
+                vy = 0;
+                gx = px;
+                gy = py;
+                ghost_active = true;
+                ghost_at = 0;
+                buf_fill = 0;                 // the tape is spent too
+                buf_head = 0;
+                ++rewinds;
+
+                if(! muted)
+                {
+                    bn::sound_items::cc_rewind.play(bn::fixed(0.8));
+                }
+
+                gl::count_audio(2);      // rewinds
+            }
+
+            // --- ghost-as-platform, part 1: the ride (growth rung 1) ------
+            // Standing on the ghost's head re-evaluates every frame AFTER
+            // the ghost has replayed its pose: still active, still under
+            // your feet, and the seat not squeezed into a wall -> your
+            // feet FOLLOW its head. Otherwise you are dismounted and
+            // normal physics resumes this same frame.
+            if(on_ghost)
+            {
+                int seat = gy - body_h;
+
+                if(ghost_active
+                   && px - gx < 2 * half_w && gx - px < 2 * half_w
+                   && ! blocked_at(px, seat))
+                {
+                    py = seat;
+                    vy = 0;
+                    on_ground = true;
+                }
+                else
+                {
+                    on_ghost = false;
+                }
+            }
+
+            // --- courier physics (integer, input-driven, deterministic) ---
+            int vx = 0;
+
+            if(bn::keypad::left_held())
+            {
+                vx -= walk_speed;
+            }
+
+            if(bn::keypad::right_held())
+            {
+                vx += walk_speed;
+            }
+
+            if(bn::keypad::a_pressed() && on_ground)
+            {
+                vy = jump_v;
+                on_ghost = false;         // jumping dismounts
+            }
+
+            if(! on_ghost)
+            {
+                vy += gravity;            // riders hang on the replay,
+            }                             //   not on gravity
+
+            if(vy > fall_cap)
+            {
+                vy = fall_cap;
+            }
+
+            // Horizontal, pixel-stepped so we never tunnel a wall.
+            if(vx != 0)
+            {
+                int nx = px + vx;
+
+                if(! blocked_at(nx, py))
+                {
+                    px = nx;
+                }
+            }
+
+            // Vertical, with landing/bump resolution to the cell edge.
+            if(! on_ghost)
+            {
+                int ny = py + vy;
+                int seat = gy - body_h;
+
+                // Ghost-as-platform, part 2: the one-way TOP landing.
+                // Falling, horizontally over the ghost, feet crossing its
+                // head this frame, seat clear -> stand on it. One-way by
+                // construction: rising or sideways never tests this.
+                if(ghost_active && vy > 0
+                   && px - gx < 2 * half_w && gx - px < 2 * half_w
+                   && py <= seat && ny >= seat
+                   && ! blocked_at(px, seat))
+                {
+                    py = seat;
+                    vy = 0;
+                    on_ground = true;
+                    on_ghost = true;
+                }
+                else if(! blocked_at(px, ny))
+                {
+                    py = ny;
+                    on_ground = false;
+                }
+                else if(vy > 0)               // landing: snap feet to the
+                {                             // top of the blocking row
+                    int bottom_cell = ((ny - 1) / fp) / cell_px;
+                    py = bottom_cell * cell_px * fp;
+                    vy = 0;
+                    on_ground = true;
+                }
+                else                          // head bump: stop rising
+                {
+                    vy = 0;
+                }
+            }
+
+            // --- the clockwork reacts --------------------------------------
+            bool player_on_switch = on_ground
+                && feet_cell_x(px) == cur->sw_x
+                && feet_cell_y(py) == cur->sw_y;
+            bool ghost_on_switch = ghost_active
+                && feet_cell_x(gx) == cur->sw_x
+                && feet_cell_y(gy) == cur->sw_y;
+            switch_held = player_on_switch || ghost_on_switch;
+
+            // The door never crushes: it stays open while the player
+            // overlaps its cells, whatever the switch says.
+            bool player_in_door = false;
+            {
+                int left = (px - half_w) / fp / cell_px;
+                int right = ((px + half_w - 1) / fp) / cell_px;
+                int top = ((py - body_h) / fp) / cell_px;
+                int bottom = ((py - 1) / fp) / cell_px;
+                player_in_door = cur->d_x >= 0
+                    && left <= cur->d_x && cur->d_x <= right
+                    && top <= cur->d_y1 && cur->d_y0 <= bottom;
+            }
+
+            bool door_was_open = door_open;
+            door_open = switch_held || (door_open && player_in_door);
+
+            if(door_open && ! door_was_open)
+            {
+                if(! muted)
+                {
+                    bn::sound_items::cc_door.play(bn::fixed(0.8));
+                }
+
+                gl::count_audio(3);      // door openings
+            }
+
+            // Parcel + chute (the delivery). Rung 2: the rush order
+            // adds a second parcel and gives the chute HOURS — the
+            // classic run (mode 0) evaluates exactly the old code.
+            bool window_open = (run_frames % window_period)
+                               < window_open_frames;
+
+            if(cur->timed && window_open
+               && (run_frames % window_period) == 0)
+            {
+                if(! muted)
+                {
+                    bn::sound_items::cc_tick.play(bn::fixed(0.5));
+                }
+
+                gl::count_audio(5);      // window ticks
+            }
+
+            if(! carried && feet_cell_x(px) == cur->p_x
+               && feet_cell_y(py) == cur->p_y)
+            {
+                carried = true;
+
+                if(! muted)
+                {
+                    bn::sound_items::cc_pickup.play(bn::fixed(0.6));
+                }
+
+                gl::count_audio(1);      // pickups
+            }
+
+            if(cur->p2_x >= 0 && ! p2_carried
+               && feet_cell_x(px) == cur->p2_x
+               && feet_cell_y(py) == cur->p2_y)
+            {
+                p2_carried = true;
+
+                if(! muted)
+                {
+                    bn::sound_items::cc_pickup.play(bn::fixed(0.6));
+                }
+
+                gl::count_audio(1);      // pickups
+            }
+
+            if(! cur->timed)
+            {
+                if(carried && feet_cell_x(px) == cur->ch_x
+                   && feet_cell_y(py) == cur->ch_y)
+                {
+                    state = st_delivered;
+                    clear_lines();
+
+                    if(! muted)
+                    {
+                        bn::sound_items::cc_deliver.play(bn::fixed(0.9));
+                    }
+
+                    gl::count_audio(4);  // deliveries
+                }
+            }
+            else if((carried || p2_carried) && window_open
+                    && feet_cell_x(px) == cur->ch_x
+                    && feet_cell_y(py) == cur->ch_y)
+            {
+                delivered_n += unsigned(carried) + unsigned(p2_carried);
+                carried = false;
+                p2_carried = false;
+
+                if(! muted)
+                {
+                    bn::sound_items::cc_deliver.play(bn::fixed(0.9));
+                }
+
+                gl::count_audio(4);      // deliveries
+
+                unsigned need = cur->p2_x >= 0 ? 2u : 1u;
+
+                if(delivered_n >= need)
+                {
+                    state = st_delivered;
+                    clear_lines();
+                }
+            }
+
+            // --- record THIS frame's pose onto the tape --------------------
+            buffer[buf_head] = pose_t{px, py};
+            buf_head = (buf_head + 1) % rewind_frames;
+
+            if(buf_fill < rewind_frames)
+            {
+                ++buf_fill;
+            }
+
+            break;
+        }
+
+        }
+
+        // --- draw ----------------------------------------------------------
+
+        switch(state)
+        {
+
+        case st_title:
+            ui_lines[0].set(ui_gen, ui_x, -60, "CLOCKWORK COURIER");
+            ui_lines[1].set(ui_gen, ui_x, -40, "R REWINDS YOU 5 SECONDS");
+            ui_lines[2].set(ui_gen, ui_x, -28, "YOUR GHOST REPLAYS YOU");
+            ui_lines[3].set(ui_gen, ui_x, -16, "IT CAN HOLD THE SWITCH");
+            ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
+            ui_lines[5].set(ui_gen, ui_x, 24, "AND YOU CAN STAND ON IT");
+            ui_lines[6].set(ui_gen, ui_x, 40, "SELECT: RUSH ORDER (2)");
+            ui_lines[7].set(ui_gen, ui_x, 52, "L: THE TOWER SHIFTS (3)");
+            ui_lines[8].set(ui_gen, ui_x, 64, "B: MUTE");
+            break;
+
+        case st_playing:
+        {
+            for(int y = 0; y < map_h; ++y)
+            {
+                bn::string<40> row;
+
+                for(int x = 0; x < map_w; ++x)
+                {
+                    char glyph = cur->map[y][x];
+
+                    if(glyph == 'P' && carried)
+                    {
+                        glyph = '.';
+                    }
+                    else if(y == cur->p2_y && x == cur->p2_x)
+                    {
+                        glyph = ! p2_carried ? 'Q' : '.';
+                    }
+                    else if(glyph == 'D')
+                    {
+                        glyph = door_open ? '.' : 'D';
+                    }
+                    else if(glyph == 'o' && switch_held)
+                    {
+                        glyph = '_';
+                    }
+
+                    row.append(glyph);
+                }
+
+                map_lines[y].set(map_gen, map_x, map_y0 + cell_px * y, row);
+            }
+
+            // The courier and the ghost, pixel-true (cosmetic only — the
+            // mailbox carries the exact fixed-point truth).
+            bn::string<40> at("@");
+            player_glyph.set(map_gen, map_x + px / fp - 4,
+                             map_y0 + py / fp - cell_px, at);
+
+            if(ghost_active)
+            {
+                bn::string<40> g("g");
+                ghost_glyph.set(map_gen, map_x + gx / fp - 4,
+                                map_y0 + gy / fp - cell_px, g);
+            }
+            else
+            {
+                ghost_glyph.clear();
+            }
+
+            bn::string<40> hud;
+
+            if(ghost_active)
+            {
+                hud.append("GHOST OUT ");
+            }
+            else if(buf_fill >= rewind_frames)
+            {
+                hud.append("REWIND READY ");
+            }
+            else
+            {
+                hud.append("WINDING ");
+                hud.append(bn::to_string<8>(buf_fill / 3));
+                hud.append("% ");
+            }
+
+            if(cur->timed)
+            {
+                unsigned held = unsigned(carried) + unsigned(p2_carried);
+                hud.append(bn::to_string<8>(held));
+                hud.append(" HELD ");         // the 20-sprite text cap
+                hud.append((run_frames % window_period)  // rules the HUD:
+                           < window_open_frames ? "OPEN"  // keep it terse
+                                                : "SHUT");
+            }
+            else
+            {
+                hud.append(carried ? "PARCEL HELD" : "PARCEL WAITS");
+            }
+
+            ui_lines[0].set(ui_gen, ui_x, ui_y[1], hud);
+
+            bn::string<40> clock("CLOCK ");
+            clock.append(bn::to_string<8>(run_frames / 60));
+            clock.append("s  REWINDS ");
+            clock.append(bn::to_string<8>(rewinds));
+            ui_lines[1].set(ui_gen, ui_x, ui_y[2], clock);
+            break;
+        }
+
+        case st_delivered:
+        {
+            ui_lines[0].set(ui_gen, ui_x, -60, "PARCEL DELIVERED");
+            bn::string<40> line1("CLOCK ");
+            line1.append(bn::to_string<8>(run_frames / 60));
+            line1.append("s (");
+            line1.append(bn::to_string<8>(run_frames));
+            line1.append(" FRAMES)");
+            ui_lines[1].set(ui_gen, ui_x, -40, line1);
+            bn::string<40> line2("REWINDS ");
+            line2.append(bn::to_string<8>(rewinds));
+            ui_lines[2].set(ui_gen, ui_x, -28, line2);
+            ui_lines[3].set(ui_gen, ui_x, -16, "THE TOWER TICKS ON");
+            ui_lines[4].set(ui_gen, ui_x, 8, "PRESS START");
+
+            if(mode == 1)
+            {
+                ui_lines[5].set(ui_gen, ui_x, 24, "RUSH ORDER: 2 PARCELS");
+            }
+            else if(mode == 2)
+            {
+                bn::string<40> lv_line("L");        // the 20-sprite
+                lv_line.append(bn::to_string<8>(level + 1));  // text cap:
+                lv_line.append(" ");                // name and hint are
+                lv_line.append(cur->name);          // separate lines
+                ui_lines[5].set(ui_gen, ui_x, 24, lv_line);
+                ui_lines[6].set(ui_gen, ui_x, 40, "L: NEXT SHIFT");
+            }
+
+            break;
+        }
+
+        }
+
+        // --- telemetry mailbox: every slot, every frame ---------------------
+
+        ++frames;
+        cc_telemetry[0] = 0x434C4B57u;   // 'CLKW'
+        cc_telemetry[1] = 0x434F5552u;   // 'COUR'
+        cc_telemetry[2] = state;
+        cc_telemetry[3] = frames;
+        cc_telemetry[4] = unsigned(px);
+        cc_telemetry[5] = unsigned(py);
+        cc_telemetry[6] = on_ground ? 1u : 0u;
+        cc_telemetry[7] = unsigned(buf_fill);
+        cc_telemetry[8] = ghost_active ? 1u : 0u;
+        cc_telemetry[9] = unsigned(gx);
+        cc_telemetry[10] = unsigned(gy);
+        cc_telemetry[11] = switch_held ? 1u : 0u;
+        cc_telemetry[12] = door_open ? 1u : 0u;
+        cc_telemetry[13] = unsigned(carried) + unsigned(p2_carried);
+        cc_telemetry[14] = rewinds;
+        cc_telemetry[15] = run_frames;
+        // growth rung 1 (extension; words 0-15 stay pinned)
+        cc_telemetry[16] = on_ghost ? 1u : 0u;
+        // growth rung 2 (extension; words 0-16 stay pinned)
+        cc_telemetry[17] = mode;
+        cc_telemetry[18] = delivered_n;
+        cc_telemetry[19] = (state == st_playing
+                            && (run_frames % window_period)
+                               < window_open_frames) ? 1u : 0u;
+        // growth rung 3 (extension; words 0-19 stay pinned)
+        cc_telemetry[20] = mode == 2 ? level : 0u;
+        // rung 4: the audio decision layer's mute flag rides the hook
+        gl_audio_hook[6] = muted ? 1u : 0u;
+
+        bn::core::update();
+    }
+}

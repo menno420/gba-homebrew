@@ -1,3 +1,60 @@
+// Brineward — arc slice 9: SAVES (on the slice-8 audio).
+//
+// The concept doc's final named roadmap beat ("saves: banked gold /
+// upgrades / chart persist"): the Graywake LEDGER — banked gold, the
+// three bought upgrade tiers, and the deepest band ever charted —
+// survives the power switch on the cartridge backup chip (EEPROM over
+// the card SPI bus; DeSmuME emulates it as the battery .sav the
+// headless proofs import/export). One bounded read at power-on
+// restores the ledger; a page program fires ONLY when the persisted
+// tuple changes — a pier bank, a port purchase or repair, a deeper
+// band charted — never per frame, and never on a sinking (sinking
+// forfeits the HOLD; nothing banked changes, so the brine keeps no
+// grudge in silicon). A corrupt/blank/future-version blob decodes to
+// the fresh ledger and the game plays on — never a crash, never a
+// hang (bw_save_decode, pure + mirrored). The backup I/O is
+// Gloamline's slice-9 PROVEN flow ported in shape (chip-select/HOLD
+// discipline + bounded polls — the two measured DeSmuME traps).
+// Telemetry appends slots 46-49 (save loaded / ledger writes /
+// format version / spare) with slots 0-45 frozen; audio state stays
+// power-on-transient by design (session-42 guard recipe).
+//
+// Below this line the slice-8 story still applies verbatim:
+//
+// Brineward — arc slice 8: SYNTHESIZED AUDIO (on the slice-7 danger
+// bands + reefs).
+//
+// The concept doc's "synthesized audio set" ("cannon thump (noise
+// burst + low sine), hull crack, splash hiss, a two-note dock chime.
+// No sampled or licensed audio, ever") — the brine gets a voice, 100%
+// synthesized in code on the Gloamline slice-8 proven pattern: no
+// sampled or binary audio asset exists anywhere in this repo.
+// Playback is the NDS hardware PSG channels (square + noise
+// generators) driven by the default BlocksDS ARM7 core over the
+// libnds sound FIFO; the ARM9 spends a handful of integer compares
+// per frame. Two voices: (1) an AMBIENCE DRONE — the WEATHER sings in
+// the rigging via the pure bw_amb_tier (calm swell / breeze / gale,
+// the slice-6 wind level as the drone ladder), and the Maw's presence
+// overrides it (shadow included: hearing the telegraph matters); the
+// FIFO is touched ONLY when the tier flips (the channel free-runs
+// between flips), and the drone is silent on the title, the sunk card
+// and in port — dying silences the sea. (2) a CUE channel for
+// one-shot chiptune SFX: cannon thump, splash hiss, crate scoop, hull
+// crack, reef scrape, wreck, the two-note Graywake dock chime (the
+// channel re-tunes mid-cue — bw_cue_freq2), the Maw surfacing, the
+// bite, and your own sinking — parameters are pure bw_cue_* table
+// rows, and on a frame with several events the highest cue id wins
+// the channel (id order IS the priority order, mirrored). Audio feeds
+// NOTHING back into the sim — it is render-like output, so every
+// pre-slice-8 pin holds bit-identically. Telemetry appends slots
+// 38-45 (tier, drone freq, last cue, cue count, ...) with slots 0-37
+// frozen; headless CI proves the DECISION chain exactly and honestly
+// cannot hear the result (owner playtest for the mix). Session-38
+// guard-recipe rail: the scrape cue fires off the player-only
+// groundings counter, never off enemy positions.
+//
+// Below this line the slice-5..7 story still applies verbatim:
+//
 // Brineward — arc slice 5: THE MAW (roadmap item 3 — the first sea
 // monster, on the slice-4 port/upgrades economy).
 //
@@ -16,6 +73,10 @@
 // keel (the telegraph), surfaces, and lunges; a bite costs real hull.
 // The batteries wake while it is up: rake it (it breaks up richer than
 // any rum-runner), dodge it, run for the pier sanctuary, or put out.
+// Slice 7 gives the brine its DEPTH: SELECT in the salvage water puts
+// out one danger band deeper — richer crates, worse weather, heavier
+// rum-runners with faster crews, and reefs that scrape the keel; the
+// deepest band sailed is the charted-waters score on the cards.
 // All game rules live in the pure layer (bw_sim.h/.c, mirrored by
 // tools/check-brine.py); this file is input, state machine, rendering,
 // and the telemetry mailbox.
@@ -32,7 +93,8 @@
 // (tools/nds-headless-check.py --elf/--watch) can assert game state
 // numerically. Layout below at BW_T_* — slice 5 EXTENDED the mailbox
 // 26 -> 31 (session-20 guard recipe: words 0-25 are pinned by the
-// existing proofs; extend, never re-map).
+// existing proofs; extend, never re-map), slice 6 31 -> 34, slice 7
+// 34 -> 38, slice 8 38 -> 46.
 //
 // 100% original content: code, text, and the code-authored sprites.
 
@@ -77,8 +139,32 @@
 #define BW_T_MAWY 28    // Maw y
 #define BW_T_MAWHULL 29 // Maw hull, 0..BW_MAW_HULL (0 = slain)
 #define BW_T_MAWS 30    // Maws slain this power-on
+// slice 6 (extension; words 0-30 stay pinned)
+#define BW_T_WINDLVL 31 // this water's weather: 0 calm / 1 breeze / 2 gale
+#define BW_T_WINDHDG 32 // wind heading (blowing TOWARD), 0..1023, rotating
+#define BW_T_PSPEED 33  // player speed, units/frame (the point-of-sail word)
+// slice 7 (extension; words 0-33 stay pinned)
+#define BW_T_BAND 34    // this water's danger band, 0..2
+#define BW_T_BEST 35    // deepest band charted this power-on (the score)
+#define BW_T_REEFS 36   // rocks in this water (0 in band 0)
+#define BW_T_GROUND 37  // reef scrapes taken this water
+// slice 8 (extension; words 0-37 stay pinned)
+#define BW_T_ATIER 38   // ambience tier the drone plays (BW_AMB_*)
+#define BW_T_ACUE 39    // last one-shot cue id fired (0 = none yet)
+#define BW_T_ACUES 40   // one-shot cues fired this power-on
+#define BW_T_ACUEFR 41  // global frame the last cue fired on
+#define BW_T_ADRONE 42  // drone frequency now, Hz (0 = drone silent)
+#define BW_T_AFLIPS 43  // drone restarts/stops (tier flips) this power-on
+#define BW_T_ASFXL 44   // frames left on the one-shot cue channel
+#define BW_T_ACFREQ 45  // cue channel frequency now, Hz (0 = closed;
+                        //   the two-note dock chime flips this mid-cue)
+// slice 9 (extension; words 0-45 stay pinned)
+#define BW_T_SAVEOK 46  // 1 = power-on read decoded a valid ledger
+#define BW_T_SAVEWR 47  // ledger writes to the backup this power-on
+#define BW_T_SAVEVER 48 // save format version (build-flag visibility)
+#define BW_T_SPARE0 49  // reserved, always 0
 
-volatile uint32_t bw_telemetry[31];
+volatile uint32_t bw_telemetry[50];
 
 enum
 {
@@ -230,6 +316,27 @@ static const char CRATE_ART[8][9] = {
     "........",
 };
 
+// Reef rock, 16x16 (slice 7): d = wet rock, e = foam ring where the
+// swell breaks over it (the tell the player charts by).
+static const char REEF_ART[16][17] = {
+    "................",
+    "......e..e......",
+    "....e.dddd.e....",
+    "...eddddddde....",
+    "..e.dddddddd.e..",
+    "..eddddddddde...",
+    ".e.dddddddddd.e.",
+    "..dddddddddddd..",
+    ".edddddddddddde.",
+    "..dddddddddddd..",
+    ".e.dddddddddd.e.",
+    "..eddddddddde...",
+    "..e.dddddddd.e..",
+    "...eddddddde....",
+    "....e.dddd.e....",
+    "......e..e......",
+};
+
 // Pack WxH character art into 4bpp tiles (8x8 tile raster order).
 static void load_sprite_gfx(u16 *gfx, const char *art, int w, int h,
                             int stride)
@@ -271,6 +378,8 @@ static void load_palette(void)
     SPRITE_PALETTE[10] = RGB15(1, 3, 5);     // the shadow / the gullet
     SPRITE_PALETTE[11] = RGB15(8, 6, 10);    // abyssal flesh
     SPRITE_PALETTE[12] = RGB15(28, 29, 26);  // bone teeth
+    SPRITE_PALETTE[13] = RGB15(7, 8, 7);     // wet reef rock (slice 7)
+    SPRITE_PALETTE[14] = RGB15(24, 27, 28);  // foam breaking over it
     // slate sea on both backdrops
     BG_PALETTE[0] = RGB15(2, 5, 9);
     BG_PALETTE_SUB[0] = RGB15(2, 4, 7);
@@ -284,10 +393,88 @@ typedef struct
     uint32_t wins;
     uint32_t gold;                       // banked at Graywake — safe forever
     uint32_t maws;                       // Maws slain this power-on (slice 5)
+    uint32_t best_band;                  // deepest band charted (slice 7)
     int32_t up_hull;                     // upgrade tiers — bought with
     int32_t up_cannon;                   //   banked gold, NEVER lost
     int32_t up_sail;                     //   (concept-doc rule)
 } Score;
+
+// --- slice-9 backup I/O (bounded card-SPI EEPROM read + page program) ----------
+// The ledger's ONLY backup touches: one read at power-on, one page
+// program per ledger CHANGE (a bank, a port purchase/repair, a deeper
+// charted band — player actions minutes apart, never per frame). The
+// helpers are Gloamline's slice-9 save_* flow ported verbatim in shape
+// (games/gloamline-nds/source/main.c): standard SPI-EEPROM command
+// flows (READ 0x03 / WREN 0x06 / PAGE PROGRAM 0x02 / RDSR 0x05 with
+// BW_SAVE_EEPROM_TYPE-2 = 2-byte addressing), hand-rolled instead of
+// libnds's cardRead/WriteEeprom for Gloamline's two MEASURED reasons:
+// (1) chip-select discipline — a command must clear CARD_SPI_HOLD
+// BEFORE its last byte or DeSmuME's backup device never sees a select
+// edge (libnds's flow froze Gloamline solid on its first write);
+// (2) bounded waits — every poll gives up after BW_SAVE_POLL_BOUND
+// iterations, so a never-answering chip costs a bounded sub-frame
+// stall, never a hang. Don't re-derive; the measurements live with
+// Gloamline's slice-9 card and gl_sim.h § best-nights save.
+
+static void save_spi_byte(uint8_t b)
+{
+    REG_AUXSPIDATA = b;
+    for (uint32_t i = 0;
+         i < BW_SAVE_POLL_BOUND && (REG_AUXSPICNT & CARD_SPI_BUSY); i++) { }
+}
+
+static uint8_t save_spi_read(void)
+{
+    save_spi_byte(0);
+    return REG_AUXSPIDATA;
+}
+
+static void save_select(void)                // begin a command window
+{
+    REG_AUXSPICNT = CARD_ENABLE | CARD_SPI_ENABLE | CARD_SPI_HOLD;
+}
+
+static void save_final_byte(void)            // CS releases after the NEXT
+{                                            // byte (drop HOLD first —
+    REG_AUXSPICNT = CARD_ENABLE | CARD_SPI_ENABLE;   // the protocol rule)
+}
+
+static void save_read_backup(uint8_t blob[BW_SAVE_BYTES])
+{
+    save_select();
+    save_spi_byte(0x03);                     // READ + 2 address bytes
+    save_spi_byte((BW_SAVE_ADDR >> 8) & 0xFF);
+    save_spi_byte(BW_SAVE_ADDR & 0xFF);
+    for (int i = 0; i < BW_SAVE_BYTES - 1; i++)
+        blob[i] = save_spi_read();
+    save_final_byte();
+    blob[BW_SAVE_BYTES - 1] = save_spi_read();
+}
+
+static void save_write_backup(const uint8_t blob[BW_SAVE_BYTES])
+{
+    // WRITE ENABLE — its own one-byte chip-select window
+    save_select();
+    save_final_byte();
+    save_spi_byte(0x06);
+    // PAGE PROGRAM: BW_SAVE_BYTES is exactly one 32-byte page at
+    // BW_SAVE_ADDR 0, so no page-crossing loop is needed.
+    save_select();
+    save_spi_byte(0x02);
+    save_spi_byte((BW_SAVE_ADDR >> 8) & 0xFF);
+    save_spi_byte(BW_SAVE_ADDR & 0xFF);
+    for (int i = 0; i < BW_SAVE_BYTES - 1; i++)
+        save_spi_byte(blob[i]);
+    save_final_byte();
+    save_spi_byte(blob[BW_SAVE_BYTES - 1]);  // CS falls: the chip programs
+    // READ STATUS: wait out the program cycle — BOUNDED
+    save_select();
+    save_spi_byte(0x05);
+    for (uint32_t i = 0;
+         i < BW_SAVE_POLL_BOUND && (save_spi_read() & 0x01); i++) { }
+    save_final_byte();
+    save_spi_read();                         // terminating dummy byte
+}
 
 // --- top-screen scenes -----------------------------------------------------------
 static PrintConsole top_console;
@@ -309,7 +496,7 @@ static void draw_pier(void)
     printf("\x1b[22;12HGRAYWAKE");
 }
 
-static void draw_title(void)
+static void draw_title(const Score *sc, int save_ok)
 {
     consoleSelect(&top_console);
     consoleClear();
@@ -321,7 +508,12 @@ static void draw_title(void)
     printf("\x1b[13;4Hbroadsides: L port, R stbd\n");
     printf("\x1b[14;4Hsink her, scoop the crates,\n");
     printf("\x1b[15;4Hbank gold at the pier\n");
-    printf("\x1b[17;9HPRESS START\n");
+    printf("\x1b[16;4Hafter a win SELECT: deeper\n");
+    printf("\x1b[18;9HPRESS START\n");
+    if (save_ok)                             // slice 9: the harbormaster
+        printf("\x1b[20;3Hledger: %lug banked, charted %lu\n",
+               (unsigned long)sc->gold,      //   remembers you
+               (unsigned long)sc->best_band);
 }
 
 static void draw_sunk_card(const Score *sc, const BwDuel *d)
@@ -339,10 +531,46 @@ static void draw_sunk_card(const Score *sc, const BwDuel *d)
            (unsigned long)sc->gold);
     if (sc->maws > 0)
         printf("\x1b[15;7Hmaws slain %lu", (unsigned long)sc->maws);
-    printf("\x1b[17;4HPRESS START: put out again\n");
+    printf("\x1b[16;7Hcharted: band %lu waters",
+           (unsigned long)sc->best_band);
+    printf("\x1b[18;4HPRESS START: put out again\n");
 }
 
 static const char *const TRIM_NAME[3] = { "BTL", "HLF", "FUL" };
+
+// --- the weather gauge (slice 6) -----------------------------------------------
+// Sailors name the wind by where it comes FROM: the sim's wind heading
+// points TOWARD, so the gauge shows the opposite bearing, folded onto
+// the 8-point compass. "NE~" = a breeze out of the northeast, "NE!" =
+// a gale; a calm water shows "calm". Pure render of sim state.
+static const char *const WIND_FROM[8] = {
+    "N", "NE", "E", "SE", "S", "SW", "W", "NW",
+};
+
+static const char *wind_from_name(const BwDuel *d)
+{
+    int32_t from = (bw_wind_heading(d) + BW_CIRCLE / 2) & (BW_CIRCLE - 1);
+    return WIND_FROM[((from + 64) & (BW_CIRCLE - 1)) >> 7];
+}
+
+static void wind_gauge(const BwDuel *d, char *out /* >= 8 bytes */)
+{
+    if (d->wind_level == BW_WIND_CALM)
+    {
+        out[0] = 'c'; out[1] = 'a'; out[2] = 'l'; out[3] = 'm';
+        out[4] = 0;
+        return;
+    }
+    const char *n = wind_from_name(d);
+    int i = 0;
+    while (n[i])
+    {
+        out[i] = n[i];
+        i++;
+    }
+    out[i++] = d->wind_level == BW_WIND_GALE ? '!' : '~';
+    out[i] = 0;
+}
 
 // Render-only bank flash: how many frames the "BANKED" line still shows.
 static int bank_flash;
@@ -350,11 +578,13 @@ static uint32_t bank_amount;
 
 static void draw_hud_row0(const BwDuel *d)
 {
-    printf("\x1b[0;1HHULL %3d  L%2d R%2d  %s\x1b[K",
+    char wind[8];
+    wind_gauge(d, wind);                 // slice 6: read the weather
+    printf("\x1b[0;1HHULL %3d  L%2d R%2d  %s %s\x1b[K",
            (int)d->player.hull,
            (int)((d->player.reload_l + 9) / 10),
            (int)((d->player.reload_r + 9) / 10),
-           TRIM_NAME[d->player.trim]);
+           TRIM_NAME[d->player.trim], wind);
 }
 
 static void draw_hud(const BwDuel *d, const Score *sc)
@@ -477,6 +707,8 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
     int32_t hull_max = bw_up_hull_max(d->up_hull);
     int32_t reload_max = bw_up_reload(d->up_cannon);
     consoleSelect(&bottom_console);
+    printf("\x1b[3;1Hband %d water   charted %lu\x1b[K",
+           (int)d->band, (unsigned long)sc->best_band);
     draw_bar(4, "HULL", d->player.hull, hull_max);
     draw_bar(6, "PORT", reload_max - d->player.reload_l, reload_max);
     draw_bar(8, "STBD", reload_max - d->player.reload_r, reload_max);
@@ -490,10 +722,18 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
     printf("\x1b[13;1Hhold %d/%d crates %3dg\x1b[K",
            (int)d->hold, BW_HOLD_CAP, (int)d->hold_gold);
     printf("\x1b[14;1HGOLD BANKED %lug\x1b[K", (unsigned long)sc->gold);
-    draw_bar(17, "HULL", d->enemy.hull, BW_HULL_MAX);
+    draw_bar(17, "HULL", d->enemy.hull, bw_band_enemy_hull(d->band));
     printf("\x1b[19;1Hrange %3d yd\x1b[K",
            (int)(bw_chebyshev(d->player.x, d->player.y,
                               d->enemy.x, d->enemy.y) / BW_ONE));
+    // slice 6: the chart table reads the sky too (pure render of the
+    // seeded weather — the watch-map rule, as ever)
+    if (d->wind_level == BW_WIND_CALM)
+        printf("\x1b[20;1Hdead calm on the water\x1b[K");
+    else
+        printf("\x1b[20;1Hwind out of the %-2s  %s\x1b[K",
+               wind_from_name(d),
+               d->wind_level == BW_WIND_GALE ? "GALE" : "breeze");
     // slice 5: the chart table reads the water (a pure render of maw
     // state — the watch-map rule, as ever)
     if (d->maw.state == BW_MAW_SHADOW)
@@ -513,11 +753,13 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
 #define OAM_BALL0 2
 #define OAM_LOOT0 (OAM_BALL0 + BW_MAX_BALLS)
 #define OAM_MAW (OAM_LOOT0 + BW_MAX_LOOT)
+#define OAM_REEF0 (OAM_MAW + 1)
 
 static void draw_ships_and_balls(const BwDuel *d,
                                  u16 *player_gfx, u16 *enemy_gfx,
                                  u16 *ball_gfx, u16 *crate_gfx,
                                  u16 *maw_shadow_gfx, u16 *maw_risen_gfx,
+                                 u16 *reef_gfx,
                                  int state, uint32_t frame)
 {
     // The survivor sails the salvage water; the sunk ship is gone.
@@ -576,6 +818,16 @@ static void draw_ships_and_balls(const BwDuel *d,
            2, 0, SpriteSize_32x32, SpriteColorFormat_16Color,
            d->maw.state == BW_MAW_SHADOW ? maw_shadow_gfx : maw_risen_gfx,
            -1, false, !maw_shown, false, false, false);
+    // Reefs (slice 7): fixed rocks, REGULAR sprites (plain hide works).
+    for (int i = 0; i < BW_MAX_REEFS; i++)
+    {
+        const BwReef *r = &d->reefs[i];
+        oamSet(&oamMain, OAM_REEF0 + i,
+               r->x / BW_ONE - 8, r->y / BW_ONE - 8,
+               1, 0, SpriteSize_16x16, SpriteColorFormat_16Color,
+               reef_gfx, -1, false,
+               !(r->live && water_live), false, false, false);
+    }
 }
 
 // Begin a duel: latch the frame-counter seed, reset the sim, and re-inject
@@ -588,10 +840,12 @@ static void draw_ships_and_balls(const BwDuel *d,
 // "respawn at port with full (repaired) hull").
 static void begin_duel(BwDuel *duel, Score *sc, uint32_t frame,
                        int32_t carry_hold, int32_t carry_gold,
-                       int32_t carry_hull)
+                       int32_t carry_hull, int32_t band)
 {
     sc->seed = frame;
-    bw_duel_init(duel, sc->seed);
+    bw_water_init(duel, sc->seed, band);
+    if ((uint32_t)duel->band > sc->best_band)
+        sc->best_band = (uint32_t)duel->band;   // charted when you sail it
     duel->hold = carry_hold;
     duel->hold_gold = carry_gold;
     duel->up_hull = sc->up_hull;
@@ -634,23 +888,76 @@ int main(void)
                                          SpriteColorFormat_16Color);
     u16 *maw_risen_gfx = oamAllocateGfx(&oamMain, SpriteSize_32x32,
                                         SpriteColorFormat_16Color);
+    u16 *reef_gfx = oamAllocateGfx(&oamMain, SpriteSize_16x16,
+                                   SpriteColorFormat_16Color);
     load_sprite_gfx(player_gfx, &PLAYER_SHIP_ART[0][0], 16, 16, 17);
     load_sprite_gfx(enemy_gfx, &ENEMY_SHIP_ART[0][0], 16, 16, 17);
     load_sprite_gfx(ball_gfx, &BALL_ART[0][0], 8, 8, 9);
     load_sprite_gfx(crate_gfx, &CRATE_ART[0][0], 8, 8, 9);
     load_sprite_gfx(maw_shadow_gfx, &MAW_SHADOW_ART[0][0], 32, 32, 33);
     load_sprite_gfx(maw_risen_gfx, &MAW_RISEN_ART[0][0], 32, 32, 33);
+    load_sprite_gfx(reef_gfx, &REEF_ART[0][0], 16, 16, 17);
+
+    // Slice 8: power the sound block. Every voice below is a hardware
+    // PSG/noise channel serviced by the default ARM7 core — synthesized
+    // square waves and noise, no sample data anywhere.
+    soundEnable();
 
     BwDuel duel = {0};
     bw_duel_init(&duel, 0);              // idle telemetry before first START
     Score score = {0};
+
+    // Slice 9: the Graywake ledger — ONE bounded read of the cartridge
+    // backup at power-on (card SPI EEPROM; DeSmuME emulates it as the
+    // battery .sav). A missing, blank, corrupt or future-version blob
+    // decodes to 0 and the fresh ledger stands — never a crash, never
+    // a hang. BW_SAVE_EEPROM_TYPE is the assumed decide-and-flag
+    // addressing constant, not a boot-time chip probe.
+    uint32_t save_ok = 0;
+    uint32_t save_writes = 0;
+    {
+        uint8_t blob[BW_SAVE_BYTES];
+        save_read_backup(blob);
+        save_ok = (uint32_t)bw_save_decode(blob, &score.gold,
+                                           &score.up_hull,
+                                           &score.up_cannon,
+                                           &score.up_sail,
+                                           &score.best_band);
+    }
+    // The wear gate: the ledger AS LAST PERSISTED (what the chip
+    // holds, as decoded — a rejected blob gates as the fresh all-zero
+    // ledger, so the first real change writes a valid record straight
+    // over the garbage). Writes fire ONLY when the live ledger drifts
+    // off this tuple — player actions, minutes apart.
+    uint32_t sv_gold = score.gold;
+    int32_t sv_hull = score.up_hull;
+    int32_t sv_cannon = score.up_cannon;
+    int32_t sv_sail = score.up_sail;
+    uint32_t sv_band = score.best_band;
+
     int state = STATE_TITLE;
     int port_row = 0;              // Graywake port menu cursor (slice 4)
     bool maw_counted = false;      // this water's kill already tallied
     uint32_t frame = 0;
     bool pad_seen_idle = false;    // KEYINPUT boot-trap guard (PLATFORM-LIMITS)
 
-    draw_title();
+    // Slice-8 audio state (ARM9 bookkeeping only — the sound itself
+    // runs on the ARM7/hardware channels). The drone free-runs on its
+    // channel between tier flips; the cue channel is opened for
+    // bw_cue_len frames then killed (re-tuned once mid-cue when the
+    // row carries a second note — the dock chime).
+    int amb_ch = -1;               // drone channel handle (-1 = silent)
+    uint32_t amb_tier = 0;         // tier the drone is playing
+    uint32_t amb_flips = 0;        // drone restarts/stops this power-on
+    int cue_ch = -1;               // one-shot cue channel handle
+    uint32_t cue_left = 0;         // frames left on the cue channel
+    uint32_t cue_flip_at = 0;      // cue_left value at which note 2 starts
+    uint32_t cue_freq_now = 0;     // what the cue channel plays right now
+    uint32_t last_cue = 0;         // last cue id fired
+    uint32_t cues = 0;             // cues fired this power-on
+    uint32_t cue_frame = 0;        // global frame of the last cue
+
+    draw_title(&score, (int)save_ok);
     draw_status_frame();
 
     bw_telemetry[BW_T_MAGIC0] = 0x4252494Eu;   // 'BRIN'
@@ -674,13 +981,37 @@ int main(void)
         if (bank_flash > 0)
             bank_flash--;
 
+        // Slice-8 audio event capture: remember where the frame began,
+        // so the counter/hull deltas + state flips below say which
+        // cues fire. Pure reads — nothing here feeds the sim.
+        int prev_state = state;
+        int32_t prev_phull = duel.player.hull;
+        int32_t prev_ehull = duel.enemy.hull;
+        int32_t prev_mawhull = duel.maw.hull;
+        int32_t prev_mawstate = duel.maw.state;
+        int32_t prev_mawbit = duel.maw.bit;
+        int32_t prev_hold = duel.hold;
+        int32_t prev_ground = duel.groundings;
+        uint32_t prev_wins = score.wins;
+        uint32_t prev_maws = score.maws;
+        int32_t prev_rel_pl = duel.player.reload_l;
+        int32_t prev_rel_pr = duel.player.reload_r;
+        int32_t prev_rel_el = duel.enemy.reload_l;
+        int32_t prev_rel_er = duel.enemy.reload_r;
+        uint32_t prev_balls = 0;
+        for (int i = 0; i < BW_MAX_BALLS; i++)
+            if (duel.balls[i].live)
+                prev_balls++;
+        uint32_t banked_frame = 0;   // gold banked THIS frame (chime)
+
         switch (state)
         {
         case STATE_TITLE:
         case STATE_SUNK:
             if (start)                   // fresh sail: no hold carried (a
             {                            // sunk hold was forfeited), free
-                begin_duel(&duel, &score, frame, 0, 0, 0);  // full refit
+                begin_duel(&duel, &score, frame, 0, 0, 0,   // full refit,
+                           0);           // home water: band 0 off the port
                 maw_counted = false;     // fresh water, fresh teeth
                 state = STATE_DUEL;
             }
@@ -705,6 +1036,7 @@ int main(void)
                 score.gold += banked;
                 bank_flash = 120;
                 bank_amount = banked;
+                banked_frame = banked;   // slice 8: the chime rings
             }
 
             if (duel.over == BW_DUEL_PLAYER_SUNK)
@@ -729,10 +1061,24 @@ int main(void)
         case STATE_SALVAGE:
         {
             if (start)                   // put out again WITH the hold —
-            {                            // and the dents (slice 4)
-                begin_duel(&duel, &score, frame,
-                           duel.hold, duel.hold_gold, duel.player.hull);
+            {                            // and the dents (slice 4), on the
+                begin_duel(&duel, &score, frame,       // SAME waters
+                           duel.hold, duel.hold_gold, duel.player.hull,
+                           duel.band);
                 maw_counted = false;     // fresh water, fresh teeth
+                state = STATE_DUEL;
+                break;
+            }
+            // SELECT presses DEEPER brineward (slice 7): same carry
+            // rules as START, one band down — richer wrecks, worse
+            // weather, heavier foes, rocks. bw_water_init clamps at
+            // band 2 (there is no deeper water than the deeps).
+            if (pad_seen_idle && (down & KEY_SELECT))
+            {
+                begin_duel(&duel, &score, frame,
+                           duel.hold, duel.hold_gold, duel.player.hull,
+                           duel.band + 1);
+                maw_counted = false;     // deeper water, fresh teeth
                 state = STATE_DUEL;
                 break;
             }
@@ -769,6 +1115,7 @@ int main(void)
                 score.gold += banked;
                 bank_flash = 120;
                 bank_amount = banked;
+                banked_frame = banked;   // slice 8: the chime rings
             }
 
             if (duel.maw.slain && !maw_counted)
@@ -827,9 +1174,137 @@ int main(void)
         }
         }
 
+        // --- slice-8 audio (decision layer pure + mirrored; playback =
+        // hardware channels via the ARM7 sound FIFO; nothing feeds back
+        // into the sim) -------------------------------------------------
+
+        // One-shot cue channel: re-tune to the second note halfway
+        // through a two-note cue (the dock chime), close it when its
+        // frames run out.
+        if (cue_left > 0)
+        {
+            cue_left--;
+            if (cue_left == 0)
+            {
+                soundKill(cue_ch);
+                cue_ch = -1;
+                cue_freq_now = 0;
+            }
+            else if (cue_flip_at != 0 && cue_left == cue_flip_at)
+            {
+                soundKill(cue_ch);
+                cue_freq_now = bw_cue_freq2(last_cue);
+                cue_ch = soundPlayPSG((DutyCycle)bw_cue_duty(last_cue),
+                                      (u16)cue_freq_now,
+                                      (u8)bw_cue_vol(last_cue), 64);
+            }
+        }
+
+        // Which cue does this frame want? Highest id wins the channel
+        // (the id order IS the priority order — bw_sim.h). Every test
+        // below is a delta against the frame-start snapshot.
+        uint32_t cue = BW_CUE_NONE;
+        if (duel.player.reload_l > prev_rel_pl
+            || duel.player.reload_r > prev_rel_pr
+            || duel.enemy.reload_l > prev_rel_el
+            || duel.enemy.reload_r > prev_rel_er)
+            cue = BW_CUE_CANNON;         // a reload only ever jumps UP
+                                         //   on the frame a battery fires
+        uint32_t balls_now = 0;
+        for (int i = 0; i < BW_MAX_BALLS; i++)
+            if (duel.balls[i].live)
+                balls_now++;
+        if (balls_now < prev_balls)
+            cue = BW_CUE_SPLASH;         // a rake left the water (a hit
+                                         //   on the same frame outranks
+                                         //   this below)
+        if (duel.hold > prev_hold)
+            cue = BW_CUE_SCOOP;
+        if (duel.enemy.hull < prev_ehull || duel.maw.hull < prev_mawhull
+            || duel.player.hull < prev_phull)
+            cue = BW_CUE_CRACK;          // scrape/bite outrank it below
+        if (duel.groundings > prev_ground)
+            cue = BW_CUE_SCRAPE;         // player-only counter (the rail)
+        if (score.wins > prev_wins || score.maws > prev_maws)
+            cue = BW_CUE_WRECK;
+        if (banked_frame > 0)
+            cue = BW_CUE_DOCK;
+        if (duel.maw.state == BW_MAW_SURFACE
+            && prev_mawstate != BW_MAW_SURFACE)
+            cue = BW_CUE_MAWRISE;
+        if (duel.maw.bit && !prev_mawbit)
+            cue = BW_CUE_BITE;
+        if (state == STATE_SUNK && prev_state != STATE_SUNK)
+            cue = BW_CUE_SUNK;
+        if (cue != BW_CUE_NONE)
+        {
+            if (cue_ch >= 0)
+                soundKill(cue_ch);       // a new cue preempts
+            cue_freq_now = bw_cue_freq(cue);
+            cue_ch = (bw_cue_duty(cue) == BW_CUE_ON_NOISE)
+                ? soundPlayNoise((u16)cue_freq_now,
+                                 (u8)bw_cue_vol(cue), 64)
+                : soundPlayPSG((DutyCycle)bw_cue_duty(cue),
+                               (u16)cue_freq_now,
+                               (u8)bw_cue_vol(cue), 64);
+            cue_left = bw_cue_len(cue);
+            cue_flip_at = bw_cue_freq2(cue) != 0
+                ? cue_left - cue_left / 2 : 0;
+            last_cue = cue;
+            cues++;
+            cue_frame = frame;
+        }
+
+        // Ambience drone: on over live water (the duel and the salvage),
+        // off on the title, the sunk card and in port — dying silences
+        // the sea. The FIFO is touched ONLY when the wanted tier flips
+        // or the drone starts/stops — between flips the hardware channel
+        // free-runs at zero ARM9 cost.
+        if (state == STATE_DUEL || state == STATE_SALVAGE)
+        {
+            uint32_t tier = bw_amb_tier(duel.maw.state != BW_MAW_DOWN,
+                                        duel.wind_level);
+            if (amb_ch < 0 || tier != amb_tier)
+            {
+                if (amb_ch >= 0)
+                    soundKill(amb_ch);
+                amb_ch = soundPlayPSG((DutyCycle)bw_amb_duty(tier),
+                                      (u16)bw_amb_freq(tier),
+                                      (u8)bw_amb_vol(tier), 64);
+                amb_tier = tier;
+                amb_flips++;
+            }
+        }
+        else if (amb_ch >= 0)
+        {
+            soundKill(amb_ch);
+            amb_ch = -1;
+            amb_flips++;
+        }
+
+        // --- slice-9 ledger persistence (wear-gated: a write fires
+        // ONLY when the persisted tuple changed this frame — a bank,
+        // a port purchase/repair, a deeper band charted; sinking
+        // changes nothing banked and writes nothing) ------------------
+        if (score.gold != sv_gold || score.up_hull != sv_hull
+            || score.up_cannon != sv_cannon || score.up_sail != sv_sail
+            || score.best_band != sv_band)
+        {
+            uint8_t blob[BW_SAVE_BYTES];
+            bw_save_encode(score.gold, score.up_hull, score.up_cannon,
+                           score.up_sail, score.best_band, blob);
+            save_write_backup(blob);
+            sv_gold = score.gold;
+            sv_hull = score.up_hull;
+            sv_cannon = score.up_cannon;
+            sv_sail = score.up_sail;
+            sv_band = score.best_band;
+            save_writes++;
+        }
+
         draw_ships_and_balls(&duel, player_gfx, enemy_gfx, ball_gfx,
                              crate_gfx, maw_shadow_gfx, maw_risen_gfx,
-                             state, frame);
+                             reef_gfx, state, frame);
         oamUpdate(&oamMain);
         draw_status(&duel, &score, state);
 
@@ -869,6 +1344,29 @@ int main(void)
         bw_telemetry[BW_T_MAWY] = (uint32_t)duel.maw.y;
         bw_telemetry[BW_T_MAWHULL] = (uint32_t)duel.maw.hull;
         bw_telemetry[BW_T_MAWS] = score.maws;
+        bw_telemetry[BW_T_WINDLVL] = (uint32_t)duel.wind_level;
+        bw_telemetry[BW_T_WINDHDG] = (uint32_t)bw_wind_heading(&duel);
+        bw_telemetry[BW_T_PSPEED] = (uint32_t)duel.player.speed;
+        bw_telemetry[BW_T_BAND] = (uint32_t)duel.band;
+        bw_telemetry[BW_T_BEST] = score.best_band;
+        uint32_t rocks = 0;
+        for (int i = 0; i < BW_MAX_REEFS; i++)
+            if (duel.reefs[i].live)
+                rocks++;
+        bw_telemetry[BW_T_REEFS] = rocks;
+        bw_telemetry[BW_T_GROUND] = (uint32_t)duel.groundings;
+        bw_telemetry[BW_T_ATIER] = amb_tier;
+        bw_telemetry[BW_T_ACUE] = last_cue;
+        bw_telemetry[BW_T_ACUES] = cues;
+        bw_telemetry[BW_T_ACUEFR] = cue_frame;
+        bw_telemetry[BW_T_ADRONE] = amb_ch >= 0 ? bw_amb_freq(amb_tier) : 0;
+        bw_telemetry[BW_T_AFLIPS] = amb_flips;
+        bw_telemetry[BW_T_ASFXL] = cue_left;
+        bw_telemetry[BW_T_ACFREQ] = cue_freq_now;
+        bw_telemetry[BW_T_SAVEOK] = save_ok;
+        bw_telemetry[BW_T_SAVEWR] = save_writes;
+        bw_telemetry[BW_T_SAVEVER] = BW_SAVE_VERSION;
+        bw_telemetry[BW_T_SPARE0] = 0;
     }
 
     return 0;

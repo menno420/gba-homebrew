@@ -275,3 +275,35 @@ card flip follows)
 - Pointers: .sessions/2026-07-15-web-arcade-pages.md (card) ·
   .github/workflows/deploy-pages.yml (the workflow) · dist/README.md
   (hosted-arcade section).
+
+## Dispatch 2026-07-15 (next-menu, PR #150)
+
+written: 2026-07-15T21:38Z (`date -u`; heartbeat appended second-to-last,
+card flip follows)
+
+kit: v1.17.0 · check: designed-red at heartbeat (born-red card open;
+flips complete in the next commit)
+
+- Inbox re-read at origin/main HEAD `872627d` before closing: no new
+  orders past ORDER 007 (its standing constraint holds — NO routines
+  re-armed, waiting on the owner's per-seat go). control/claims/ at that
+  HEAD: README.md only — no collision.
+- This dispatch's slice, neutral facts: branch `claude/next-menu-2026-07-15`,
+  PR #150 (READY, non-draft) — docs-only. New doc
+  docs/NEXT-MENU-2026-07-15.md: the owner decision menu for the next arc,
+  seven lettered options (A1 Tinderhand GBA ~6 slices · A2 Underroot NDS
+  ~11 · A3 Starloom web/PWA ~6 · B1 Tiltstone shareable-daily 5 · B2
+  Wickroad crossroads 4–5 · B3 Brineward bestiary 4 · C Lumen Drift
+  release + arcade go-live pointer), every factual claim cited at
+  `872627d`, bolded recommendation **B1**, answerable with one letter.
+  One-line link added to the `## In flight` section of
+  docs/current-state.md (read-path root — docs-gate reachability by
+  construction). Work claim control/claims/claude-next-menu-2026-07-15.md
+  retired with this heartbeat (claims README rule 4 — the open PR is the
+  live claim).
+- Landing posture: PR #150 parked READY; no merge/approve/auto-merge
+  calls from this session — the server-side enabler decides on green
+  after the card flip.
+- Pointers: .sessions/2026-07-15-next-menu.md (card) ·
+  docs/NEXT-MENU-2026-07-15.md (the menu) · docs/current-state.md
+  (In flight link).

@@ -1,1 +1,0 @@
-- `claude/next-menu-2026-07-15` · **owner decision menu doc for the next arc** · docs/NEXT-MENU-2026-07-15.md + docs/current-state.md link line · 2026-07-15

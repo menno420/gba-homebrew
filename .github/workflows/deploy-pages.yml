@@ -1,0 +1,38 @@
+# Deploys the static web arcade (dist/web/ ONLY — no ROMs, no zips) to
+# GitHub Pages at https://menno420.github.io/gba-homebrew/.
+# One-time owner setup: Settings → Pages → Source = "GitHub Actions".
+# (No enablement:true here — GITHUB_TOKEN cannot enable Pages; the owner
+# clicks that once.)
+name: Deploy web arcade to Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dist/web/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/web
+      - id: deployment
+        uses: actions/deploy-pages@v4

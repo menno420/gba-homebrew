@@ -248,3 +248,30 @@ card flip follows)
   calls from this session — the server-side enabler decides on green.
 - Pointers: .sessions/2026-07-15-current-state-reconcile.md (card) ·
   docs/current-state.md (the reconciled ledger).
+
+## Dispatch 2026-07-15 (web-arcade-pages, PR #149)
+
+written: 2026-07-15T21:26Z (`date -u`; heartbeat appended second-to-last,
+card flip follows)
+
+- Inbox re-read at origin/main HEAD `150abf1` before closing: no new
+  orders past ORDER 007 (its standing constraint holds — NO routines
+  re-armed, waiting on the owner's per-seat go).
+- This dispatch's slice, neutral facts: branch `claude/web-arcade-pages`,
+  PR #149 (READY, non-draft) — GitHub Pages deployment workflow for the
+  web arcade. `.github/workflows/deploy-pages.yml` publishes `dist/web/`
+  ONLY (never ROMs or zips) on merged changes under `dist/web/**` or via
+  workflow_dispatch; target URL https://menno420.github.io/gba-homebrew/.
+  Subpath audit of dist/web/ (grep for root-absolute refs + manual reads
+  of the landing page, all three game entry files, the Drift Garden
+  manifest and service worker): zero absolute paths, zero fixes needed.
+  Docs: hosted-arcade section added to dist/README.md (URL, redeploy
+  triggers, one-time setup). Owner ask pending in the PR body: Settings
+  → Pages → Source = GitHub Actions, then merge — ~2 min, reversible.
+  Work claim control/claims/claude-web-arcade-pages.md retired with this
+  heartbeat (claims README rule 4 — the open PR is the live claim).
+- Landing posture: PR #149 parked READY on green; no merge/approve/
+  auto-merge calls from this session — the owner sweeps.
+- Pointers: .sessions/2026-07-15-web-arcade-pages.md (card) ·
+  .github/workflows/deploy-pages.yml (the workflow) · dist/README.md
+  (hosted-arcade section).

@@ -107,6 +107,16 @@ twice byte-identical.
    in `proofs.sh` P6).
 4. **A wider map + pack upgrades** — branch roads, 7-8 towns, mules
    that grow capacity: gold buys logistics, the classic Taipan curve.
+   **SERVED — v0.5** (growth cut 4: the road runs on past DUNWICK to
+   HOLLOWFEN and MIRGATE — seven markets, each with its own aging
+   ink — and START at the Hollowfen fair buys mules on a fixed
+   authored price ladder, each growing the pack by four; the new
+   towns' world comes from the same seed via 16 draws appended
+   strictly AFTER the v0.4 stream, so the old world is bit-identical;
+   the map deliberately stays ONE road — no branch fork, L/R is a
+   committed verb grammar and a junction would need a new travel
+   verb — the honest cut named here; witness words 40-47, proven in
+   `proofs.sh` P7).
 5. **Audio** — synthesized cues via the proven `generate_audio.py`
    pipeline (coin chink, dawn bell, the pass-closing wind), decisions
    hook-counted per the house method.

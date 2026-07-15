@@ -1,1 +1,0 @@
-- `claude/wickroad-wider-map` · **Wickroad growth cut 4 — a wider map + pack upgrades (v0.5)** · games/wickroad/ + dist/ + docs/ + control/ · 2026-07-15

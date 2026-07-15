@@ -127,3 +127,42 @@ card flip follows)
 - Pointers: .sessions/2026-07-15-wickroad-hazards.md (card) ·
   games/wickroad/CONCEPT.md (cut 3 marked SERVED) · dist/README.md
   (v0.4 row) · docs/current-state.md (Wickroad row now v0.4).
+
+## Dispatch 2026-07-15 (wickroad-wider-map, PR #145)
+
+written: 2026-07-15T06:18:30Z (`date -u`; heartbeat appended second-to-last,
+card flip follows)
+
+- Inbox re-read at origin/main HEAD `c0c6882` before closing: no new
+  orders past ORDER 007 (its standing constraint holds — NO routines
+  re-armed, waiting on the owner's per-seat go).
+- This dispatch's slice, neutral facts: branch `claude/wickroad-wider-map`,
+  PR #145 (READY, non-draft), Wickroad growth cut 4 "A wider map + pack
+  upgrades" per games/wickroad/CONCEPT.md — the road runs on past
+  DUNWICK to HOLLOWFEN (the drovers' fair) and MIRGATE (seven markets,
+  each with its own aging ink), and START at the fair buys mules on a
+  fixed authored price ladder (30/55), each growing the pack by 4
+  (8 -> 12 -> 16). RNG delta counted: +16 world-init draws appended
+  strictly after the v0.4 stream (prior cuts: zero) — the legacy world
+  is bit-identical and P1-P6 carried verbatim on the first post-change
+  run. The map deliberately stays ONE road (no branch fork; L/R is a
+  committed verb grammar) — the honest cut is named in CONCEPT.md.
+  Telemetry 40 -> 48 (words 0-39 byte-unchanged). Proof suite
+  games/wickroad/proofs.sh now P1-P7: 655 watch + 68 text assertion
+  passes per run, P2-P7 each run twice with byte-identical watch-logs,
+  the whole suite run twice end-to-end with byte-identical CSVs across
+  runs; every P7 pin mirror-derived first and every watch pin matched
+  on the first route probe (the only first-probe failures were three
+  text asserts on FIXED-font ledger rows — measured fact recorded in
+  proofs.sh: --assert-text templates come from the variable font bmp,
+  so fixed-font rows are not text-assertable; the new towns' ledger
+  states are pinned via watch words 44/45 instead). dist/wickroad.gba
+  v0.5, 125,016 bytes, sha256 `ad4e477b...e8e31a`, two clean builds
+  byte-identical, suite re-run green at the dist bytes. Work claim
+  control/claims/claude-wickroad-wider-map.md retired with this
+  heartbeat (claims README rule 4 — the open PR is the live claim).
+- Landing posture: PR #145 parked READY; no merge/approve/auto-merge
+  calls from this session — the server-side enabler decides on green.
+- Pointers: .sessions/2026-07-15-wickroad-wider-map.md (card) ·
+  games/wickroad/CONCEPT.md (cut 4 marked SERVED) · dist/README.md
+  (v0.5 row) · docs/current-state.md (Wickroad row now v0.5).

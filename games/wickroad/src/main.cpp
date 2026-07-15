@@ -38,6 +38,30 @@
  * after a head redraw): dawn frames are budget-SPENT (the v0.2
  * measured lesson) and the crier owns the first quiet frame.
  *
+ * GROWTH CUT 3 — THE ROAD ITSELF (v0.4, CONCEPT.md growth cut 3):
+ * per-leg hazards (bandits, weather) and a guard-hire decision, so
+ * travel cost stops being flat. A fixed authored deck, exactly the
+ * rumor/contract-deck pattern: zero new RNG draws, and a hazard is a
+ * pure function of (leg, arrival day) — the world stays bit-identical
+ * and P1-P5 carry verbatim (every hazard window is authored AFTER day
+ * 14; the committed routes' last travel day is 13). BANDIT stretches
+ * seize an authored cut of gold from an unguarded crossing (floored
+ * at 0, like lodging); STORM stretches cost an unprovisioned crossing
+ * a whole extra day (a second dawn, plus 1 gold camp lodging) — days
+ * are the real currency, so weather and bandits price differently.
+ * LEFT (the last unused d-pad key) HIRES THE GUARD: a flat
+ * outfit_fee buys guard + provisions for the NEXT crossing, hazard or
+ * not (the fee is spent either way — hiring against a quiet road is
+ * the bad bet it sounds like). Every hazard is telegraphed on the new
+ * ROAD line from its authored announce day, days before the window
+ * opens, so the hire is an informed decision, not a coin flip. The
+ * ROAD line regenerates on the THIRD quiet frame after a head redraw
+ * (the crier owns the first, the pact line the second — dawn frames
+ * are budget-SPENT, the #142/#143 measured lesson); in the trading
+ * screen it takes the row the static verb-help line used to occupy
+ * (the full verb help stays on the title card), so the always-on
+ * sprite load is a wash.
+ *
  * PROTOTYPE RULES (deliberate cuts documented in CONCEPT.md):
  *   - Turn-based: nothing moves but on a key edge. A buys one unit of
  *     the cursor good, B sells one, L/R travel one town down the road
@@ -63,8 +87,9 @@
  *     input script replays bit-identically.
  *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
- * --elf --watch wr:wr_telemetry:32; the v0.1/v0.2 proofs keep watching
- * the first 16/24 words unchanged), volatile, C-linkage, every frame:
+ * --elf --watch wr:wr_telemetry:40; the v0.1/v0.2/v0.3 proofs keep
+ * watching the first 16/24/32 words unchanged), volatile, C-linkage,
+ * every frame:
  *   [0] 0x5749434B 'WICK' magic     [8]  pack used (0..8)
  *   [1] 0x524F4144 'ROAD' magic     [9]  cargo TALLOW
  *   [2] state (0 title, 1 trading,  [10] cargo SALT
@@ -120,6 +145,25 @@
  * (state 3, word 31 += premium), and the lapse dawn (state 4, word 31
  * unchanged) — the premium provably prices the risk taken, or not.
  *
+ * Hazard witness words (growth cut 3; all 0 on the title, and 0 while
+ * no hazard has been announced yet; words 32-36 describe the LATEST
+ * announced hazard, the latest_rumor pattern):
+ *   [32] latest announced hazard   [36] window last day
+ *        id (1-based; 0 = none)    [37] outfitted flag: 1 while a
+ *   [33] its kind: 0 bandits,           hired guard rides the next
+ *        1 storm                        crossing, else 0
+ *   [34] its leg (between town     [38] gold seized by bandits this
+ *        leg and leg+1)                 run, cumulative
+ *   [35] window first day          [39] days lost to storms this
+ *        (arrival-day check)            run, cumulative
+ * Words 37/38/39 make THE ROAD DECISION assertable: the harness pins
+ * the unguarded crossing losing EXACTLY the authored seizure (word 38
+ * jumps, gold drops in the same frame), the guarded crossing of the
+ * SAME stretch losing nothing (37: 1 -> 0, 38 unchanged), the
+ * unprovisioned storm costing exactly one day (39 += 1, day += 2 on
+ * one travel edge) and the provisioned one costing none — the fee
+ * provably buys what it claims, or is provably wasted.
+ *
  * Presentation is deliberately trivial (breadth-program slice): the
  * market table and the ledger are fixed-font glyph lines; headers,
  * title and end cards use the common variable 8x8 font (the one
@@ -143,7 +187,7 @@
 extern "C"
 {
     // Headless telemetry mailbox — layout in the header comment.
-    volatile unsigned wr_telemetry[32];
+    volatile unsigned wr_telemetry[40];
 }
 
 namespace
@@ -272,6 +316,49 @@ namespace
         {10, 2, 1, 2, 14, 70},
     };
 
+    // --- the HAZARD deck (growth cut 3) --------------------------------------
+    // The road itself: per-leg hazards, so travel cost stops being
+    // flat. FIXED and authored like the rumor and contract decks: no
+    // RNG is consumed, and whether a crossing is hazarded is a pure
+    // function of (leg, ARRIVAL day) — the day the dawn of the ride
+    // lands you on the far side. Every window opens AFTER day 14 (the
+    // committed P2/P3/P5 routes' last travel day is 13), so the world
+    // and every committed pin stay bit-identical. Kinds price
+    // differently on purpose: BANDITS tax gold (an authored seizure,
+    // floored at 0 like lodging), STORMS tax the clock (one extra dawn
+    // camped in the pass, 1 gold lodging) — and days are the win
+    // condition's real currency. One outfit_fee guard-hire covers the
+    // NEXT crossing against either kind, hazard or not: hiring against
+    // a quiet road wastes the fee, so the ROAD line's advance warning
+    // (announce_day, days before the window) is what makes the hire a
+    // decision instead of a coin flip.
+    struct hazard_t
+    {
+        int announce_day;    // the ROAD line starts warning at this dawn
+        int from_day;        // hazard window: ARRIVAL day in
+        int to_day;          //   [from_day, to_day], inclusive
+        int leg;             // the road between town leg and leg+1
+        int kind;            // 0 = bandits, 1 = storm
+        int seizure;         // bandits: gold seized per unguarded
+                             //   crossing (storms take a day instead)
+    };
+
+    constexpr int hazard_count = 3;
+    constexpr int outfit_fee = 4;        // LEFT: guard + provisions,
+                                         //   consumed by the next ride
+
+    constexpr hazard_t hazard_deck[hazard_count] = {
+        // H1: bandits on the GLASSMERE road, a tight two-day window —
+        // the cheap lesson: seizure 12 vs the 4-gold guard.
+        {13, 15, 16, 0, 0, 12},
+        // H2: a storm over the THORNBY road, four days — the clock
+        // tax: an unprovisioned crossing loses a whole day.
+        {17, 19, 22, 2, 1, 0},
+        // H3: bandits on the DUNWICK road, late and fat — priced so
+        // an end-game iron run has to budget for it.
+        {23, 25, 28, 3, 0, 15},
+    };
+
     // Triangle wave over a 12-day period: 0..11 -> -3..3..-2 (integer,
     // closed-form — the whole "simulation" of the market).
     constexpr int tri12(int m)
@@ -343,6 +430,7 @@ int main()
     text_line ledger_lines[town_count - 1];  // the other four towns
     text_line title_lines[4];            // extra title/card rows
     text_line pact_line;                 // the contract line (cut 2)
+    text_line road_line;                 // the hazard line (cut 3)
 
     auto clear_lines = [&]()
     {
@@ -367,6 +455,7 @@ int main()
         }
 
         pact_line.clear();
+        road_line.clear();
     };
 
     // --- world + run state (reset_run() restores the exact boot world) -----
@@ -386,6 +475,10 @@ int main()
     int cargo[good_count] = {0, 0, 0, 0};
     bool contract_accepted[contract_count] = {false, false};
     bool contract_paid[contract_count] = {false, false};
+    bool outfitted = false;              // a hired guard rides the
+                                         //   next crossing (cut 3)
+    int hazard_gold_lost = 0;            // bandit seizures, cumulative
+    int storm_days_lost = 0;             // storm delays, cumulative
 
     auto pack_used = [&]() -> int
     {
@@ -460,6 +553,23 @@ int main()
         for(int i = 0; i < contract_count; ++i)
         {
             if(int(day) >= contract_deck[i].offer_day)
+            {
+                id = i + 1;
+            }
+        }
+
+        return id;
+    };
+
+    // The latest announced hazard (1-based id; 0 = none yet) — a pure
+    // function of the day, exactly the latest_rumor pattern.
+    auto latest_hazard = [&]() -> int
+    {
+        int id = 0;
+
+        for(int i = 0; i < hazard_count; ++i)
+        {
+            if(int(day) >= hazard_deck[i].announce_day)
             {
                 id = i + 1;
             }
@@ -585,6 +695,10 @@ int main()
             contract_paid[i] = false;
         }
 
+        outfitted = false;
+        hazard_gold_lost = 0;
+        storm_days_lost = 0;
+
         refresh_ledger();
     };
 
@@ -617,6 +731,47 @@ int main()
         }
 
         refresh_ledger();
+    };
+
+    // Growth cut 3: resolve the road just ridden. Called right after
+    // a travel dawn, with `day` already the ARRIVAL day and `town` the
+    // far side; `leg` is the road between town leg and leg+1. The
+    // hired guard (if any) is consumed by the crossing whether the
+    // road bites or not — hiring against a quiet road wastes the fee,
+    // which is exactly what makes the ROAD line's warning worth
+    // reading. At most one deck hazard matches any (leg, day): the
+    // authored windows sit on distinct legs.
+    auto cross = [&](int leg)
+    {
+        bool guarded = outfitted;
+        outfitted = false;
+
+        if(state != st_trading)          // the pass closed on the
+        {                                //   travel dawn itself
+            return;
+        }
+
+        for(const hazard_t& h : hazard_deck)
+        {
+            if(h.leg != leg || int(day) < h.from_day
+               || int(day) > h.to_day || guarded)
+            {
+                continue;
+            }
+
+            if(h.kind == 0)              // bandits: the gold tax,
+            {                            //   floored at 0 like lodging
+                int seized = gold > h.seizure ? h.seizure : gold;
+                gold -= seized;
+                hazard_gold_lost += seized;
+            }
+            else                         // storm: the clock tax — one
+            {                            //   day camped in the pass
+                gold = gold > lodging ? gold - lodging : 0;
+                ++storm_days_lost;
+                dawn();
+            }
+        }
     };
 
     while(true)
@@ -696,6 +851,7 @@ int main()
                 gold -= travel_toll;
                 --town;
                 dawn();
+                cross(town);             // rode the (town, town+1) leg
             }
 
             if(state == st_trading && bn::keypad::r_pressed()
@@ -704,6 +860,7 @@ int main()
                 gold -= travel_toll;
                 ++town;
                 dawn();
+                cross(town - 1);         // rode the (town-1, town) leg
             }
 
             if(state == st_trading && bn::keypad::select_pressed())
@@ -746,6 +903,17 @@ int main()
                 }
             }
 
+            // The road verb (growth cut 3): LEFT hires the guard —
+            // outfit_fee gold buys guard + provisions for the NEXT
+            // crossing, against bandits and storms alike. One hire at
+            // a time; the crossing consumes it, hazard or not.
+            if(state == st_trading && bn::keypad::left_pressed()
+               && ! outfitted && gold >= outfit_fee)
+            {
+                gold -= outfit_fee;
+                outfitted = true;
+            }
+
             break;
         }
 
@@ -767,6 +935,7 @@ int main()
             title_lines[3].set(ui_gen, ui_x, 48,
                                "A BUY  B SELL  L/R GO  SEL WAIT");
             pact_line.set(ui_gen, ui_x, 60, "RIGHT TAKES A PACT");
+            road_line.set(ui_gen, ui_x, 72, "LEFT HIRES THE GUARD");
             break;
 
         case st_trading:
@@ -884,6 +1053,50 @@ int main()
                 pact_line.set(ui_gen, ui_x, 74, pact);
             }
 
+            // The ROAD line (growth cut 3): the latest announced
+            // hazard and the standing guard, on the row the static
+            // verb-help line held through v0.3 (the full help stays on
+            // the title card — an always-on sprite wash, deliberately:
+            // the #143 lesson says audit the pool at the worst redraw
+            // frame before adding lines). Deferred one frame further
+            // than the pact line (regen only from the THIRD quiet
+            // frame after a head redraw): dawn frames are budget-SPENT
+            // and the crier/pact lines own quiet frames 1 and 2.
+            // head_quiet is a pure function of the input history, so
+            // determinism is untouched.
+            if(head_quiet >= 3)
+            {
+                int hid = latest_hazard();
+                bn::string<40> road;
+
+                if(hid == 0)
+                {
+                    road.append("THE ROAD LIES QUIET");
+                }
+                else
+                {
+                    // "RAID" is the bandits' on-screen token: the
+                    // guarded line must fit the 240px screen from
+                    // ui_x, and "BANDITS: GLASSMERE RD D15-16 +GUARD"
+                    // measurably clips its last glyph (the first P6
+                    // probe caught exactly that).
+                    const hazard_t& h = hazard_deck[hid - 1];
+                    road.append(h.kind == 0 ? "RAID: " : "STORM: ");
+                    road.append(town_names[h.leg + 1]);
+                    road.append(" RD D");
+                    road.append(bn::to_string<8>(h.from_day));
+                    road.append('-');
+                    road.append(bn::to_string<8>(h.to_day));
+                }
+
+                if(outfitted)
+                {
+                    road.append(" +GUARD");
+                }
+
+                road_line.set(ui_gen, ui_x, 64, road);
+            }
+
             ui_lines[2].set(ui_gen, ui_x, 12, "LEDGER - THE INK AGES");
 
             int slot = 0;
@@ -920,8 +1133,6 @@ int main()
                 ++slot;
             }
 
-            ui_lines[3].set(ui_gen, ui_x, 64,
-                            "A BUY  B SELL  L/R GO  SEL WAIT");
             break;
         }
 
@@ -1013,6 +1224,23 @@ int main()
             wr_telemetry[30] = none ? 0u : unsigned(c.premium);
             wr_telemetry[31] = state == st_title
                                     ? 0u : unsigned(premium_paid_total());
+        }
+
+        // Hazard witness words (growth cut 3) — layout in the header.
+        {
+            int hid = state == st_title ? 0 : latest_hazard();
+            const hazard_t& h = hazard_deck[hid == 0 ? 0 : hid - 1];
+            bool none = hid == 0;
+            wr_telemetry[32] = none ? 0u : unsigned(hid);
+            wr_telemetry[33] = none ? 0u : unsigned(h.kind);
+            wr_telemetry[34] = none ? 0u : unsigned(h.leg);
+            wr_telemetry[35] = none ? 0u : unsigned(h.from_day);
+            wr_telemetry[36] = none ? 0u : unsigned(h.to_day);
+            wr_telemetry[37] = state == st_title ? 0u : unsigned(outfitted);
+            wr_telemetry[38] = state == st_title
+                                    ? 0u : unsigned(hazard_gold_lost);
+            wr_telemetry[39] = state == st_title
+                                    ? 0u : unsigned(storm_days_lost);
         }
 
         bn::core::update();

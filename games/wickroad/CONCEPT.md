@@ -119,14 +119,27 @@ twice byte-identical.
    `proofs.sh` P7).
 5. **Audio** — synthesized cues via the proven `generate_audio.py`
    pipeline (coin chink, dawn bell, the pass-closing wind), decisions
-   hook-counted per the house method.
+   hook-counted per the house method. **SERVED — v0.6** (growth cut 5,
+   the LAST named cut — the named growth path is COMPLETE: three
+   original cues from the stdlib-only deterministic generator at
+   `audio/generate_audio.py`, played as pure decisions on events the
+   sim already computes — the coin when gold changes hands on a trade
+   (buy, sell, pact delivery), the bell on a day rollover, the wind
+   on the pass-closing dawn; zero new RNG draws, words 0-47 of the
+   mailbox byte-unchanged so P1-P7 carried verbatim; hook counters in
+   the new witness words 48-51 (boot-cumulative, restart-surviving),
+   proven with maxmod mixer-memory voicing evidence in `proofs.sh`
+   P8; audible FEEL stays owner-playtest territory, named honestly
+   in the PR).
 
 ## Determinism
 
 One xorshift32 at fixed seed `0x5749434B`, consumed only at world
 init in a fixed order; integer math only; prices are pure functions
 of (day, impact). Same input script = identical run (proven run-twice
-byte-identical). Telemetry mailbox `wr_telemetry[16]` every frame.
+byte-identical). Telemetry mailbox `wr_telemetry[52]` every frame
+(grown 16 → 24 → 32 → 40 → 48 → 52 across the growth cuts; each cut
+appended words only, earlier words byte-unchanged).
 
 ## Sellability guess
 

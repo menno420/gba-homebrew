@@ -1,1 +1,0 @@
-- `claude/wickroad-rumors` · **Wickroad growth cut 1 — rumors: deterministic rumor deck telegraphing future price shocks, new proof P4, dist v0.2** · games/wickroad/ + dist/ · 2026-07-15

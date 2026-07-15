@@ -30,3 +30,27 @@ Ordered reading list:
 - Repo-local truth: control/README.md protocol text (keep).
 - Track plan: `docs/concepts/session-1-concepts.md` — the ORDER-001 concept queue (fully built; reference kept here so the doc stays on the read path).
 - Local docs that duplicate fleet doctrine (LISTED, not migrated): docs/ROUTINES.md (wake-chain doctrine), docs/conventions.md (seeded from the gen-2 blueprint), docs/collaboration-model.md, docs/ai-project-workflow.md, docs/helper-policy.md.
+
+## Dispatch 2026-07-15 (wickroad-rumors, PR #142)
+
+written: 2026-07-15T04:22:33Z (`date -u`; heartbeat appended second-to-last, card flip follows)
+
+- **ORDER 007 ACKNOWLEDGED** (first rebooted dispatch): EAP EXTENDED through
+  2026-07-21 acknowledged; the 2026-07-14 dormancy orders (the SEAT DORMANT
+  text above) are superseded pending the owner's per-project reboot review.
+  **NO routines re-armed** per the order — waiting for the owner's per-seat
+  go (the v3.6 reboot prompt). Source: control/inbox.md ORDER 007 @
+  2026-07-15T03:37:11Z.
+- This dispatch's slice, neutral facts: branch `claude/wickroad-rumors`,
+  PR #142 (READY, non-draft), Wickroad growth cut 1 "Rumors" per
+  games/wickroad/CONCEPT.md. Proof suite games/wickroad/proofs.sh now
+  P1-P4: 278 watch + 34 text assertion passes per run, P2/P3/P4 each run
+  twice with byte-identical watch-logs. dist/wickroad.gba v0.2, sha256
+  `ebcc10f1...fdea`, two clean builds byte-identical. Work claim
+  control/claims/claude-wickroad-rumors.md retired with this heartbeat
+  (claims README rule 4 — the open PR is the live claim).
+- Landing posture: PR #142 parked READY on green; no merge/approve/
+  auto-merge calls from this session — the server-side enabler decides.
+- Pointers: .sessions/2026-07-15-wickroad-rumors.md (card) ·
+  games/wickroad/CONCEPT.md (cut 1 marked SERVED) · dist/README.md
+  (v0.2 row).

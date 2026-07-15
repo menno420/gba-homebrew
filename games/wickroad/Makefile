@@ -9,6 +9,7 @@
 #---------------------------------------------------------------------------------------------------------------------
 ROMTITLE    	:=  WICKROAD
 ROMCODE     	:=  GLWR
+AUDIO       	:=  audio
 INCLUDES    	:=  ../../third_party/butano/common/include
 GRAPHICS    	:=  ../../third_party/butano/common/graphics
 

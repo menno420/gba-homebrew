@@ -1,0 +1,1 @@
+- `claude/wickroad-audio` · **Wickroad growth cut 5 — audio (v0.6)** · games/wickroad/ + dist/ + docs/ + control/ · 2026-07-15

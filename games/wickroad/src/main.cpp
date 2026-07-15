@@ -23,6 +23,21 @@
  * whenever the player's own market impact there is zero; proofs.sh P4
  * pins exactly that.
  *
+ * GROWTH CUT 2 — CONTRACTS (v0.3, CONCEPT.md growth cut 2): dated
+ * delivery orders ("PACT? 2 RESIN TO THORNBY D8 +60") — a second
+ * income verb that PRICES RISK. A fixed authored deck, exactly the
+ * rumor-deck pattern: zero new RNG draws and zero price-law changes
+ * (delivery bypasses the market — goods leave the pack, the premium
+ * lands, prices and impact untouched), so the world stays
+ * bit-identical and P1-P4 carry verbatim. RIGHT (the d-pad, unused
+ * until now) is the pact verb: it takes the posted contract, and
+ * hands the goods over at the destination on or before the deadline.
+ * Miss the deadline and the pact simply LAPSES (no forfeit — the
+ * simple rule, deliberately). The pact line's regeneration is
+ * deferred one frame FURTHER than the crier's (the second quiet frame
+ * after a head redraw): dawn frames are budget-SPENT (the v0.2
+ * measured lesson) and the crier owns the first quiet frame.
+ *
  * PROTOTYPE RULES (deliberate cuts documented in CONCEPT.md):
  *   - Turn-based: nothing moves but on a key edge. A buys one unit of
  *     the cursor good, B sells one, L/R travel one town down the road
@@ -48,8 +63,8 @@
  *     input script replays bit-identically.
  *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
- * --elf --watch wr:wr_telemetry:24; the v0.1 proofs keep watching the
- * first 16 words unchanged), volatile, C-linkage, every frame:
+ * --elf --watch wr:wr_telemetry:32; the v0.1/v0.2 proofs keep watching
+ * the first 16/24 words unchanged), volatile, C-linkage, every frame:
  *   [0] 0x5749434B 'WICK' magic     [8]  pack used (0..8)
  *   [1] 0x524F4144 'ROAD' magic     [9]  cargo TALLOW
  *   [2] state (0 title, 1 trading,  [10] cargo SALT
@@ -88,6 +103,23 @@
  * and the hit-day frame where the market obeys it EXACTLY (t21 == t20,
  * phase 2) — planning against rumors is provably informative.
  *
+ * Contract witness words (growth cut 2; all 0 on the title, and 0
+ * while no contract has been posted yet; words 24-30 describe the
+ * LATEST posted contract — windows are disjoint by authorship, so
+ * that is the only live one):
+ *   [24] latest posted contract id  [28] quantity
+ *        (1-based; 0 = none)        [29] deadline day
+ *   [25] its lifecycle state:       [30] premium (the whole payout)
+ *        1 offered, 2 accepted,     [31] cumulative premium gold
+ *        3 paid, 4 lapsed                paid across ALL contracts
+ *   [26] its good                        this run
+ *   [27] its destination town
+ * Words 25/31 make THE SECOND INCOME VERB assertable: the harness pins
+ * the offer (state 1) before any player action, the acceptance edge
+ * (1 -> 2), the delivery frame where gold jumps by EXACTLY the premium
+ * (state 3, word 31 += premium), and the lapse dawn (state 4, word 31
+ * unchanged) — the premium provably prices the risk taken, or not.
+ *
  * Presentation is deliberately trivial (breadth-program slice): the
  * market table and the ledger are fixed-font glyph lines; headers,
  * title and end cards use the common variable 8x8 font (the one
@@ -111,7 +143,7 @@
 extern "C"
 {
     // Headless telemetry mailbox — layout in the header comment.
-    volatile unsigned wr_telemetry[24];
+    volatile unsigned wr_telemetry[32];
 }
 
 namespace
@@ -204,6 +236,42 @@ namespace
         {14, 18, 4, 3, 9},   // R3: resin soars at DUNWICK by day 18
     };
 
+    // --- the CONTRACT deck (growth cut 2) -----------------------------------
+    // Dated delivery orders — the second income verb. FIXED and
+    // authored like the rumor deck: no RNG is consumed and no
+    // price-law term is added (delivery bypasses the market entirely:
+    // goods leave the pack, the premium lands, prices and impact
+    // untouched), so the world stays bit-identical and the committed
+    // proofs carry verbatim. The premium PRICES RISK, by authorship:
+    // it beats the destination's spot value of the goods by a margin
+    // that grows with the haul (tolls + days of capital tied up) and
+    // the tightness of the deadline window. Offer windows are disjoint
+    // (each offer_day > the previous deadline_day), so at most one
+    // contract is live at a time — the pact line and the witness words
+    // track the latest posted one.
+    struct contract_t
+    {
+        int offer_day;       // posted at this dawn
+        int good;
+        int town;            // destination
+        int qty;
+        int deadline_day;    // hand over ON or BEFORE this day...
+        int premium;         // ...for this payout (the whole payment)
+    };
+
+    constexpr int contract_count = 2;
+
+    constexpr contract_t contract_deck[contract_count] = {
+        // C1: 2 RESIN to THORNBY by day 8, pays 60 — spot value there
+        // is ~40 (2 x ~21, minus the sell fee); the margin prices a
+        // 3-leg haul from the EMBERTON start and a 7-day window.
+        {2, 3, 3, 2, 8, 60},
+        // C2: 2 IRON to GLASSMERE by day 14, pays 70 — iron runs ~26
+        // at its SALTCOMBE source, two legs out; the fatter margin
+        // prices a tighter 4-day window.
+        {10, 2, 1, 2, 14, 70},
+    };
+
     // Triangle wave over a 12-day period: 0..11 -> -3..3..-2 (integer,
     // closed-form — the whole "simulation" of the market).
     constexpr int tri12(int m)
@@ -274,6 +342,7 @@ int main()
     text_line table_lines[good_count];   // the market table (fixed font)
     text_line ledger_lines[town_count - 1];  // the other four towns
     text_line title_lines[4];            // extra title/card rows
+    text_line pact_line;                 // the contract line (cut 2)
 
     auto clear_lines = [&]()
     {
@@ -296,11 +365,15 @@ int main()
         {
             line.clear();
         }
+
+        pact_line.clear();
     };
 
     // --- world + run state (reset_run() restores the exact boot world) -----
     unsigned state = st_title;
     unsigned frames = 0;                 // monotonic since boot
+    unsigned head_quiet = 0;             // frames since the head line
+                                         // last changed (regen stagger)
     int base[town_count][good_count];
     int phase[town_count][good_count];
     int impact[town_count][good_count];
@@ -311,6 +384,8 @@ int main()
     int town = 0;
     int cursor = 0;
     int cargo[good_count] = {0, 0, 0, 0};
+    bool contract_accepted[contract_count] = {false, false};
+    bool contract_paid[contract_count] = {false, false};
 
     auto pack_used = [&]() -> int
     {
@@ -376,6 +451,70 @@ int main()
         return id;
     };
 
+    // The latest posted contract (1-based id; 0 = none yet) — a pure
+    // function of the day, exactly the latest_rumor pattern.
+    auto current_contract = [&]() -> int
+    {
+        int id = 0;
+
+        for(int i = 0; i < contract_count; ++i)
+        {
+            if(int(day) >= contract_deck[i].offer_day)
+            {
+                id = i + 1;
+            }
+        }
+
+        return id;
+    };
+
+    // Contract lifecycle, DERIVED — the only stored contract state is
+    // the two player flags, everything else is a function of the day:
+    // 0 unposted, 1 offered, 2 accepted, 3 paid, 4 lapsed (the
+    // deadline passed unpaid — accepted or not; the simple lapse rule,
+    // no forfeit, deliberately).
+    auto contract_state = [&](int i) -> int
+    {
+        if(contract_paid[i])
+        {
+            return 3;
+        }
+
+        if(int(day) > contract_deck[i].deadline_day)
+        {
+            return 4;
+        }
+
+        if(contract_accepted[i])
+        {
+            return 2;
+        }
+
+        if(int(day) >= contract_deck[i].offer_day)
+        {
+            return 1;
+        }
+
+        return 0;
+    };
+
+    // Premium gold banked across all paid contracts this run —
+    // derived from the paid flags, nothing stored.
+    auto premium_paid_total = [&]() -> int
+    {
+        int total = 0;
+
+        for(int i = 0; i < contract_count; ++i)
+        {
+            if(contract_paid[i])
+            {
+                total += contract_deck[i].premium;
+            }
+        }
+
+        return total;
+    };
+
     // Standing in a town, you SEE its market: today's prices go in the
     // ledger, in ink, dated today.
     auto refresh_ledger = [&]()
@@ -438,6 +577,12 @@ int main()
         for(int g = 0; g < good_count; ++g)
         {
             cargo[g] = 0;
+        }
+
+        for(int i = 0; i < contract_count; ++i)
+        {
+            contract_accepted[i] = false;
+            contract_paid[i] = false;
         }
 
         refresh_ledger();
@@ -567,6 +712,40 @@ int main()
                 dawn();
             }
 
+            // The pact verb (growth cut 2): RIGHT on the d-pad (unused
+            // until now) TAKES the posted contract, and HANDS OVER the
+            // goods at the destination on or before the deadline —
+            // the premium is the whole payment (delivery bypasses the
+            // market: no price, no impact, no ledger change).
+            if(state == st_trading && bn::keypad::right_pressed())
+            {
+                int cid = current_contract();
+
+                if(cid > 0)
+                {
+                    const contract_t& c = contract_deck[cid - 1];
+                    int cs = contract_state(cid - 1);
+
+                    if(cs == 1)
+                    {
+                        contract_accepted[cid - 1] = true;
+                    }
+                    else if(cs == 2 && town == c.town
+                            && cargo[c.good] >= c.qty)
+                    {
+                        cargo[c.good] -= c.qty;
+                        gold += c.premium;
+                        contract_paid[cid - 1] = true;
+
+                        if(gold >= gold_target)
+                        {
+                            state = st_balanced;
+                            clear_lines();
+                        }
+                    }
+                }
+            }
+
             break;
         }
 
@@ -587,6 +766,7 @@ int main()
             title_lines[2].set(ui_gen, ui_x, 28, "PRESS START");
             title_lines[3].set(ui_gen, ui_x, 48,
                                "A BUY  B SELL  L/R GO  SEL WAIT");
+            pact_line.set(ui_gen, ui_x, 60, "RIGHT TAKES A PACT");
             break;
 
         case st_trading:
@@ -603,6 +783,8 @@ int main()
             // function of the input history: determinism is untouched.
             bool head_changed = !(ui_lines[0].cached == head)
                                 || ui_lines[0].dirty_clear;
+
+            head_quiet = head_changed ? 0 : head_quiet + 1;
 
             ui_lines[0].set(ui_gen, ui_x, -70, head);
 
@@ -651,6 +833,55 @@ int main()
                 {
                     title_lines[0].set(ui_gen, ui_x, 0, cry);
                 }
+            }
+
+            // The pact line (growth cut 2): the latest posted contract
+            // and its lifecycle. Deferred one frame FURTHER than the
+            // crier (regen only from the SECOND quiet frame after a
+            // head redraw): dawn frames are budget-SPENT (the v0.2
+            // measured lesson) and the crier owns the first quiet
+            // frame — staggering keeps every regeneration frame
+            // single-purpose. head_quiet is a pure function of the
+            // input history, so determinism is untouched.
+            if(head_quiet >= 2)
+            {
+                int cid = current_contract();
+                bn::string<40> pact;
+
+                if(cid == 0)
+                {
+                    pact.append("NO PACTS POSTED");
+                }
+                else
+                {
+                    const contract_t& c = contract_deck[cid - 1];
+                    int cs = contract_state(cid - 1);
+
+                    if(cs == 3)
+                    {
+                        pact.append("PACT PAID +");
+                        pact.append(bn::to_string<8>(c.premium));
+                    }
+                    else if(cs == 4)
+                    {
+                        pact.append("PACT LAPSED");
+                    }
+                    else
+                    {
+                        pact.append(cs == 1 ? "PACT? " : "PACT: ");
+                        pact.append(bn::to_string<8>(c.qty));
+                        pact.append(' ');
+                        pact.append(good_names[c.good]);
+                        pact.append(" TO ");
+                        pact.append(town_names[c.town]);
+                        pact.append(" D");
+                        pact.append(bn::to_string<8>(c.deadline_day));
+                        pact.append(" +");
+                        pact.append(bn::to_string<8>(c.premium));
+                    }
+                }
+
+                pact_line.set(ui_gen, ui_x, 74, pact);
             }
 
             ui_lines[2].set(ui_gen, ui_x, 12, "LEDGER - THE INK AGES");
@@ -765,6 +996,23 @@ int main()
                              : int(day) < r.hit_day          ? 1u
                              : int(day) < r.hit_day + rumor_window ? 2u
                                                              : 3u;
+        }
+
+        // Contract witness words (growth cut 2) — layout in the header.
+        {
+            int cid = state == st_title ? 0 : current_contract();
+            const contract_t& c = contract_deck[cid == 0 ? 0 : cid - 1];
+            bool none = cid == 0;
+            wr_telemetry[24] = none ? 0u : unsigned(cid);
+            wr_telemetry[25] = none ? 0u
+                                    : unsigned(contract_state(cid - 1));
+            wr_telemetry[26] = none ? 0u : unsigned(c.good);
+            wr_telemetry[27] = none ? 0u : unsigned(c.town);
+            wr_telemetry[28] = none ? 0u : unsigned(c.qty);
+            wr_telemetry[29] = none ? 0u : unsigned(c.deadline_day);
+            wr_telemetry[30] = none ? 0u : unsigned(c.premium);
+            wr_telemetry[31] = state == st_title
+                                    ? 0u : unsigned(premium_paid_total());
         }
 
         bn::core::update();

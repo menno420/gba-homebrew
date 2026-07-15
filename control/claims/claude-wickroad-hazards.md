@@ -1,0 +1,1 @@
+- `claude/wickroad-hazards` · **Wickroad growth cut 3 — The road itself: per-leg hazards (bandits, weather) + a guard-hire decision** · games/wickroad/ + dist/ + docs/ · 2026-07-15

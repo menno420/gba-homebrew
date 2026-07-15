@@ -9,7 +9,7 @@
 #     bash games/wickroad/proofs.sh
 # Artifacts land in $WICKROAD_PROOF_OUT (default /tmp/wickroad-proofs).
 #
-# The five proofs (asserts inline below):
+# The six proofs (asserts inline below):
 #   P1 boot/title            — magics, title state, every title line incl.
 #                              the hook line ("BUT THE INK AGES") and the
 #                              full verb help; witness words zero on title.
@@ -85,9 +85,45 @@
 #                              first — dawn frames are budget-SPENT, see
 #                              main.cpp).
 #
-# Mailbox: wr_telemetry[32] since v0.3 (layout in games/wickroad/src/main.cpp;
+#   P6 THE ROAD ITSELF (growth cut 3) — travel cost stops being flat: the
+#                              ROAD line telegraphs each authored hazard days
+#                              ahead (H1 pinned on day 13, two days before
+#                              its window), an UNGUARDED crossing of the
+#                              bandit stretch loses EXACTLY the authored
+#                              seizure (gold 45 -> 33, word 38 = 12), LEFT
+#                              hires the guard (fee 4, word 37: 0 -> 1) and
+#                              the guarded crossing of the SAME stretch on
+#                              the SAME window loses nothing (37 back to 0,
+#                              38 unchanged), the unprovisioned storm
+#                              crossing loses exactly ONE DAY (day 18 -> 20
+#                              on one travel edge, word 39 = 1, 1 gold camp
+#                              lodging), the provisioned crossing of the
+#                              same storm window loses none (day 20 -> 21),
+#                              and day-23 gold 12 pins the whole route
+#                              ledger (60 - 15 lodgings - 14 tolls - 12
+#                              seized - 2 x 4 fees - 1 camp - 2 = see
+#                              inline). H3's late announcement (day 23) and
+#                              the day-23 THORNBY stale-ink pair (word 14 =
+#                              34 true vs word 15 = 7939: 31 inked at age 3)
+#                              close the loop with the cut-0 hook. RUN
+#                              TWICE — byte-identical watch-logs. Every
+#                              value was derived on the host-side mirror of
+#                              the sim law FIRST. ROAD-line text asserts sit
+#                              >= 4 frames after their edge: the road line
+#                              regenerates on the THIRD quiet frame after a
+#                              head redraw (crier first, pact second — dawn
+#                              frames are budget-SPENT, see main.cpp), and
+#                              the head redraw itself lands 1-2 frames after
+#                              the key edge (a DETERMINISTIC parity of the
+#                              input script, measured frame-by-frame on this
+#                              route: the day-13 flip renders at edge+4, the
+#                              day-23 flip at edge+5 — hence the 168 assert.
+#                              Determinism makes the parity a constant of
+#                              the committed route, not noise).
+#
+# Mailbox: wr_telemetry[40] since v0.4 (layout in games/wickroad/src/main.cpp;
 # P1-P3 keep watching the first 16 words, unchanged from v0.1; P4 the first
-# 24, unchanged from v0.2).
+# 24, unchanged from v0.2; P5 the first 32, unchanged from v0.3).
 # Word 15 encodes the THORNBY/SALT ledger entry as (ink price << 8) | age:
 # 6912 = 27 @ age 0 · 6913 = 27 @ 1 · 6915 = 27 @ 3 · 6937 = 27 @ 25.
 # Turn-based determinism: the same script replays bit-identically by
@@ -125,7 +161,8 @@ H "$OUT/p1.png" --frames 70 $W \
   --assert-text "60:YOUR LEDGER REMEMBERS" \
   --assert-text "60:BUT THE INK AGES" \
   --assert-text "60:PRESS START" \
-  --assert-text "60:A BUY  B SELL  L/R GO  SEL WAIT"
+  --assert-text "60:A BUY  B SELL  L/R GO  SEL WAIT" \
+  --assert-text "60:LEFT HIRES THE GUARD"
 
 # The committed 13-day winning route (win at the 5th iron sale, frame 452):
 # day 1 EMBERTON buy 5 tallow -> day 3 SALTCOMBE sell, buy 3 iron -> day 5
@@ -461,5 +498,129 @@ H "$OUT/p5b.png" --frames 164 $W32 $PACT_ROUTE \
   "${PACT_ASSERTS[@]}"
 cmp "$OUT/p5-run1.csv" "$OUT/p5-run2.csv"
 echo "P5 run-twice: byte-identical"
+
+# The road route: START, 13 SELECT waits to day 14 (H1 announced day 13,
+# window D15-16 on the GLASSMERE road), R into the window UNGUARDED (the
+# bandits take their authored 12), LEFT hires the guard (fee 4), L back
+# across the SAME stretch guarded (nothing taken, the guard consumed),
+# R/R/R east — the last leg arrives THORNBY day 19 inside the storm
+# window D19-22 UNPROVISIONED (one day camped: day 18 -> 20 on one edge,
+# 1 gold lodging), LEFT again, L back across the storm provisioned (day
+# 21, no delay), then two waits to day 23 (H3 announced). Route gold
+# ledger, every step on the mirror: 60 - 13 lodgings = 47; - 2 toll -
+# 12 seized = 33; - 4 fee = 29; - 2 toll = 27; - 2 - 2 = 23; - 2 toll -
+# 1 camp = 20; - 4 fee = 16; - 2 toll = 14; - 1 - 1 = 12 at day 23.
+ROAD_ROUTE='--keys 10-12:START --keys 30-32:SELECT --keys 36-38:SELECT --keys 42-44:SELECT --keys 48-50:SELECT --keys 54-56:SELECT --keys 60-62:SELECT --keys 66-68:SELECT --keys 72-74:SELECT --keys 78-80:SELECT --keys 84-86:SELECT --keys 90-92:SELECT --keys 96-98:SELECT --keys 102-104:SELECT --keys 108-110:R --keys 114-116:LEFT --keys 120-122:L --keys 126-128:R --keys 132-134:R --keys 138-140:R --keys 144-146:LEFT --keys 150-152:L --keys 156-158:SELECT --keys 162-164:SELECT'
+
+W40='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:40'
+
+ROAD_ASSERTS=(
+  # day 1: trading, nothing announced — hazard words all zero, the road
+  # quiet on screen, cursor TALLOW at the mirror's 9 (the P2 pin)
+  --assert-watch 24:wr:2:eq:1
+  --assert-watch 24:wr:4:eq:1
+  --assert-watch 24:wr:5:eq:60
+  --assert-watch 24:wr:13:eq:9
+  --assert-watch 24:wr:32:eq:0
+  --assert-watch 24:wr:37:eq:0
+  --assert-watch 24:wr:38:eq:0
+  --assert-watch 24:wr:39:eq:0
+  --assert-text "24:THE ROAD LIES QUIET"
+  # day 13: H1 ANNOUNCED two days before its window — the whole hazard
+  # pinned in words 32-36 while nothing has been lost yet
+  --assert-watch 100:wr:4:eq:13
+  --assert-watch 100:wr:5:eq:48
+  --assert-watch 100:wr:32:eq:1
+  --assert-watch 100:wr:33:eq:0
+  --assert-watch 100:wr:34:eq:0
+  --assert-watch 100:wr:35:eq:15
+  --assert-watch 100:wr:36:eq:16
+  --assert-watch 100:wr:37:eq:0
+  --assert-watch 100:wr:38:eq:0
+  --assert-text "100:RAID: GLASSMERE RD D15-16"
+  # day 14, the eve: gold 47 after 13 lodgings
+  --assert-watch 106:wr:4:eq:14
+  --assert-watch 106:wr:5:eq:47
+  # the UNGUARDED crossing, arrival day 15 inside D15-16: toll 2 then
+  # the authored seizure 12 — gold 47 -> 33 on one edge, word 38 = 12
+  --assert-watch 112:wr:4:eq:15
+  --assert-watch 112:wr:6:eq:1
+  --assert-watch 112:wr:5:eq:33
+  --assert-watch 112:wr:38:eq:12
+  --assert-watch 112:wr:39:eq:0
+  # LEFT hires the guard: fee 4, word 37: 0 -> 1, on screen
+  --assert-watch 118:wr:5:eq:29
+  --assert-watch 118:wr:37:eq:1
+  --assert-text "118:RAID: GLASSMERE RD D15-16 +GUARD"
+  # the GUARDED crossing of the SAME stretch, arrival day 16 still
+  # inside the window: toll only — word 38 unchanged, the guard consumed
+  --assert-watch 124:wr:4:eq:16
+  --assert-watch 124:wr:6:eq:0
+  --assert-watch 124:wr:5:eq:27
+  --assert-watch 124:wr:37:eq:0
+  --assert-watch 124:wr:38:eq:12
+  # day 17: the window is over — the same road crosses clean unguarded
+  --assert-watch 130:wr:4:eq:17
+  --assert-watch 130:wr:6:eq:1
+  --assert-watch 130:wr:5:eq:25
+  --assert-watch 130:wr:38:eq:12
+  # day 18 at SALTCOMBE: H2 ANNOUNCED (storm, THORNBY road, D19-22)
+  --assert-watch 136:wr:4:eq:18
+  --assert-watch 136:wr:6:eq:2
+  --assert-watch 136:wr:5:eq:23
+  --assert-watch 136:wr:32:eq:2
+  --assert-watch 136:wr:33:eq:1
+  --assert-watch 136:wr:34:eq:2
+  --assert-watch 136:wr:35:eq:19
+  --assert-watch 136:wr:36:eq:22
+  --assert-text "136:STORM: THORNBY RD D19-22"
+  # the UNPROVISIONED storm crossing: ONE travel edge, TWO dawns — day
+  # 18 -> 20 (word 39 = 1), toll 2 + 1 camp lodging, arrival THORNBY
+  --assert-watch 142:wr:4:eq:20
+  --assert-watch 142:wr:6:eq:3
+  --assert-watch 142:wr:5:eq:20
+  --assert-watch 142:wr:39:eq:1
+  --assert-watch 142:wr:38:eq:12
+  # LEFT again: provisions for the ride back
+  --assert-watch 148:wr:5:eq:16
+  --assert-watch 148:wr:37:eq:1
+  # the PROVISIONED crossing of the same storm window: day 20 -> 21,
+  # one dawn only — word 39 unchanged, the fee bought the day back
+  --assert-watch 154:wr:4:eq:21
+  --assert-watch 154:wr:6:eq:2
+  --assert-watch 154:wr:5:eq:14
+  --assert-watch 154:wr:37:eq:0
+  --assert-watch 154:wr:39:eq:1
+  # day 23: H3 ANNOUNCED (bandits, DUNWICK road, D25-28, late and fat);
+  # gold 12 pins the whole route ledger; the cut-0 stale-ink pair still
+  # bites (THORNBY salt: true 34, ink says 31 at age 3 = 7939) and the
+  # cursor word matches the mirror's SALTCOMBE tallow 16
+  --assert-watch 166:wr:4:eq:23
+  --assert-watch 166:wr:6:eq:2
+  --assert-watch 166:wr:5:eq:12
+  --assert-watch 166:wr:13:eq:16
+  --assert-watch 166:wr:14:eq:34
+  --assert-watch 166:wr:15:eq:7939
+  --assert-watch 166:wr:32:eq:3
+  --assert-watch 166:wr:33:eq:0
+  --assert-watch 166:wr:34:eq:3
+  --assert-watch 166:wr:35:eq:25
+  --assert-watch 166:wr:36:eq:28
+  --assert-watch 166:wr:38:eq:12
+  --assert-watch 166:wr:39:eq:1
+  --assert-text "168:RAID: DUNWICK RD D25-28"
+)
+
+echo "== P6: THE ROAD ITSELF — travel cost stops being flat (run 1) =="
+H "$OUT/p6.png" --frames 172 $W40 $ROAD_ROUTE \
+  --watch-log "$OUT/p6-run1.csv" --shot "118:$OUT/p6-guard.png" \
+  "${ROAD_ASSERTS[@]}"
+
+echo "== P6: run 2 (must be byte-identical) =="
+H "$OUT/p6b.png" --frames 172 $W40 $ROAD_ROUTE \
+  --watch-log "$OUT/p6-run2.csv" \
+  "${ROAD_ASSERTS[@]}"
+cmp "$OUT/p6-run1.csv" "$OUT/p6-run2.csv"
+echo "P6 run-twice: byte-identical"
 
 echo "ALL WICKROAD PROOFS PASS"

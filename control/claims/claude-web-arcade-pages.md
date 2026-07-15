@@ -1,0 +1,1 @@
+- `claude/web-arcade-pages` · **GitHub Pages deploy workflow for dist/web** · .github/workflows/deploy-pages.yml + docs · 2026-07-15

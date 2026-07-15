@@ -207,3 +207,44 @@ card flip follows)
   games/wickroad/CONCEPT.md (cut 5 marked SERVED; named path COMPLETE) ·
   dist/README.md (v0.6 row) · docs/current-state.md (Wickroad row now
   v0.6).
+
+## Dispatch 2026-07-15 (current-state-reconcile, PR #147)
+
+written: 2026-07-15T10:55:54Z (`date -u`; heartbeat appended second-to-last,
+card flip follows)
+
+- Inbox re-read at origin/main HEAD `4157069` before closing: no new
+  orders past ORDER 007 (its standing constraint holds — NO routines
+  re-armed, waiting on the owner's per-seat go).
+- This dispatch's slice, neutral facts: branch
+  `claude/current-state-reconcile`, PR #147 (READY, non-draft), a
+  docs-only reconcile of docs/current-state.md against the release
+  ledgers at HEAD (post-#146). Edits:
+  - A: Tiltstone row v1.0/stack-OPEN -> v1.1, stack #92/#93/#95/#97
+    landed, packaged with juice.js by the ORDER 006 repin (#134,
+    arcade bundle v1.3).
+  - B: Wickroad row's "audio (cut 5) PR of 2026-07-15" -> "#146
+    (2026-07-15)"; nothing else in that row.
+  - C: In-flight Tiltstone-stack bullet removed (stack landed; its
+    juice.js packaging follow-up served by #134).
+  - D: In-flight PR #85 bullet removed (live API state: closed
+    unmerged 2026-07-14T11:03:37Z — not in flight).
+  - E: stale self-referential closing line replaced with the live
+    open-PR reality (list empty apart from this PR).
+  - F: Release-packaging bullet now cites the ORDER 006 repin (#134)
+    instead of the superseded arcade-refresh cut.
+  - G: header blockquote notes the 2026-07-15 row-level reconcile;
+    living-ledger badge stays at line 3.
+  Sweep of rows 1-10 vs dist/README.md found no other contradicted
+  rows. No status invented — every edit aligns with already-landed
+  facts. Work claim control/claims/claude-current-state-reconcile.md
+  retired with this heartbeat (claims README rule 4 — the open PR is
+  the live claim).
+- Evidence pointers: docs/RELEASES.md (ORDER 006 repin entry) ·
+  dist/README.md (web-arcade repin paragraph + supersession chain) ·
+  merged commits d451b79/7535d6c/1c8e0be/b0d2274/cf107d3/4157069 ·
+  PR #85 live state via API.
+- Landing posture: PR #147 parked READY; no merge/approve/auto-merge
+  calls from this session — the server-side enabler decides on green.
+- Pointers: .sessions/2026-07-15-current-state-reconcile.md (card) ·
+  docs/current-state.md (the reconciled ledger).

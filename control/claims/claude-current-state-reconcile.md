@@ -1,1 +1,0 @@
-- `claude/current-state-reconcile` · **docs reconcile** — align docs/current-state.md rows with docs/RELEASES.md + dist/README.md + merged-PR reality · docs/current-state.md only · 2026-07-15

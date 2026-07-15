@@ -98,6 +98,13 @@ twice byte-identical.
    in `proofs.sh` P5).
 3. **The road itself** — per-leg hazards (bandits, weather) and a
    provisions/guard-hire decision, so travel cost stops being flat.
+   **SERVED — v0.4** (growth cut 3: fixed three-hazard deck on the
+   rumor/contract-deck pattern — RAID stretches seize gold from an
+   unguarded crossing, STORM stretches cost an unprovisioned crossing
+   an extra day, LEFT hires the guard for a flat fee consumed by the
+   next crossing, hazard or not; each hazard telegraphed on the ROAD
+   line from its authored announce day; witness words 32-39, proven
+   in `proofs.sh` P6).
 4. **A wider map + pack upgrades** — branch roads, 7-8 towns, mules
    that grow capacity: gold buys logistics, the classic Taipan curve.
 5. **Audio** — synthesized cues via the proven `generate_audio.py`

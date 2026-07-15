@@ -87,3 +87,43 @@ card flip follows)
 - Pointers: .sessions/2026-07-15-wickroad-contracts.md (card) ·
   games/wickroad/CONCEPT.md (cut 2 marked SERVED) · dist/README.md
   (v0.3 row) · docs/current-state.md (Wickroad row now v0.3).
+
+## Dispatch 2026-07-15 (wickroad-hazards, PR #144)
+
+written: 2026-07-15T05:42:26Z (`date -u`; heartbeat appended second-to-last,
+card flip follows)
+
+- Inbox re-read at origin/main HEAD `4a61ec9` before closing: no new
+  orders past ORDER 007 (its standing constraint holds — NO routines
+  re-armed, waiting on the owner's per-seat go).
+- This dispatch's slice, neutral facts: branch `claude/wickroad-hazards`,
+  PR #144 (READY, non-draft), Wickroad growth cut 3 "The road itself"
+  per games/wickroad/CONCEPT.md — per-leg hazards (bandits, weather)
+  and a guard-hire decision, so travel cost stops being flat. Fixed
+  authored three-hazard deck (zero new RNG; hazards a pure function of
+  (leg, arrival day); every window after the committed routes' last
+  travel day, so the world is bit-identical and P1-P5 carried
+  verbatim), LEFT as the hire verb (flat fee 4, consumed by the next
+  crossing hazard or not), RAID stretches taxing gold / STORM stretches
+  taxing the clock (one extra dawn camped), the new ROAD line
+  telegraphing each hazard from its announce day on the THIRD quiet
+  frame after a head redraw, telemetry 32 -> 40 (words 0-31 untouched).
+  Proof suite games/wickroad/proofs.sh now P1-P6: 520 watch + 59 text
+  assertion passes per run, P2-P6 each run twice with byte-identical
+  watch-logs, the whole suite run twice end-to-end with byte-identical
+  CSVs across runs; every P6 pin mirror-derived first, the ROM matched
+  all 60+ watch pins on the first route probe (the only two first-probe
+  failures were text-side: the guarded road line's last glyph measurably
+  clipping the 240px screen — fixed by the shorter RAID token — and a
+  road-line assert sitting on a measured 1-frame edge-processing parity,
+  moved one frame later and the parity documented in proofs.sh).
+  dist/wickroad.gba v0.4, 123,844 bytes, sha256
+  `7c061301...2bf8d3`, two clean builds byte-identical, suite re-run
+  green at the dist bytes. Work claim
+  control/claims/claude-wickroad-hazards.md retired with this
+  heartbeat (claims README rule 4 — the open PR is the live claim).
+- Landing posture: PR #144 parked READY; no merge/approve/auto-merge
+  calls from this session — the server-side enabler decides on green.
+- Pointers: .sessions/2026-07-15-wickroad-hazards.md (card) ·
+  games/wickroad/CONCEPT.md (cut 3 marked SERVED) · dist/README.md
+  (v0.4 row) · docs/current-state.md (Wickroad row now v0.4).

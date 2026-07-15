@@ -10,7 +10,7 @@
   ROMs, no Track A material), a subpath-safety audit of the arcade
   files, a short docs note, and a READY PR parked green with a
   paste-ready owner ask. NOT merged by this session.
-- **📊 Model:** Fable
+- **📊 Model:** Fable · medium · infra build — web arcade Pages deploy
 - landing posture: PR #149 opened READY at 21:22Z (post-workflow
   commit); no merge/approve/auto-merge calls from this session — the
   owner clicks.
@@ -78,4 +78,4 @@ reviewer inherits the proof instead of re-deriving it.
   session asking "ready for WHAT host?"; this slice exists because that
   question finally got asked.
 
-- **📊 Model:** Fable
+- **📊 Model:** Fable · medium · infra build — web arcade Pages deploy

@@ -9,7 +9,7 @@
 #     bash games/wickroad/proofs.sh
 # Artifacts land in $WICKROAD_PROOF_OUT (default /tmp/wickroad-proofs).
 #
-# The four proofs (asserts inline below):
+# The five proofs (asserts inline below):
 #   P1 boot/title            — magics, title state, every title line incl.
 #                              the hook line ("BUT THE INK AGES") and the
 #                              full verb help; witness words zero on title.
@@ -58,9 +58,36 @@
 #                              byte-identical watch-logs. Every value below
 #                              was derived on the host-side mirror of the sim
 #                              law FIRST and matched by the ROM exactly.
+#   P5 THE CONTRACTS (growth cut 2) — the second income verb prices risk:
+#                              day 2 posts C1 ("PACT? 2 RESIN TO THORNBY D8
+#                              +60", witness words 24-31 pinned before any
+#                              player action), RIGHT takes it (state 1 -> 2),
+#                              the 3-leg haul EMBERTON->THORNBY lands day 5,
+#                              two resin bought on the impact ladder (21, 22
+#                              — cursor word climbs 21->22->23), and RIGHT
+#                              hands them over: gold jumps 10 -> 70, EXACTLY
+#                              the authored premium 60 (state 3, word 31 =
+#                              60), pack empty, prices and impact untouched
+#                              (delivery bypasses the market). C2 (2 IRON to
+#                              GLASSMERE D14 +70) posts day 10 and is left
+#                              to expire: dawn 15 > deadline 14 LAPSES it
+#                              (state 4, word 31 unchanged, "PACT LAPSED" on
+#                              screen — the lapse pays nothing). Gold 60 at
+#                              day 15 pins the whole route ledger (60 start
+#                              - 1 - 6 tolls - 43 resin + 60 premium - 10
+#                              lodgings). RUN TWICE — byte-identical
+#                              watch-logs. Every value was derived on the
+#                              host-side mirror of the sim law FIRST and
+#                              matched by the ROM exactly. Pact-line text
+#                              asserts sit >= 4 frames after their edge: the
+#                              pact line regenerates on the SECOND quiet
+#                              frame after a head redraw (the crier owns the
+#                              first — dawn frames are budget-SPENT, see
+#                              main.cpp).
 #
-# Mailbox: wr_telemetry[24] since v0.2 (layout in games/wickroad/src/main.cpp;
-# P1-P3 keep watching the first 16 words, unchanged from v0.1).
+# Mailbox: wr_telemetry[32] since v0.3 (layout in games/wickroad/src/main.cpp;
+# P1-P3 keep watching the first 16 words, unchanged from v0.1; P4 the first
+# 24, unchanged from v0.2).
 # Word 15 encodes the THORNBY/SALT ledger entry as (ink price << 8) | age:
 # 6912 = 27 @ age 0 · 6913 = 27 @ 1 · 6915 = 27 @ 3 · 6937 = 27 @ 25.
 # Turn-based determinism: the same script replays bit-identically by
@@ -328,5 +355,111 @@ H "$OUT/p4b.png" --frames 160 $W24 $RUMOR_ROUTE \
   "${RUMOR_ASSERTS[@]}"
 cmp "$OUT/p4-run1.csv" "$OUT/p4-run2.csv"
 echo "P4 run-twice: byte-identical"
+
+# The contracts route: START, park the cursor on RESIN (UP: 0 -> 3, so
+# word 13 tracks the good C1 wants), wait to day 2 (C1 posts), RIGHT to
+# take it, ride the 3-leg haul to THORNBY (days 3/4/5), buy 2 resin on
+# the impact ladder, RIGHT to hand them over (day 5 <= deadline 8),
+# then wait out both windows: day 10 posts C2, day 15 lapses it unpaid.
+# Assert frames sit >= 4 after their edge; pact-line TEXT asserts allow
+# for the second-quiet-frame regen (see the header note).
+PACT_ROUTE='--keys 10-12:START --keys 16-18:UP --keys 30-32:SELECT --keys 42-44:RIGHT --keys 48-50:R --keys 54-56:R --keys 60-62:R --keys 66-68:A --keys 72-74:A --keys 78-80:RIGHT --keys 84-86:SELECT --keys 90-92:SELECT --keys 96-98:SELECT --keys 102-104:SELECT --keys 108-110:SELECT --keys 120-122:SELECT --keys 126-128:SELECT --keys 132-134:SELECT --keys 138-140:SELECT --keys 144-146:SELECT'
+
+W32='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:32'
+
+PACT_ASSERTS=(
+  # day 1: trading, cursor parked on RESIN, no contract posted yet —
+  # witness words all zero, EMBERTON resin at the mirror's 26
+  --assert-watch 24:wr:2:eq:1
+  --assert-watch 24:wr:4:eq:1
+  --assert-watch 24:wr:5:eq:60
+  --assert-watch 24:wr:7:eq:3
+  --assert-watch 24:wr:13:eq:26
+  --assert-watch 24:wr:24:eq:0
+  --assert-watch 24:wr:25:eq:0
+  --assert-watch 24:wr:31:eq:0
+  --assert-text "24:NO WORD ON THE ROAD"
+  --assert-text "24:NO PACTS POSTED"
+  # day 2: C1 POSTED (2 RESIN to THORNBY by day 8, pays 60) — the whole
+  # offer pinned in words 24-30 BEFORE any player action (state 1)
+  --assert-watch 36:wr:4:eq:2
+  --assert-watch 36:wr:5:eq:59
+  --assert-watch 36:wr:24:eq:1
+  --assert-watch 36:wr:25:eq:1
+  --assert-watch 36:wr:26:eq:3
+  --assert-watch 36:wr:27:eq:3
+  --assert-watch 36:wr:28:eq:2
+  --assert-watch 36:wr:29:eq:8
+  --assert-watch 36:wr:30:eq:60
+  --assert-watch 36:wr:31:eq:0
+  --assert-text "36:PACT? 2 RESIN TO THORNBY D8 +60"
+  # RIGHT takes the pact: state 1 -> 2, nothing else moves
+  --assert-watch 46:wr:25:eq:2
+  --assert-watch 46:wr:5:eq:59
+  --assert-text "46:PACT: 2 RESIN TO THORNBY D8 +60"
+  # day 5, THORNBY after the 3-leg haul: gold 53 (three 2-gold tolls),
+  # resin at the mirror's 21
+  --assert-watch 64:wr:4:eq:5
+  --assert-watch 64:wr:5:eq:53
+  --assert-watch 64:wr:6:eq:3
+  --assert-watch 64:wr:13:eq:21
+  # two resin bought on the impact ladder (21 then 22): gold 10, the
+  # cursor word climbed 21 -> 22 -> 23, two in the pack
+  --assert-watch 76:wr:5:eq:10
+  --assert-watch 76:wr:8:eq:2
+  --assert-watch 76:wr:12:eq:2
+  --assert-watch 76:wr:13:eq:23
+  --assert-watch 76:wr:25:eq:2
+  # RIGHT hands them over (day 5 <= deadline 8): gold JUMPS 10 -> 70 —
+  # exactly the authored premium 60 (state 3, word 31 banks it), the
+  # pack empties, and the market is untouched by the handover
+  --assert-watch 82:wr:5:eq:70
+  --assert-watch 82:wr:8:eq:0
+  --assert-watch 82:wr:12:eq:0
+  --assert-watch 82:wr:25:eq:3
+  --assert-watch 82:wr:31:eq:60
+  --assert-text "84:PACT PAID +60"
+  # day 10: C2 POSTED (2 IRON to GLASSMERE by day 14, pays 70) — the
+  # witness words switch to the latest posted contract; the banked
+  # premium stays on word 31; THORNBY resin decayed back to the plain
+  # law (19: the delivery added no impact, only the buys did)
+  --assert-watch 114:wr:4:eq:10
+  --assert-watch 114:wr:5:eq:65
+  --assert-watch 114:wr:24:eq:2
+  --assert-watch 114:wr:25:eq:1
+  --assert-watch 114:wr:26:eq:2
+  --assert-watch 114:wr:27:eq:1
+  --assert-watch 114:wr:28:eq:2
+  --assert-watch 114:wr:29:eq:14
+  --assert-watch 114:wr:30:eq:70
+  --assert-watch 114:wr:31:eq:60
+  --assert-watch 114:wr:13:eq:19
+  --assert-text "116:PACT? 2 IRON TO GLASSMERE D14 +70"
+  # day 15 > deadline 14: C2 LAPSES unpaid — state 4, word 31 unchanged
+  # (the lapse pays nothing), gold 60 pins the whole route ledger, and
+  # the standing-witness pair agrees with the mirror (salt 33 inked at
+  # age 0 = 8448)
+  --assert-watch 152:wr:4:eq:15
+  --assert-watch 152:wr:5:eq:60
+  --assert-watch 152:wr:24:eq:2
+  --assert-watch 152:wr:25:eq:4
+  --assert-watch 152:wr:31:eq:60
+  --assert-watch 152:wr:13:eq:17
+  --assert-watch 152:wr:14:eq:33
+  --assert-watch 152:wr:15:eq:8448
+  --assert-text "152:PACT LAPSED"
+)
+
+echo "== P5: THE CONTRACTS — the premium prices risk (run 1) =="
+H "$OUT/p5.png" --frames 164 $W32 $PACT_ROUTE \
+  --watch-log "$OUT/p5-run1.csv" --shot "84:$OUT/p5-paid.png" \
+  "${PACT_ASSERTS[@]}"
+
+echo "== P5: run 2 (must be byte-identical) =="
+H "$OUT/p5b.png" --frames 164 $W32 $PACT_ROUTE \
+  --watch-log "$OUT/p5-run2.csv" \
+  "${PACT_ASSERTS[@]}"
+cmp "$OUT/p5-run1.csv" "$OUT/p5-run2.csv"
+echo "P5 run-twice: byte-identical"
 
 echo "ALL WICKROAD PROOFS PASS"

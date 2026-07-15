@@ -89,7 +89,13 @@ twice byte-identical.
    of the same price law, crier line + foretold/realized witness words
    16-23, proven in `proofs.sh` P4).
 2. **Contracts** — dated delivery orders (X resin to Thornby by day D
-   for a premium): a second income verb that prices risk.
+   for a premium): a second income verb that prices risk. **SERVED —
+   v0.3** (growth cut 2: fixed two-contract deck on the rumor-deck
+   pattern — RIGHT takes the posted pact and delivers at the
+   destination by the deadline, the premium is the whole payment and
+   beats spot by a risk margin, a missed deadline lapses unpaid;
+   delivery bypasses the market entirely, witness words 24-31, proven
+   in `proofs.sh` P5).
 3. **The road itself** — per-leg hazards (bandits, weather) and a
    provisions/guard-hire decision, so travel cost stops being flat.
 4. **A wider map + pack upgrades** — branch roads, 7-8 towns, mules

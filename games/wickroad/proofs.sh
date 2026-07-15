@@ -63,8 +63,13 @@
 # P1-P3 keep watching the first 16 words, unchanged from v0.1).
 # Word 15 encodes the THORNBY/SALT ledger entry as (ink price << 8) | age:
 # 6912 = 27 @ age 0 · 6913 = 27 @ 1 · 6915 = 27 @ 3 · 6937 = 27 @ 25.
-# Turn-based determinism: every assert frame sits >= 4 frames after its
-# key edge; the same script replays bit-identically by construction.
+# Turn-based determinism: the same script replays bit-identically by
+# construction. Honest alignment note (v0.2): several committed v0.1 pins
+# assert ON their key-edge frame (e.g. P2 frame 60) — same-frame edge
+# processing is part of the measured frame alignment those pins own, which
+# also means the dawn frames' draw budget is a committed interface: new
+# per-dawn UI work must defer off the dawn frame (see the crier note at P4
+# and main.cpp). P4's own asserts sit 4 frames after their dawn edge.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."

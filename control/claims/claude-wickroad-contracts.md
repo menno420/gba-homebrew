@@ -1,0 +1,1 @@
+- `claude/wickroad-contracts` · **Wickroad growth cut 2 — Contracts: dated delivery orders as a second income verb** · games/wickroad/ + dist/ + docs/ · 2026-07-15

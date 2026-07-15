@@ -54,3 +54,36 @@ written: 2026-07-15T04:22:33Z (`date -u`; heartbeat appended second-to-last, car
 - Pointers: .sessions/2026-07-15-wickroad-rumors.md (card) ·
   games/wickroad/CONCEPT.md (cut 1 marked SERVED) · dist/README.md
   (v0.2 row).
+
+## Dispatch 2026-07-15 (wickroad-contracts, PR #143)
+
+written: 2026-07-15T05:08:58Z (`date -u`; heartbeat appended second-to-last,
+card flip follows)
+
+- Inbox re-read at origin/main HEAD `df55299` before closing: no new
+  orders past ORDER 007 (acknowledged by the wickroad-rumors dispatch
+  above; its standing constraint holds — NO routines re-armed, waiting
+  on the owner's per-seat go).
+- This dispatch's slice, neutral facts: branch `claude/wickroad-contracts`,
+  PR #143 (READY, non-draft), Wickroad growth cut 2 "Contracts" per
+  games/wickroad/CONCEPT.md — dated delivery orders, the second income
+  verb that prices risk. Fixed authored two-contract deck (zero new RNG,
+  zero price-law changes; delivery bypasses the market), RIGHT as the
+  pact verb, lifecycle derived from two player flags, telemetry 24 -> 32.
+  Proof suite games/wickroad/proofs.sh now P1-P5: 384 watch + 48 text
+  assertion passes per run, P2-P5 each run twice with byte-identical
+  watch-logs; every P5 pin mirror-derived first, ROM matched on the
+  first route probe. One measured capacity fact: the pact line pushed
+  dawn-regen peaks over Butano's default 128 sprite-tiles items
+  (frozen-ROM assert on the first full-suite probe); fixed via
+  -DBN_CFG_SPRITE_TILES_MAX_ITEMS=256 in the game Makefile, after which
+  P1-P4 carried verbatim. dist/wickroad.gba v0.3, 122,696 bytes, sha256
+  `6e395a1c...5d3c21`, two clean builds byte-identical, suite re-run
+  green at the dist bytes. Work claim
+  control/claims/claude-wickroad-contracts.md retired with this
+  heartbeat (claims README rule 4 — the open PR is the live claim).
+- Landing posture: PR #143 parked READY; no merge/approve/auto-merge
+  calls from this session — the server-side enabler decides on green.
+- Pointers: .sessions/2026-07-15-wickroad-contracts.md (card) ·
+  games/wickroad/CONCEPT.md (cut 2 marked SERVED) · dist/README.md
+  (v0.3 row) · docs/current-state.md (Wickroad row now v0.3).

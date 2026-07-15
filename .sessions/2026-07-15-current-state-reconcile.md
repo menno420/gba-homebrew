@@ -11,7 +11,7 @@
   already-landed facts (the Tiltstone #92–#97 stack + ORDER 006 repin
   #134, the live state of PR #85, the merged #146 citation). The
   Wickroad row substance from #146 is left alone.
-- **📊 Model:** Fable-family · medium · docs reconcile — living-ledger upkeep
+- **📊 Model:** Fable-family · medium · docs-only — living-ledger reconcile
 - landing posture: PR #147 opened READY at the born-red commit; no
   merge/approve/auto-merge calls from this session — the server-side
   enabler decides on green.

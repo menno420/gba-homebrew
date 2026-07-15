@@ -10,6 +10,9 @@
 > the previous revision's per-session log ended at session 8 / Lumen
 > Drift and predated games #2–#11. History detail lives in the PRs and
 > `.sessions/` cards cited below, not here.
+>
+> Row-level reconcile 2026-07-15 against docs/RELEASES.md +
+> dist/README.md at HEAD (post-#146).
 
 ## Stability baseline
 
@@ -44,7 +47,8 @@
   `dist/web/` (host-ready static arcade) + `dist/releases/`
   (deterministic versioned zips) and `--verify` asserts every sha256
   pin in [`RELEASES.md`](RELEASES.md) — machinery from PR #109,
-  repinned at HEAD by the 2026-07-14 arcade-refresh slice.
+  last repinned by the 2026-07-14 ORDER 006 slice (#134 — Tiltstone
+  v1.1 with `juice.js`, arcade bundle v1.3).
 
 ## The eleven games at HEAD
 
@@ -57,13 +61,13 @@ original IP. Shipped builds and hashes: [`dist/README.md`](../dist/README.md).
 | 2 | **Gloamline** (zombie horde defense) | NDS | concept tree COMPLETE (PRs #50–#75: skeleton → shove/waves → barricades → scavenge → oil → audio → saves → watch-map) + slice 11 best-night rematch; 28 proofs / 517 asserts |
 | 3 | **Brineward** (pirate broadside duel) | NDS | arc slice 9: loot/port/upgrades/wind/reefs/audio/saves (PRs #82, #91, #94); the Graywake ledger survives the power switch |
 | 4 | **Undertow** (one-hand trench diver) | web | v1.5 — named growth path COMPLETE: prototype #79, daily dive #110, cosmetics #114, ghost replays #118, oxygen #123, jellyfish hazards #126 |
-| 5 | **Tiltstone** (turn-based gravity puzzle) | web | v1.0 on main (#81, provably-winnable seeds); growth stack #92←#93←#95←#97 (par/undo, juice, cell types, level packs) OPEN — another lane's |
+| 5 | **Tiltstone** (turn-based gravity puzzle) | web | v1.1 — prototype #81 (provably-winnable seeds); growth stack #92/#93/#95/#97 (par+undo, juice, cell types, level packs) landed on main; packaged at v1.1 with `juice.js` by the ORDER 006 repin (#134, arcade bundle v1.3) |
 | 6 | **Drift Garden** (ambient touch garden PWA) | mobile | v1.4 — named growth path COMPLETE: playable slice #84, daily weather #111, species #115, essence spending #119, biomes #124; installable offline PWA |
 | 7 | **Deepcast** (fishing tension-management) | GBA | v0.6 — named growth path COMPLETE: prototype #83, audio #113, seed dial #117, species/catch log #121, line upgrades #125, art pass #128 |
 | 8 | **Cindervault** (turn-based dungeon dive) | GBA | v0.6 — named growth path COMPLETE: prototype #86, items #112, species #116, endless depth #120, seed-select #122, art pass #127 |
 | 9 | **Clockwork Courier** (rewind-ghost platformer) | GBA | v1.0 CONCEPT COMPLETE: prototype #96, ghost platform #105, timed chutes #106, three floors #107, audio #108 |
 | 10 | **Shoal** (flock-herding action puzzler) | GBA | v1.0 CONCEPT COMPLETE: prototype #98, predators #99, gates #100, star ratings #101, tuned levels #102, audio #103 |
-| 11 | **Wickroad** (market-route trading, aging ledger) | GBA | v0.6 — named growth path COMPLETE: prototype #129 (2026-07-14, the generative rung), rumors (cut 1) #142, contracts (cut 2) #143, road hazards (cut 3) #144, wider map + mules (cut 4) #145, audio (cut 5) PR of 2026-07-15; growth cuts: none open |
+| 11 | **Wickroad** (market-route trading, aging ledger) | GBA | v0.6 — named growth path COMPLETE: prototype #129 (2026-07-14, the generative rung), rumors (cut 1) #142, contracts (cut 2) #143, road hazards (cut 3) #144, wider map + mules (cut 4) #145, audio (cut 5) #146 (2026-07-15); growth cuts: none open |
 
 All four games that had named growth paths (Undertow, Drift Garden,
 Cindervault, Deepcast) completed them across PRs #110–#128 on the
@@ -72,14 +76,11 @@ complete titles is new-concept material or owner-gated.
 
 ## In flight
 
-- **Tiltstone growth stack** — PRs #92 ← #93 ← #95 ← #97 (par+undo,
-  juice, new cell types, level packs), open, another lane's work. When
-  #93 lands, the packaging lane adds `juice.js` to the Tiltstone stage
-  list and bumps zip versions (noted in `tools/package-web-arcade.sh`).
-- **PR #85** — the original ORDER-005 packaging cut, parked open;
-  superseded on main by PR #109 and the 2026-07-14 repin.
-- Nothing else: this ledger refresh lands with the session's closing
-  upkeep slice under the owner's audit close-out.
+- Nothing: the live open-PR list at HEAD (2026-07-15, post-#146) is
+  empty apart from this reconcile slice's own PR. (The Tiltstone
+  growth stack #92–#97 landed and was packaged by the ORDER 006 repin
+  #134; PR #85 was closed unmerged on 2026-07-14, long superseded on
+  main by #109 → the #130 arcade-refresh → #134.)
 
 ## Recently shipped (newest first)
 

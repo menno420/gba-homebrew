@@ -11,6 +11,18 @@
  * there, stamped with how many days old the ink is. You navigate an
  * economy you remember, not one you see.
  *
+ * GROWTH CUT 1 — RUMORS (v0.2, CONCEPT.md growth cut 1): town criers
+ * telegraph FUTURE price shocks days ahead ("CRIER: IRON 58 AT
+ * GLASSMERE DAY 5") and the shock then actually happens, to the exact gold
+ * piece foretold — the ledger becomes a forecasting tool, not just a
+ * memory. The deck is FIXED and deterministic by construction: no new
+ * RNG draws (the v0.1 world init is untouched), and the shock is a
+ * term of the same closed-form price law — a pure function of the
+ * day. The foretold price is computed FROM the sim law (base +
+ * drift at the hit day + shock, clamped), so telegraph == realization
+ * whenever the player's own market impact there is zero; proofs.sh P4
+ * pins exactly that.
+ *
  * PROTOTYPE RULES (deliberate cuts documented in CONCEPT.md):
  *   - Turn-based: nothing moves but on a key edge. A buys one unit of
  *     the cursor good, B sells one, L/R travel one town down the road
@@ -36,7 +48,8 @@
  *     input script replays bit-identically.
  *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
- * --elf --watch wr:wr_telemetry:16), volatile, C-linkage, every frame:
+ * --elf --watch wr:wr_telemetry:24; the v0.1 proofs keep watching the
+ * first 16 words unchanged), volatile, C-linkage, every frame:
  *   [0] 0x5749434B 'WICK' magic     [8]  pack used (0..8)
  *   [1] 0x524F4144 'ROAD' magic     [9]  cargo TALLOW
  *   [2] state (0 title, 1 trading,  [10] cargo SALT
@@ -54,6 +67,26 @@
  * Words 14/15 exist to make the hook itself assertable: the harness
  * pins frames where the ledger and the world DISAGREE (t14 != t15>>8
  * with age > 0) — the ink provably ages while the road moves on.
+ *
+ * Rumor witness words (growth cut 1; all 0 on the title, and 0 while
+ * no rumor has been announced yet):
+ *   [16] latest announced rumor id  [20] FORETOLD price (the number
+ *        (1-based; 0 = none)             the crier shouts — the sim
+ *   [17] its hit (target) day            law at the hit day, shock
+ *   [18] its target town                 in, impact-free)
+ *   [19] its target good            [21] live TRUE price at the
+ *                                        rumor's (town, good) — the
+ *                                        realization witness
+ *                                   [22] shock currently applied
+ *                                        there (u32 cast; negative
+ *                                        deltas read as 2^32+delta)
+ *                                   [23] rumor phase: 1 telegraphed
+ *                                        (day < hit), 2 landing (in
+ *                                        the shock window), 3 passed
+ * Words 20/21 make THE FORECAST assertable: the harness pins a frame
+ * where the rumor is displayed BEFORE the shock (t21 != t20, phase 1)
+ * and the hit-day frame where the market obeys it EXACTLY (t21 == t20,
+ * phase 2) — planning against rumors is provably informative.
  *
  * Presentation is deliberately trivial (breadth-program slice): the
  * market table and the ledger are fixed-font glyph lines; headers,
@@ -78,7 +111,7 @@
 extern "C"
 {
     // Headless telemetry mailbox — layout in the header comment.
-    volatile unsigned wr_telemetry[16];
+    volatile unsigned wr_telemetry[24];
 }
 
 namespace
@@ -143,6 +176,33 @@ namespace
     // The stale-ink witness pair (mailbox words 14/15).
     constexpr int witness_town = 3;      // THORNBY
     constexpr int witness_good = 1;      // SALT
+
+    // --- the RUMOR deck (growth cut 1) --------------------------------------
+    // FIXED and deterministic by construction: no RNG is consumed (the
+    // v0.1 world-init consumption order is untouched, so the world is
+    // bit-identical), and each shock is a term of the same closed-form
+    // price law — a pure function of the day, active for rumor_window
+    // days from the hit day. Announce/display is a pure function of the
+    // day too (the latest announced rumor), so nothing here adds state.
+    struct rumor_t
+    {
+        int announce_day;    // the criers start shouting at this dawn
+        int hit_day;         // the shock lands at this dawn...
+        int town;
+        int good;
+        int delta;           // ...adding this inside the clamped price law
+    };
+
+    constexpr int rumor_count = 3;
+    constexpr int rumor_window = 3;      // shock days: hit_day..hit_day+2
+
+    // Deck order = announce order (ids are 1-based positions). Targets
+    // deliberately avoid the committed P2/P3 routes' pinned markets.
+    constexpr rumor_t rumor_deck[rumor_count] = {
+        {2, 5, 1, 2, 12},    // R1: iron soars at GLASSMERE by day 5
+        {8, 12, 0, 1, -6},   // R2: salt crashes at EMBERTON by day 12
+        {14, 18, 4, 3, 9},   // R3: resin soars at DUNWICK by day 18
+    };
 
     // Triangle wave over a 12-day period: 0..11 -> -3..3..-2 (integer,
     // closed-form — the whole "simulation" of the market).
@@ -257,14 +317,63 @@ int main()
         return cargo[0] + cargo[1] + cargo[2] + cargo[3];
     };
 
-    // The price law: a pure function of (town, good, day, impact).
+    // The rumor shock at (t, g) today: a pure function of the day.
+    auto shock = [&](int t, int g) -> int
+    {
+        int total = 0;
+
+        for(const rumor_t& r : rumor_deck)
+        {
+            if(r.town == t && r.good == g && int(day) >= r.hit_day
+               && int(day) < r.hit_day + rumor_window)
+            {
+                total += r.delta;
+            }
+        }
+
+        return total;
+    };
+
+    // The price law: a pure function of (town, good, day, impact) —
+    // the rumor shock is one more closed-form term inside the clamp.
     auto price = [&](int t, int g) -> int
     {
         int p = base[t][g] + tri12(int(day) + phase[t][g]) * drift_step[g]
-              + impact[t][g];
+              + impact[t][g] + shock(t, g);
 
         return p < price_lo[g] ? price_lo[g]
              : p > price_hi[g] ? price_hi[g] : p;
+    };
+
+    // What the crier promises: the price law at the hit day, shock in,
+    // impact-free — pure in the init state, so telegraph == realization
+    // exactly when the player's own impact there is zero at the hit day.
+    auto foretell = [&](const rumor_t& r) -> int
+    {
+        int p = base[r.town][r.good]
+              + tri12(r.hit_day + phase[r.town][r.good])
+                * drift_step[r.good]
+              + r.delta;
+
+        return p < price_lo[r.good] ? price_lo[r.good]
+             : p > price_hi[r.good] ? price_hi[r.good] : p;
+    };
+
+    // The crier's current story: the latest announced rumor (1-based id;
+    // 0 = none yet) — a pure function of the day, like everything else.
+    auto latest_rumor = [&]() -> int
+    {
+        int id = 0;
+
+        for(int i = 0; i < rumor_count; ++i)
+        {
+            if(int(day) >= rumor_deck[i].announce_day)
+            {
+                id = i + 1;
+            }
+        }
+
+        return id;
     };
 
     // Standing in a town, you SEE its market: today's prices go in the
@@ -486,6 +595,15 @@ int main()
             head.append(bn::to_string<8>(day));
             head.append("/30  GOLD ");
             head.append(bn::to_string<8>(gold));
+
+            // Dawn frames regenerate the whole table/ledger and ride the
+            // frame budget's edge (a v0.1-measured fact the committed
+            // pins depend on) — so the crier line defers its own regen
+            // to the NEXT frame, which does no other text work. Purely a
+            // function of the input history: determinism is untouched.
+            bool head_changed = !(ui_lines[0].cached == head)
+                                || ui_lines[0].dirty_clear;
+
             ui_lines[0].set(ui_gen, ui_x, -70, head);
 
             bn::string<40> where("AT ");
@@ -506,7 +624,36 @@ int main()
                 table_lines[g].set(map_gen, ui_x, -42 + 10 * g, row);
             }
 
-            ui_lines[2].set(ui_gen, ui_x, 2, "LEDGER - THE INK AGES");
+            // The town crier (growth cut 1): the latest rumor, shouted on
+            // every square of the road — the ledger's forecasting page.
+            {
+                int rid = latest_rumor();
+                bn::string<40> cry;
+
+                if(rid == 0)
+                {
+                    cry.append("NO WORD ON THE ROAD");
+                }
+                else
+                {
+                    const rumor_t& r = rumor_deck[rid - 1];
+                    cry.append("CRIER: ");
+                    cry.append(good_names[r.good]);
+                    cry.append(' ');
+                    cry.append(bn::to_string<8>(foretell(r)));
+                    cry.append(" AT ");
+                    cry.append(town_names[r.town]);
+                    cry.append(" DAY ");
+                    cry.append(bn::to_string<8>(r.hit_day));
+                }
+
+                if(! head_changed)
+                {
+                    title_lines[0].set(ui_gen, ui_x, 0, cry);
+                }
+            }
+
+            ui_lines[2].set(ui_gen, ui_x, 12, "LEDGER - THE INK AGES");
 
             int slot = 0;
 
@@ -538,11 +685,11 @@ int main()
                     row.append('D');
                 }
 
-                ledger_lines[slot].set(map_gen, ui_x, 14 + 10 * slot, row);
+                ledger_lines[slot].set(map_gen, ui_x, 22 + 10 * slot, row);
                 ++slot;
             }
 
-            ui_lines[3].set(ui_gen, ui_x, 62,
+            ui_lines[3].set(ui_gen, ui_x, 64,
                             "A BUY  B SELL  L/R GO  SEL WAIT");
             break;
         }
@@ -601,6 +748,24 @@ int main()
         wr_telemetry[15] = ledger_day[witness_town] == 0 ? 0u
             : unsigned((ledger[witness_town][witness_good] << 8)
                        | ((int(day) - ledger_day[witness_town]) & 0xFF));
+
+        // Rumor witness words (growth cut 1) — layout in the header.
+        {
+            int rid = state == st_title ? 0 : latest_rumor();
+            const rumor_t& r = rumor_deck[rid == 0 ? 0 : rid - 1];
+            bool none = rid == 0;
+            wr_telemetry[16] = none ? 0u : unsigned(rid);
+            wr_telemetry[17] = none ? 0u : unsigned(r.hit_day);
+            wr_telemetry[18] = none ? 0u : unsigned(r.town);
+            wr_telemetry[19] = none ? 0u : unsigned(r.good);
+            wr_telemetry[20] = none ? 0u : unsigned(foretell(r));
+            wr_telemetry[21] = none ? 0u : unsigned(price(r.town, r.good));
+            wr_telemetry[22] = none ? 0u : unsigned(shock(r.town, r.good));
+            wr_telemetry[23] = none                          ? 0u
+                             : int(day) < r.hit_day          ? 1u
+                             : int(day) < r.hit_day + rumor_window ? 2u
+                                                             : 3u;
+        }
 
         bn::core::update();
     }

@@ -9,7 +9,7 @@
 #     bash games/wickroad/proofs.sh
 # Artifacts land in $WICKROAD_PROOF_OUT (default /tmp/wickroad-proofs).
 #
-# The three proofs (asserts inline below):
+# The four proofs (asserts inline below):
 #   P1 boot/title            — magics, title state, every title line incl.
 #                              the hook line ("BUT THE INK AGES") and the
 #                              full verb help; witness words zero on title.
@@ -37,8 +37,30 @@
 #                              0, three tallow still in the pack), card text
 #                              exact, START restarts. RUN TWICE —
 #                              byte-identical watch-logs.
+#   P4 THE RUMORS (growth cut 1) — the forecast is real: waiting out 20 days
+#                              at EMBERTON (cursor parked on SALT), the crier
+#                              telegraphs each deck rumor days ahead and the
+#                              market then obeys it TO THE GOLD PIECE. R1
+#                              (iron to 58 at GLASSMERE day 5): announced on
+#                              day 2 while the true price still reads 37
+#                              (foretold 58 pinned BEFORE the shock, phase 1),
+#                              then day 5 realizes 58 == foretold with shock
+#                              +12 live (phase 2). R2 (salt to 11 at EMBERTON
+#                              day 12): announced day 8 at true 21, realized
+#                              11 == foretold on day 12 — ON the visible
+#                              market (cursor word 13 = 11 too, two code
+#                              paths agreeing). R3 (resin to 42 at DUNWICK
+#                              day 18): announced day 14 at true 25, realized
+#                              42 with shock +9, and by day 21 the window has
+#                              passed (phase 3, shock 0, price back on the
+#                              plain law at 31). Crier lines exact on screen;
+#                              gold 60 -> 40 pins the 20 lodgings. RUN TWICE —
+#                              byte-identical watch-logs. Every value below
+#                              was derived on the host-side mirror of the sim
+#                              law FIRST and matched by the ROM exactly.
 #
-# Mailbox: wr_telemetry[16] (layout in games/wickroad/src/main.cpp).
+# Mailbox: wr_telemetry[24] since v0.2 (layout in games/wickroad/src/main.cpp;
+# P1-P3 keep watching the first 16 words, unchanged from v0.1).
 # Word 15 encodes the THORNBY/SALT ledger entry as (ink price << 8) | age:
 # 6912 = 27 @ age 0 · 6913 = 27 @ 1 · 6915 = 27 @ 3 · 6937 = 27 @ 25.
 # Turn-based determinism: every assert frame sits >= 4 frames after its
@@ -203,5 +225,103 @@ H "$OUT/p3b.png" --frames 280 $W $LOSE_ROUTE \
   "${LOSE_ASSERTS[@]}"
 cmp "$OUT/p3-run1.csv" "$OUT/p3-run2.csv"
 echo "P3 run-twice: byte-identical"
+
+# The rumors route: START, park the cursor on SALT (so word 13 shows the
+# EMBERTON salt row the R2 crash lands on), then 20 SELECT waits — days
+# 1..21 sweep the whole deck: R1 announce d2 / hit d5, R2 announce d8 /
+# hit d12 (at the town we stand in), R3 announce d14 / hit d18 / passed
+# by d21. Assert frames sit 4 after their dawn edge (the crier line
+# itself regenerates one frame after the dawn, by design — see main.cpp).
+RUMOR_ROUTE='--keys 10-12:START --keys 16-18:DOWN --keys 30-32:SELECT --keys 36-38:SELECT --keys 42-44:SELECT --keys 48-50:SELECT --keys 54-56:SELECT --keys 60-62:SELECT --keys 66-68:SELECT --keys 72-74:SELECT --keys 78-80:SELECT --keys 84-86:SELECT --keys 90-92:SELECT --keys 96-98:SELECT --keys 102-104:SELECT --keys 108-110:SELECT --keys 114-116:SELECT --keys 120-122:SELECT --keys 126-128:SELECT --keys 132-134:SELECT --keys 138-140:SELECT --keys 144-146:SELECT'
+
+W24='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:24'
+
+RUMOR_ASSERTS=(
+  # day 1: trading, no rumor announced yet — witness words all zero
+  --assert-watch 24:wr:2:eq:1
+  --assert-watch 24:wr:4:eq:1
+  --assert-watch 24:wr:5:eq:60
+  --assert-watch 24:wr:7:eq:1
+  --assert-watch 24:wr:13:eq:19
+  --assert-watch 24:wr:16:eq:0
+  --assert-watch 24:wr:20:eq:0
+  --assert-watch 24:wr:21:eq:0
+  --assert-watch 24:wr:23:eq:0
+  --assert-text "24:NO WORD ON THE ROAD"
+  # day 2: R1 ANNOUNCED (iron to 58 at GLASSMERE by day 5) — foretold 58
+  # pinned BEFORE the shock while the true price still reads 37 (phase 1:
+  # the rumor is provably displayed ahead of the market obeying it)
+  --assert-watch 34:wr:4:eq:2
+  --assert-watch 34:wr:16:eq:1
+  --assert-watch 34:wr:17:eq:5
+  --assert-watch 34:wr:18:eq:1
+  --assert-watch 34:wr:19:eq:2
+  --assert-watch 34:wr:20:eq:58
+  --assert-watch 34:wr:21:eq:37
+  --assert-watch 34:wr:21:ne:58
+  --assert-watch 34:wr:22:eq:0
+  --assert-watch 34:wr:23:eq:1
+  --assert-text "34:CRIER: IRON 58 AT GLASSMERE DAY 5"
+  # day 5: R1 LANDS — realized 58 == the foretold 58, shock +12 live
+  --assert-watch 52:wr:4:eq:5
+  --assert-watch 52:wr:20:eq:58
+  --assert-watch 52:wr:21:eq:58
+  --assert-watch 52:wr:22:eq:12
+  --assert-watch 52:wr:23:eq:2
+  # day 8: R2 ANNOUNCED (salt to 11 at EMBERTON by day 12) — true 21
+  --assert-watch 70:wr:16:eq:2
+  --assert-watch 70:wr:17:eq:12
+  --assert-watch 70:wr:18:eq:0
+  --assert-watch 70:wr:19:eq:1
+  --assert-watch 70:wr:20:eq:11
+  --assert-watch 70:wr:21:eq:21
+  --assert-watch 70:wr:22:eq:0
+  --assert-watch 70:wr:23:eq:1
+  # day 12: R2 LANDS in the town we stand in — realized 11 == foretold,
+  # shock -6 (u32 0xfffffffa), and the CURSOR word sees the same 11 on
+  # the visible market row (two code paths agreeing on the crash)
+  --assert-watch 94:wr:4:eq:12
+  --assert-watch 94:wr:13:eq:11
+  --assert-watch 94:wr:20:eq:11
+  --assert-watch 94:wr:21:eq:11
+  --assert-watch 94:wr:22:eq:0xfffffffa
+  --assert-watch 94:wr:23:eq:2
+  --assert-text "94:CRIER: SALT 11 AT EMBERTON DAY 12"
+  # day 14: R3 ANNOUNCED (resin to 42 at DUNWICK by day 18) — true 25
+  --assert-watch 106:wr:16:eq:3
+  --assert-watch 106:wr:17:eq:18
+  --assert-watch 106:wr:18:eq:4
+  --assert-watch 106:wr:19:eq:3
+  --assert-watch 106:wr:20:eq:42
+  --assert-watch 106:wr:21:eq:25
+  --assert-watch 106:wr:21:ne:42
+  --assert-watch 106:wr:23:eq:1
+  # day 18: R3 LANDS — realized 42 == foretold, shock +9
+  --assert-watch 130:wr:4:eq:18
+  --assert-watch 130:wr:20:eq:42
+  --assert-watch 130:wr:21:eq:42
+  --assert-watch 130:wr:22:eq:9
+  --assert-watch 130:wr:23:eq:2
+  --assert-text "130:CRIER: RESIN 42 AT DUNWICK DAY 18"
+  # day 21: the window has PASSED — shock off, the plain law back (31),
+  # phase 3; gold 40 pins all 20 lodgings exactly
+  --assert-watch 148:wr:4:eq:21
+  --assert-watch 148:wr:5:eq:40
+  --assert-watch 148:wr:21:eq:31
+  --assert-watch 148:wr:22:eq:0
+  --assert-watch 148:wr:23:eq:3
+)
+
+echo "== P4: THE RUMORS — the forecast is real (run 1) =="
+H "$OUT/p4.png" --frames 160 $W24 $RUMOR_ROUTE \
+  --watch-log "$OUT/p4-run1.csv" --shot "94:$OUT/p4-crash.png" \
+  "${RUMOR_ASSERTS[@]}"
+
+echo "== P4: run 2 (must be byte-identical) =="
+H "$OUT/p4b.png" --frames 160 $W24 $RUMOR_ROUTE \
+  --watch-log "$OUT/p4-run2.csv" \
+  "${RUMOR_ASSERTS[@]}"
+cmp "$OUT/p4-run1.csv" "$OUT/p4-run2.csv"
+echo "P4 run-twice: byte-identical"
 
 echo "ALL WICKROAD PROOFS PASS"

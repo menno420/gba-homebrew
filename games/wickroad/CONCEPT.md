@@ -84,7 +84,10 @@ twice byte-identical.
 
 1. **Rumors** — a deterministic event deck: town criers telegraph
    future price shocks ("iron trebles in Dunwick by day N"), making
-   the ledger a forecasting tool, not just a memory.
+   the ledger a forecasting tool, not just a memory. **SERVED — v0.2**
+   (growth cut 1: fixed three-rumor deck, shock as a closed-form term
+   of the same price law, crier line + foretold/realized witness words
+   16-23, proven in `proofs.sh` P4).
 2. **Contracts** — dated delivery orders (X resin to Thornby by day D
    for a premium): a second income verb that prices risk.
 3. **The road itself** — per-leg hazards (bandits, weather) and a

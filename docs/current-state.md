@@ -76,7 +76,8 @@ complete titles is new-concept material or owner-gated.
 
 ## In flight
 
-- Nothing: the live open-PR list at HEAD (2026-07-15, post-#146) is
+- [NEXT-MENU-2026-07-15.md](NEXT-MENU-2026-07-15.md) — owner decision menu for the next arc (seven lettered options, bolded recommendation); this slice's own PR.
+- Nothing else: the live open-PR list at HEAD (2026-07-15, post-#146) is
   empty apart from this reconcile slice's own PR. (The Tiltstone
   growth stack #92–#97 landed and was packaged by the ORDER 006 repin
   #134; PR #85 was closed unmerged on 2026-07-14, long superseded on

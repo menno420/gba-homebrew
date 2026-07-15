@@ -166,3 +166,44 @@ card flip follows)
 - Pointers: .sessions/2026-07-15-wickroad-wider-map.md (card) ·
   games/wickroad/CONCEPT.md (cut 4 marked SERVED) · dist/README.md
   (v0.5 row) · docs/current-state.md (Wickroad row now v0.5).
+
+## Dispatch 2026-07-15 (wickroad-audio, PR #146)
+
+written: 2026-07-15T10:37:20Z (`date -u`; heartbeat appended second-to-last,
+card flip follows)
+
+- Inbox re-read at origin/main HEAD `18ddd08` before closing: no new
+  orders past ORDER 007 (its standing constraint holds — NO routines
+  re-armed, waiting on the owner's per-seat go).
+- This dispatch's slice, neutral facts: branch `claude/wickroad-audio`,
+  PR #146 (READY, non-draft), Wickroad growth cut 5 "Audio" per
+  games/wickroad/CONCEPT.md — the LAST named cut; the named growth
+  path is now COMPLETE. Three original synthesized cues from the
+  stdlib-only deterministic games/wickroad/audio/generate_audio.py
+  (byte-exact regenerable, LCG noise, no samples ever), played as pure
+  decisions on events the sim already computes: wr_coin when gold
+  changes hands on a trade (market buy, market sell, pact delivery
+  payment), wr_dawn on a day rollover, wr_wind on the pass-closing
+  dawn. Zero new RNG draws; telemetry 48 -> 52 (words 0-47
+  byte-unchanged; 48-50 boot-cumulative play-call counters, 51 total).
+  P1-P7 carried verbatim on the first post-audio run — no clock
+  re-base (the Shoal rung-5 risk, measured absent here). Proof suite
+  games/wickroad/proofs.sh now P1-P8: 755 watch + 72 text assertion
+  passes per run, P2-P8 each run twice with byte-identical watch-logs,
+  the whole suite run twice end-to-end with byte-identical CSVs across
+  runs; P8 pins the coin on both trade edges, one bell per rolled day,
+  the wind exactly once at the close, counter survival across a START
+  restart, and maxmod mixer-memory voicing (silent title, audible
+  cues, silence after the wind dies). Honest limit named in proofs.sh
+  and the PR: audible output itself (mix, timbre, DAC) is not
+  headlessly provable — owner-playtest territory. dist/wickroad.gba
+  v0.6, 159,484 bytes, sha256 `92df5c91...0947`, two clean builds
+  byte-identical, suite re-run green at the dist bytes. Work claim
+  control/claims/claude-wickroad-audio.md retired with this heartbeat
+  (claims README rule 4 — the open PR is the live claim).
+- Landing posture: PR #146 parked READY; no merge/approve/auto-merge
+  calls from this session — the server-side enabler decides on green.
+- Pointers: .sessions/2026-07-15-wickroad-audio.md (card) ·
+  games/wickroad/CONCEPT.md (cut 5 marked SERVED; named path COMPLETE) ·
+  dist/README.md (v0.6 row) · docs/current-state.md (Wickroad row now
+  v0.6).

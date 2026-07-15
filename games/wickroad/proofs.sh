@@ -9,7 +9,7 @@
 #     bash games/wickroad/proofs.sh
 # Artifacts land in $WICKROAD_PROOF_OUT (default /tmp/wickroad-proofs).
 #
-# The seven proofs (asserts inline below):
+# The eight proofs (asserts inline below):
 #   P1 boot/title            — magics, title state, every title line incl.
 #                              the hook line ("BUT THE INK AGES") and the
 #                              full verb help; witness words zero on title.
@@ -155,10 +155,38 @@
 #                              sim law FIRST (the route simulator replays
 #                              the exact key schedule against the law).
 #
-# Mailbox: wr_telemetry[48] since v0.5 (layout in games/wickroad/src/main.cpp;
+#   P8 THE AUDIO (growth cut 5) — the cues are decisions, hook-counted:
+#                              one buy + one sell on day 1 step the coin
+#                              counter (word 48) to exactly 2 on their key
+#                              edges (gold 60 -> 51 -> 60, the committed
+#                              day-1 tallow 9 from the P2/P3 pins), thirty
+#                              waits ring the dawn bell once per rolled day
+#                              (word 49 = 10 at day 11, 29 at the close)
+#                              until the pass-closing dawn fires the WIND
+#                              exactly once (word 50 = 1, state 3, gold 30
+#                              pinning all 30 lodgings), and a START
+#                              restart provably KEEPS the boot's counters
+#                              (words 48-51 unchanged across the reset —
+#                              they are boot-cumulative like the frame
+#                              word). Voicing evidence per the house
+#                              method (docs/capabilities.md): the maxmod
+#                              mixer-memory nonzero watch is 0 on the
+#                              silent title, >0 while the coin and the
+#                              wind sound, and 0 again once the wind dies.
+#                              RUN TWICE — byte-identical watch-logs.
+#                              HONEST LIMIT: only play-call decisions and
+#                              mixer-memory activity are asserted — actual
+#                              audible output (mix levels, timbre, the
+#                              DAC) is not headlessly provable and is
+#                              named owner-playtest territory in the PR.
+#
+# Mailbox: wr_telemetry[52] since v0.6 (layout in games/wickroad/src/main.cpp;
 # P1-P3 keep watching the first 16 words, unchanged from v0.1; P4 the first
 # 24, unchanged from v0.2; P5 the first 32, unchanged from v0.3; P6 the
-# first 40, unchanged from v0.4).
+# first 40, unchanged from v0.4; P7 asserts nothing past word 47, unchanged
+# from v0.5 — the audio counter words 48-51 are new in v0.6 and words 0-47
+# stayed byte-identical: P1-P7 passed verbatim on the first post-audio run,
+# zero re-pins).
 # Word 15 encodes the THORNBY/SALT ledger entry as (ink price << 8) | age:
 # 6912 = 27 @ age 0 · 6913 = 27 @ 1 · 6915 = 27 @ 3 · 6937 = 27 @ 25.
 # Turn-based determinism: the same script replays bit-identically by
@@ -178,10 +206,14 @@ mkdir -p "$OUT"
 
 H() { python3 tools/headless-screenshot.py "$ROM" "$@"; }
 W='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:16'
-W48='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:48'
+W52='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:52'
+# Audio voicing evidence (growth cut 5, the Shoal/Courier house method):
+# count of nonzero u32 words in the maxmod mixing buffer — 0 exactly when
+# the mixer is silent.
+WMIX='--watch-nonzero mix:maxmod_mixing_buffer:0x420'
 
 echo "== P1: boot + title =="
-H "$OUT/p1.png" --frames 70 $W48 \
+H "$OUT/p1.png" --frames 70 $W52 \
   --assert-watch 60:wr:0:eq:1464419147 \
   --assert-watch 60:wr:1:eq:1380925764 \
   --assert-watch 60:wr:2:eq:0 \
@@ -193,6 +225,10 @@ H "$OUT/p1.png" --frames 70 $W48 \
   --assert-watch 60:wr:40:eq:0 \
   --assert-watch 60:wr:42:eq:0 \
   --assert-watch 60:wr:46:eq:0 \
+  --assert-watch 60:wr:48:eq:0 \
+  --assert-watch 60:wr:49:eq:0 \
+  --assert-watch 60:wr:50:eq:0 \
+  --assert-watch 60:wr:51:eq:0 \
   --assert-text "60:WICKROAD" \
   --assert-text "60:ONE ROAD - SEVEN MARKETS" \
   --assert-text "60:BUY LOW - SELL HIGH" \
@@ -783,15 +819,113 @@ WIDE_ASSERTS=(
 )
 
 echo "== P7: THE WIDER MAP + THE MULES — gold buys logistics (run 1) =="
-H "$OUT/p7.png" --frames 530 $W48 $WIDE_ROUTE \
+H "$OUT/p7.png" --frames 530 $W52 $WIDE_ROUTE \
   --watch-log "$OUT/p7-run1.csv" --shot "520:$OUT/p7-mules.png" \
   "${WIDE_ASSERTS[@]}"
 
 echo "== P7: run 2 (must be byte-identical) =="
-H "$OUT/p7b.png" --frames 530 $W48 $WIDE_ROUTE \
+H "$OUT/p7b.png" --frames 530 $W52 $WIDE_ROUTE \
   --watch-log "$OUT/p7-run2.csv" \
   "${WIDE_ASSERTS[@]}"
 cmp "$OUT/p7-run1.csv" "$OUT/p7-run2.csv"
 echo "P7 run-twice: byte-identical"
+
+# The audio route (growth cut 5): START, one buy + one sell on day 1
+# (the coin chink on both edges of a trade — the committed day-1 tallow
+# 9: buy at 9, the impact ladder lifts it to 10, sell pays 10-1=9, gold
+# 60 -> 51 -> 60), then 30 SELECT waits ring the dawn bell once per
+# rolled day until the 30th wait rolls day 31 and the PASS-CLOSING WIND
+# fires exactly once (state 3; gold 30 pins all 30 lodgings). START at
+# 240 restarts the run — and the counters provably SURVIVE it (words
+# 48-51 are boot-cumulative like the frame word, by design). The mixer
+# watch pins the voicing: silent title, audible coin, audible wind,
+# silence again once the wind dies (~1.1 s after the close).
+# HONEST LIMIT (also in the PR): these asserts prove the play-call
+# DECISIONS (hook counters) and maxmod mixer-memory activity — actual
+# audible output (mix levels, timbre, the DAC path) cannot be asserted
+# headlessly and is named owner-playtest territory.
+AUDIO_ROUTE='--keys 10-12:START --keys 30-32:A --keys 36-38:B --keys 42-44:SELECT --keys 48-50:SELECT --keys 54-56:SELECT --keys 60-62:SELECT --keys 66-68:SELECT --keys 72-74:SELECT --keys 78-80:SELECT --keys 84-86:SELECT --keys 90-92:SELECT --keys 96-98:SELECT --keys 102-104:SELECT --keys 108-110:SELECT --keys 114-116:SELECT --keys 120-122:SELECT --keys 126-128:SELECT --keys 132-134:SELECT --keys 138-140:SELECT --keys 144-146:SELECT --keys 150-152:SELECT --keys 156-158:SELECT --keys 162-164:SELECT --keys 168-170:SELECT --keys 174-176:SELECT --keys 180-182:SELECT --keys 186-188:SELECT --keys 192-194:SELECT --keys 198-200:SELECT --keys 204-206:SELECT --keys 210-212:SELECT --keys 216-218:SELECT --keys 240-242:START'
+
+AUDIO_ASSERTS=(
+  # the title is SILENT: no cue has ever fired, the mixer is empty
+  --assert-watch 8:wr:2:eq:0
+  --assert-watch 8:wr:48:eq:0
+  --assert-watch 8:wr:51:eq:0
+  --assert-watch 8:mix:0:eq:0
+  # day 1 before the trade: run started (no start cue by design — the
+  # deck is coin/bell/wind, CONCEPT.md verbatim), counters still zero
+  --assert-watch 24:wr:2:eq:1
+  --assert-watch 24:wr:4:eq:1
+  --assert-watch 24:wr:5:eq:60
+  --assert-watch 24:wr:13:eq:9
+  --assert-watch 24:wr:48:eq:0
+  --assert-watch 24:wr:49:eq:0
+  --assert-watch 24:wr:50:eq:0
+  --assert-watch 24:wr:51:eq:0
+  # the BUY edge: gold 60 -> 51 (the committed tallow 9), one in the
+  # pack — and the COIN counter steps to 1 on the same decision; the
+  # mixer is audibly voicing it 4 frames in (the chink runs ~0.15 s)
+  --assert-watch 34:wr:5:eq:51
+  --assert-watch 34:wr:9:eq:1
+  --assert-watch 34:wr:48:eq:1
+  --assert-watch 34:wr:49:eq:0
+  --assert-watch 34:wr:51:eq:1
+  --assert-watch 34:mix:0:gt:0
+  # the SELL edge: the impact ladder pays 10-1=9 back (gold 60), the
+  # pack empties — the coin steps to 2: BOTH sides of a trade chink
+  --assert-watch 40:wr:5:eq:60
+  --assert-watch 40:wr:8:eq:0
+  --assert-watch 40:wr:48:eq:2
+  --assert-watch 40:wr:51:eq:2
+  # the first wait: day 2, one lodging — the DAWN BELL rings once
+  --assert-watch 46:wr:4:eq:2
+  --assert-watch 46:wr:5:eq:59
+  --assert-watch 46:wr:48:eq:2
+  --assert-watch 46:wr:49:eq:1
+  --assert-watch 46:wr:50:eq:0
+  --assert-watch 46:wr:51:eq:3
+  # day 11 (ten waits in): the bell has rung once per rolled day
+  --assert-watch 100:wr:4:eq:11
+  --assert-watch 100:wr:5:eq:50
+  --assert-watch 100:wr:49:eq:10
+  --assert-watch 100:wr:51:eq:12
+  # the 30th wait rolls day 31: the pass CLOSES — the WIND fires
+  # exactly once, the bell stops at 29 (the closing dawn howls, it
+  # does not ring), gold 30 pins all 30 lodgings
+  --assert-watch 222:wr:2:eq:3
+  --assert-watch 222:wr:4:eq:31
+  --assert-watch 222:wr:5:eq:30
+  --assert-watch 222:wr:48:eq:2
+  --assert-watch 222:wr:49:eq:29
+  --assert-watch 222:wr:50:eq:1
+  --assert-watch 222:wr:51:eq:32
+  --assert-watch 222:mix:0:gt:0
+  --assert-text "232:THE PASS CLOSES"
+  --assert-text "232:GOLD 30 OF 300"
+  # START restarts the run (day 1, gold 60) — and the audio history
+  # SURVIVES: the counters are boot-cumulative, not run state
+  --assert-watch 260:wr:2:eq:1
+  --assert-watch 260:wr:4:eq:1
+  --assert-watch 260:wr:5:eq:60
+  --assert-watch 260:wr:48:eq:2
+  --assert-watch 260:wr:49:eq:29
+  --assert-watch 260:wr:50:eq:1
+  --assert-watch 260:wr:51:eq:32
+  # the wind (~1.1 s from the close) has died: the mixer is silent
+  # again — cues are one-shots, nothing loops
+  --assert-watch 300:mix:0:eq:0
+)
+
+echo "== P8: THE AUDIO — the cues are decisions, hook-counted (run 1) =="
+H "$OUT/p8.png" --frames 310 $W52 $WMIX $AUDIO_ROUTE \
+  --watch-log "$OUT/p8-run1.csv" --shot "232:$OUT/p8-closed.png" \
+  "${AUDIO_ASSERTS[@]}"
+
+echo "== P8: run 2 (must be byte-identical) =="
+H "$OUT/p8b.png" --frames 310 $W52 $WMIX $AUDIO_ROUTE \
+  --watch-log "$OUT/p8-run2.csv" \
+  "${AUDIO_ASSERTS[@]}"
+cmp "$OUT/p8-run1.csv" "$OUT/p8-run2.csv"
+echo "P8 run-twice: byte-identical"
 
 echo "ALL WICKROAD PROOFS PASS"

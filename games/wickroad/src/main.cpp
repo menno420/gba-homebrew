@@ -87,6 +87,25 @@
  * price rides the existing town/pack line, so the always-on line
  * count only grows by the two deferred ledger rows.
  *
+ * GROWTH CUT 5 — AUDIO (v0.6, CONCEPT.md growth cut 5, the concept's
+ * LAST named cut): three original synthesized cues (audio/
+ * generate_audio.py — the Lumen Drift/Deepcast/Courier/Shoal house
+ * pattern: stdlib-only, deterministic, no samples ever) played through
+ * Butano's maxmod pipeline as pure DECISIONS on events the sim already
+ * computed: a COIN CHINK when gold changes hands on a trade (market
+ * buy, market sell, a pact delivery payment — tolls/lodging/fees are
+ * costs, not trades, and stay silent), a DAWN BELL when a day rolls
+ * over, and the PASS-CLOSING WIND when winter takes the road (the
+ * dawn that would land past day 30). Nothing feeds back into the sim:
+ * zero new RNG draws, zero price-law changes, the world and words
+ * 0-47 of the mailbox stay byte-identical, so P1-P7 carry verbatim.
+ * Every trigger bumps a cumulative hook counter into the new mailbox
+ * words 48-51 (the house hook-count method, seated in wr_telemetry
+ * the way cut 4 appended words) so the headless harness pins the
+ * decisions; the counters count from BOOT (like the frame word) and
+ * deliberately survive a START restart — proofs.sh P8 pins exactly
+ * that, plus maxmod mixer-memory activity for the voicing.
+ *
  * PROTOTYPE RULES (deliberate cuts documented in CONCEPT.md):
  *   - Turn-based: nothing moves but on a key edge. A buys one unit of
  *     the cursor good, B sells one, L/R travel one town down the road
@@ -112,9 +131,9 @@
  *     input script replays bit-identically.
  *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
- * --elf --watch wr:wr_telemetry:48; the v0.1/v0.2/v0.3/v0.4 proofs keep
- * watching the first 16/24/32/40 words unchanged), volatile, C-linkage,
- * every frame:
+ * --elf --watch wr:wr_telemetry:52; the v0.1/v0.2/v0.3/v0.4/v0.5 proofs
+ * keep watching the first 16/24/32/40/48 words unchanged), volatile,
+ * C-linkage, every frame:
  *   [0] 0x5749434B 'WICK' magic     [8]  pack used (0..8)
  *   [1] 0x524F4144 'ROAD' magic     [9]  cargo TALLOW
  *   [2] state (0 title, 1 trading,  [10] cargo SALT
@@ -209,6 +228,24 @@
  * markets stood in on one committed route. Words 44/45 replay the
  * cut-0 hook on the NEW region: MIRGATE's ink provably ages too.
  *
+ * Audio hook-count words (growth cut 5; cumulative play-call counts
+ * since BOOT, like the frame word [3] — deliberately NOT reset by a
+ * START restart, and not zeroed on the title, so a restart provably
+ * keeps the boot's audio history):
+ *   [48] wr_coin plays (a trade:    [50] wr_wind plays (the pass
+ *        market buy, market sell,        closed)
+ *        pact delivery payment)     [51] total plays
+ *   [49] wr_dawn plays (a day           ([48] + [49] + [50])
+ *        rolled over, pass still
+ *        open)
+ * Words 48-51 make THE CUE DECISIONS assertable: the harness pins the
+ * coin count stepping on exactly the buy/sell edges, the bell count
+ * matching the dawns crossed, the wind firing ONCE on the pass-close
+ * frame, and all four words surviving a START restart — while a
+ * mixer-memory nonzero watch proves maxmod actually voiced them.
+ * Actual audible output (mix levels, timbre, the DAC) is NOT
+ * headlessly assertable — that is named owner-playtest territory.
+ *
  * Presentation is deliberately trivial (breadth-program slice): the
  * market table and the ledger are fixed-font glyph lines; headers,
  * title and end cards use the common variable 8x8 font (the one
@@ -218,12 +255,14 @@
 
 #include "bn_core.h"
 #include "bn_color.h"
+#include "bn_fixed.h"
 #include "bn_keypad.h"
 #include "bn_string.h"
 #include "bn_vector.h"
 #include "bn_display.h"
 #include "bn_bg_palettes.h"
 #include "bn_sprite_ptr.h"
+#include "bn_sound_items.h"
 #include "bn_sprite_text_generator.h"
 
 #include "common_fixed_8x8_sprite_font.h"
@@ -232,7 +271,7 @@
 extern "C"
 {
     // Headless telemetry mailbox — layout in the header comment.
-    volatile unsigned wr_telemetry[48];
+    volatile unsigned wr_telemetry[52];
 }
 
 namespace
@@ -548,6 +587,24 @@ int main()
     int mule_spend = 0;                  // gold spent on mules, cumulative
     unsigned visited_mask = 0;           // bit t set once town t stood in
 
+    // Audio hook counters (growth cut 5): cumulative play-call counts
+    // since BOOT, like `frames` — deliberately NOT reset by reset_run
+    // (a START restart provably keeps the boot's audio history; P8
+    // pins exactly that). The cues are pure outputs: nothing here is
+    // read back by the sim.
+    unsigned audio_coin = 0;             // wr_coin: gold changed hands
+    unsigned audio_dawn = 0;             // wr_dawn: a day rolled over
+    unsigned audio_wind = 0;             // wr_wind: the pass closed
+
+    // A trade completed — gold changed hands (market buy, market sell,
+    // a pact delivery payment): the coin chink. Tolls, lodging, fees
+    // and the mule fair are costs, not trades — deliberately silent.
+    auto chink = [&]()
+    {
+        bn::sound_items::wr_coin.play(bn::fixed(0.6));
+        ++audio_coin;
+    };
+
     auto pack_used = [&]() -> int
     {
         return cargo[0] + cargo[1] + cargo[2] + cargo[3];
@@ -833,9 +890,22 @@ int main()
         if(int(day) > last_day)
         {
             state = st_closed;
+
+            // The pass-closing wind (growth cut 5): the one loss cue,
+            // fired on the exact dawn winter takes the road.
+            bn::sound_items::wr_wind.play(bn::fixed(0.8));
+            ++audio_wind;
+
             clear_lines();
             return;
         }
+
+        // The dawn bell (growth cut 5): a day rolled over and the road
+        // is still open. The play call is a fixed-cost maxmod channel
+        // start, not text work — the dawn frame's committed draw
+        // budget (the #142-#144 measured lesson) is untouched.
+        bn::sound_items::wr_dawn.play(bn::fixed(0.5));
+        ++audio_dawn;
 
         refresh_ledger();
     };
@@ -927,6 +997,7 @@ int main()
                     }
 
                     refresh_ledger();        // you watched it move
+                    chink();                 // gold changed hands
                 }
             }
 
@@ -943,6 +1014,7 @@ int main()
                     }
 
                     refresh_ledger();
+                    chink();                 // gold changed hands
 
                     if(gold >= gold_target)
                     {
@@ -1002,6 +1074,8 @@ int main()
                         cargo[c.good] -= c.qty;
                         gold += c.premium;
                         contract_paid[cid - 1] = true;
+                        chink();             // the premium is a trade:
+                                             //   gold changed hands
 
                         if(gold >= gold_target)
                         {
@@ -1413,6 +1487,14 @@ int main()
             wr_telemetry[47] = title ? 0u
                                      : unsigned(capacity() - pack_used());
         }
+
+        // Audio hook-count words (growth cut 5) — layout in the header.
+        // Cumulative since BOOT (not zeroed on the title, not reset by
+        // a restart), so the words are monotone like the frame word.
+        wr_telemetry[48] = audio_coin;
+        wr_telemetry[49] = audio_dawn;
+        wr_telemetry[50] = audio_wind;
+        wr_telemetry[51] = audio_coin + audio_dawn + audio_wind;
 
         bn::core::update();
     }

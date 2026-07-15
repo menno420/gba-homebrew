@@ -62,6 +62,31 @@
  * (the full verb help stays on the title card), so the always-on
  * sprite load is a wash.
  *
+ * GROWTH CUT 4 — A WIDER MAP + PACK UPGRADES (v0.5, CONCEPT.md growth
+ * cut 4): the road runs on past DUNWICK to two new markets —
+ * HOLLOWFEN (the drovers' fair) and MIRGATE (the far iron source) —
+ * and gold buys logistics: at the Hollowfen fair START buys a MULE,
+ * each mule growing the pack by 4 (8 -> 12 -> 16) at a fixed authored,
+ * escalating price (30 then 55; the fair posts the next price on the
+ * town line, 0 mules ridable past two). The classic Taipan curve:
+ * early profits convert into carrying capacity, capacity converts
+ * distance into bigger hauls. The new towns run the SAME closed-form
+ * price law and produce/crave rotation (HOLLOWFEN sells salt cheap and
+ * craves resin; MIRGATE sells iron cheap and craves tallow), and their
+ * ledger ink ages exactly like the old five — the hook stretches with
+ * the map. RNG DELTA, counted: +16 world-init draws (2 towns x 4
+ * goods x base+phase), appended STRICTLY AFTER the v0.4 stream (the
+ * five old towns' 40 draws keep their exact order), so the old world
+ * is bit-identical and every committed pin (P1-P6) carries verbatim.
+ * The map stays ONE road, deliberately (no branch fork): L/R is a
+ * committed verb grammar and a junction would need a new travel verb —
+ * documented as the honest cut in CONCEPT.md. Frame-budget note: dawn
+ * frames are budget-SPENT (the #142-#144 measured lesson), so the two
+ * NEW ledger rows regenerate on quiet frames 4 and 5 after a head
+ * redraw (crier 1, pact 2, road 3 — the stagger extended); the mule
+ * price rides the existing town/pack line, so the always-on line
+ * count only grows by the two deferred ledger rows.
+ *
  * PROTOTYPE RULES (deliberate cuts documented in CONCEPT.md):
  *   - Turn-based: nothing moves but on a key edge. A buys one unit of
  *     the cursor good, B sells one, L/R travel one town down the road
@@ -87,8 +112,8 @@
  *     input script replays bit-identically.
  *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
- * --elf --watch wr:wr_telemetry:40; the v0.1/v0.2/v0.3 proofs keep
- * watching the first 16/24/32 words unchanged), volatile, C-linkage,
+ * --elf --watch wr:wr_telemetry:48; the v0.1/v0.2/v0.3/v0.4 proofs keep
+ * watching the first 16/24/32/40 words unchanged), volatile, C-linkage,
  * every frame:
  *   [0] 0x5749434B 'WICK' magic     [8]  pack used (0..8)
  *   [1] 0x524F4144 'ROAD' magic     [9]  cargo TALLOW
@@ -164,6 +189,26 @@
  * one travel edge) and the provisioned one costing none — the fee
  * provably buys what it claims, or is provably wasted.
  *
+ * Wider-map witness words (growth cut 4; all 0 on the title):
+ *   [40] pack capacity (8 + 4 per  [44] TRUE price of IRON at
+ *        mule)                          MIRGATE (the new-region
+ *   [41] mules owned (0..2)            stale-ink witness word)
+ *   [42] mule price posted HERE    [45] ledger word for MIRGATE
+ *        (0 unless standing at the      IRON: (last-seen price << 8)
+ *        Hollowfen fair with a          | ink age in days (0 while
+ *        mule still buyable)            MIRGATE is unvisited)
+ *   [43] gold spent on mules,      [46] visited-towns bitmask (bit
+ *        cumulative                     t set once town t is stood
+ *                                       in; 0x7F = all seven)
+ *                                  [47] free pack space (capacity
+ *                                       minus used)
+ * Words 40/47 make THE UPGRADE assertable: the harness pins a buy that
+ * pushes pack used PAST the old cap of 8, the purchase edges where
+ * capacity jumps 8 -> 12 -> 16 and word 42 walks the authored price
+ * ladder to 0 (sold out), and word 46 reaching 0x7F — all seven
+ * markets stood in on one committed route. Words 44/45 replay the
+ * cut-0 hook on the NEW region: MIRGATE's ink provably ages too.
+ *
  * Presentation is deliberately trivial (breadth-program slice): the
  * market table and the ledger are fixed-font glyph lines; headers,
  * title and end cards use the common variable 8x8 font (the one
@@ -187,7 +232,7 @@
 extern "C"
 {
     // Headless telemetry mailbox — layout in the header comment.
-    volatile unsigned wr_telemetry[40];
+    volatile unsigned wr_telemetry[48];
 }
 
 namespace
@@ -223,11 +268,15 @@ namespace
     };
 
     // --- the road (all owner-tunable integers) ------------------------------
-    constexpr int town_count = 5;
+    constexpr int town_count = 7;        // widened from 5 (growth cut 4)
+    constexpr int legacy_town_count = 5; // the v0.4 world: its 40 world-init
+                                         //   draws keep their exact stream
+                                         //   order (see reset_run)
     constexpr int good_count = 4;
 
     constexpr const char* town_names[town_count] = {
         "EMBERTON", "GLASSMERE", "SALTCOMBE", "THORNBY", "DUNWICK",
+        "HOLLOWFEN", "MIRGATE",
     };
 
     constexpr const char* good_names[good_count] = {
@@ -252,6 +301,22 @@ namespace
     // The stale-ink witness pair (mailbox words 14/15).
     constexpr int witness_town = 3;      // THORNBY
     constexpr int witness_good = 1;      // SALT
+
+    // --- the MULES (growth cut 4) --------------------------------------------
+    // Gold buys logistics: at the Hollowfen fair START buys a mule,
+    // each mule growing the pack by mule_gain. The price ladder is
+    // FIXED and authored (like every deck before it): the fair posts
+    // the next price on the town line, and past mule_limit it simply
+    // sells out. The new-region stale-ink witness pair (words 44/45)
+    // replays the cut-0 hook on MIRGATE's iron — the far market's ink
+    // ages exactly like the old five towns'.
+    constexpr int stable_town = 5;       // HOLLOWFEN, the drovers' fair
+    constexpr int mule_limit = 2;
+    constexpr int mule_gain = 4;         // pack: 8 -> 12 -> 16
+    constexpr int mule_price[mule_limit] = {30, 55};
+
+    constexpr int wide_witness_town = 6; // MIRGATE
+    constexpr int wide_witness_good = 2; // IRON
 
     // --- the RUMOR deck (growth cut 1) --------------------------------------
     // FIXED and deterministic by construction: no RNG is consumed (the
@@ -427,8 +492,8 @@ int main()
     constexpr int ui_x = -110;
     text_line ui_lines[4];               // headers / title / end cards
     text_line table_lines[good_count];   // the market table (fixed font)
-    text_line ledger_lines[town_count - 1];  // the other four towns
-    text_line title_lines[4];            // extra title/card rows
+    text_line ledger_lines[town_count - 1];  // the other six towns
+    text_line title_lines[5];            // extra title/card rows
     text_line pact_line;                 // the contract line (cut 2)
     text_line road_line;                 // the hazard line (cut 3)
 
@@ -479,10 +544,27 @@ int main()
                                          //   next crossing (cut 3)
     int hazard_gold_lost = 0;            // bandit seizures, cumulative
     int storm_days_lost = 0;             // storm delays, cumulative
+    int mules = 0;                       // pack upgrades owned (cut 4)
+    int mule_spend = 0;                  // gold spent on mules, cumulative
+    unsigned visited_mask = 0;           // bit t set once town t stood in
 
     auto pack_used = [&]() -> int
     {
         return cargo[0] + cargo[1] + cargo[2] + cargo[3];
+    };
+
+    // The pack grows with the mule train (growth cut 4): 8 -> 12 -> 16.
+    auto capacity = [&]() -> int
+    {
+        return pack_capacity + mule_gain * mules;
+    };
+
+    // What the Hollowfen fair posts: the next mule's authored price, 0
+    // anywhere else on the road (or once the fair is sold out).
+    auto stable_price = [&]() -> int
+    {
+        return town == stable_town && mules < mule_limit
+                   ? mule_price[mules] : 0;
     };
 
     // The rumor shock at (t, g) today: a pure function of the day.
@@ -640,10 +722,15 @@ int main()
     auto reset_run = [&]()
     {
         // The SAME world every run: the PRNG restarts at the fixed
-        // seed and is consumed only here, in a fixed order.
+        // seed and is consumed only here, in a fixed order. THE ORDER
+        // IS A COMMITTED INTERFACE (growth cut 4): the five legacy
+        // towns draw base then phase EXACTLY as in v0.1-v0.4 (40
+        // draws, bit-identical world, every committed pin carries),
+        // and the two new towns' 16 draws (base then phase) are
+        // APPENDED strictly after — the cut's whole RNG delta.
         rng_t rng(seed_constant);
 
-        for(int t = 0; t < town_count; ++t)
+        for(int t = 0; t < legacy_town_count; ++t)
         {
             for(int g = 0; g < good_count; ++g)
             {
@@ -652,7 +739,24 @@ int main()
             }
         }
 
-        for(int t = 0; t < town_count; ++t)
+        for(int t = 0; t < legacy_town_count; ++t)
+        {
+            for(int g = 0; g < good_count; ++g)
+            {
+                phase[t][g] = rng.range(12);
+            }
+        }
+
+        for(int t = legacy_town_count; t < town_count; ++t)
+        {
+            for(int g = 0; g < good_count; ++g)
+            {
+                base[t][g] = (price_lo[g] + price_hi[g]) / 2 - 3
+                           + rng.range(7);
+            }
+        }
+
+        for(int t = legacy_town_count; t < town_count; ++t)
         {
             for(int g = 0; g < good_count; ++g)
             {
@@ -698,6 +802,9 @@ int main()
         outfitted = false;
         hazard_gold_lost = 0;
         storm_days_lost = 0;
+        mules = 0;
+        mule_spend = 0;
+        visited_mask = 1u;               // EMBERTON, the starting square
 
         refresh_ledger();
     };
@@ -809,7 +916,7 @@ int main()
             {
                 int cost = price(town, cursor);
 
-                if(gold >= cost && pack_used() < pack_capacity)
+                if(gold >= cost && pack_used() < capacity())
                 {
                     gold -= cost;
                     ++cargo[cursor];
@@ -850,6 +957,7 @@ int main()
             {
                 gold -= travel_toll;
                 --town;
+                visited_mask |= 1u << unsigned(town);
                 dawn();
                 cross(town);             // rode the (town, town+1) leg
             }
@@ -859,6 +967,7 @@ int main()
             {
                 gold -= travel_toll;
                 ++town;
+                visited_mask |= 1u << unsigned(town);
                 dawn();
                 cross(town - 1);         // rode the (town-1, town) leg
             }
@@ -914,6 +1023,20 @@ int main()
                 outfitted = true;
             }
 
+            // The fair verb (growth cut 4): START — free in the
+            // trading state; every committed route only presses it on
+            // the title and end cards — BUYS A MULE at the Hollowfen
+            // fair, at the posted authored price. Each mule grows the
+            // pack by mule_gain; past mule_limit the fair is sold out
+            // and START goes back to doing nothing.
+            if(state == st_trading && start && stable_price() > 0
+               && gold >= stable_price())
+            {
+                gold -= stable_price();
+                mule_spend += stable_price();
+                ++mules;
+            }
+
             break;
         }
 
@@ -926,16 +1049,18 @@ int main()
 
         case st_title:
             ui_lines[0].set(ui_gen, ui_x, -70, "WICKROAD");
-            ui_lines[1].set(ui_gen, ui_x, -52, "ONE ROAD - FIVE MARKETS");
-            ui_lines[2].set(ui_gen, ui_x, -40, "BUY LOW - SELL HIGH");
-            ui_lines[3].set(ui_gen, ui_x, -28, "300 GOLD BEFORE DAY 30");
-            title_lines[0].set(ui_gen, ui_x, -8, "YOUR LEDGER REMEMBERS");
-            title_lines[1].set(ui_gen, ui_x, 4, "BUT THE INK AGES");
-            title_lines[2].set(ui_gen, ui_x, 28, "PRESS START");
-            title_lines[3].set(ui_gen, ui_x, 48,
+            ui_lines[1].set(ui_gen, ui_x, -54, "ONE ROAD - SEVEN MARKETS");
+            ui_lines[2].set(ui_gen, ui_x, -42, "BUY LOW - SELL HIGH");
+            ui_lines[3].set(ui_gen, ui_x, -30, "300 GOLD BEFORE DAY 30");
+            title_lines[0].set(ui_gen, ui_x, -14, "YOUR LEDGER REMEMBERS");
+            title_lines[1].set(ui_gen, ui_x, -2, "BUT THE INK AGES");
+            title_lines[2].set(ui_gen, ui_x, 12, "PRESS START");
+            title_lines[3].set(ui_gen, ui_x, 26,
                                "A BUY  B SELL  L/R GO  SEL WAIT");
-            pact_line.set(ui_gen, ui_x, 60, "RIGHT TAKES A PACT");
-            road_line.set(ui_gen, ui_x, 72, "LEFT HIRES THE GUARD");
+            pact_line.set(ui_gen, ui_x, 40, "RIGHT TAKES A PACT");
+            road_line.set(ui_gen, ui_x, 52, "LEFT HIRES THE GUARD");
+            title_lines[4].set(ui_gen, ui_x, 64,
+                               "THE HOLLOWFEN FAIR SELLS MULES");
             break;
 
         case st_trading:
@@ -957,11 +1082,23 @@ int main()
 
             ui_lines[0].set(ui_gen, ui_x, -70, head);
 
+            // The town/pack line carries the fair's posted mule price
+            // (growth cut 4): it already regenerates on every dawn and
+            // purchase frame, so the extra words cost no NEW regen
+            // frames — the budget-friendly seat for the new number.
             bn::string<40> where("AT ");
             where.append(town_names[town]);
             where.append("  PACK ");
             where.append(bn::to_string<8>(pack_used()));
-            where.append("/8");
+            where.append('/');
+            where.append(bn::to_string<8>(capacity()));
+
+            if(int fair = stable_price(); fair > 0)
+            {
+                where.append("  MULE ");
+                where.append(bn::to_string<8>(fair));
+            }
+
             ui_lines[1].set(ui_gen, ui_x, -58, where);
 
             for(int g = 0; g < good_count; ++g)
@@ -972,7 +1109,7 @@ int main()
                 row.append(bn::to_string<8>(price(town, g)));
                 row.append("  x");
                 row.append(bn::to_string<8>(cargo[g]));
-                table_lines[g].set(map_gen, ui_x, -42 + 10 * g, row);
+                table_lines[g].set(map_gen, ui_x, -46 + 10 * g, row);
             }
 
             // The town crier (growth cut 1): the latest rumor, shouted on
@@ -1000,7 +1137,7 @@ int main()
 
                 if(! head_changed)
                 {
-                    title_lines[0].set(ui_gen, ui_x, 0, cry);
+                    title_lines[0].set(ui_gen, ui_x, -4, cry);
                 }
             }
 
@@ -1094,10 +1231,10 @@ int main()
                     road.append(" +GUARD");
                 }
 
-                road_line.set(ui_gen, ui_x, 64, road);
+                road_line.set(ui_gen, ui_x, 66, road);
             }
 
-            ui_lines[2].set(ui_gen, ui_x, 12, "LEDGER - THE INK AGES");
+            ui_lines[2].set(ui_gen, ui_x, 8, "LEDGER - THE INK AGES");
 
             int slot = 0;
 
@@ -1105,6 +1242,20 @@ int main()
             {
                 if(t == town)
                 {
+                    continue;
+                }
+
+                // The v0.4 dawn workload is a committed interface (the
+                // #142-#144 frame-budget lesson): the five legacy
+                // towns' rows regenerate with the dawn exactly as
+                // before, and the two NEW towns' rows defer to quiet
+                // frames 4 and 5 after a head redraw (crier 1, pact 2,
+                // road 3 — the stagger extended). head_quiet is a pure
+                // function of the input history: determinism holds.
+                if(t >= legacy_town_count
+                   && head_quiet < unsigned(4 + t - legacy_town_count))
+                {
+                    ++slot;
                     continue;
                 }
 
@@ -1129,7 +1280,7 @@ int main()
                     row.append('D');
                 }
 
-                ledger_lines[slot].set(map_gen, ui_x, 22 + 10 * slot, row);
+                ledger_lines[slot].set(map_gen, ui_x, 18 + 8 * slot, row);
                 ++slot;
             }
 
@@ -1241,6 +1392,26 @@ int main()
                                     ? 0u : unsigned(hazard_gold_lost);
             wr_telemetry[39] = state == st_title
                                     ? 0u : unsigned(storm_days_lost);
+        }
+
+        // Wider-map witness words (growth cut 4) — layout in the header.
+        {
+            bool title = state == st_title;
+            wr_telemetry[40] = title ? 0u : unsigned(capacity());
+            wr_telemetry[41] = title ? 0u : unsigned(mules);
+            wr_telemetry[42] = title ? 0u : unsigned(stable_price());
+            wr_telemetry[43] = title ? 0u : unsigned(mule_spend);
+            wr_telemetry[44] = title ? 0u
+                                     : unsigned(price(wide_witness_town,
+                                                      wide_witness_good));
+            wr_telemetry[45] = title || ledger_day[wide_witness_town] == 0
+                ? 0u
+                : unsigned((ledger[wide_witness_town][wide_witness_good] << 8)
+                           | ((int(day) - ledger_day[wide_witness_town])
+                              & 0xFF));
+            wr_telemetry[46] = title ? 0u : visited_mask;
+            wr_telemetry[47] = title ? 0u
+                                     : unsigned(capacity() - pack_used());
         }
 
         bn::core::update();

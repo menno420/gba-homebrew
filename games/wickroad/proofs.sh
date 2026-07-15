@@ -9,7 +9,7 @@
 #     bash games/wickroad/proofs.sh
 # Artifacts land in $WICKROAD_PROOF_OUT (default /tmp/wickroad-proofs).
 #
-# The six proofs (asserts inline below):
+# The seven proofs (asserts inline below):
 #   P1 boot/title            — magics, title state, every title line incl.
 #                              the hook line ("BUT THE INK AGES") and the
 #                              full verb help; witness words zero on title.
@@ -121,9 +121,44 @@
 #                              Determinism makes the parity a constant of
 #                              the committed route, not noise).
 #
-# Mailbox: wr_telemetry[40] since v0.4 (layout in games/wickroad/src/main.cpp;
+#   P7 THE WIDER MAP + THE MULES (growth cut 4) — gold buys logistics:
+#                              the road runs past DUNWICK to HOLLOWFEN and
+#                              MIRGATE (seven markets; visited-mask word 46
+#                              pinned reaching 0x7F on one route), and at
+#                              the Hollowfen fair START buys a mule at the
+#                              posted authored price. Pinned exact: the
+#                              day-1 baseline (capacity 8, no mules, fair
+#                              closed, MIRGATE unvisited and its true iron
+#                              price 38 already witnessed), the P2-prefix
+#                              bank (gold 269 at day 9 — the same committed
+#                              keys, proving the old world is bit-identical
+#                              under the widened map), the fair posting 30
+#                              on arrival (word 42, "MULE 30" on the town
+#                              line), the purchase edge (gold 267 -> 237,
+#                              capacity word 8 -> 12, ladder walks to 55),
+#                              a NINE-salt pack (pack used 9 > the old cap
+#                              of 8 — the upgrade provably carries), the
+#                              MIRGATE arrival (mask 0x7F, ledger inked at
+#                              8192 = iron 32 @ age 0), the 9-sell haul to
+#                              gold 280 (under the 300 win by authorship),
+#                              the ride back (day 12: MIRGATE ink now LIES
+#                              — true 35 vs word 45 = 8193 = 32 @ age 1 —
+#                              the cut-0 hook stretches to the new region),
+#                              and the second mule (gold 223, capacity 16,
+#                              word 42 = 0: sold out, spend word 43 = 85).
+#                              Hazard words stay 0 throughout (every window
+#                              opens day 15+; the route's last travel day
+#                              is 12) and word 31 stays 0 (no pact taken —
+#                              every gold piece is market + mule money).
+#                              RUN TWICE — byte-identical watch-logs. Every
+#                              value derived on the host-side mirror of the
+#                              sim law FIRST (the route simulator replays
+#                              the exact key schedule against the law).
+#
+# Mailbox: wr_telemetry[48] since v0.5 (layout in games/wickroad/src/main.cpp;
 # P1-P3 keep watching the first 16 words, unchanged from v0.1; P4 the first
-# 24, unchanged from v0.2; P5 the first 32, unchanged from v0.3).
+# 24, unchanged from v0.2; P5 the first 32, unchanged from v0.3; P6 the
+# first 40, unchanged from v0.4).
 # Word 15 encodes the THORNBY/SALT ledger entry as (ink price << 8) | age:
 # 6912 = 27 @ age 0 · 6913 = 27 @ 1 · 6915 = 27 @ 3 · 6937 = 27 @ 25.
 # Turn-based determinism: the same script replays bit-identically by
@@ -143,9 +178,10 @@ mkdir -p "$OUT"
 
 H() { python3 tools/headless-screenshot.py "$ROM" "$@"; }
 W='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:16'
+W48='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:48'
 
 echo "== P1: boot + title =="
-H "$OUT/p1.png" --frames 70 $W \
+H "$OUT/p1.png" --frames 70 $W48 \
   --assert-watch 60:wr:0:eq:1464419147 \
   --assert-watch 60:wr:1:eq:1380925764 \
   --assert-watch 60:wr:2:eq:0 \
@@ -154,15 +190,19 @@ H "$OUT/p1.png" --frames 70 $W \
   --assert-watch 60:wr:13:eq:0 \
   --assert-watch 60:wr:14:eq:0 \
   --assert-watch 60:wr:15:eq:0 \
+  --assert-watch 60:wr:40:eq:0 \
+  --assert-watch 60:wr:42:eq:0 \
+  --assert-watch 60:wr:46:eq:0 \
   --assert-text "60:WICKROAD" \
-  --assert-text "60:ONE ROAD - FIVE MARKETS" \
+  --assert-text "60:ONE ROAD - SEVEN MARKETS" \
   --assert-text "60:BUY LOW - SELL HIGH" \
   --assert-text "60:300 GOLD BEFORE DAY 30" \
   --assert-text "60:YOUR LEDGER REMEMBERS" \
   --assert-text "60:BUT THE INK AGES" \
   --assert-text "60:PRESS START" \
   --assert-text "60:A BUY  B SELL  L/R GO  SEL WAIT" \
-  --assert-text "60:LEFT HIRES THE GUARD"
+  --assert-text "60:LEFT HIRES THE GUARD" \
+  --assert-text "60:THE HOLLOWFEN FAIR SELLS MULES"
 
 # The committed 13-day winning route (win at the 5th iron sale, frame 452):
 # day 1 EMBERTON buy 5 tallow -> day 3 SALTCOMBE sell, buy 3 iron -> day 5
@@ -622,5 +662,136 @@ H "$OUT/p6b.png" --frames 172 $W40 $ROAD_ROUTE \
   "${ROAD_ASSERTS[@]}"
 cmp "$OUT/p6-run1.csv" "$OUT/p6-run2.csv"
 echo "P6 run-twice: byte-identical"
+
+# The wider-map route: the committed P2 prefix through the day-9 DUNWICK
+# iron sale (gold 269 — the same keys, byte-for-byte, proving the legacy
+# world carries under the widened map), then EAST past the old end of the
+# road: R to HOLLOWFEN day 10 (fair posts MULE 30), START buys mule 1
+# (capacity 12), UP parks the cursor on SALT (the fair town's cheap
+# produce, 10 + the impact ladder), 9 buys fill the pack PAST the old cap
+# of 8, R to MIRGATE day 11 (all seven towns visited: mask 0x7F; iron
+# inked 32 at age 0), 9 sells bank gold 280 (authored under the 300 win),
+# L back day 12 (MIRGATE's ink now provably lies: true 35 vs 32 @ age 1),
+# START buys mule 2 (capacity 16, the fair sells out: word 42 -> 0).
+# Route gold ledger, every step on the mirror: 60 -55 tallow -2 -2 tolls
+# +91 sold -66 iron -2 -2 +138 sold -108 tallow -2 -2 +112 sold -134 iron
+# -2 -2 +257 sold = 269 day 9; -2 toll -30 mule -126 salt = 111; -2 toll
+# +171 sold = 280; -2 toll -55 mule = 223 day 12.
+WIDE_ROUTE='--keys 10-12:START --keys 30-32:A --keys 36-38:A --keys 42-44:A --keys 48-50:A --keys 54-56:A --keys 60-62:R --keys 66-68:R --keys 72-74:B --keys 78-80:B --keys 84-86:B --keys 90-92:B --keys 96-98:B --keys 102-104:DOWN --keys 108-110:DOWN --keys 114-116:A --keys 120-122:A --keys 126-128:A --keys 132-134:R --keys 138-140:R --keys 144-146:B --keys 150-152:B --keys 156-158:B --keys 162-164:UP --keys 168-170:UP --keys 174-176:A --keys 180-182:A --keys 186-188:A --keys 192-194:A --keys 198-200:A --keys 204-206:A --keys 210-212:A --keys 216-218:A --keys 222-224:L --keys 228-230:L --keys 234-236:B --keys 240-242:B --keys 246-248:B --keys 252-254:B --keys 258-260:B --keys 264-266:B --keys 270-272:B --keys 276-278:B --keys 282-284:DOWN --keys 288-290:DOWN --keys 294-296:A --keys 300-302:A --keys 306-308:A --keys 312-314:A --keys 318-320:A --keys 324-326:R --keys 330-332:R --keys 336-338:B --keys 342-344:B --keys 348-350:B --keys 354-356:B --keys 360-362:B --keys 372-374:R --keys 378-380:START --keys 384-386:UP --keys 390-392:A --keys 396-398:A --keys 402-404:A --keys 408-410:A --keys 414-416:A --keys 420-422:A --keys 426-428:A --keys 432-434:A --keys 438-440:A --keys 444-446:R --keys 450-452:B --keys 456-458:B --keys 462-464:B --keys 468-470:B --keys 474-476:B --keys 480-482:B --keys 486-488:B --keys 492-494:B --keys 498-500:B --keys 504-506:L --keys 510-512:START'
+
+WIDE_ASSERTS=(
+  # day 1: capacity 8, no mules, the fair closed, only EMBERTON stood
+  # in (mask 1), and MIRGATE already witnessed: true iron 38 (word 44,
+  # the mirror's day-1 value), ledger word 0 — unvisited. The widened
+  # ledger is on screen from the first quiet frames: both new towns'
+  # unvisited rows exact.
+  --assert-watch 24:wr:2:eq:1
+  --assert-watch 24:wr:4:eq:1
+  --assert-watch 24:wr:5:eq:60
+  --assert-watch 24:wr:40:eq:8
+  --assert-watch 24:wr:41:eq:0
+  --assert-watch 24:wr:42:eq:0
+  --assert-watch 24:wr:43:eq:0
+  --assert-watch 24:wr:44:eq:38
+  --assert-watch 24:wr:45:eq:0
+  --assert-watch 24:wr:46:eq:1
+  --assert-watch 24:wr:47:eq:8
+  # (measured fact, first P7 probe: the ledger/table rows render in the
+  # FIXED 8x8 font, and --assert-text templates come from the VARIABLE
+  # font bmp — tools/headless-screenshot.py FONT_BMP — so fixed-font
+  # rows are not text-assertable; P1-P6 never asserted one either. The
+  # new towns' ledger states are pinned exactly via words 44/45 instead.)
+  # day 9, the committed P2 prefix banked: gold 269 at DUNWICK, pack
+  # empty — the legacy world is bit-identical under the widened map
+  # (same keys, same gold, the P2 pins' own values)
+  --assert-watch 366:wr:4:eq:9
+  --assert-watch 366:wr:5:eq:269
+  --assert-watch 366:wr:6:eq:4
+  --assert-watch 366:wr:8:eq:0
+  --assert-watch 366:wr:40:eq:8
+  --assert-watch 366:wr:46:eq:31
+  # R past the old end of the road: HOLLOWFEN day 10 — the fair posts
+  # the first mule at the authored 30 (word 42 + the town line)
+  --assert-watch 376:wr:4:eq:10
+  --assert-watch 376:wr:5:eq:267
+  --assert-watch 376:wr:6:eq:5
+  --assert-watch 376:wr:40:eq:8
+  --assert-watch 376:wr:41:eq:0
+  --assert-watch 376:wr:42:eq:30
+  --assert-watch 376:wr:44:eq:29
+  --assert-watch 376:wr:45:eq:0
+  --assert-watch 376:wr:46:eq:63
+  --assert-text "376:AT HOLLOWFEN  PACK 0/8  MULE 30"
+  # START buys mule 1: gold 267 -> 237, capacity 8 -> 12, the ladder
+  # posts 55, spend word banks 30
+  --assert-watch 382:wr:5:eq:237
+  --assert-watch 382:wr:40:eq:12
+  --assert-watch 382:wr:41:eq:1
+  --assert-watch 382:wr:42:eq:55
+  --assert-watch 382:wr:43:eq:30
+  --assert-watch 382:wr:47:eq:12
+  --assert-text "382:AT HOLLOWFEN  PACK 0/12  MULE 55"
+  # nine salt on the impact ladder (10..18, the fair town's cheap
+  # produce): pack used 9 — PAST the old cap of 8, the upgrade carries
+  --assert-watch 442:wr:5:eq:111
+  --assert-watch 442:wr:8:eq:9
+  --assert-watch 442:wr:10:eq:9
+  --assert-watch 442:wr:13:eq:19
+  --assert-watch 442:wr:40:eq:12
+  --assert-watch 442:wr:47:eq:3
+  # MIRGATE day 11 — ALL SEVEN towns stood in (mask 0x7F), the far
+  # market inked at 8192 = iron 32 @ age 0, no fair here (word 42 = 0)
+  --assert-watch 448:wr:4:eq:11
+  --assert-watch 448:wr:5:eq:109
+  --assert-watch 448:wr:6:eq:6
+  --assert-watch 448:wr:42:eq:0
+  --assert-watch 448:wr:44:eq:32
+  --assert-watch 448:wr:45:eq:8192
+  --assert-watch 448:wr:46:eq:127
+  --assert-text "448:AT MIRGATE  PACK 9/12"
+  # the 9-sell haul: gold 280 — authored UNDER the 300 win, so the
+  # route keeps trading; pack empty again
+  --assert-watch 502:wr:5:eq:280
+  --assert-watch 502:wr:8:eq:0
+  --assert-watch 502:wr:47:eq:12
+  # L back day 12: MIRGATE's ink now provably LIES — true iron 35
+  # (word 44) vs ledger word 8193 = 32 @ age 1 — the cut-0 hook
+  # stretches to the new region; the THORNBY pair still ages too
+  # (word 15 = 7940: 31 @ age 4); hazard words untouched all route
+  # (every window opens day 15+) and word 31 = 0 (no pact taken)
+  --assert-watch 508:wr:4:eq:12
+  --assert-watch 508:wr:5:eq:278
+  --assert-watch 508:wr:6:eq:5
+  --assert-watch 508:wr:14:eq:34
+  --assert-watch 508:wr:15:eq:7940
+  --assert-watch 508:wr:31:eq:0
+  --assert-watch 508:wr:32:eq:0
+  --assert-watch 508:wr:38:eq:0
+  --assert-watch 508:wr:42:eq:55
+  --assert-watch 508:wr:44:eq:35
+  --assert-watch 508:wr:45:eq:8193
+  # START buys mule 2: gold 278 -> 223, capacity 16, the fair SELLS
+  # OUT (word 42 -> 0), spend word 85 — the whole Taipan curve pinned
+  --assert-watch 514:wr:5:eq:223
+  --assert-watch 514:wr:40:eq:16
+  --assert-watch 514:wr:41:eq:2
+  --assert-watch 514:wr:42:eq:0
+  --assert-watch 514:wr:43:eq:85
+  --assert-watch 514:wr:46:eq:127
+  --assert-watch 514:wr:47:eq:16
+  --assert-text "520:AT HOLLOWFEN  PACK 0/16"
+)
+
+echo "== P7: THE WIDER MAP + THE MULES — gold buys logistics (run 1) =="
+H "$OUT/p7.png" --frames 530 $W48 $WIDE_ROUTE \
+  --watch-log "$OUT/p7-run1.csv" --shot "520:$OUT/p7-mules.png" \
+  "${WIDE_ASSERTS[@]}"
+
+echo "== P7: run 2 (must be byte-identical) =="
+H "$OUT/p7b.png" --frames 530 $W48 $WIDE_ROUTE \
+  --watch-log "$OUT/p7-run2.csv" \
+  "${WIDE_ASSERTS[@]}"
+cmp "$OUT/p7-run1.csv" "$OUT/p7-run2.csv"
+echo "P7 run-twice: byte-identical"
 
 echo "ALL WICKROAD PROOFS PASS"

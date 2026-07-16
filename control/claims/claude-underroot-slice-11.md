@@ -1,0 +1,1 @@
+- `claude/underroot-slice-11` · **Underroot arc slice 11 — audio + polish -> v1.0 (synthesized PSG cues: forager return, hawk cry, winter toll; HUD/cross-section polish) + host mirror ur_cue_*/ur_amb_* audio-decision proof** · games/underroot-nds/, tools/check-underroot.py, .github/workflows/rom-builds.yml · 2026-07-16

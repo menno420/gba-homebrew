@@ -112,6 +112,15 @@ UR_DIAL_COUNT = 8                    # discrete seed-dial positions
 UR_DIAL_SALT = 0x4449414C            # 'DIAL' — dial->seed stream independent
 UR_DIAL_MASK = 0x0FFF                # bounded seed space for scanned positions
 
+# --- synthesized audio: cue + ambience decision layer (slice 11; mirror ur_sim.h)
+UR_CUE_NONE = 0                      # the no-op cue
+UR_CUE_FORAGE = 1                    # forager returns / food delivered
+UR_CUE_HAWK = 2                      # hawk cry (shadow crossing)
+UR_CUE_WINTER = 3                    # winter toll (year clock enters winter)
+UR_CUE_COUNT = 4
+UR_CUE_ON_NOISE = 255                # duty marker: route to the noise channel
+UR_AMB_TIERS = 4                     # one ambience drone per season
+
 # --- food patches (top screen; slice 2; mirror ur_sim.h) -------------------
 UR_SCREEN_W = 256             # meadow width (px)
 UR_SCREEN_H = 192             # meadow height (px)
@@ -639,6 +648,55 @@ def ur_seed_fair(seed):
     """Mirror of ur_seed_fair(): 1 iff the reference plan survives with a
     positive score (true for every seed)."""
     return 1 if ur_ref_score(seed) > 0 else 0
+
+
+# --- synthesized audio: cue + ambience decision layer (slice 11) -----------
+# One-shot cue rows, indexed by cue id: { freq Hz, len frames, duty code or
+# UR_CUE_ON_NOISE, vol }. Row 0 (UR_CUE_NONE) is all zeros: a no-op cue.
+# BYTE-IDENTICAL to UR_CUE_ROWS in ur_sim.c (the cross-side signature).
+UR_CUE_ROWS = [
+    (0,    0,  0,               0),          # NONE:   the no-op cue
+    (988,  10, 2,               42),         # FORAGE: B5 chirp, forager home
+    (1500, 18, UR_CUE_ON_NOISE, 78),         # HAWK:   the shriek (noise)
+    (262,  64, 0,               66),         # WINTER: C4 toll, the year closes
+]
+
+# Ambience drone rows, indexed by season tier (spring..winter == 0..3):
+# { freq Hz, duty code, vol }. BYTE-IDENTICAL to UR_AMB_ROWS in ur_sim.c.
+UR_AMB_ROWS = [
+    (180, 1, 22),                            # SPRING: the burrow wakes
+    (200, 1, 22),                            # SUMMER: the colony at work
+    (230, 1, 24),                            # AUTUMN: the harvest hurry
+    (270, 0, 26),                            # WINTER: the deep cold hum
+]
+
+
+def ur_cue_freq(cue):
+    return UR_CUE_ROWS[cue if cue < UR_CUE_COUNT else 0][0]
+
+
+def ur_cue_len(cue):
+    return UR_CUE_ROWS[cue if cue < UR_CUE_COUNT else 0][1]
+
+
+def ur_cue_duty(cue):
+    return UR_CUE_ROWS[cue if cue < UR_CUE_COUNT else 0][2]
+
+
+def ur_cue_vol(cue):
+    return UR_CUE_ROWS[cue if cue < UR_CUE_COUNT else 0][3]
+
+
+def ur_amb_freq(tier):
+    return UR_AMB_ROWS[tier if tier < UR_AMB_TIERS else 0][0]
+
+
+def ur_amb_duty(tier):
+    return UR_AMB_ROWS[tier if tier < UR_AMB_TIERS else 0][1]
+
+
+def ur_amb_vol(tier):
+    return UR_AMB_ROWS[tier if tier < UR_AMB_TIERS else 0][2]
 
 
 # --- the CI --touch dig script, mirrored (proof 3 anchor) ------------------
@@ -1962,6 +2020,93 @@ def prove_balance():
     return checks, dial_seeds, dial_scores
 
 
+def prove_audio():
+    # The arc doc's slice-11 proof: the synthesized-audio DECISION layer is pure
+    # and PSG-legal, mirroring check-gloam.py's section 13 (the gl_amb/gl_cue
+    # precedent). Two tables, both proven for every reachable index:
+    #  (a) the one-shot cue table — row 0 is a strict no-op, every real cue id
+    #      1..3 is deterministic and PSG-legal (freq/len/duty/vol in the hardware
+    #      ranges), the ids are exactly the documented priority ranking (winter
+    #      toll > hawk cry > forager return — highest id wins a frame, mirrored
+    #      in main.c), and an out-of-range id falls back to the row-0 no-op;
+    #  (b) the ambience table — each season tier is deterministic, freq STRICTLY
+    #      climbs with the tier (the burrow hums higher as the year closes),
+    #      duty/vol are hardware-legal, and an out-of-range tier falls back to
+    #      tier 0 (spring).
+    checks = 0
+    failures = 0
+
+    # (a) cue table.
+    if (ur_cue_freq(UR_CUE_NONE), ur_cue_len(UR_CUE_NONE),
+            ur_cue_duty(UR_CUE_NONE), ur_cue_vol(UR_CUE_NONE)) != (0, 0, 0, 0):
+        failures += 1
+        print('FAIL cue NONE: row 0 must be a no-op (0,0,0,0)')
+    checks += 1
+    for cue in range(1, UR_CUE_COUNT):
+        f, ln = ur_cue_freq(cue), ur_cue_len(cue)
+        d, v = ur_cue_duty(cue), ur_cue_vol(cue)
+        if (f, ln, d, v) != (ur_cue_freq(cue), ur_cue_len(cue),
+                             ur_cue_duty(cue), ur_cue_vol(cue)):
+            failures += 1
+            print(f'FAIL cue determinism: id {cue}')
+        if not 50 <= f <= 4000:
+            failures += 1
+            print(f'FAIL cue freq: id {cue}: {f} outside [50, 4000]')
+        if not 1 <= ln <= 90:
+            failures += 1
+            print(f'FAIL cue hold: id {cue}: {ln} frames outside [1, 90]')
+        if not (0 <= d <= 7 or d == UR_CUE_ON_NOISE):
+            failures += 1
+            print(f'FAIL cue duty: id {cue}: {d}')
+        if not 1 <= v <= 127:
+            failures += 1
+            print(f'FAIL cue volume: id {cue}: {v}')
+        checks += 1
+    # ids are exactly the documented priority ranking (forager<hawk<winter).
+    ranking = [UR_CUE_FORAGE, UR_CUE_HAWK, UR_CUE_WINTER]
+    if ranking != sorted(ranking) or ranking != list(range(1, UR_CUE_COUNT)):
+        failures += 1
+        print('FAIL cue priority: ids are not the documented ranking')
+    checks += 1
+    # out-of-range id falls back to the row-0 no-op.
+    if (ur_cue_freq(UR_CUE_COUNT + 5), ur_cue_len(UR_CUE_COUNT + 5),
+            ur_cue_duty(UR_CUE_COUNT + 5),
+            ur_cue_vol(UR_CUE_COUNT + 5)) != (0, 0, 0, 0):
+        failures += 1
+        print('FAIL cue out-of-range: bad id must fall back to the no-op')
+    checks += 1
+
+    # (b) ambience table: freq strictly climbs with the tier.
+    prev_f = 0
+    for tier in range(UR_AMB_TIERS):
+        f, d, v = ur_amb_freq(tier), ur_amb_duty(tier), ur_amb_vol(tier)
+        if (f, d, v) != (ur_amb_freq(tier), ur_amb_duty(tier),
+                         ur_amb_vol(tier)):
+            failures += 1
+            print(f'FAIL amb determinism: tier {tier}')
+        if f <= prev_f:
+            failures += 1
+            print(f'FAIL amb freq climb: tier {tier}: {f} <= {prev_f}')
+        if not 0 <= d <= 7:
+            failures += 1
+            print(f'FAIL amb duty code: tier {tier}: {d}')
+        if not 1 <= v <= 127:
+            failures += 1
+            print(f'FAIL amb volume: tier {tier}: {v}')
+        prev_f = f
+        checks += 1
+    # out-of-range tier falls back to tier 0 (spring).
+    if (ur_amb_freq(UR_AMB_TIERS + 3), ur_amb_duty(UR_AMB_TIERS + 3),
+            ur_amb_vol(UR_AMB_TIERS + 3)) != (ur_amb_freq(0), ur_amb_duty(0),
+                                              ur_amb_vol(0)):
+        failures += 1
+        print('FAIL amb out-of-range: bad tier must fall back to spring')
+    checks += 1
+
+    assert failures == 0, f'prove_audio: {failures} failure(s)'
+    return checks
+
+
 def main():
     hawk_checks = prove_hawk()
     dig_checks = prove_dig()
@@ -1974,6 +2119,7 @@ def main():
     winter_checks, marq_starve, marq_survive = prove_winter()
     save_checks, save_golden = prove_save()
     balance_checks, dial_seeds, dial_scores = prove_balance()
+    audio_checks = prove_audio()
     marq_winter = marquee_winter_fixture()
 
     # slice-10 winter-gated save lockstep: the survivor plan's REALIZED winter
@@ -2121,6 +2267,15 @@ def main():
           f"seed in [0,{UR_DIAL_MASK + 1}] >= UR_FAIR_FLOOR {UR_FAIR_FLOOR} > 0 "
           f"— no death-traps), with a real difficulty spread "
           f"{min(dial_scores)}..{max(dial_scores)}")
+    print(f"  synthesized audio: {audio_checks} cases — cue row 0 is a no-op, "
+          f"cues 1..{UR_CUE_COUNT - 1} deterministic + PSG-legal (freq "
+          "[50,4000], len [1,90], duty 0..7 or noise, vol [1,127]), priority "
+          f"ranking [FORAGE,HAWK,WINTER]==1..{UR_CUE_COUNT - 1} (highest id "
+          "wins the SFX channel), out-of-range id -> row-0 fallback; ambience "
+          f"freq {ur_amb_freq(0)}<{ur_amb_freq(1)}<{ur_amb_freq(2)}<"
+          f"{ur_amb_freq(3)} STRICTLY climbs spring->winter, duty/vol legal, "
+          "out-of-range tier -> spring fallback (== the rom-builds.yml proof-7 "
+          "ur_telemetry[54..58] asserts)")
     print(f"  slice-10 winter-gated save: the survivor plan's REALIZED winter "
           f"score (store {marq_winter['store']} -> wstore {marq_winter['wstore']}"
           f", wpop {marq_winter['wpop']}, SURVIVE -> score "

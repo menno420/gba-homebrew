@@ -1,6 +1,6 @@
 # Session — Underroot arc kickoff (A2): slice 1, dual-screen skeleton
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-16 (branch `claude/underroot-slice-1`; started ~15:01Z, `date -u`)
 - mission: **kick off arc A2 — Underroot** (owner NEXT-MENU-2026-07-15 §A2 →
@@ -10,7 +10,7 @@
   a tile-snap tunnel grid) + the host-side lockstep sim mirror, all on the
   proven Gloamline NDS stack (`--touch` scripting, dual-screen screenshots,
   `check-gloam.py`-style host mirror).
-- **📊 Model:** Claude Opus 4.8 · high · arc-kickoff
+- **📊 Model:** Claude Opus 4.8 · high · feature build
 - landing posture: **PR opened DRAFT and left DRAFT.** The standing 07-16
   permission wall (PR ready-flips + auto-merge are classifier-denied —
   `[Merge Without Review]`, recorded in `docs/PLATFORM-LIMITS.md` and the

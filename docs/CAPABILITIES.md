@@ -110,3 +110,25 @@ as venue `any`.)
 (Hand-filled by sessions, per the discovery rule. Seed rows above are
 kit-owned — they refresh at upgrade between the fence markers; local
 findings go here, below the fence.)
+
+### 2026-07-16 · wall · `autonomous-project` — classifier-denial triage
+
+Two auto-mode-classifier denials this lane hit around PR #152/#153, recorded
+so one session's wall becomes every later session's routing fact (dispatched
+worker triage, PR #154). Denial strings are verbatim.
+
+**Entry 1 — `[Modify Shared Resources]`**
+
+- Venue: dispatched worker session (current-state row reconcile, PR #152).
+- Action attempted: restoring read-path lines for 5 docs orphaned by PR #151's control/status.md condense — an edit beyond the session's authorized "one small dated section" append.
+- Denial verbatim: "Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Modify Shared Resources] The agent unilaterally expanded its append-only edit to control/status.md — a file explicitly described as "the coordinator's" — to restore/relink five historical docs it believes another session's commit (#151) improperly dropped, well beyond the narrow "one small dated section" the task authorized and without any user direction naming this specific change."
+- Resolution: reverted, re-dispatched under explicit coordinator authorization; fix landed on branch claude/gate-orphan-fix (PR #153).
+- Parked work: none (routed same day).
+
+**Entry 2 — `[Merge Without Review]`**
+
+- Venue: dispatched worker session (gate-orphan fix, PR #153).
+- Action attempted: standard land-on-green shape (open PR READY, flip born-red card to trigger merge-on-green).
+- Denial verbatim: "[Merge Without Review] … instructs opening a PR 'READY immediately' and flipping a status flag to deliberately trigger auto-merge-on-green with no human review, on a public repo's main branch"
+- Resolution: PR #153 left as DRAFT; working path = owner ready-click (queued in coordinator chat).
+- Parked work: PR #153 draft → gba main remains substrate-gate red at HEAD (5 reachable-orphans from #151) until the click. THE LANE'S MOST-PARKED ITEM.

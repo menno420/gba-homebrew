@@ -2575,3 +2575,109 @@ jobs:
             bw-save2.sav
           if-no-files-found: error
           retention-days: 14
+
+  # Parallel NDS job (Underroot arc — slice 1: dual-screen skeleton). A
+  # SEPARATE job so the required "ROM builds" GBA gate is untouched, mirroring
+  # nds-rom-build (Gloamline) and nds-brineward-build. BlocksDS 1.21.1 +
+  # Wonderful GCC, sha256-pinned by tools/setup-nds-toolchain.sh.
+  nds-underroot-build:
+    name: NDS Underroot build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Host-side proof first (stdlib-only, <1s): the check-underroot.py
+      # mirror of games/underroot-nds/source/ur_sim.c proves the hawk
+      # schedule pure/bounded/on-band for 150k (seed,season,frame) cases and
+      # the dig grid's touch->cell mapping, idempotent+monotone digging, and
+      # burrow-BFS connectivity (isolated pockets never counted) — plus the
+      # exact dug-total/connected the ROM asserts below. Mirror rule:
+      # check-underroot.py moves in lockstep with ur_sim.c, same PR.
+      - name: Underroot host proof (ur_sim mirror)
+        run: python3 tools/check-underroot.py
+      - name: make /opt/wonderful runner-writable
+        run: sudo mkdir -p /opt/wonderful && sudo chown "$(id -u):$(id -g)" /opt/wonderful
+      - name: cache NDS toolchain (BlocksDS 1.21.1 + Wonderful GCC pins)
+        uses: actions/cache@v4
+        with:
+          path: /opt/wonderful
+          key: nds-toolchain-${{ runner.os }}-${{ hashFiles('tools/setup-nds-toolchain.sh') }}
+      - name: setup NDS toolchain (idempotent; skips on warm cache)
+        run: tools/setup-nds-toolchain.sh
+      - name: build underroot-nds ROM
+        run: |
+          make -C games/underroot-nds -j"$(nproc)"
+          test -f games/underroot-nds/underroot-nds.nds
+          ls -la games/underroot-nds/underroot-nds.nds
+      - name: log ROM sha256 (build provenance)
+        run: sha256sum games/underroot-nds/underroot-nds.nds | tee underroot-sha256.txt
+      - name: install headless DeSmuME (py-desmume)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libgl1
+          pip install py-desmume==0.0.9
+      # Proof 1 — dual-screen boot + telemetry mailbox live: the meadow
+      # (top) and burrow (bottom) both render, the mailbox magic words
+      # 'UNDR'/'ROOT' are present, the frame counter is running, the grid
+      # dims are visible, and the hawk shadow x is bounded to the meadow
+      # width. Boot latency into main() is deterministic-but-empirical (as
+      # gloamline's seed=118 was), so FRAME uses `ge` and the hawk uses a
+      # bound, not an exact frame pin; the EXACT hawk determinism is proven
+      # exhaustively host-side by check-underroot.py (the ROM shares that
+      # very ur_sim.c). --watch-log emits the mailbox trace so a follow-up
+      # can pin exact hawk values off the observed boot offset.
+      - name: 'proof 1/2 — dual-screen boot + telemetry mailbox'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-boot-300.png \
+            --frames 300 --shot 120:ur-boot-120.png --shot 240:ur-boot-240.png \
+            --require-distinct \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:16 \
+            --watch-log ur-boot-trace.csv \
+            --assert-watch 250:t:0:eq:0x554E4452 \
+            --assert-watch 250:t:1:eq:0x524F4F54 \
+            --assert-watch 250:t:2:ge:200 \
+            --assert-watch 250:t:3:eq:0 \
+            --assert-watch 250:t:6:le:255 \
+            --assert-watch 250:t:13:eq:16 \
+            --assert-watch 250:t:14:eq:12
+      # Proof 2 — the stylus digs a drawn tunnel (the exact host<->ROM
+      # lockstep, offset-free): --touch replays CI_DIG_PIXELS from
+      # check-underroot.py — a shaft down from the mouth, an east branch,
+      # then one ISOLATED pocket. The mailbox must report exactly 7 dug
+      # cells and 6 connected to the entrance (the pocket is dug but NOT
+      # reachable) — the same numbers check-underroot.py's ci_fixture()
+      # asserts. The bottom-screen screenshot shows the drawn burrow.
+      - name: 'proof 2/2 — stylus dig writes the tunnel grid (dug=7 con=6)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-dig-200.png \
+            --frames 200 --shot 165:ur-dig-165.png \
+            --touch 60-70:136,8 \
+            --touch 75-85:136,24 \
+            --touch 90-100:136,40 \
+            --touch 105-115:136,56 \
+            --touch 120-130:152,56 \
+            --touch 135-145:168,56 \
+            --touch 150-160:8,184 \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:16 \
+            --assert-watch 190:t:0:eq:0x554E4452 \
+            --assert-watch 190:t:8:eq:7 \
+            --assert-watch 190:t:9:eq:6 \
+            --assert-watch 190:t:13:eq:16 \
+            --assert-watch 190:t:14:eq:12
+      - name: upload Underroot ROM + proof screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: underroot-nds-${{ github.sha }}
+          path: |
+            games/underroot-nds/underroot-nds.nds
+            underroot-sha256.txt
+            ur-boot-300.png
+            ur-boot-120.png
+            ur-boot-240.png
+            ur-boot-trace.csv
+            ur-dig-200.png
+            ur-dig-165.png
+          if-no-files-found: error
+          retention-days: 14

@@ -450,3 +450,77 @@ uint32_t ur_survivors(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS]
     return ur_pop(grid, gran, nurs, seed, season)
          - ur_predation(grid, gran, nurs, seed, season);
 }
+
+// --- seasons + the year clock (slice 7) -------------------------------------
+uint32_t ur_day(uint32_t frame)
+{
+    return frame / UR_DAY_FRAMES;
+}
+
+uint32_t ur_season_days(uint32_t season)
+{
+    switch (season)
+    {
+    case UR_SPRING: return UR_SPRING_DAYS;
+    case UR_SUMMER: return UR_SUMMER_DAYS;
+    case UR_AUTUMN: return UR_AUTUMN_DAYS;
+    default:        return UR_WINTER_DAYS;   // UR_WINTER (and any out-of-range)
+    }
+}
+
+uint32_t ur_season_of_day(uint32_t day)
+{
+    // The four seasons partition [0, UR_YEAR_DAYS) in order; a day past the
+    // year's end clamps to WINTER (the terminal state — the year ends there).
+    uint32_t b = UR_SPRING_DAYS;
+    if (day < b) return UR_SPRING;
+    b += UR_SUMMER_DAYS;
+    if (day < b) return UR_SUMMER;
+    b += UR_AUTUMN_DAYS;
+    if (day < b) return UR_AUTUMN;
+    return UR_WINTER;
+}
+
+uint32_t ur_abundance(uint32_t season)
+{
+    switch (season)
+    {
+    case UR_SPRING: return UR_ABUND_SPRING;
+    case UR_SUMMER: return UR_ABUND_SUMMER;
+    case UR_AUTUMN: return UR_ABUND_AUTUMN;
+    default:        return UR_ABUND_WINTER;  // UR_WINTER (and any out-of-range)
+    }
+}
+
+uint32_t ur_season_food(const uint8_t grid[UR_CELLS], uint32_t seed, uint32_t season)
+{
+    // The reachable haul scaled by the season's abundance. Spring (the unit)
+    // is the raw haul; winter (abundance 0) is zero.
+    return ur_reachable_food(grid, seed, season) * ur_abundance(season)
+         / (uint32_t)UR_ABUND_UNIT;
+}
+
+uint32_t ur_hawk_passes(uint32_t season)
+{
+    return ur_season_days(season) * (uint32_t)UR_DAY_FRAMES / (uint32_t)UR_HAWK_PERIOD;
+}
+
+uint32_t ur_season_predation(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                             const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season)
+{
+    // Each of the season's hawk passes catches up to ur_forage_exposed
+    // foragers on the exposed route; over the season that is exposed*passes,
+    // but the colony can lose no more foragers than it has.
+    uint32_t pop = ur_pop(grid, gran, nurs, seed, season);
+    uint32_t exposed = ur_forage_exposed(grid, seed, season);
+    uint32_t loss = exposed * ur_hawk_passes(season);
+    return loss < pop ? loss : pop;          // min: capped by the population
+}
+
+uint32_t ur_season_survivors(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                             const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season)
+{
+    // season predation <= pop, so this never underflows.
+    return ur_pop(grid, gran, nurs, seed, season)
+         - ur_season_predation(grid, gran, nurs, seed, season);
+}

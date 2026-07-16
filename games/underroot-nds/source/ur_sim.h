@@ -149,6 +149,44 @@ uint32_t ur_patch_total(uint32_t seed, uint32_t season);
 // slices 4/5 kept.)
 #define UR_SAFE_DEPTH   2   /* grid rows [0, UR_SAFE_DEPTH) are hawk-exposed */
 
+// --- seasons + the year clock (slice 7) ------------------------------------
+// The arc doc's Decision 3 + the slice-7 row (docs/arcs/UNDERROOT.md): v1.0 is
+// exactly ONE year, SPRING -> SUMMER -> AUTUMN -> WINTER, each a FIXED number
+// of days (the decide-and-flag counts fixed here). The clock is driven off the
+// frame counter — a day is UR_DAY_FRAMES frames — so the whole schedule is a
+// pure integer function of the frame: ur_day(frame) is the day, and
+// ur_season_of_day(day) partitions the year into the four seasons (a day past
+// the year's end clamps to WINTER, the terminal state the slice-8 survival exam
+// reads). Meadow ABUNDANCE scales by season: the reachable meadow haul is
+// multiplied by ur_abundance(season)/UR_ABUND_UNIT — SPRING is the baseline
+// UNIT (so a spring run is bit-identical to the pre-clock slices 1-6), SUMMER
+// is plentiful, AUTUMN thins, WINTER is ZERO (no meadow food — the arc's exam).
+// And the per-hawk-pass PREDATION temporal scaling slice 6 deferred here lands:
+// ur_hawk_passes(season) sweeps cross a season, and ur_season_predation scales
+// the exposed-route loss by that pass count (still bounded by the population),
+// with the single-pass season collapsing to slice 6's instantaneous snapshot.
+// Pure integers throughout, so the host mirror recomputes the year bit-for-bit.
+#define UR_SPRING 0
+#define UR_SUMMER 1
+#define UR_AUTUMN 2
+#define UR_WINTER 3
+#define UR_SEASONS 4
+// The fixed per-season day counts (decide-and-flag; slice 7 fixes them).
+#define UR_SPRING_DAYS 4
+#define UR_SUMMER_DAYS 6
+#define UR_AUTUMN_DAYS 4
+#define UR_WINTER_DAYS 2
+#define UR_YEAR_DAYS (UR_SPRING_DAYS + UR_SUMMER_DAYS + UR_AUTUMN_DAYS + UR_WINTER_DAYS) /* 16 */
+#define UR_DAY_FRAMES 256                 // frames the clock spends on one day
+// Meadow abundance scale (a numerator over UR_ABUND_UNIT). SPRING is the unit
+// baseline (spring == the pre-clock behaviour); SUMMER plentiful; AUTUMN thins;
+// WINTER zero.
+#define UR_ABUND_UNIT   4
+#define UR_ABUND_SPRING 4
+#define UR_ABUND_SUMMER 6
+#define UR_ABUND_AUTUMN 2
+#define UR_ABUND_WINTER 0
+
 // --- pure hash (identical to gl_hash) --------------------------------------
 uint32_t ur_hash(uint32_t a, uint32_t b);
 
@@ -273,6 +311,38 @@ uint32_t ur_predation(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS]
 uint32_t ur_survivors(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
                       const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season);
 
+// --- seasons + the year clock (slice 7) ------------------------------------
+// The day the frame clock is on = frame / UR_DAY_FRAMES. Free-running; the
+// season clamps to WINTER past the year's end (ur_season_of_day).
+uint32_t ur_day(uint32_t frame);
+// The fixed day count for a season (UR_SPRING_DAYS.. by season index).
+uint32_t ur_season_days(uint32_t season);
+// The season a given day falls in: the four seasons partition [0, UR_YEAR_DAYS)
+// in order, and any day >= UR_YEAR_DAYS clamps to WINTER (the year ends there).
+uint32_t ur_season_of_day(uint32_t day);
+// The meadow abundance scale for a season, a numerator over UR_ABUND_UNIT:
+// UR_ABUND_SPRING (the unit baseline) / SUMMER / AUTUMN / WINTER (0). Pure.
+uint32_t ur_abundance(uint32_t season);
+// The seasonal meadow haul: the reachable food (slice 4) scaled by the season's
+// abundance = ur_reachable_food * ur_abundance(season) / UR_ABUND_UNIT. Spring
+// (the unit) is the raw haul; winter (abundance 0) is zero — no meadow food.
+uint32_t ur_season_food(const uint8_t grid[UR_CELLS], uint32_t seed, uint32_t season);
+// How many whole hawk sweeps cross a season = season_days * UR_DAY_FRAMES /
+// UR_HAWK_PERIOD. The per-season pass count the predation scaling multiplies by.
+uint32_t ur_hawk_passes(uint32_t season);
+// The per-hawk-pass-scaled predation over a whole season: each of the season's
+// ur_hawk_passes catches up to ur_forage_exposed foragers on the exposed route,
+// but the colony can lose no more foragers than it has =
+// min(ur_forage_exposed * ur_hawk_passes(season), ur_pop). A one-pass season
+// collapses to slice 6's instantaneous ur_predation (the degenerate identity).
+uint32_t ur_season_predation(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                             const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season);
+// Foragers surviving a whole season = ur_pop - ur_season_predation (the season
+// predation is capped at ur_pop, so this never underflows). The population that
+// carries into the next season (slice 8's winter drain reads the winter value).
+uint32_t ur_season_survivors(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                             const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season);
+
 // --- telemetry mailbox (ELF-exported; read by tools/nds-headless-check.py) -
 #define UR_T_MAGIC0 0    // 0x554E4452 'UNDR'
 #define UR_T_MAGIC1 1    // 0x524F4F54 'ROOT'
@@ -305,7 +375,13 @@ uint32_t ur_survivors(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS]
 #define UR_T_EXPOSED 28  // exposed shallow route cells on the forager route (slice 6)
 #define UR_T_LOST 29     // foragers lost to hawk predation = min(exposed, pop) (slice 6)
 #define UR_T_SURV 30     // surviving foragers = pop - lost (slice 6)
-#define UR_T_SPARE 31    // 0
-#define UR_T_WORDS 32
+#define UR_T_DAY 31      // the year-clock day = frame / UR_DAY_FRAMES (slice 7)
+#define UR_T_ABUND 32    // meadow abundance scale for the live season, /UR_ABUND_UNIT (slice 7)
+#define UR_T_SFOOD 33    // seasonal meadow haul = reachable food * abundance / unit (slice 7)
+#define UR_T_HAWKPASS 34 // hawk sweeps that cross the live season (slice 7)
+#define UR_T_SPRED 35    // per-hawk-pass season predation = min(exposed*passes, pop) (slice 7)
+#define UR_T_SSURV 36    // foragers surviving the season = pop - season predation (slice 7)
+#define UR_T_SPARE 37    // 0
+#define UR_T_WORDS 38
 
 #endif // UR_SIM_H

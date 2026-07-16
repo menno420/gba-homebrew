@@ -32,17 +32,32 @@ static PrintConsole top_console;
 static PrintConsole bottom_console;
 
 // --- meadow (top screen): grass + the deterministic hawk shadow ------------
+static const char *season_name(uint32_t season)
+{
+    switch (season)
+    {
+    case UR_SPRING: return "spring";
+    case UR_SUMMER: return "summer";
+    case UR_AUTUMN: return "autumn";
+    default:        return "winter";
+    }
+}
+
 static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
                         int32_t hawk_y, uint32_t dug, uint32_t con,
                         const ur_patch_t *patches, uint32_t food_total,
                         ur_forage_t forage, uint32_t store, uint32_t cap,
                         uint32_t pop, uint32_t exposed, uint32_t lost,
-                        uint32_t surv)
+                        uint32_t surv, uint32_t season, uint32_t day,
+                        uint32_t abund, uint32_t sfood)
 {
     consoleSelect(&top_console);
     consoleClear();
     printf("\x1b[0;0HUNDERROOT  the meadow");
-    printf("\x1b[1;0Hspring   frame %lu", (unsigned long)frame);
+    // The year clock (slice 7): the live season name + the day the frame clock
+    // is on. Season advances SPRING->SUMMER->AUTUMN->WINTER on the pure counter.
+    printf("\x1b[1;0H%s  day %lu  frame %lu",
+           season_name(season), (unsigned long)day, (unsigned long)frame);
 
     // A placeholder grass field, rows 3..15 (the hawk lane band y 24..119).
     for (int row = 3; row < 16; row++)
@@ -105,6 +120,12 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
     // into winter. A deeper route exposes fewer cells and loses fewer foragers.
     printf("\x1b[21;0Hhawk  exposed %lu  lost %lu  surv %lu",
            (unsigned long)exposed, (unsigned long)lost, (unsigned long)surv);
+    // The year clock's economy (slice 7): the meadow abundance scale for the
+    // live season (a numerator over UR_ABUND_UNIT — plentiful summer, thinning
+    // autumn, ZERO winter) and the seasonal meadow haul it scales the reachable
+    // food to.
+    printf("\x1b[22;0Hseason  abund %lu/%d  food %lu",
+           (unsigned long)abund, UR_ABUND_UNIT, (unsigned long)sfood);
 }
 
 // --- burrow (bottom screen): the tile-snap dig grid ------------------------
@@ -171,13 +192,14 @@ int main(void)
     uint8_t nurs[UR_CELLS];
     ur_fresh_nurs(nurs);
 
-    // The meadow's food patches: pure f(seed, season, index), fixed for the
-    // slice-2 pinned meadow (UR_SEED, spring). Rendered each frame; the count
-    // and total food are reported in the telemetry mailbox.
+    // The meadow's food patches: pure f(seed, season, index). Recomputed each
+    // frame for the LIVE season (slice 7's year clock), so the meadow's patch
+    // layout and total food advance with the seasons. At boot (frame 0 -> day 0
+    // -> spring) this is the slice-2 pinned spring meadow.
     ur_patch_t patches[UR_PATCH_COUNT];
     for (int i = 0; i < UR_PATCH_COUNT; i++)
-        patches[i] = ur_patch(UR_SEED, 0, (uint32_t)i);
-    uint32_t food_total = ur_patch_total(UR_SEED, 0);
+        patches[i] = ur_patch(UR_SEED, UR_SPRING, (uint32_t)i);
+    uint32_t food_total = ur_patch_total(UR_SEED, UR_SPRING);
 
     uint32_t frame = 0;
     int32_t last_col = -1;
@@ -238,39 +260,61 @@ int main(void)
             }
         }
 
+        // The year clock (slice 7): the day the frame counter is on and the
+        // season that day falls in. EVERYTHING below reads this LIVE season
+        // (the meadow, the patches, the forage/economy chain) rather than a
+        // pinned spring — so the whole world advances through the year. At the
+        // frames the slices 1-6 proofs assert (all within spring day 0) this is
+        // season UR_SPRING, so every pinned value is bit-identical to before.
+        uint32_t day = ur_day(frame);
+        uint32_t season = ur_season_of_day(day);
+        // The live meadow: patches move with the season (f(seed, season, index)).
+        for (int i = 0; i < UR_PATCH_COUNT; i++)
+            patches[i] = ur_patch(UR_SEED, season, (uint32_t)i);
+        food_total = ur_patch_total(UR_SEED, season);
+
         int hawk_on = ur_hawk_active(frame);
-        int32_t hawk_x = ur_hawk_x(UR_SEED, 0, frame);
-        int32_t hawk_y = ur_hawk_y(UR_SEED, 0, frame);
+        int32_t hawk_x = ur_hawk_x(UR_SEED, season, frame);
+        int32_t hawk_y = ur_hawk_y(UR_SEED, season, frame);
         uint32_t dug = dug_total(grid);
         uint32_t con = ur_burrow_size(grid);
         // The forager route (slice 3): the nearest reachable patch over the
         // drawn tunnel graph — pure f(dig plan, seed, season).
-        ur_forage_t forage = ur_forage(grid, UR_SEED, 0);
+        ur_forage_t forage = ur_forage(grid, UR_SEED, season);
         // The food store (slice 4): connected granary cells, their capacity,
         // and the reachable meadow haul banked up to it — pure f(dig plan,
         // gran plan, seed, season).
         uint32_t gran_n = ur_gran_count(grid, gran);
         uint32_t gran_con = ur_gran_connected(grid, gran);
         uint32_t cap = ur_gran_capacity(grid, gran);
-        uint32_t store = ur_store(grid, gran, UR_SEED, 0);
+        uint32_t store = ur_store(grid, gran, UR_SEED, season);
         // The population (slice 5): connected nurseries brood the banked store
         // into new foragers on a pure bounded schedule — pure f(dig plan, gran
         // plan, nurs plan, seed, season).
         uint32_t nurs_n = ur_nurs_count(grid, nurs);
         uint32_t nurs_con = ur_nurs_connected(grid, nurs);
-        uint32_t pop = ur_pop(grid, gran, nurs, UR_SEED, 0);
-        uint32_t pop_food = ur_pop_food(grid, gran, nurs, UR_SEED, 0);
+        uint32_t pop = ur_pop(grid, gran, nurs, UR_SEED, season);
+        uint32_t pop_food = ur_pop_food(grid, gran, nurs, UR_SEED, season);
         // Hawk predation (slice 6): the hawks catch foragers on the EXPOSED
         // (shallow) cells of the forager route; deep cells are safe. Pure
         // f(dig plan, gran plan, nurs plan, seed, season).
-        uint32_t exposed = ur_forage_exposed(grid, UR_SEED, 0);
-        uint32_t lost = ur_predation(grid, gran, nurs, UR_SEED, 0);
-        uint32_t surv = ur_survivors(grid, gran, nurs, UR_SEED, 0);
+        uint32_t exposed = ur_forage_exposed(grid, UR_SEED, season);
+        uint32_t lost = ur_predation(grid, gran, nurs, UR_SEED, season);
+        uint32_t surv = ur_survivors(grid, gran, nurs, UR_SEED, season);
+        // The year clock's economy (slice 7): the meadow abundance scale, the
+        // seasonal haul it scales the reachable food to, and the per-hawk-pass
+        // predation over the whole season (the slice-6-deferred temporal scale).
+        uint32_t abund = ur_abundance(season);
+        uint32_t sfood = ur_season_food(grid, UR_SEED, season);
+        uint32_t hawk_pass = ur_hawk_passes(season);
+        uint32_t spred = ur_season_predation(grid, gran, nurs, UR_SEED, season);
+        uint32_t ssurv = ur_season_survivors(grid, gran, nurs, UR_SEED, season);
 
         // Top screen animates every frame (the hawk sweeps); the burrow is
         // redrawn only when a dig changed it (frame-budget discipline).
         draw_meadow(frame, hawk_on, hawk_x, hawk_y, dug, con, patches,
-                    food_total, forage, store, cap, pop, exposed, lost, surv);
+                    food_total, forage, store, cap, pop, exposed, lost, surv,
+                    season, day, abund, sfood);
         if (burrow_dirty)
         {
             draw_burrow(grid, gran, nurs);
@@ -278,7 +322,7 @@ int main(void)
         }
 
         ur_telemetry[UR_T_FRAME] = frame;
-        ur_telemetry[UR_T_SEASON] = 0;
+        ur_telemetry[UR_T_SEASON] = season;    // LIVE season (slice 7 year clock)
         ur_telemetry[UR_T_SEED] = UR_SEED;
         ur_telemetry[UR_T_HAWKON] = (uint32_t)hawk_on;
         ur_telemetry[UR_T_HAWKX] = hawk_on ? (uint32_t)hawk_x : 0;
@@ -302,6 +346,12 @@ int main(void)
         ur_telemetry[UR_T_EXPOSED] = exposed;
         ur_telemetry[UR_T_LOST] = lost;
         ur_telemetry[UR_T_SURV] = surv;
+        ur_telemetry[UR_T_DAY] = day;
+        ur_telemetry[UR_T_ABUND] = abund;
+        ur_telemetry[UR_T_SFOOD] = sfood;
+        ur_telemetry[UR_T_HAWKPASS] = hawk_pass;
+        ur_telemetry[UR_T_SPRED] = spred;
+        ur_telemetry[UR_T_SSURV] = ssurv;
     }
 
     return 0;

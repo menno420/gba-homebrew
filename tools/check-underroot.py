@@ -76,6 +76,24 @@ UR_NURS_BROOD = 3                     # foragers one connected nursery can brood
 # --- hawks predate: exposed shallow route cells (slice 6; mirror ur_sim.h) --
 UR_SAFE_DEPTH = 2                     # grid rows [0, UR_SAFE_DEPTH) are hawk-exposed
 
+# --- seasons + the year clock (slice 7; mirror ur_sim.h) -------------------
+UR_SPRING = 0
+UR_SUMMER = 1
+UR_AUTUMN = 2
+UR_WINTER = 3
+UR_SEASONS = 4
+UR_SPRING_DAYS = 4                   # fixed per-season day counts (decide-and-flag)
+UR_SUMMER_DAYS = 6
+UR_AUTUMN_DAYS = 4
+UR_WINTER_DAYS = 2
+UR_YEAR_DAYS = UR_SPRING_DAYS + UR_SUMMER_DAYS + UR_AUTUMN_DAYS + UR_WINTER_DAYS  # 16
+UR_DAY_FRAMES = 256                  # frames the clock spends on one day
+UR_ABUND_UNIT = 4                    # abundance scale denominator (spring = the unit)
+UR_ABUND_SPRING = 4
+UR_ABUND_SUMMER = 6
+UR_ABUND_AUTUMN = 2
+UR_ABUND_WINTER = 0
+
 # --- food patches (top screen; slice 2; mirror ur_sim.h) -------------------
 UR_SCREEN_W = 256             # meadow width (px)
 UR_SCREEN_H = 192             # meadow height (px)
@@ -426,6 +444,74 @@ def ur_survivors(grid, gran, nurs, seed, season):
             - ur_predation(grid, gran, nurs, seed, season))
 
 
+# --- seasons + the year clock (slice 7; mirror ur_sim.c) -------------------
+def ur_day(frame):
+    # The day the frame clock is on. Free-running.
+    return frame // UR_DAY_FRAMES
+
+
+def ur_season_days(season):
+    # The fixed day count for a season.
+    if season == UR_SPRING:
+        return UR_SPRING_DAYS
+    if season == UR_SUMMER:
+        return UR_SUMMER_DAYS
+    if season == UR_AUTUMN:
+        return UR_AUTUMN_DAYS
+    return UR_WINTER_DAYS               # UR_WINTER (and any out-of-range)
+
+
+def ur_season_of_day(day):
+    # The four seasons partition [0, UR_YEAR_DAYS) in order; a day past the
+    # year's end clamps to WINTER (the terminal state).
+    b = UR_SPRING_DAYS
+    if day < b:
+        return UR_SPRING
+    b += UR_SUMMER_DAYS
+    if day < b:
+        return UR_SUMMER
+    b += UR_AUTUMN_DAYS
+    if day < b:
+        return UR_AUTUMN
+    return UR_WINTER
+
+
+def ur_abundance(season):
+    # The meadow abundance scale for a season, a numerator over UR_ABUND_UNIT.
+    if season == UR_SPRING:
+        return UR_ABUND_SPRING
+    if season == UR_SUMMER:
+        return UR_ABUND_SUMMER
+    if season == UR_AUTUMN:
+        return UR_ABUND_AUTUMN
+    return UR_ABUND_WINTER              # UR_WINTER (and any out-of-range)
+
+
+def ur_season_food(grid, seed, season):
+    # The reachable haul scaled by the season's abundance. Spring (the unit) is
+    # the raw haul; winter (abundance 0) is zero.
+    return ur_reachable_food(grid, seed, season) * ur_abundance(season) // UR_ABUND_UNIT
+
+
+def ur_hawk_passes(season):
+    # How many whole hawk sweeps cross a season.
+    return ur_season_days(season) * UR_DAY_FRAMES // UR_HAWK_PERIOD
+
+
+def ur_season_predation(grid, gran, nurs, seed, season):
+    # Per-hawk-pass season predation = min(exposed route cells * passes, pop).
+    pop = ur_pop(grid, gran, nurs, seed, season)
+    exposed = ur_forage_exposed(grid, seed, season)
+    loss = exposed * ur_hawk_passes(season)
+    return loss if loss < pop else pop
+
+
+def ur_season_survivors(grid, gran, nurs, seed, season):
+    # Foragers surviving a whole season = ur_pop - ur_season_predation.
+    return (ur_pop(grid, gran, nurs, seed, season)
+            - ur_season_predation(grid, gran, nurs, seed, season))
+
+
 # --- the CI --touch dig script, mirrored (proof 3 anchor) ------------------
 # Each step is a bottom-LCD pixel the stylus is held at; the ROM digs the
 # cell under the stylus every held frame. Centre pixel of cell (c,r) is
@@ -498,7 +584,18 @@ def ci_fixture():
     pred = (ur_forage_exposed(grid, UR_SEED, 0),
             ur_predation(grid, gran, nurs, UR_SEED, 0),
             ur_survivors(grid, gran, nurs, UR_SEED, 0))
-    return _dug_total(grid), ur_burrow_size(grid), forage, store, pop, pred
+    # The year clock's economy (slice 7) on this same spring fixture: the
+    # abundance scale (spring is the UNIT, so the seasonal haul is the raw
+    # reachable food 6), the hawk passes that cross spring (2), and the
+    # per-hawk-pass season predation on the shallow shaft — min(exposed 2 *
+    # passes 2, pop 2) = 2 (still pop-bound), 0 survivors. Spring is the unit,
+    # so abund/sfood match the pre-clock reachable food exactly.
+    clock = (ur_abundance(UR_SPRING),
+             ur_season_food(grid, UR_SEED, UR_SPRING),
+             ur_hawk_passes(UR_SPRING),
+             ur_season_predation(grid, gran, nurs, UR_SEED, UR_SPRING),
+             ur_season_survivors(grid, gran, nurs, UR_SEED, UR_SPRING))
+    return _dug_total(grid), ur_burrow_size(grid), forage, store, pop, pred, clock
 
 
 # --- proofs ----------------------------------------------------------------
@@ -1187,6 +1284,156 @@ def prove_predation():
     return checks
 
 
+def prove_clock():
+    # The arc doc's slice-7 proof (Decision 3 + the slice-7 row): the year clock
+    # and the abundance curve are pure, and the per-hawk-pass predation scaling
+    # collapses to slice 6 at a single pass.
+    #  1. the day/season clock — ur_day is a pure frame//UR_DAY_FRAMES; the four
+    #     seasons partition the year IN ORDER with the exact fixed day counts, no
+    #     gaps/overlaps, and every day past the year clamps to WINTER; every
+    #     season boundary lands on the cumulative day sum;
+    #  2. the abundance curve — pure f(season), SPRING is the UNIT baseline,
+    #     SUMMER is the most plentiful, AUTUMN thins below spring, WINTER is
+    #     exactly ZERO (no meadow food), and ur_season_food scales the reachable
+    #     haul by abundance/unit (spring == the raw haul, winter == 0);
+    #  3. the per-hawk-pass predation scaling — ur_season_predation ==
+    #     min(exposed*passes, pop), monotone in the pass count and bounded by
+    #     pop, and — the degenerate identity the slice-6 card called for — for
+    #     ANY season whose ur_hawk_passes == 1 it equals slice 6's instantaneous
+    #     ur_predation exactly (the one-pass season IS the snapshot).
+    checks = 0
+
+    # (1) day clock: pure + monotone non-decreasing across a dense frame sweep,
+    # and the day boundary is exactly UR_DAY_FRAMES.
+    for frame in range(0, UR_YEAR_DAYS * UR_DAY_FRAMES + 3 * UR_DAY_FRAMES, 7):
+        d = ur_day(frame)
+        assert d == ur_day(frame), "ur_day not deterministic"
+        assert d == frame // UR_DAY_FRAMES
+        checks += 1
+    assert ur_day(0) == 0 and ur_day(UR_DAY_FRAMES - 1) == 0
+    assert ur_day(UR_DAY_FRAMES) == 1, "day boundary != UR_DAY_FRAMES"
+
+    # (1) season partition: in order, exact counts, no gaps, clamp past the year.
+    expected = ([UR_SPRING] * UR_SPRING_DAYS + [UR_SUMMER] * UR_SUMMER_DAYS
+                + [UR_AUTUMN] * UR_AUTUMN_DAYS + [UR_WINTER] * UR_WINTER_DAYS)
+    assert len(expected) == UR_YEAR_DAYS
+    for day in range(UR_YEAR_DAYS):
+        assert ur_season_of_day(day) == expected[day], \
+            f"season_of_day({day}) != {expected[day]}"
+        checks += 1
+    # each season occupies exactly its fixed day count within the year
+    counts = {s: sum(1 for day in range(UR_YEAR_DAYS) if ur_season_of_day(day) == s)
+              for s in range(UR_SEASONS)}
+    assert counts == {UR_SPRING: UR_SPRING_DAYS, UR_SUMMER: UR_SUMMER_DAYS,
+                      UR_AUTUMN: UR_AUTUMN_DAYS, UR_WINTER: UR_WINTER_DAYS}, \
+        f"season day counts drifted: {counts}"
+    # boundaries land on the cumulative sums; ordering is monotone within the year
+    assert ur_season_of_day(UR_SPRING_DAYS - 1) == UR_SPRING
+    assert ur_season_of_day(UR_SPRING_DAYS) == UR_SUMMER
+    assert ur_season_of_day(UR_SPRING_DAYS + UR_SUMMER_DAYS) == UR_AUTUMN
+    assert ur_season_of_day(UR_YEAR_DAYS - 1) == UR_WINTER
+    # any day past the year's end clamps to WINTER (the terminal state)
+    for day in range(UR_YEAR_DAYS, UR_YEAR_DAYS + 40):
+        assert ur_season_of_day(day) == UR_WINTER, "year end did not clamp to winter"
+        checks += 1
+
+    # (2) abundance curve: spring is the unit, summer the most plentiful, autumn
+    # thins below spring, winter is exactly zero.
+    assert ur_abundance(UR_SPRING) == UR_ABUND_UNIT, "spring abundance != the unit"
+    assert ur_abundance(UR_SUMMER) > ur_abundance(UR_SPRING), "summer not plentiful"
+    assert ur_abundance(UR_AUTUMN) < ur_abundance(UR_SPRING), "autumn not thinning"
+    assert ur_abundance(UR_WINTER) == 0, "winter abundance != 0"
+    # ur_season_food scales the reachable haul: spring == raw, winter == 0.
+    full = ur_fresh_grid()
+    for i in range(UR_CELLS):
+        full[i] = 1
+    raw = ur_reachable_food(full, UR_SEED, UR_SPRING)
+    assert raw == ur_patch_total(UR_SEED, UR_SPRING) == 34, "full-grid spring haul drifted"
+    assert ur_season_food(full, UR_SEED, UR_SPRING) == raw, \
+        "spring (the unit) did not leave the haul raw"
+    assert ur_season_food(full, UR_SEED, UR_WINTER) == 0, "winter meadow food != 0"
+    # the seasonal haul is exactly reachable_food * abundance // unit for each season
+    for season in range(UR_SEASONS):
+        exp = ur_reachable_food(full, UR_SEED, season) * ur_abundance(season) // UR_ABUND_UNIT
+        assert ur_season_food(full, UR_SEED, season) == exp, \
+            f"season_food({season}) != reachable*abund//unit"
+        checks += 1
+
+    # (2) hawk passes: pure per-season count, non-zero for every season here.
+    for season in range(UR_SEASONS):
+        p = ur_hawk_passes(season)
+        assert p == ur_season_days(season) * UR_DAY_FRAMES // UR_HAWK_PERIOD
+        assert p >= 1, f"season {season} has no hawk pass to scale predation by"
+        checks += 1
+
+    # (3) per-hawk-pass predation scaling on the pop-bound shallow route to
+    # patch 5 (col 12): exposed 6, pop 2 -> min(6*passes, 2) = 2 for any passes
+    # >= 1 (pop-bound in every season), survivors 0.
+    gp = ur_fresh_grid()
+    for col in range(UR_ENTRANCE_COL + 1, 13):
+        ur_dig(gp, col, 0)
+    ur_dig(gp, 12, UR_DROP_ROW)
+    granp = ur_fresh_gran()
+    ur_designate(gp, granp, 12, UR_DROP_ROW)
+    nursp = ur_fresh_nurs()
+    ur_nurse(gp, nursp, 12, 0)
+    assert ur_forage_exposed(gp, UR_SEED, UR_SPRING) == 6
+    assert ur_pop(gp, granp, nursp, UR_SEED, UR_SPRING) == 2
+    sp = ur_season_predation(gp, granp, nursp, UR_SEED, UR_SPRING)
+    assert sp == 2 == ur_pop(gp, granp, nursp, UR_SEED, UR_SPRING), \
+        f"pop-bound season predation {sp} != pop 2"
+    assert ur_season_survivors(gp, granp, nursp, UR_SEED, UR_SPRING) == 0
+    checks += 1
+
+    # (3) EXPOSURE-BOUND scaling: a full grid — nearest patch 4 at the mouth
+    # column, route the shallow shaft exposing 2; 2 granaries + 2 nurseries brood
+    # pop 4. A single pass loses min(2*1, 4) = 2; TWO passes lose min(2*2, 4) = 4
+    # (the whole colony) — the season's pass count, not the geometry, now binds.
+    def full_layer(count):
+        layer = [0] * UR_CELLS
+        placed = 0
+        for i in range(UR_CELLS):
+            if i == UR_ENTRANCE_ROW * UR_GRID_W + UR_ENTRANCE_COL:
+                continue
+            if placed >= count:
+                break
+            layer[i] = 1
+            placed += 1
+        return layer
+
+    granf = full_layer(2)
+    nursf = full_layer(2)
+    assert ur_forage_exposed(full, UR_SEED, UR_SPRING) == 2
+    assert ur_pop(full, granf, nursf, UR_SEED, UR_SPRING) == 4
+    # spring has 2 passes -> exposure*passes = 4 == pop -> whole colony lost
+    assert ur_hawk_passes(UR_SPRING) == 2
+    assert ur_season_predation(full, granf, nursf, UR_SEED, UR_SPRING) == 4, \
+        "two spring passes did not catch the whole exposed colony"
+    assert ur_season_survivors(full, granf, nursf, UR_SEED, UR_SPRING) == 0
+
+    # (3) the DEGENERATE identity the slice-6 card asked for: for every season
+    # whose pass count is exactly 1, ur_season_predation == slice 6's
+    # instantaneous ur_predation (the one-pass season IS the snapshot). WINTER
+    # has 1 pass here, so it pins the fold-to-snapshot boundary.
+    assert ur_hawk_passes(UR_WINTER) == 1, "winter is no longer the one-pass season"
+    for grid_case, g_lay, n_lay in ((gp, granp, nursp), (full, granf, nursf)):
+        for season in range(UR_SEASONS):
+            if ur_hawk_passes(season) == 1:
+                assert (ur_season_predation(grid_case, g_lay, n_lay, UR_SEED, season)
+                        == ur_predation(grid_case, g_lay, n_lay, UR_SEED, season)), \
+                    "one-pass season predation != slice-6 instantaneous snapshot"
+                checks += 1
+    # monotone in the pass count: more passes never lowers the loss (bounded by pop)
+    for exposed in range(0, 8):
+        prev = 0
+        for passes in range(0, 5):
+            loss = min(exposed * passes, 8)
+            assert loss >= prev, "predation fell as passes rose"
+            prev = loss
+            checks += 1
+    return checks
+
+
 def main():
     hawk_checks = prove_hawk()
     dig_checks = prove_dig()
@@ -1195,10 +1442,12 @@ def main():
     granary_checks = prove_granary()
     nursery_checks = prove_nursery()
     predation_checks = prove_predation()
+    clock_checks = prove_clock()
     dug_total, connected, (route_i, route_d, route_len), \
         (gran_n, gran_con, gran_cap, gran_store), \
         (nurs_n, nurs_con, pop, pop_food), \
-        (exposed, lost, surv) = ci_fixture()
+        (exposed, lost, surv), \
+        (abund, sfood, hawk_pass, spred, ssurv) = ci_fixture()
 
     # The lockstep anchor: these are the numbers rom-builds.yml asserts
     # against the ROM's ur_telemetry mailbox after replaying CI_DIG_PIXELS.
@@ -1228,6 +1477,14 @@ def main():
     # survivors — a shallow route is hawk-food.
     assert (exposed, lost, surv) == (2, 2, 0), \
         f"CI fixture predation drifted: {(exposed, lost, surv)}"
+    # slice-7 year-clock lockstep on the spring fixture: spring is the abundance
+    # UNIT (4), so the seasonal haul is the raw reachable food (patch 4's 6);
+    # spring has 2 hawk passes, and the per-hawk-pass season predation on the
+    # shallow shaft is min(exposed 2 * passes 2, pop 2) = 2 (still pop-bound), so
+    # 0 survive the season — the same (abund 4, sfood 6, passes 2, spred 2,
+    # ssurv 0) the rom-builds.yml ur_telemetry asserts at the settled dig frame.
+    assert (abund, sfood, hawk_pass, spred, ssurv) == (UR_ABUND_SPRING, 6, 2, 2, 0), \
+        f"CI fixture year clock drifted: {(abund, sfood, hawk_pass, spred, ssurv)}"
 
     # Pinned hawk telemetry values the CI --assert-watch uses (printed so a
     # human editing the schedule can re-pin the workflow in the same PR).
@@ -1265,6 +1522,14 @@ def main():
           "exact exposed<->deep boundary (shallow route 6 vs buried 3 to the "
           "same drop), predation == min(exposed, pop) (pop-bound + "
           "exposure-bound regimes), no route predates nothing")
+    print(f"  year clock: {clock_checks} cases — ur_day pure/monotone (day = "
+          f"frame//{UR_DAY_FRAMES}), the {UR_SEASONS} seasons partition the "
+          f"{UR_YEAR_DAYS}-day year in order (spring {UR_SPRING_DAYS}/summer "
+          f"{UR_SUMMER_DAYS}/autumn {UR_AUTUMN_DAYS}/winter {UR_WINTER_DAYS}, "
+          "past-year clamps to winter), abundance spring=unit<summer, "
+          "autumn<spring, winter=0 (season_food scales the haul), "
+          "season_predation == min(exposed*passes, pop) (one-pass season == "
+          "slice-6 snapshot)")
     print(f"  CI lockstep fixture: dug_total={dug_total} connected={connected} "
           f"forage=(patch {route_i}, dist {route_d}, route {route_len}) "
           f"store=(placed {gran_n}, connected {gran_con}, cap {gran_cap}, "
@@ -1272,11 +1537,24 @@ def main():
           f"pop=(placed {nurs_n}, connected {nurs_con}, pop {pop}, "
           f"popfood {pop_food}) "
           f"predation=(exposed {exposed}, lost {lost}, surv {surv}) "
+          f"year=(abund {abund}/{UR_ABUND_UNIT}, sfood {sfood}, passes "
+          f"{hawk_pass}, spred {spred}, ssurv {ssurv}) "
           "(== the rom-builds.yml ur_telemetry asserts)")
     print(f"  pinned hawk telemetry (seed={hex(UR_SEED)}, season=0): "
           f"f100 on={pins[100][0]} x={pins[100][1]}, "
           f"f300 on={pins[300][0]} x={pins[300][1]}, "
           f"f600 on={pins[600][0]} x={pins[600][1]}")
+    # Pinned year-clock telemetry the CI proof-3 --assert-watch uses across the
+    # simulated year (printed so a human editing the clock can re-pin it here).
+    print(f"  year telemetry across the year: "
+          f"f100 day={ur_day(100)} season={ur_season_of_day(ur_day(100))} "
+          f"abund={ur_abundance(ur_season_of_day(ur_day(100)))}, "
+          f"f1100 day={ur_day(1100)} season={ur_season_of_day(ur_day(1100))} "
+          f"abund={ur_abundance(ur_season_of_day(ur_day(1100)))}, "
+          f"f2600 day={ur_day(2600)} season={ur_season_of_day(ur_day(2600))} "
+          f"abund={ur_abundance(ur_season_of_day(ur_day(2600)))}, "
+          f"f3700 day={ur_day(3700)} season={ur_season_of_day(ur_day(3700))} "
+          f"abund={ur_abundance(ur_season_of_day(ur_day(3700)))}")
     return 0
 
 

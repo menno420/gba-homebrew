@@ -2646,14 +2646,21 @@ jobs:
       # exposed (t[28]=0), no forager is lost (t[29]=0) and survivors is 0
       # (t[30]=0). The dig proof below drives the shallow shaft and shows the
       # hawks catch the foragers on it.
-      - name: 'proof 1/2 — dual-screen boot + telemetry mailbox + food patches + no-route/store/pop/predation-yet'
+      # Slice 7 asserts the year clock at boot: frame 250 is still day 0
+      # (t[31]=0) of SPRING (t[3]=0), so the abundance scale is the spring UNIT
+      # (t[32]=UR_ABUND_SPRING=4) and spring runs 2 hawk passes (t[34]=2). With
+      # nothing dug the seasonal meadow haul is 0 (t[33]=0), and with no route +
+      # no population the season predation and survivors are 0 (t[35]=0,t[36]=0).
+      # Proof 3 below drives the clock across the whole year (summer/autumn/
+      # winter) and shows the season, day, abundance and pass count advance.
+      - name: 'proof 1/2 — dual-screen boot + telemetry mailbox + food patches + no-route/store/pop/predation-yet + year-clock spring day 0'
         run: |
           python3 tools/nds-headless-check.py \
             games/underroot-nds/underroot-nds.nds ur-boot-300.png \
             --frames 300 --shot 120:ur-boot-120.png --shot 240:ur-boot-240.png \
             --require-distinct \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:32 \
+            --watch t:ur_telemetry:38 \
             --watch-log ur-boot-trace.csv \
             --assert-watch 250:t:0:eq:0x554E4452 \
             --assert-watch 250:t:1:eq:0x524F4F54 \
@@ -2673,7 +2680,13 @@ jobs:
             --assert-watch 250:t:26:eq:0 \
             --assert-watch 250:t:28:eq:0 \
             --assert-watch 250:t:29:eq:0 \
-            --assert-watch 250:t:30:eq:0
+            --assert-watch 250:t:30:eq:0 \
+            --assert-watch 250:t:31:eq:0 \
+            --assert-watch 250:t:32:eq:4 \
+            --assert-watch 250:t:33:eq:0 \
+            --assert-watch 250:t:34:eq:2 \
+            --assert-watch 250:t:35:eq:0 \
+            --assert-watch 250:t:36:eq:0
       # Proof 2 — the stylus digs a drawn tunnel (the exact host<->ROM
       # lockstep, offset-free): --touch replays CI_DIG_PIXELS from
       # check-underroot.py — a shaft down from the mouth, an east branch,
@@ -2723,7 +2736,17 @@ jobs:
       # check-underroot.py's ci_fixture() computes and prove_predation() proves
       # (with the buried-route contrast) for every reachable plan. Asserted
       # settled at frame 260.
-      - name: 'proof 2/2 — stylus dig (dug=7 con=6) + forager route (patch 4 route 2) + granary store (banked 4) + population (pop 2) + hawk predation (exposed 2 lost 2 surv 0)'
+      #
+      # Slice 7 year-clock lockstep: frame 260 is still SPRING (t:3==0), the
+      # abundance UNIT (t:32==4). The dug shaft reaches patch 4 (haul 6), so the
+      # seasonal meadow haul is 6*4/4 = 6 (t:33==6). Spring runs 2 hawk passes
+      # (t:34==2); the per-hawk-pass season predation on the shallow shaft is
+      # min(exposed 2 * passes 2, pop 2) = 2 (still pop-bound) so the whole
+      # colony is lost over the season (t:35==2) leaving t:36==0 survivors — the
+      # same (abund 4, sfood 6, passes 2, spred 2, ssurv 0) check-underroot.py's
+      # ci_fixture() computes. (The exact day t:31 is boot-latency-sensitive here
+      # so it is asserted across the year in proof 3, not pinned to a frame.)
+      - name: 'proof 2/2 — stylus dig (dug=7 con=6) + forager route (patch 4 route 2) + granary store (banked 4) + population (pop 2) + hawk predation (exposed 2 lost 2 surv 0) + year clock (spring abund 4 sfood 6 passes 2 spred 2)'
         run: |
           python3 tools/nds-headless-check.py \
             games/underroot-nds/underroot-nds.nds ur-dig-280.png \
@@ -2740,7 +2763,7 @@ jobs:
             --keys 200-210:L --touch 200-210:168,56 \
             --keys 215-225:L --touch 215-225:8,184 \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:32 \
+            --watch t:ur_telemetry:38 \
             --assert-watch 190:t:0:eq:0x554E4452 \
             --assert-watch 190:t:8:eq:7 \
             --assert-watch 190:t:9:eq:6 \
@@ -2769,7 +2792,55 @@ jobs:
             --assert-watch 260:t:27:eq:4 \
             --assert-watch 260:t:28:eq:2 \
             --assert-watch 260:t:29:eq:2 \
-            --assert-watch 260:t:30:eq:0
+            --assert-watch 260:t:30:eq:0 \
+            --assert-watch 260:t:3:eq:0 \
+            --assert-watch 260:t:32:eq:4 \
+            --assert-watch 260:t:33:eq:6 \
+            --assert-watch 260:t:34:eq:2 \
+            --assert-watch 260:t:35:eq:2 \
+            --assert-watch 260:t:36:eq:0
+      # Proof 3 — the year clock across a whole simulated year (slice 7). No
+      # --touch: the season/day counter is a pure function of the frame, so an
+      # undug run still marches SPRING -> SUMMER -> AUTUMN -> WINTER as the frame
+      # clock advances (UR_DAY_FRAMES=256 frames/day; spring 4, summer 6, autumn
+      # 4, winter 2 days). At four pins comfortably mid-season (so the ~50-frame
+      # boot latency into main() never straddles a season boundary) the mailbox
+      # must report the season (t:3), the day counter climbing (t:31, a >= bound
+      # since the exact day shifts with the boot offset), the abundance scale
+      # (t:32 — spring UNIT 4, summer plentiful 6, autumn thinning 2, WINTER ZERO
+      # 0) and the per-season hawk-pass count (t:34 — spring 2, summer 3, autumn
+      # 2, winter 1). These are the SAME pure ur_season_of_day / ur_abundance /
+      # ur_hawk_passes check-underroot.py's prove_clock() proves exhaustively
+      # (the year partition, the abundance curve, the one-pass-== -snapshot
+      # predation identity) — the ROM shares that very ur_sim.c. The winter
+      # abundance 0 is the arc's "no meadow food in winter", the slice-8 exam.
+      - name: 'proof 3 — year clock across the year (spring->summer->autumn->winter season/day/abundance/hawk-passes)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-year-3850.png \
+            --frames 3850 \
+            --shot 1800:ur-year-summer.png \
+            --shot 3072:ur-year-autumn.png \
+            --shot 3800:ur-year-winter.png \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:38 \
+            --assert-watch 400:t:0:eq:0x554E4452 \
+            --assert-watch 400:t:3:eq:0 \
+            --assert-watch 400:t:31:ge:1 \
+            --assert-watch 400:t:32:eq:4 \
+            --assert-watch 400:t:34:eq:2 \
+            --assert-watch 1800:t:3:eq:1 \
+            --assert-watch 1800:t:31:ge:6 \
+            --assert-watch 1800:t:32:eq:6 \
+            --assert-watch 1800:t:34:eq:3 \
+            --assert-watch 3072:t:3:eq:2 \
+            --assert-watch 3072:t:31:ge:11 \
+            --assert-watch 3072:t:32:eq:2 \
+            --assert-watch 3072:t:34:eq:2 \
+            --assert-watch 3800:t:3:eq:3 \
+            --assert-watch 3800:t:31:ge:14 \
+            --assert-watch 3800:t:32:eq:0 \
+            --assert-watch 3800:t:34:eq:1
       - name: upload Underroot ROM + proof screenshots
         uses: actions/upload-artifact@v4
         with:
@@ -2784,5 +2855,9 @@ jobs:
             ur-dig-280.png
             ur-dig-165.png
             ur-dig-195.png
+            ur-year-3850.png
+            ur-year-summer.png
+            ur-year-autumn.png
+            ur-year-winter.png
           if-no-files-found: error
           retention-days: 14

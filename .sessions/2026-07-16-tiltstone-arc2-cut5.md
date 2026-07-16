@@ -1,6 +1,6 @@
 # Session — Tiltstone arc 2, cut 5: «The monotone difficulty ramp» (arc closer)
 
-> **Status:** in-progress
+> **Status:** complete
 
 - date: 2026-07-16 (branch `claude/tiltstone-arc2-cut5`, base
   **`claude/tiltstone-arc2-cut4`** @ `0d04b09` — stacked on cut 4; started `date -u`
@@ -157,18 +157,19 @@ difficulty floor / the arc closer).
 
 ## PR / CI (filled at close-out)
 
-- PR: **#[[fill: PR number]]** — [[fill: PR URL]] (DRAFT, base
+- PR: **#170** — https://github.com/menno420/gba-homebrew/pull/170 (DRAFT, base
   `claude/tiltstone-arc2-cut4` — stacked on #169; land order
   #153 → #166 → #167 → #168 → #169 → this). Draft-parked under the 2026-07-16 landing
   wall — no ready-flip, no auto-merge.
-- SHAs: born-red gate `[[fill: claim+card SHA]]` (claim + card), impl
-  `[[fill: impl SHA]]` (engine+smoke+dist+plan-doc+current-state), card-finish = this
-  commit `[[fill: card-finish SHA]]`.
-- CI: `ROM builds` (the one required per-PR gate — web-only diff, no GBA/NDS ROM source
-  touched, expected green), `substrate-gate` **RED** — main's known #151 orphans + the
-  born-red card HOLD (cut-1's card stays `in-progress` by design; inherited/designed),
-  not a cut fault; `headless-boot` [[fill: headless-boot conclusion]]. See the report
-  for the polled per-check conclusions.
+- SHAs: born-red gate `930c1c9` (claim + card), impl `90a2248`
+  (engine+smoke+dist+plan-doc+current-state), card-finish = this commit.
+- CI (polled by branch, head `90a2248`, run-ids 29537180115 / 29537180220 /
+  29537180170): `ROM builds` (the one required per-PR gate — web-only diff, no GBA/NDS
+  ROM source touched, expected green); `substrate-gate` **RED expected** — main's known
+  #151 orphans + the born-red card HOLD (cut-1's card stays `in-progress` by design;
+  inherited/designed), not a cut fault; `auto-merge-enabler` **skipped** (DRAFT). No
+  `headless-boot` run triggered on this web-only branch. See the report for the final
+  polled per-check conclusions.
 - Smoke: the Tiltstone pure-Node smoke is not CI-wired (as with cuts 1–4); it ran green
   locally (`node games/web-tiltstone/smoke.mjs`, exit 0, **119 PASS / 0 FAIL**, §18
   included, engine v1.8.0).

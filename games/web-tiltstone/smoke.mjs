@@ -37,6 +37,15 @@
  *      provably winnable by its own solver line, entries are sorted
  *      hardest-first, and the pinned pars show the packs are genuinely
  *      harder than the baseline caverns
+ *  14. shareable line (arc 2, cut 1): encodeShare/decodeShare round-trip
+ *      (level=0 omitted, non-zero level carried), line validation +
+ *      normalization (junk/glyphs stripped, 64 cap, illegal line throws on
+ *      encode / degrades on decode), decodeShare across all three input
+ *      shapes + null on junk, and the load-bearing proof — spectate()
+ *      reconstructs the sharer's OWN run byte-identically to a live replay
+ *      (every step's trace grid == the authoritative grid) across the
+ *      seed-42 line and the 12-seed sweep, freezes at a terminal win, and a
+ *      share carries only seed+line (the solver's line stays hidden)
  *
  * Exits nonzero on any failed assertion; prints one PASS/FAIL line each.
  */
@@ -540,6 +549,93 @@ check("daily seed is a pure date mapping", E.dailySeed("2026-07-13") === 2026071
   check("packById: resolves both shipped ids, unknown -> null",
     E.packById("granite-gauntlet") === E.PACKS[0] && E.packById("deep-cuts") === E.PACKS[1] &&
     E.packById("nope") === null);
+}
+
+// ----------------------------------- 14. shareable line (arc 2, cut 1)
+{
+  // encode/decode round-trip on a real cleared line (the seed-42 solver line)
+  const shareA = { seed: SEED, levelIndex: 0, line: g0.level.solution };
+  const encA = E.encodeShare(shareA);
+  const decA = E.decodeShare(encA);
+  check("encodeShare: canonical fragment, level=0 omitted",
+    encA === `seed=${SEED}&replay=${g0.level.solution}`, encA);
+  check("decodeShare(encodeShare(x)) round-trips seed/level/line",
+    decA && decA.seed === (SEED >>> 0) && decA.levelIndex === 0 && decA.line === g0.level.solution,
+    JSON.stringify(decA));
+
+  // level > 0 is carried; encode/decode round-trips it too
+  const encB = E.encodeShare({ seed: 7, levelIndex: 4, line: "LRRL" });
+  const decB = E.decodeShare(encB);
+  check("encodeShare/decodeShare carry a non-zero level",
+    encB === "seed=7&level=4&replay=LRRL" &&
+    decB.seed === 7 && decB.levelIndex === 4 && decB.line === "LRRL", encB);
+
+  // isReplayLine + normalizeLine: legal core kept, junk/glyphs stripped, cap held
+  check("isReplayLine: accepts LR-only, rejects junk / over-cap / non-strings",
+    E.isReplayLine("") && E.isReplayLine("LRRL") &&
+    !E.isReplayLine("LxR") && !E.isReplayLine("lr") &&
+    !E.isReplayLine("L".repeat(65)) && !E.isReplayLine(42) && !E.isReplayLine(null));
+  check("normalizeLine: uppercases, drops non-L/R, caps at 64",
+    E.normalizeLine("l r→R l") === "LRRL" &&
+    E.normalizeLine("♞RR♞L") === "RRL" &&
+    E.normalizeLine("R".repeat(100)).length === 64);
+  check("encodeShare throws on an illegal line (never silently corrupts a share)",
+    (() => { try { E.encodeShare({ seed: 1, line: "LXR" }); return false; } catch (e) { return true; } })());
+
+  // decodeShare accepts all three input shapes and returns null on junk
+  const fromParams = E.decodeShare(new URLSearchParams("seed=99&replay=RR&level=2"));
+  const fromBag = E.decodeShare({ seed: 99, level: 2, replay: "RR" });
+  const fromLead = E.decodeShare("?seed=99&level=2&replay=RR");
+  check("decodeShare: URLSearchParams, plain bag, and ?-led string all agree",
+    JSON.stringify(fromParams) === JSON.stringify(fromBag) &&
+    JSON.stringify(fromBag) === JSON.stringify(fromLead) &&
+    fromParams.seed === 99 && fromParams.levelIndex === 2 && fromParams.line === "RR",
+    JSON.stringify(fromParams));
+  check("decodeShare: null when seed or replay is missing, or on a malformed escape",
+    E.decodeShare("seed=5") === null && E.decodeShare("replay=RR") === null &&
+    E.decodeShare("") === null && E.decodeShare(123) === null &&
+    E.decodeShare("seed=%zz&replay=RR") === null);
+  check("decodeShare: a URL-junk replay degrades to its legal core, not a throw",
+    E.decodeShare("seed=1&replay=Rx-L").line === "RL");
+
+  // the load-bearing proof: spectate() reconstructs the sharer's OWN run
+  // byte-identically to a live replay, and every step's trace grid matches the
+  // authoritative post-rotation grid
+  const spec = E.spectate(SEED, 0, g0.level.solution);
+  const live = E.replay(E.newGame(SEED, 0), g0.level.solution);
+  const gridsAgree = spec.steps.every(s => E.gridString(s.trace.grid) === E.gridString(s.state.grid));
+  check("spectate: final state == live replay, every step trace grid == authoritative grid",
+    E.gridString(spec.final.grid) === E.gridString(live.grid) &&
+    spec.final.status === live.status && spec.final.collected === live.collected &&
+    spec.final.status === "won" && spec.clean && gridsAgree && spec.consumed === g0.level.solution.length,
+    `status=${spec.final.status} consumed=${spec.consumed}/${g0.level.solution.length}`);
+
+  // a won cavern freezes: extra rotations past the win are ignored (consumed
+  // stops at the winning line's length, not the padded line's)
+  const padded = g0.level.solution + "LRLR";
+  const specPad = E.spectate(SEED, 0, padded);
+  check("spectate: stops at terminal — trailing rotations after a win are ignored",
+    specPad.consumed === g0.level.solution.length &&
+    E.gridString(specPad.final.grid) === E.gridString(spec.final.grid));
+
+  // determinism + the OWN-line-only guarantee across the 12-seed sweep: every
+  // seed's solver line spectates identically to a live replay, and no share
+  // function ever emits the solver's hidden line for you
+  let sweepOk = 0;
+  for (let s = SEED; s < SEED + 12; s++) {
+    const lvl = E.newGame(s, 0).level;
+    const sp = E.spectate(s, 0, lvl.solution);
+    const lv = E.replay(E.newGame(s, 0), lvl.solution);
+    const enc = E.encodeShare({ seed: s, levelIndex: 0, line: lvl.solution });
+    // the encoded share contains ONLY what the sharer chose to send (seed +
+    // their line) — decoding it never reveals more than went in
+    const dec = E.decodeShare(enc);
+    if (E.gridString(sp.final.grid) === E.gridString(lv.grid) &&
+        sp.final.status === "won" && dec.line === lvl.solution &&
+        !enc.includes("solution")) sweepOk++;
+  }
+  check("spectate == live replay across the 12-seed sweep; a share carries only seed+line",
+    sweepOk === 12, `${sweepOk}/12`);
 }
 
 // ------------------------------------------------------------------- verdict

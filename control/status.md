@@ -88,3 +88,30 @@ kit: v1.17.0
 - Landing posture: PR opened DRAFT and left DRAFT at the standing
   2026-07-16 LANDING WALL; no ready-flip / merge / auto-merge. Land order
   #153 → #155 → #156 → #157 → #158 → this.
+
+## Dispatched slice 2026-07-16 — Underroot slice 7: seasons + the year clock (append-only)
+
+- updated: 2026-07-16T17:40:00Z (`date -u`); session card
+  `.sessions/2026-07-16-underroot-slice-7.md`, branch
+  `claude/underroot-slice-7`, PR draft-parked stacked on PR #160
+  (`claude/underroot-slice-6`).
+- What: the year clock the arc deferred since slice 4 — a
+  `SPRING→SUMMER→AUTUMN→WINTER` day counter driven off the frame clock
+  (`UR_DAY_FRAMES=256`; fixed counts 4/6/4/2 = a 16-day year), the season a
+  pure `ur_season_of_day(day)` that partitions the year in order and clamps
+  past-year to winter. Meadow abundance scales by season (`ur_abundance` /
+  `ur_season_food`: spring the UNIT baseline, summer plentiful, autumn thinning,
+  winter ZERO), and the slice-6-deferred per-hawk-pass predation temporal
+  scaling lands (`ur_hawk_passes` × `ur_season_predation = min(exposed*passes,
+  pop)`, one-pass season == slice-6 snapshot). Host mirror
+  `tools/check-underroot.py` (`prove_clock()` 802 cases + ci_fixture year tuple)
+  runs green locally; the `ur_sim.c` host-`gcc` compile is clean
+  (`-Wall -Wextra -Werror`) and bit-equal to the Python mirror on the fixture
+  (`abund 4 sfood 6 passes 2 spred 2 ssurv 0`) and the year pins
+  (f100 spring/f1100 summer/f2600 autumn/f3700 winter). 6 new telemetry words
+  (DAY=31 ABUND=32 SFOOD=33 HAWKPASS=34 SPRED=35 SSURV=36, WORDS=38; SEASON t[3]
+  now live); `nds-underroot-build` gains a third proof driving the clock across
+  the whole year — green pending CI.
+- Landing posture: PR opened DRAFT and left DRAFT at the standing 2026-07-16
+  LANDING WALL; no ready-flip / merge / auto-merge. Land order
+  #153 → #155 → #156 → #157 → #158 → #159 → #160 → this.

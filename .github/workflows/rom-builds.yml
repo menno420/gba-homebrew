@@ -3117,8 +3117,8 @@ jobs:
       - name: 'proof 6 — seed dial: RIGHT scans to dial 2 (seed 2171), the patch schedule + fairness witness follow the dialed seed'
         run: |
           python3 tools/nds-headless-check.py \
-            games/underroot-nds/underroot-nds.nds ur-dial-250.png \
-            --frames 250 --shot 240:ur-dial-240.png \
+            games/underroot-nds/underroot-nds.nds ur-dial-300.png \
+            --frames 300 --shot 240:ur-dial-240.png \
             --keys 60-70:RIGHT \
             --keys 120-130:RIGHT \
             --elf games/underroot-nds/build/underroot-nds.elf \
@@ -3157,7 +3157,7 @@ jobs:
             ur-save-reload.png
             ur-save-corrupt.png
             ur-save-vbump.png
-            ur-dial-250.png
+            ur-dial-300.png
             ur-dial-240.png
             ur-save1.sav
             ur-save2.sav

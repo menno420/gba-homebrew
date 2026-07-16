@@ -3130,6 +3130,48 @@ jobs:
             --assert-watch 250:t:16:eq:32 \
             --assert-watch 250:t:51:eq:1 \
             --assert-watch 250:t:52:eq:35
+      # Proof 7 — SYNTHESIZED AUDIO + v1.0 polish (slice 11): the pure cue +
+      # ambience decision layer drives the ROM's PSG/noise channels, and the
+      # additive telemetry [54..58] reports it. No --touch: the season/day clock
+      # is a pure function of the frame, so an undug run still marches SPRING ->
+      # SUMMER -> AUTUMN -> WINTER and the ambience drone RETUNES with the season
+      # (the drone tier IS the live season, ur_amb_* keyed on it). The WINTER
+      # toll (UR_CUE_WINTER, the highest-priority cue) fires exactly on the frame
+      # the year clock crosses into WINTER (day 14 = ROM frame UR_DAY_FRAMES*14 =
+      # 3584), winning its frame over the SIMULTANEOUS hawk-crossing edge at that
+      # same frame (winter id 3 > hawk id 2 — the highest-id-wins rule, mirrored
+      # in main.c and proven exhaustively host-side by check-underroot.py's
+      # prove_audio). At boot (emu frame 250, still SPRING day 0) no cue has
+      # fired yet (t[54]=0 last cue, t[55]=0 count) and the ambience is the
+      # spring tier (t[58]=0) — prev_hawk_on is seeded with the boot hawk state
+      # so a shadow already mid-crossing at power-on does not phantom-cry.
+      # Mid-run in SUMMER (emu 1800, the pin proof 3 uses, t[3]=1) the ambience
+      # has retuned to the summer tier (t[58]=1). At/after the winter edge (emu
+      # 3800, t[3]=3, the same pin proof 3 uses) the ambience is the winter tier
+      # (t[58]=3), the last cue played is the WINTER toll (t[54]=3), and at least
+      # one cue has fired across the year (t[55] >= 1). ur-v1-final.png is the
+      # final-frame polished dual-screen shot (the v1.0 HUD in winter). The exact
+      # cue table, priority order and ambience climb are proven host-side.
+      - name: 'proof 7 — synthesized audio: ambience retunes per season, the WINTER toll tolls at the winter edge (highest-id-wins)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-v1-final.png \
+            --frames 3850 \
+            --shot 240:ur-audio-spring.png \
+            --shot 1800:ur-audio-summer.png \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:59 \
+            --assert-watch 250:t:0:eq:0x554E4452 \
+            --assert-watch 250:t:3:eq:0 \
+            --assert-watch 250:t:54:eq:0 \
+            --assert-watch 250:t:55:eq:0 \
+            --assert-watch 250:t:58:eq:0 \
+            --assert-watch 1800:t:3:eq:1 \
+            --assert-watch 1800:t:58:eq:1 \
+            --assert-watch 3800:t:3:eq:3 \
+            --assert-watch 3800:t:58:eq:3 \
+            --assert-watch 3800:t:54:eq:3 \
+            --assert-watch 3800:t:55:ge:1
       - name: upload Underroot ROM + proof screenshots
         uses: actions/upload-artifact@v4
         with:
@@ -3159,6 +3201,9 @@ jobs:
             ur-save-vbump.png
             ur-dial-300.png
             ur-dial-240.png
+            ur-v1-final.png
+            ur-audio-spring.png
+            ur-audio-summer.png
             ur-save1.sav
             ur-save2.sav
           if-no-files-found: error

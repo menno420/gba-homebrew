@@ -14,7 +14,7 @@
   shortest-path pure/monotone, nearest-wins, disconnected-never-visited for
   every reachable input) plus a ROM `ur_telemetry` route lockstep at pinned
   frames — the slice-3 row of `docs/arcs/UNDERROOT.md`.
-- **📊 Model:** Claude Opus 4.8 · high · implementation
+- **📊 Model:** Claude Opus 4.8 · high · feature build
 - landing posture: **PR opened DRAFT and left DRAFT, base
   `claude/underroot-slice-2` (stacked).** The standing 2026-07-16 landing
   wall (PR ready-flips + auto-merge classifier-denied — `[Merge Without

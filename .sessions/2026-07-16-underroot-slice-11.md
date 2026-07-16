@@ -182,10 +182,10 @@ function of the seed and the tunnels they drew.
 
 ## PR / CI (filled at close-out)
 
-- PR: **[[fill:PR#]]** — [[fill:PR-URL]] (DRAFT, base `claude/underroot-slice-10`;
-  impl commits `bf91f5d`/`b8cfa7d`/`9855d3b`/`d2de5fd`/`c438bba`, card commit is
-  the branch tip). Draft-parked under the landing wall — no ready-flip, no
-  auto-merge.
+- PR: **#165** — https://github.com/menno420/gba-homebrew/pull/165 (DRAFT,
+  base `claude/underroot-slice-10`; impl commits `bf91f5d`/`b8cfa7d`/`9855d3b`/
+  `d2de5fd`/`c438bba`, card commit is the branch tip). Draft-parked under the
+  landing wall — no ready-flip, no auto-merge.
 - CI (`nds-underroot-build` + the gates): recorded in the session report / status;
   substrate-gate red is expected under the born-red HOLD (draft-park), not a slice
   fault. What must be green — the "NDS Underroot build" job — is this slice's

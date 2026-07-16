@@ -1,6 +1,6 @@
 # Session — Tiltstone arc 2, cut 4: «Mechanic-fingerprint par deltas»
 
-> **Status:** in-progress
+> **Status:** complete
 
 - date: 2026-07-16 (branch `claude/tiltstone-arc2-cut4`, base
   **`claude/tiltstone-arc2-cut3`** @ `7ad73ef` — stacked on cut 3; started `date -u`
@@ -118,10 +118,43 @@ Claude Opus 4.8 family · high · implementation — Tiltstone arc-2 cut 4
 
 ## Previous-session review
 
-[[fill: prior cut card review — cut 3 / PR #168]]
+- Prior cut card: `.sessions/2026-07-16-tiltstone-arc2-cut3.md` (**PR #168**, head
+  `bd7567b`, arc-2 cut 3 — «Undo×par deception curation»). It shipped two pure
+  functions in `engine.js` — `deception(undos, used, par)` (scalar
+  `max(0, undos*2 − overshoot)`: undos weigh double as hidden effort, visible
+  overshoot discounts it) and `deceptionLabel(...)` (a `"<tier>-<honesty>"` read) —
+  plus the load-bearing **§16** smoke (a 7-row truth table + determinism, monotonicity
+  in undos, 0-floor), a guarded-localStorage record + label on the win card, engine
+  bumped `1.5.0 → 1.6.0`, and one honest divergence noted: it re-synced the stale
+  `dist/web/tiltstone/{engine,app}.js` copies. It is **draft-parked** under the standing
+  2026-07-16 landing wall — its card reads `complete` in content but the PR stays DRAFT.
+- **The additive precedent this cut extends.** Cut 3's honesty came from a pure scalar
+  over data the game already produces (the undo×par pair); cut 4 leans on the same
+  discipline but goes one level deeper — it *reuses the solver itself*. `fingerprint`
+  re-runs the exact BFS `search` generation and hints already use, on a neutralized
+  copy of the grid, so the "which mechanic carries this cavern?" verdict is the
+  solver's own, never a hand-labelled guess. Zero edits to
+  generation/rotation/settle/resolve/state (neutralization is a pure grid transform
+  fed to `search` as a parallel input), so the full smoke (arc-1 §1–§13 + cut-1 §14 +
+  cut-2 §15 + cut-3 §16 + new §17) runs green with the version bumped to v1.7.0 and no
+  prior value moved. The proof-split is mirrored too: `fingerprint`/`fingerprintTag`/
+  `neutralizeClass` are headless-gated in §17; the win-card tag render is flagged
+  browser-only. Like cut 3, this cut re-synced `dist/web/tiltstone/{engine,app}.js`
+  byte-identical to src (they were already current at v1.6.0).
 
 ## PR / CI (filled at close-out)
 
-[[fill: PR number + URL, base, born-red SHA, impl SHA, card-finish SHA]]
-[[fill: CI per-check — ROM builds, substrate-gate, auto-merge-enabler]]
-[[fill: smoke result — X PASS / 0 FAIL, §17 included]]
+- PR: **#169** — https://github.com/menno420/gba-homebrew/pull/169 (DRAFT, base
+  `claude/tiltstone-arc2-cut3` — stacked on #168; land order #153 → #166 → #167 →
+  #168 → this). Draft-parked under the 2026-07-16 landing wall — no ready-flip, no
+  auto-merge.
+- SHAs: born-red gate `51ffcc2` (claim + card), impl `208980e`
+  (engine+smoke+shell+dist+plan-doc), card-finish = this commit.
+- CI: `ROM builds` (the one required per-PR gate — web-only diff, no GBA/NDS ROM
+  source touched, expected green), `substrate-gate` **RED** — main's known #151
+  orphans + the born-red card HOLD (inherited/designed), not a cut fault;
+  `auto-merge-enabler` **skipped** (DRAFT). See the report for the polled per-check
+  conclusions.
+- Smoke: the Tiltstone pure-Node smoke is not CI-wired (as with cuts 1–3); it ran
+  green locally (`node games/web-tiltstone/smoke.mjs`, exit 0, **105 PASS / 0 FAIL**,
+  §17 included, engine v1.7.0).

@@ -1,0 +1,1 @@
+- `claude/wickroad-crossroads-cut2` · **scope** — wickroad crossroads cut 2, the sprite art pass (additive regular_bg baked from sim state) · 2026-07-16

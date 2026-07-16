@@ -1,6 +1,6 @@
 # Session — Underroot arc slice 3: foragers + emergent pathing
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-16 (branch `claude/underroot-slice-3`, stacked on
   `claude/underroot-slice-2` @ 84f8c28; started ~15:57Z, `date -u`)
@@ -14,7 +14,7 @@
   shortest-path pure/monotone, nearest-wins, disconnected-never-visited for
   every reachable input) plus a ROM `ur_telemetry` route lockstep at pinned
   frames — the slice-3 row of `docs/arcs/UNDERROOT.md`.
-- **📊 Model:** [[fill:model]]
+- **📊 Model:** Claude Opus 4.8 · high · implementation
 - landing posture: **PR opened DRAFT and left DRAFT, base
   `claude/underroot-slice-2` (stacked).** The standing 2026-07-16 landing
   wall (PR ready-flips + auto-merge classifier-denied — `[Merge Without
@@ -101,8 +101,49 @@
 
 ## 💡 Session idea
 
-[[fill:idea]]
+**A pure-sim layer that reuses another layer's graph should assert their
+equivalence, not just each in isolation.** `ur_dig_dist` (slice 3) and
+`ur_burrow_size` (slice 1) both BFS the same 4-connected dug graph, so a
+subtly-broken `ur_dig_dist` — e.g. a neighbour offset typo that walks a
+diagonal or drops an edge — can still pass a bounds/idempotence check while
+silently disagreeing with the connectivity the player already trusts. The
+cheap, high-value guard `prove_forage()` uses: assert the two layers are
+*consistent* — "the count of cells with a finite `ur_dig_dist` equals
+`ur_burrow_size`" — so any divergence between the reachability the burrow
+readout shows and the reachability the forager route walks turns a check
+red, before a player ever sees a forager route to a cell the burrow says is
+unreachable. Guard recipe: the cross-layer equivalence assert lives in
+`prove_forage()` in `tools/check-underroot.py`; the anchor functions are
+`ur_dig_dist` / `ur_burrow_size` in that file ↔
+`games/underroot-nds/source/ur_sim.c`. Extend it whenever a later slice
+adds a third consumer of the dug graph (granary reach, slice 4; hawk
+exposure of route cells, slice 6): assert the new layer's reachability
+against the same BFS, so the graph has exactly one meaning across the arc.
 
 ## Previous-session review
 
-[[fill:prev-review]]
+- Prior lane card: `.sessions/2026-07-16-underroot-slice-2.md` (PR #156, the
+  meadow food patches). It shipped the pure `ur_patch(seed,season,index)`
+  layer + `PATCHN`/`PATCHSUM` telemetry and its close-out idea was exactly
+  the discipline this slice needed: *give every pure layer a "spread"
+  assertion, not just bounds* — and it named the specific next step, *"add a
+  distinct-cells assert when slice 3 packs foragers onto patches so two
+  foragers never share a stale target."* Slice 3 honoured the spirit: rather
+  than only bounding the route, `prove_forage()` proves `ur_dig_dist` equals
+  an **independent** BFS (a second source of truth, not a re-run of the same
+  code) and that the nearest-patch selection is non-degenerate (a scripted
+  corridor makes a *distant* patch win, not always the mouth-column one) —
+  the anti-degenerate guard slice 2 asked for, generalised from "spread" to
+  "cross-checked against a reference." Its three honest gaps carry forward
+  unchanged: *no local NDS build* (the mirror is the local proof, CI is the
+  ROM proof — same here), *telemetry pinned from the host mirror not a read
+  ROM run* (the route asserts are `ur_forage(...)` host values, CI proves
+  the ROM matches), and *season fixed spring* (the route threads `season`
+  but pins season 0). Its `📊 Model:` three-field form (`model · effort ·
+  task-class` — the checker silently drops a malformed line) is mirrored
+  here exactly. One wrinkle slice 2 flagged and this slice inherited cleanly:
+  because it *reused* slice 1's frame-250/190 windows for its constant patch
+  words, slice 3's route words — also frame-invariant once the last dig
+  registers — ride the same proven windows, needing no new boot-offset guess
+  (the still-open slice-1 idea of self-reporting the boot offset stays
+  un-actioned, and still un-needed, for the same reason).

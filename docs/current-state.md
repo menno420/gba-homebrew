@@ -54,10 +54,12 @@
   last repinned by the 2026-07-14 ORDER 006 slice (#134 — Tiltstone
   v1.1 with `juice.js`, arcade bundle v1.3).
 
-## The eleven games at HEAD
+## The twelve games at HEAD
 
-Six GBA ROMs, two NDS ROMs, two browser games, one mobile PWA — all
-original IP. Shipped builds and hashes: [`dist/README.md`](../dist/README.md).
+Six GBA ROMs, three NDS ROMs, two browser games, one mobile PWA — all
+original IP (the twelfth, Underroot, built + proven but **pending owner
+playtest + landing clicks** — draft-parked under the 2026-07-16 wall).
+Shipped builds and hashes: [`dist/README.md`](../dist/README.md).
 
 | # | Game | Platform | State at HEAD |
 |---|---|---|---|
@@ -72,6 +74,7 @@ original IP. Shipped builds and hashes: [`dist/README.md`](../dist/README.md).
 | 9 | **Clockwork Courier** (rewind-ghost platformer) | GBA | v1.0 CONCEPT COMPLETE: prototype #96, ghost platform #105, timed chutes #106, three floors #107, audio #108 |
 | 10 | **Shoal** (flock-herding action puzzler) | GBA | v1.0 CONCEPT COMPLETE: prototype #98, predators #99, gates #100, star ratings #101, tuned levels #102, audio #103 |
 | 11 | **Wickroad** (market-route trading, aging ledger) | GBA | v0.6 — named growth path COMPLETE: prototype #129 (2026-07-14, the generative rung), rumors (cut 1) #142, contracts (cut 2) #143, road hazards (cut 3) #144, wider map + mules (cut 4) #145, audio (cut 5) #146 (2026-07-15); growth cuts: none open |
+| 12 | **Underroot** (dual-screen burrow-colony survival) | NDS | v1.0 arc COMPLETE (11 slices, PRs #155–#164 + slice 11 = this closer): dual-screen skeleton → patches → foragers → granaries → nurseries → hawks → seasons → winter survival → EEPROM best → seed dial → audio/polish; host-mirror proofs (`tools/check-underroot.py`) + committed dig plans; 7 headless proofs. **Pending owner playtest + landing clicks** (draft-parked under the 2026-07-16 wall) |
 
 All four games that had named growth paths (Undertow, Drift Garden,
 Cindervault, Deepcast) completed them across PRs #110–#128 on the
@@ -94,6 +97,23 @@ complete titles is new-concept material or owner-gated.
 
 Arc summaries with their PR trails; per-slice narrative lives in the
 PR bodies and `.sessions/` cards.
+
+- **Underroot arc** (2026-07-16, PRs #155–#164 + slice 11 = the closer,
+  draft-parked under the 2026-07-16 landing wall — **pending owner
+  playtest + landing clicks**): the owner-picked (NEXT-MENU-2026-07-15
+  §A2) NDS dual-screen burrow-colony survival — a meadow you can only
+  watch and time (top) and a stylus-dug burrow cross-section (bottom),
+  winter survivable only if the drawn tunnels banked enough. Eleven
+  slices: dual-screen skeleton → meadow patches → emergent forager
+  pathing → granaries → nurseries → hawk predation → seasons/year clock
+  → winter survival + the survival score (the marquee) → EEPROM best →
+  seed dial + balance → synthesized PSG audio + v1.0 polish (three cues:
+  forager return, hawk cry, winter toll + a per-season ambience drone).
+  Determinism-first throughout — every sim quantity a pure
+  `f(seed, season, index)` + dig plan, mirrored line-for-line in
+  `tools/check-underroot.py` and committed-plan-proven; 7 headless
+  proofs on CI `nds-underroot-build`, every slice strictly additive on
+  the telemetry mailbox (no earlier index moves). Table row 12.
 
 - **Ops + decision-surface day** (2026-07-15 → 16, PRs #142–#151):
   Wickroad growth cuts 1–5 #142–#146 (v0.6 — table row 11) and the

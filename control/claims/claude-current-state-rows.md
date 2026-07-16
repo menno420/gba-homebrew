@@ -1,0 +1,1 @@
+- `claude/current-state-rows` · **current-state row reconcile** · docs/current-state.md, control/status.md · 2026-07-16

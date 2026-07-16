@@ -13,6 +13,10 @@
 >
 > Row-level reconcile 2026-07-15 against docs/RELEASES.md +
 > dist/README.md at HEAD (post-#146).
+>
+> Row-level reconcile 2026-07-16 against the live GitHub PR list at
+> HEAD `d38887c` (post-#151): In-flight row resolved, ledger carried
+> through #151.
 
 ## Stability baseline
 
@@ -76,18 +80,31 @@ complete titles is new-concept material or owner-gated.
 
 ## In flight
 
-- [NEXT-MENU-2026-07-15.md](NEXT-MENU-2026-07-15.md) — owner decision menu for the next arc (seven lettered options, bolded recommendation); this slice's own PR.
-- Nothing else: the live open-PR list at HEAD (2026-07-15, post-#146) is
-  empty apart from this reconcile slice's own PR. (The Tiltstone
-  growth stack #92–#97 landed and was packaged by the ORDER 006 repin
-  #134; PR #85 was closed unmerged on 2026-07-14, long superseded on
-  main by #109 → the #130 arcade-refresh → #134.)
+- Nothing at HEAD apart from this reconcile slice's own PR (#152): the
+  live open-PR list (fetched 2026-07-16) is otherwise empty.
+  [NEXT-MENU-2026-07-15.md](NEXT-MENU-2026-07-15.md) — the owner
+  decision menu previously listed here as an open slice — **merged as
+  #150** (`588aa4e`, 2026-07-15T21:42:05Z) and now awaits the owner's
+  letter (in-doc recommendation: B1). (The Tiltstone growth stack
+  #92–#97 landed and was packaged by the ORDER 006 repin #134; PR #85
+  was closed unmerged on 2026-07-14, long superseded on main by #109 →
+  the #130 arcade-refresh → #134.)
 
 ## Recently shipped (newest first)
 
 Arc summaries with their PR trails; per-slice narrative lives in the
 PR bodies and `.sessions/` cards.
 
+- **Ops + decision-surface day** (2026-07-15 → 16, PRs #142–#151):
+  Wickroad growth cuts 1–5 #142–#146 (v0.6 — table row 11) and the
+  current-state reconcile #147 (`0048a5d`), then: merge-automation
+  verification probe #148 (`150abf1`, merged 2026-07-15T14:15:47Z);
+  Pages deploy workflow #149 (`872627d`, merged 2026-07-15T21:28:17Z —
+  `.github/workflows/deploy-pages.yml` publishes `dist/web/` only;
+  go-live still awaits one owner Settings click); owner decision menu
+  #150 (`588aa4e`, merged 2026-07-15T21:42:05Z); coordinator ender
+  heartbeat #151 (`d38887c`, merged 2026-07-16T00:53:41Z,
+  `control/status.md` only).
 - **Arcade refresh** (2026-07-14, this slice): `dist/web/` +
   `dist/releases/` repinned at HEAD (Undertow v1.5, Drift Garden v1.4,
   arcade v1.2), this ledger rewritten, served claims pruned.

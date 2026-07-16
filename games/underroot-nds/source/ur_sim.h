@@ -113,6 +113,22 @@ uint32_t ur_patch_total(uint32_t seed, uint32_t season);
 // the host mirror recomputes the whole store bit-for-bit.
 #define UR_GRAN_CAP 4                        // food units one granary cell banks
 
+// --- nurseries + population (slice 5) --------------------------------------
+// The arc doc's slice-5 decision: a THIRD stylus verb designates dug cells
+// NURSERY (hold L + tap a tunnel cell), and connected nurseries convert the
+// granary-banked food (slice 4's store) into a POPULATION of new foragers on a
+// pure, bounded schedule. Broodkeeping inherits the same connect-or-waste
+// graph: a nursery cell broods only if it is DUG, DESIGNATED, and CONNECTED
+// back to the mouth (finite ur_dig_dist) — a disconnected nursery pocket
+// broods ZERO, exactly as an unreachable granary banks nothing. Each connected
+// nursery can brood UR_NURS_BROOD foragers, and raising one forager consumes
+// UR_FOOD_PER_ANT banked food; so the population is
+// min(connected*brood, store/food_per_ant) capped at UR_POP_CAP. Pure
+// integers, so the host mirror recomputes the whole population bit-for-bit.
+#define UR_POP_CAP      8   /* hard bound on raised foragers */
+#define UR_FOOD_PER_ANT 2   /* banked food consumed to raise one forager */
+#define UR_NURS_BROOD   3   /* foragers one connected nursery can brood */
+
 // --- pure hash (identical to gl_hash) --------------------------------------
 uint32_t ur_hash(uint32_t a, uint32_t b);
 
@@ -186,6 +202,33 @@ uint32_t ur_reachable_food(const uint8_t grid[UR_CELLS], uint32_t seed, uint32_t
 uint32_t ur_store(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
                   uint32_t seed, uint32_t season);
 
+// --- nurseries + population (slice 5) --------------------------------------
+// Initialise a fresh nursery designation layer: nothing designated. (Mirrors
+// ur_fresh_gran; nurseries reuse the same parallel 0/1 layer type as gran.)
+void ur_fresh_nurs(uint8_t nurs[UR_CELLS]);
+// Designate a DUG cell a nursery. Returns 1 iff it changed (was an
+// undesignated dug cell), 0 for a soil cell (only dug cells hold a nursery),
+// an already-designated cell, or an out-of-bounds cell. Idempotent + monotone,
+// mirroring ur_designate; `nurs` is a parallel 0/1 designation layer over the
+// dig grid (a nursery cell stays a normal dug cell for pathing/connectivity).
+uint32_t ur_nurse(const uint8_t grid[UR_CELLS], uint8_t nurs[UR_CELLS],
+                  uint32_t col, uint32_t row);
+// Count of DESIGNATED nursery cells that are also dug (total placed,
+// reachable or not).
+uint32_t ur_nurs_count(const uint8_t grid[UR_CELLS], const uint8_t nurs[UR_CELLS]);
+// Count of designated nursery cells CONNECTED to the mouth (finite
+// ur_dig_dist — the same reachability the burrow BFS defines). Unreachable
+// designated cells are excluded: they brood nothing.
+uint32_t ur_nurs_connected(const uint8_t grid[UR_CELLS], const uint8_t nurs[UR_CELLS]);
+// The colony population: banked food converted to foragers by the connected
+// nurseries, = min(connected*UR_NURS_BROOD, store/UR_FOOD_PER_ANT) capped at
+// UR_POP_CAP. Pure f(dig plan, gran plan, nurs plan, seed, season).
+uint32_t ur_pop(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season);
+// The banked food that population consumes = ur_pop * UR_FOOD_PER_ANT.
+uint32_t ur_pop_food(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                     const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season);
+
 // --- telemetry mailbox (ELF-exported; read by tools/nds-headless-check.py) -
 #define UR_T_MAGIC0 0    // 0x554E4452 'UNDR'
 #define UR_T_MAGIC1 1    // 0x524F4F54 'ROOT'
@@ -211,7 +254,11 @@ uint32_t ur_store(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
 #define UR_T_GRANCON 21  // designated granary cells connected to the mouth (slice 4)
 #define UR_T_CAP 22      // total granary capacity (GRANCON*UR_GRAN_CAP; slice 4)
 #define UR_T_STORE 23    // banked store = min(reachable food, capacity) (slice 4)
-#define UR_T_SPARE 24    // 0
-#define UR_T_WORDS 25
+#define UR_T_NURSN 24    // designated nursery cells (dug), total (slice 5)
+#define UR_T_NURSCON 25  // designated nursery cells connected to the mouth (slice 5)
+#define UR_T_POP 26      // population = min(nurscon*brood, store/food_per_ant) capped (slice 5)
+#define UR_T_POPFOOD 27  // banked food that population consumes (POP*UR_FOOD_PER_ANT) (slice 5)
+#define UR_T_SPARE 28    // 0
+#define UR_T_WORDS 29
 
 #endif // UR_SIM_H

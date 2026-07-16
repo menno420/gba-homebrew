@@ -68,6 +68,11 @@ UR_ROUTE_NONE = 0xFFFFFFFF            # no reachable patch / unreachable
 # --- granaries: the food store (slice 4; mirror ur_sim.h) ------------------
 UR_GRAN_CAP = 4                       # food units one granary cell banks
 
+# --- nurseries + population (slice 5; mirror ur_sim.h) ---------------------
+UR_POP_CAP = 8                        # hard bound on raised foragers
+UR_FOOD_PER_ANT = 2                   # banked food consumed to raise one forager
+UR_NURS_BROOD = 3                     # foragers one connected nursery can brood
+
 # --- food patches (top screen; slice 2; mirror ur_sim.h) -------------------
 UR_SCREEN_W = 256             # meadow width (px)
 UR_SCREEN_H = 192             # meadow height (px)
@@ -295,6 +300,61 @@ def ur_store(grid, gran, seed, season):
     return food if food < cap else cap
 
 
+# --- nurseries + population (slice 5; mirror ur_sim.c) ---------------------
+def ur_fresh_nurs():
+    return [0] * UR_CELLS
+
+
+def ur_nurse(grid, nurs, col, row):
+    # Designate a DUG cell a nursery; return 1 iff it changed. Only a dug cell
+    # can hold a nursery; idempotent + monotone (mirrors ur_designate). `nurs`
+    # is a parallel 0/1 designation layer over the dig grid.
+    if col < 0 or col >= UR_GRID_W or row < 0 or row >= UR_GRID_H:
+        return 0
+    i = row * UR_GRID_W + col
+    if grid[i] == 0:
+        return 0
+    changed = 1 if nurs[i] == 0 else 0
+    nurs[i] = 1
+    return changed
+
+
+def ur_nurs_count(grid, nurs):
+    # Designated nursery cells that are also dug (total placed).
+    return sum(1 for i in range(UR_CELLS) if nurs[i] and grid[i])
+
+
+def ur_nurs_connected(grid, nurs):
+    # Designated nursery cells CONNECTED to the mouth (finite ur_dig_dist — the
+    # same reachability the burrow BFS defines). Unreachable ones brood nothing.
+    n = 0
+    for r in range(UR_GRID_H):
+        for c in range(UR_GRID_W):
+            i = r * UR_GRID_W + c
+            if nurs[i] and grid[i] and ur_dig_dist(grid, c, r) != UR_ROUTE_NONE:
+                n += 1
+    return n
+
+
+def ur_pop(grid, gran, nurs, seed, season):
+    # The colony population: connected nurseries brood the banked store into new
+    # foragers = min(connected*UR_NURS_BROOD, store/UR_FOOD_PER_ANT) capped at
+    # UR_POP_CAP. Pure integer.
+    store = ur_store(grid, gran, seed, season)
+    ncon = ur_nurs_connected(grid, nurs)
+    brood = ncon * UR_NURS_BROOD
+    food = store // UR_FOOD_PER_ANT
+    pop = brood if brood < food else food
+    if pop > UR_POP_CAP:
+        pop = UR_POP_CAP
+    return pop
+
+
+def ur_pop_food(grid, gran, nurs, seed, season):
+    # The banked food that population consumes = ur_pop * UR_FOOD_PER_ANT.
+    return ur_pop(grid, gran, nurs, seed, season) * UR_FOOD_PER_ANT
+
+
 # --- the CI --touch dig script, mirrored (proof 3 anchor) ------------------
 # Each step is a bottom-LCD pixel the stylus is held at; the ROM digs the
 # cell under the stylus every held frame. Centre pixel of cell (c,r) is
@@ -318,6 +378,15 @@ CI_GRAN_PIXELS = [
     (8, 184),    # cell (0,11) — dug but DISCONNECTED -> banks nothing
 ]
 
+# The slice-5 nursery designations the CI replays (hold L + tap): one CONNECTED
+# dug cell and one DISCONNECTED dug cell (the isolated pocket). The connected
+# one broods; the disconnected one is counted in the placed total but broods
+# NOTHING (unreachable nurseries produce no population).
+CI_NURS_PIXELS = [
+    (168, 56),   # cell (10,3) dug+CONNECTED -> connected nursery
+    (8, 184),    # cell (0,11) dug but DISCONNECTED -> produces nothing
+]
+
 
 def ci_fixture():
     grid = ur_fresh_grid()
@@ -338,7 +407,19 @@ def ci_fixture():
     # UR_GRAN_CAP), reachable food = patch 4's amount; banked up to capacity.
     store = (ur_gran_count(grid, gran), ur_gran_connected(grid, gran),
              ur_gran_capacity(grid, gran), ur_store(grid, gran, UR_SEED, 0))
-    return _dug_total(grid), ur_burrow_size(grid), forage, store
+    # The population (slice 5): apply ur_nurse for each CI_NURS_PIXELS cell over
+    # the same dug+granary fixture — one connected nursery (10,3) and one in the
+    # isolated pocket (0,11). Connected nurseries brood the banked store into
+    # foragers on the pure bounded schedule.
+    nurs = ur_fresh_nurs()
+    for (tx, ty) in CI_NURS_PIXELS:
+        cell = ur_cell_of_touch(tx, ty)
+        assert cell is not None, f"CI nurs pixel {tx},{ty} out of bounds"
+        ur_nurse(grid, nurs, cell[0], cell[1])
+    pop = (ur_nurs_count(grid, nurs), ur_nurs_connected(grid, nurs),
+           ur_pop(grid, gran, nurs, UR_SEED, 0),
+           ur_pop_food(grid, gran, nurs, UR_SEED, 0))
+    return _dug_total(grid), ur_burrow_size(grid), forage, store, pop
 
 
 # --- proofs ----------------------------------------------------------------
@@ -700,14 +781,156 @@ def prove_granary():
     return checks
 
 
+def prove_nursery():
+    # The arc doc's slice-5 proof (for many inputs, not a replay):
+    #  1. ur_nurse only marks DUG cells, is idempotent + monotone (the placed
+    #     count never falls, re-designating is a no-op), and rejects soil /
+    #     out-of-bounds (mirrors ur_designate);
+    #  2. cross-layer consistency (the fourth consumer of the dug graph): the
+    #     connected-nursery count equals designated cells inside
+    #     ur_burrow_size's reachable set — broodkeeping reachability, storage
+    #     reachability and forager reachability are the ONE meaning of the dug
+    #     graph, and a DISCONNECTED nursery contributes ZERO population;
+    #  3. ur_pop == min(connected*UR_NURS_BROOD, store//UR_FOOD_PER_ANT) capped
+    #     at UR_POP_CAP — the food-bound, brood-bound and cap branches each
+    #     proven on a controlled grid;
+    #  4. emergence: on a fresh grid nothing is designated and the population
+    #     is 0.
+    checks = 0
+
+    # designation discipline: dug-only, idempotent, monotone, OOB reject; and
+    # the cross-layer connected-count guard (many plans)
+    for seed in range(300):
+        grid = ur_fresh_grid()
+        nurs = ur_fresh_nurs()
+        for step in range(24):
+            h = ur_hash(seed, step)
+            ur_dig(grid, h % UR_GRID_W, (h >> 8) % UR_GRID_H)
+        prev_placed = 0
+        for step in range(30):
+            h = ur_hash(seed, step + 77)
+            col, row = h % UR_GRID_W, (h >> 8) % UR_GRID_H
+            i = row * UR_GRID_W + col
+            dug_before = grid[i]
+            nurs_before = nurs[i]
+            changed = ur_nurse(grid, nurs, col, row)
+            if dug_before == 0:
+                assert changed == 0 and nurs[i] == 0, \
+                    "nurse marked a SOIL cell a nursery"
+            else:
+                assert changed == (1 if nurs_before == 0 else 0), \
+                    "nurse changed-flag wrong"
+                assert nurs[i] == 1, "nurse did not mark a dug cell"
+            assert ur_nurse(grid, nurs, col, row) == 0, \
+                "re-nurse not idempotent"
+            placed = ur_nurs_count(grid, nurs)
+            assert placed >= prev_placed, "placed nursery count fell"
+            prev_placed = placed
+            checks += 1
+        for col, row in ((-1, 0), (0, -1), (UR_GRID_W, 0), (0, UR_GRID_H)):
+            assert ur_nurse(grid, nurs, col, row) == 0, "OOB nursery accepted"
+        reachable = _bfs_all_dists(grid)          # cells reachable from mouth
+        placed_connected = sum(
+            1 for r in range(UR_GRID_H) for c in range(UR_GRID_W)
+            if nurs[r * UR_GRID_W + c] and (r * UR_GRID_W + c) in reachable)
+        assert ur_nurs_connected(grid, nurs) == placed_connected, \
+            "nurs_connected != designated cells in the burrow reachable set"
+        checks += 1
+
+    # emergence: a fresh grid raises no population
+    grid = ur_fresh_grid()
+    gran = ur_fresh_gran()
+    nurs = ur_fresh_nurs()
+    assert ur_nurs_count(grid, nurs) == 0 and ur_pop(grid, gran, nurs, UR_SEED, 0) == 0, \
+        "fresh grid raised population with nothing dug or designated"
+
+    # (a) DISCONNECTED nursery broods nothing: build a connected shaft with two
+    # granaries (cap 8 >= reachable food 6, so store 6) and one connected
+    # nursery (brood 3, store//FOOD_PER_ANT = 3 -> pop 3); a second nursery in
+    # an ISOLATED pocket leaves the connected count and the population unchanged.
+    for r in range(1, 4):
+        ur_dig(grid, UR_ENTRANCE_COL, r)          # shaft to patch 4's drop cell
+    assert ur_designate(grid, gran, UR_ENTRANCE_COL, 2) == 1
+    assert ur_designate(grid, gran, UR_ENTRANCE_COL, 3) == 1
+    assert ur_store(grid, gran, UR_SEED, 0) == 6, "shaft store drifted"
+    assert ur_nurse(grid, nurs, UR_ENTRANCE_COL, 1) == 1
+    assert ur_nurs_connected(grid, nurs) == 1
+    pop_before = ur_pop(grid, gran, nurs, UR_SEED, 0)
+    assert pop_before == 3, f"connected nursery pop {pop_before} != 3"
+    ur_dig(grid, 0, UR_GRID_H - 1)                # isolated pocket cell
+    assert ur_nurse(grid, nurs, 0, UR_GRID_H - 1) == 1
+    assert ur_nurs_count(grid, nurs) == 2
+    assert ur_nurs_connected(grid, nurs) == 1, "disconnected nursery counted"
+    assert ur_pop(grid, gran, nurs, UR_SEED, 0) == pop_before, \
+        "disconnected nursery changed the population"
+    assert ur_pop_food(grid, gran, nurs, UR_SEED, 0) == pop_before * UR_FOOD_PER_ANT
+    checks += 1
+
+    # (b)/(c)/(d) the three ur_pop branches on a FULL-dug grid: every cell dug
+    # and connected, reachable food == the whole meadow haul (34), so
+    # store == min(34, granary capacity) and every designated nursery is
+    # connected — the store and the connected-nursery count are dialled exactly.
+    full = ur_fresh_grid()
+    for i in range(UR_CELLS):
+        full[i] = 1
+    assert ur_burrow_size(full) == UR_CELLS, "full grid not all connected"
+    assert ur_reachable_food(full, UR_SEED, 0) == ur_patch_total(UR_SEED, 0) == 34, \
+        "full grid should haul the whole meadow"
+
+    def full_layer(count):
+        # a 0/1 layer with `count` distinct non-entrance cells set; on the full
+        # grid every set cell is dug and connected.
+        layer = [0] * UR_CELLS
+        placed = 0
+        for i in range(UR_CELLS):
+            if i == UR_ENTRANCE_ROW * UR_GRID_W + UR_ENTRANCE_COL:
+                continue
+            if placed >= count:
+                break
+            layer[i] = 1
+            placed += 1
+        return layer
+
+    # (b) FOOD-BOUND: 1 granary (cap 4) -> store 4 -> food_ants 2; 3 nurseries
+    # -> brood 9 > 2. pop == store // UR_FOOD_PER_ANT == 2.
+    gran = full_layer(1)
+    nurs = full_layer(3)
+    assert ur_store(full, gran, UR_SEED, 0) == 4
+    assert ur_nurs_connected(full, nurs) == 3
+    pop = ur_pop(full, gran, nurs, UR_SEED, 0)
+    assert pop == 4 // UR_FOOD_PER_ANT == 2, f"food-bound pop {pop} != 2"
+    checks += 1
+
+    # (c) BROOD-BOUND: 2 granaries (cap 8) -> store 8 -> food_ants 4; 1 nursery
+    # -> brood 3 < 4. pop == UR_NURS_BROOD == 3.
+    gran = full_layer(2)
+    nurs = full_layer(1)
+    assert ur_store(full, gran, UR_SEED, 0) == 8
+    pop = ur_pop(full, gran, nurs, UR_SEED, 0)
+    assert pop == UR_NURS_BROOD == 3, f"brood-bound pop {pop} != {UR_NURS_BROOD}"
+    checks += 1
+
+    # (d) CAP: 5 granaries (cap 20) -> store 20 -> food_ants 10; 4 nurseries ->
+    # brood 12. min(12, 10) == 10, capped to UR_POP_CAP == 8.
+    gran = full_layer(5)
+    nurs = full_layer(4)
+    assert ur_store(full, gran, UR_SEED, 0) == 20
+    pop = ur_pop(full, gran, nurs, UR_SEED, 0)
+    assert pop == UR_POP_CAP == 8, f"cap pop {pop} != {UR_POP_CAP}"
+    checks += 1
+    return checks
+
+
 def main():
     hawk_checks = prove_hawk()
     dig_checks = prove_dig()
     patch_checks = prove_patches()
     forage_checks = prove_forage()
     granary_checks = prove_granary()
+    nursery_checks = prove_nursery()
     dug_total, connected, (route_i, route_d, route_len), \
-        (gran_n, gran_con, gran_cap, gran_store) = ci_fixture()
+        (gran_n, gran_con, gran_cap, gran_store), \
+        (nurs_n, nurs_con, pop, pop_food) = ci_fixture()
 
     # The lockstep anchor: these are the numbers rom-builds.yml asserts
     # against the ROM's ur_telemetry mailbox after replaying CI_DIG_PIXELS.
@@ -723,6 +946,13 @@ def main():
     # nothing (gran_con 1 < gran_n 2).
     assert (gran_n, gran_con, gran_cap, gran_store) == (2, 1, UR_GRAN_CAP, UR_GRAN_CAP), \
         f"CI fixture store drifted: {(gran_n, gran_con, gran_cap, gran_store)}"
+    # slice-5 population lockstep: 2 nursery cells placed (one connected on the
+    # east branch, one in the isolated pocket), 1 connected -> brood 3; the
+    # store (4) buys food_ants = 4//UR_FOOD_PER_ANT = 2, so pop = min(3, 2) = 2
+    # (FOOD-BOUND); popfood = 2*UR_FOOD_PER_ANT = 4. The disconnected nursery
+    # broods nothing (nurs_con 1 < nurs_n 2).
+    assert (nurs_n, nurs_con, pop, pop_food) == (2, 1, 2, 4), \
+        f"CI fixture population drifted: {(nurs_n, nurs_con, pop, pop_food)}"
 
     # Pinned hawk telemetry values the CI --assert-watch uses (printed so a
     # human editing the schedule can re-pin the workflow in the same PR).
@@ -750,10 +980,17 @@ def main():
           "idempotent/monotone, capacity == connected*{0} exact, disconnected "
           "granaries bank nothing (cross-layer == burrow BFS), store == "
           "min(reachable food, capacity)".format(UR_GRAN_CAP))
+    print(f"  nurseries: {nursery_checks} cases — nurse dug-only/idempotent/"
+          "monotone, connected == burrow BFS (disconnected nurseries brood "
+          f"nothing), pop == min(connected*{UR_NURS_BROOD}, "
+          f"store//{UR_FOOD_PER_ANT}) capped at {UR_POP_CAP} "
+          "(food-bound/brood-bound/cap branches)")
     print(f"  CI lockstep fixture: dug_total={dug_total} connected={connected} "
           f"forage=(patch {route_i}, dist {route_d}, route {route_len}) "
           f"store=(placed {gran_n}, connected {gran_con}, cap {gran_cap}, "
           f"banked {gran_store}) "
+          f"pop=(placed {nurs_n}, connected {nurs_con}, pop {pop}, "
+          f"popfood {pop_food}) "
           "(== the rom-builds.yml ur_telemetry asserts)")
     print(f"  pinned hawk telemetry (seed={hex(UR_SEED)}, season=0): "
           f"f100 on={pins[100][0]} x={pins[100][1]}, "

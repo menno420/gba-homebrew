@@ -291,3 +291,66 @@ uint32_t ur_store(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
     uint32_t cap = ur_gran_capacity(grid, gran);
     return food < cap ? food : cap;  // deposits bank up to capacity
 }
+
+// --- nurseries + population (slice 5) ---------------------------------------
+void ur_fresh_nurs(uint8_t nurs[UR_CELLS])
+{
+    for (int32_t i = 0; i < UR_CELLS; i++)
+        nurs[i] = 0;
+}
+
+uint32_t ur_nurse(const uint8_t grid[UR_CELLS], uint8_t nurs[UR_CELLS],
+                  uint32_t col, uint32_t row)
+{
+    if (col >= UR_GRID_W || row >= UR_GRID_H)
+        return 0;
+    uint32_t i = row * UR_GRID_W + col;
+    if (grid[i] == 0)                // only a DUG cell can hold a nursery
+        return 0;
+    uint32_t changed = nurs[i] == 0 ? 1u : 0u;
+    nurs[i] = 1;
+    return changed;
+}
+
+uint32_t ur_nurs_count(const uint8_t grid[UR_CELLS], const uint8_t nurs[UR_CELLS])
+{
+    uint32_t n = 0;
+    for (int32_t i = 0; i < UR_CELLS; i++)
+        n += (nurs[i] && grid[i]) ? 1u : 0u;
+    return n;
+}
+
+uint32_t ur_nurs_connected(const uint8_t grid[UR_CELLS], const uint8_t nurs[UR_CELLS])
+{
+    // A designated nursery broods only if it is CONNECTED to the mouth — the
+    // same reachability the burrow BFS defines (finite ur_dig_dist). Reusing
+    // ur_dig_dist keeps broodkeeping reachability, storage reachability and
+    // forager reachability the ONE meaning of the dug graph.
+    uint32_t n = 0;
+    for (int32_t r = 0; r < UR_GRID_H; r++)
+        for (int32_t c = 0; c < UR_GRID_W; c++)
+        {
+            int32_t i = r * UR_GRID_W + c;
+            if (nurs[i] && grid[i] && ur_dig_dist(grid, c, r) != UR_ROUTE_NONE)
+                n++;
+        }
+    return n;
+}
+
+uint32_t ur_pop(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season)
+{
+    uint32_t store = ur_store(grid, gran, seed, season);
+    uint32_t ncon  = ur_nurs_connected(grid, nurs);
+    uint32_t brood = ncon * UR_NURS_BROOD;
+    uint32_t food  = store / UR_FOOD_PER_ANT;
+    uint32_t pop   = brood < food ? brood : food;
+    if (pop > UR_POP_CAP) pop = UR_POP_CAP;
+    return pop;
+}
+
+uint32_t ur_pop_food(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                     const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season)
+{
+    return ur_pop(grid, gran, nurs, seed, season) * UR_FOOD_PER_ANT;
+}

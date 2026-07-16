@@ -35,7 +35,8 @@ static PrintConsole bottom_console;
 static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
                         int32_t hawk_y, uint32_t dug, uint32_t con,
                         const ur_patch_t *patches, uint32_t food_total,
-                        ur_forage_t forage, uint32_t store, uint32_t cap)
+                        ur_forage_t forage, uint32_t store, uint32_t cap,
+                        uint32_t pop)
 {
     consoleSelect(&top_console);
     consoleClear();
@@ -84,8 +85,11 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
     // Meadow food total (all patches) and the colony's BANKED store / granary
     // capacity (slice 4): the reachable haul banked up to the connected
     // granaries' capacity — unreachable granaries bank nothing.
-    printf("\x1b[18;0Hfood %lu  store %lu/%lu",
-           (unsigned long)food_total, (unsigned long)store, (unsigned long)cap);
+    // The connected nurseries convert the banked store into POP new foragers
+    // (slice 5): shown alongside the meadow food and the banked store.
+    printf("\x1b[18;0Hfood %lu  store %lu/%lu  pop %lu",
+           (unsigned long)food_total, (unsigned long)store, (unsigned long)cap,
+           (unsigned long)pop);
     // Forager route (slice 3): the nearest reachable patch and its round-trip
     // route length over the drawn tunnel graph, or a prompt to dig one open.
     if (forage.index != UR_ROUTE_NONE)
@@ -98,15 +102,17 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
 }
 
 // --- burrow (bottom screen): the tile-snap dig grid ------------------------
-static void draw_burrow(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS])
+static void draw_burrow(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                        const uint8_t nurs[UR_CELLS])
 {
     consoleSelect(&bottom_console);
     consoleClear();
     printf("\x1b[0;0HTHE BURROW  cross-section");
-    printf("\x1b[1;0H# soil . dug G granary M mouth");
+    printf("\x1b[1;0H#soil .dug Ggran Nnurs Mmouth");
 
     // The grid, one char per cell, drawn from console row 3, col 4. A
-    // designated granary cell (slice 4) reads 'G'; a plain dug cell '.'.
+    // designated nursery cell (slice 5) reads 'N'; a designated granary cell
+    // (slice 4) reads 'G'; a plain dug cell '.'.
     for (int r = 0; r < UR_GRID_H; r++)
     {
         printf("\x1b[%d;4H", r + 3);
@@ -116,6 +122,8 @@ static void draw_burrow(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELL
             char ch;
             if (c == UR_ENTRANCE_COL && r == UR_ENTRANCE_ROW)
                 ch = 'M';
+            else if (grid[idx] && nurs[idx])
+                ch = 'N';
             else if (grid[idx] && gran[idx])
                 ch = 'G';
             else
@@ -151,6 +159,11 @@ int main(void)
     // dig grid, nothing designated at boot.
     uint8_t gran[UR_CELLS];
     ur_fresh_gran(gran);
+    // The nursery designation layer (slice 5): a parallel 0/1 mask over the
+    // dig grid, nothing designated at boot. Connected nurseries convert the
+    // granary-banked store into population.
+    uint8_t nurs[UR_CELLS];
+    ur_fresh_nurs(nurs);
 
     // The meadow's food patches: pure f(seed, season, index), fixed for the
     // slice-2 pinned meadow (UR_SEED, spring). Rendered each frame; the count
@@ -200,10 +213,16 @@ int main(void)
                 touch_now = 1;
                 last_col = col;
                 last_row = row;
-                // The second stylus verb (slice 4): hold R and tap a DUG cell
-                // to designate it a GRANARY; a bare tap digs (slice 1). Both
-                // are idempotent, and both redraw the burrow on a change.
-                if (held & KEY_R)
+                // The stylus verbs: hold L and tap a DUG cell to designate it a
+                // NURSERY (slice 5); hold R for a GRANARY (slice 4); a bare tap
+                // digs (slice 1). All are idempotent, and all redraw the burrow
+                // on a change.
+                if (held & KEY_L)
+                {
+                    if (ur_nurse(grid, nurs, (uint32_t)col, (uint32_t)row))
+                        burrow_dirty = true;
+                }
+                else if (held & KEY_R)
                 {
                     if (ur_designate(grid, gran, col, row))
                         burrow_dirty = true;
@@ -228,14 +247,21 @@ int main(void)
         uint32_t gran_con = ur_gran_connected(grid, gran);
         uint32_t cap = ur_gran_capacity(grid, gran);
         uint32_t store = ur_store(grid, gran, UR_SEED, 0);
+        // The population (slice 5): connected nurseries brood the banked store
+        // into new foragers on a pure bounded schedule — pure f(dig plan, gran
+        // plan, nurs plan, seed, season).
+        uint32_t nurs_n = ur_nurs_count(grid, nurs);
+        uint32_t nurs_con = ur_nurs_connected(grid, nurs);
+        uint32_t pop = ur_pop(grid, gran, nurs, UR_SEED, 0);
+        uint32_t pop_food = ur_pop_food(grid, gran, nurs, UR_SEED, 0);
 
         // Top screen animates every frame (the hawk sweeps); the burrow is
         // redrawn only when a dig changed it (frame-budget discipline).
         draw_meadow(frame, hawk_on, hawk_x, hawk_y, dug, con, patches,
-                    food_total, forage, store, cap);
+                    food_total, forage, store, cap, pop);
         if (burrow_dirty)
         {
-            draw_burrow(grid, gran);
+            draw_burrow(grid, gran, nurs);
             burrow_dirty = false;
         }
 
@@ -257,6 +283,10 @@ int main(void)
         ur_telemetry[UR_T_GRANCON] = gran_con;
         ur_telemetry[UR_T_CAP] = cap;
         ur_telemetry[UR_T_STORE] = store;
+        ur_telemetry[UR_T_NURSN] = nurs_n;
+        ur_telemetry[UR_T_NURSCON] = nurs_con;
+        ur_telemetry[UR_T_POP] = pop;
+        ur_telemetry[UR_T_POPFOOD] = pop_food;
     }
 
     return 0;

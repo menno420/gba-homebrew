@@ -187,7 +187,7 @@ int main(void)
     ur_telemetry[UR_T_PATCHSUM] = food_total;
     ur_telemetry[UR_T_SPARE] = 0;
 
-    draw_burrow(grid, gran);
+    draw_burrow(grid, gran, nurs);
 
     while (1)
     {

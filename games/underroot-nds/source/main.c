@@ -43,6 +43,19 @@ static const char *season_name(uint32_t season)
     }
 }
 
+// The one-shot cue's short name for the HUD audio indicator (slice 11). The
+// console font has no note glyph, so the indicator uses a plain ASCII '~'.
+static const char *cue_name(uint32_t cue)
+{
+    switch (cue)
+    {
+    case UR_CUE_FORAGE: return "FORAGE";
+    case UR_CUE_HAWK:   return "HAWK";
+    case UR_CUE_WINTER: return "WINTER";
+    default:            return "";
+    }
+}
+
 static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
                         int32_t hawk_y, uint32_t dug, uint32_t con,
                         const ur_patch_t *patches, uint32_t food_total,
@@ -50,11 +63,12 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
                         uint32_t pop, uint32_t exposed, uint32_t lost,
                         uint32_t surv, uint32_t season, uint32_t day,
                         uint32_t abund, uint32_t sfood, uint32_t wstore,
-                        uint32_t wsurv, uint32_t wscore)
+                        uint32_t wsurv, uint32_t wscore,
+                        uint32_t last_cue, uint32_t cue_left)
 {
     consoleSelect(&top_console);
     consoleClear();
-    printf("\x1b[0;0HUNDERROOT  the meadow");
+    printf("\x1b[0;0HUNDERROOT v1.0 meadow");
     // The year clock (slice 7): the live season name + the day the frame clock
     // is on. Season advances SPRING->SUMMER->AUTUMN->WINTER on the pure counter.
     printf("\x1b[1;0H%s  day %lu  frame %lu",
@@ -127,6 +141,15 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
     // food to.
     printf("\x1b[22;0Hseason  abund %lu/%d  food %lu",
            (unsigned long)abund, UR_ABUND_UNIT, (unsigned long)sfood);
+    // The audio HUD (slice 11): flash the last cue while its sfx channel is
+    // still open ('~ FORAGE'/'~ HAWK'/'~ WINTER'), blank once it closes, and a
+    // steady season-ambience label (the drone tracks the year). Row 16 sits in
+    // the free band between the grass field and the status lines.
+    if (cue_left > 0 && last_cue != UR_CUE_NONE)
+        printf("\x1b[16;0H~ %-7s  amb %s", cue_name(last_cue),
+               season_name(season));
+    else
+        printf("\x1b[16;0H           amb %s", season_name(season));
     // The winter survival exam (slice 8): the store carried into winter (banked
     // minus the brood the nurseries ate), whether the colony SURVIVES the drain,
     // and the survival SCORE it chases. Zero meadow food in winter, so this is
@@ -142,7 +165,7 @@ static void draw_burrow(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELL
 {
     consoleSelect(&bottom_console);
     consoleClear();
-    printf("\x1b[0;0HTHE BURROW  cross-section");
+    printf("\x1b[0;0HTHE BURROW v1.0 cross-section");
     printf("\x1b[1;0H#soil .dug Ggran Nnurs Mmouth");
 
     // The grid, one char per cell, drawn from console row 3, col 4. A
@@ -269,6 +292,11 @@ int main(void)
     consoleInit(&bottom_console, 3, BgType_Text4bpp, BgSize_T_256x256, 31, 0,
                 false /* sub engine */, true);
 
+    // Slice 11: power the sound block. Every voice below is a hardware PSG/noise
+    // channel serviced by the default ARM7 core — synthesized square waves and
+    // noise, no sample data anywhere (the arc's original-assets rail).
+    soundEnable();
+
     uint8_t grid[UR_CELLS];
     ur_fresh_grid(grid);
     // The granary designation layer (slice 4): a parallel 0/1 mask over the
@@ -324,6 +352,32 @@ int main(void)
     save_ok = (uint32_t)ur_save_decode(save_blob, &best_score, &best_season,
                                        &best_seed);
 
+    // The synthesized-audio decision layer (slice 11): ARM9 bookkeeping only —
+    // the sound itself runs on the ARM7/hardware PSG + noise channels. The
+    // ambience drone free-runs on its channel between season retunes; the cue
+    // channel is opened for ur_cue_len frames then killed. Rising-edge trackers
+    // detect the game events that fire a one-shot cue: a forager home (the store
+    // grew), a hawk crossing BEGINNING, and the turn into winter. prev_hawk_on
+    // is seeded with the BOOT hawk state so a shadow already mid-crossing at
+    // power-on does not phantom-cry a fresh crossing at frame 1 — only a NEW
+    // crossing tolls the hawk cry. The ambience tier IS the live season.
+    uint32_t boot_season = ur_season_of_day(ur_day(0));
+    uint32_t prev_store = 0;
+    uint32_t prev_season = boot_season;
+    int prev_hawk_on = ur_hawk_active(0);
+    int cue_ch = -1;               // one-shot cue channel handle (-1 = silent)
+    uint32_t cue_left = 0;         // frames left on the cue channel
+    uint32_t last_cue = 0;         // last cue id fired
+    uint32_t cues = 0;             // cues fired this power-on
+    uint32_t cue_frame = 0;        // global frame of the last cue
+    uint32_t amb_tier = boot_season;   // ambience drone tier (== season)
+    int amb_ch = -1;               // drone channel handle (-1 = silent)
+    // Start the season ambience drone once at boot (spring at power-on); the
+    // FIFO is touched again only when the season changes in the loop below.
+    amb_ch = soundPlayPSG((DutyCycle)ur_amb_duty(amb_tier),
+                          (u16)ur_amb_freq(amb_tier),
+                          (u8)ur_amb_vol(amb_tier), 64);
+
     ur_telemetry[UR_T_MAGIC0] = 0x554E4452u;   // 'UNDR'
     ur_telemetry[UR_T_MAGIC1] = 0x524F4F54u;   // 'ROOT'
     ur_telemetry[UR_T_GW] = UR_GRID_W;
@@ -331,6 +385,7 @@ int main(void)
     ur_telemetry[UR_T_PATCHN] = UR_PATCH_COUNT;
     ur_telemetry[UR_T_PATCHSUM] = food_total;
     ur_telemetry[UR_T_SPARE] = 0;
+    ur_telemetry[UR_T_AMB] = amb_tier;         // boot ambience = spring
 
     draw_burrow(grid, gran, nurs);
 
@@ -459,6 +514,49 @@ int main(void)
         uint32_t wleft = ur_winter_leftover(wstore, wpop);
         uint32_t wscore = ur_winter_score(wstore, wpop);
 
+        // --- slice-11 audio (decision layer pure + mirrored; playback = the
+        // hardware PSG/noise channels via the ARM7 sound FIFO; nothing feeds
+        // back into the sim, so every pre-slice-11 pin holds) ---------------
+        // Close the one-shot cue channel when its frames run out.
+        if (cue_left > 0 && --cue_left == 0)
+        {
+            soundKill(cue_ch);
+            cue_ch = -1;
+        }
+        // Which cue does this frame want? Highest id wins the single channel
+        // (the id order IS the priority order — ur_sim.h). A forager home (the
+        // store grew), a hawk crossing BEGINNING, and the turn into winter —
+        // the winter toll outranks the hawk cry outranks the forager chirp.
+        uint32_t cue = UR_CUE_NONE;
+        if (store > prev_store)                            cue = UR_CUE_FORAGE;
+        if (hawk_on && !prev_hawk_on)                      cue = UR_CUE_HAWK;
+        if (season != prev_season && season == UR_WINTER)  cue = UR_CUE_WINTER;
+        if (cue != UR_CUE_NONE)
+        {
+            if (cue_ch >= 0)
+                soundKill(cue_ch);           // a new cue preempts
+            cue_ch = (ur_cue_duty(cue) == UR_CUE_ON_NOISE)
+                ? soundPlayNoise((u16)ur_cue_freq(cue), (u8)ur_cue_vol(cue), 64)
+                : soundPlayPSG((DutyCycle)ur_cue_duty(cue),
+                               (u16)ur_cue_freq(cue), (u8)ur_cue_vol(cue), 64);
+            cue_left = ur_cue_len(cue);
+            last_cue = cue;
+            cues++;
+            cue_frame = frame;
+        }
+        // The season ambience drone: retune it when the season changes. The FIFO
+        // is touched only on a season flip; between flips the hardware channel
+        // free-runs at zero ARM9 cost (the drone tier IS the live season).
+        if (season != prev_season)
+        {
+            amb_tier = season;
+            if (amb_ch >= 0)
+                soundKill(amb_ch);
+            amb_ch = soundPlayPSG((DutyCycle)ur_amb_duty(amb_tier),
+                                  (u16)ur_amb_freq(amb_tier),
+                                  (u8)ur_amb_vol(amb_tier), 64);
+        }
+
         // The best-score record commit (slice 9 + slice-10 winter gate): pressing
         // START banks the run's survival SCORE and season into the persistent
         // record — but ONLY when the live season is WINTER, and ONLY when it
@@ -490,7 +588,8 @@ int main(void)
         // redrawn only when a dig changed it (frame-budget discipline).
         draw_meadow(frame, hawk_on, hawk_x, hawk_y, dug, con, patches,
                     food_total, forage, store, cap, pop, exposed, lost, surv,
-                    season, day, abund, sfood, wstore, (uint32_t)wsurv, wscore);
+                    season, day, abund, sfood, wstore, (uint32_t)wsurv, wscore,
+                    last_cue, cue_left);
         // The persisted best-score record (slice 9): the headline number the
         // colony chases, carried across power cycles. START banks an improving
         // run. (Drawn after draw_meadow's consoleClear on the free right of the
@@ -570,6 +669,22 @@ int main(void)
         ur_telemetry[UR_T_FAIR] = seed_fair;
         ur_telemetry[UR_T_REFSCORE] = ref_score;
         ur_telemetry[UR_T_SPARE] = 0;
+        // The synthesized-audio decision layer (slice 11): the last cue id fired,
+        // the cumulative cue count, the frame the last cue fired, the frames the
+        // sfx channel still holds, and the live ambience tier (== the season).
+        // The ROM-side confirmation of the host mirror's prove_audio.
+        ur_telemetry[UR_T_ACUE] = last_cue;
+        ur_telemetry[UR_T_ACUES] = cues;
+        ur_telemetry[UR_T_ACUEFR] = cue_frame;
+        ur_telemetry[UR_T_ASFXL] = cue_left;
+        ur_telemetry[UR_T_AMB] = amb_tier;
+
+        // Advance the rising-edge trackers for the next frame's cue decision
+        // (read above BEFORE this update): the forager store, the hawk crossing
+        // state, and the season the ambience drone is tuned to.
+        prev_store = store;
+        prev_hawk_on = hawk_on;
+        prev_season = season;
     }
 
     return 0;

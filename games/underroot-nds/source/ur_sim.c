@@ -524,3 +524,44 @@ uint32_t ur_season_survivors(const uint8_t grid[UR_CELLS], const uint8_t gran[UR
     return ur_pop(grid, gran, nurs, seed, season)
          - ur_season_predation(grid, gran, nurs, seed, season);
 }
+
+// --- winter survival + the survival score (slice 8) -------------------------
+uint32_t ur_winter_store(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                         const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season)
+{
+    // The banked granary store, minus the food the nurseries drew to raise the
+    // population (slice 5). ur_pop <= store/UR_FOOD_PER_ANT, so the brood cost
+    // ur_pop_food = ur_pop*UR_FOOD_PER_ANT <= store — the guard never fires, but
+    // keep it so the unsigned subtraction provably never underflows.
+    uint32_t store = ur_store(grid, gran, seed, season);
+    uint32_t brood = ur_pop_food(grid, gran, nurs, seed, season);
+    return store >= brood ? store - brood : 0u;
+}
+
+uint32_t ur_winter_drain(uint32_t pop)
+{
+    // Each of the UR_WINTER_DAYS the colony eats pop * UR_CONSUME_PER_DAY.
+    return pop * (uint32_t)UR_WINTER_DAYS * (uint32_t)UR_CONSUME_PER_DAY;
+}
+
+int ur_winter_survives(uint32_t store, uint32_t pop)
+{
+    // Pop is constant across the drain (winter grows no new brood — abundance is
+    // zero), so the store falls monotonically and "never negative across all
+    // days" reduces to "covers the whole drain".
+    return store >= ur_winter_drain(pop) ? 1 : 0;
+}
+
+uint32_t ur_winter_leftover(uint32_t store, uint32_t pop)
+{
+    return ur_winter_survives(store, pop) ? store - ur_winter_drain(pop) : 0u;
+}
+
+uint32_t ur_winter_score(uint32_t store, uint32_t pop)
+{
+    // Starved out -> 0. Survived -> surviving_pop*1000 + leftover_store; a
+    // survived winter keeps its foragers, so surviving_pop == pop.
+    if (!ur_winter_survives(store, pop))
+        return 0u;
+    return pop * 1000u + ur_winter_leftover(store, pop);
+}

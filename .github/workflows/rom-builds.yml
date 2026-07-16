@@ -2660,7 +2660,7 @@ jobs:
             --frames 300 --shot 120:ur-boot-120.png --shot 240:ur-boot-240.png \
             --require-distinct \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:38 \
+            --watch t:ur_telemetry:44 \
             --watch-log ur-boot-trace.csv \
             --assert-watch 250:t:0:eq:0x554E4452 \
             --assert-watch 250:t:1:eq:0x524F4F54 \
@@ -2686,7 +2686,19 @@ jobs:
             --assert-watch 250:t:33:eq:0 \
             --assert-watch 250:t:34:eq:2 \
             --assert-watch 250:t:35:eq:0 \
-            --assert-watch 250:t:36:eq:0
+            --assert-watch 250:t:36:eq:0 \
+            --assert-watch 250:t:37:eq:0 \
+            --assert-watch 250:t:38:eq:0 \
+            --assert-watch 250:t:39:eq:0 \
+            --assert-watch 250:t:42:eq:0
+      # Slice 8 asserts the companion "no winter exam until there is a colony":
+      # with nothing dug there is no store and no forager, so the winter store is
+      # 0 (t[37]=0), no forager carries into winter (t[38]=0), winter demands
+      # nothing (t[39]=0) and the survival SCORE is 0 (t[42]=0) — a colony that
+      # never grew banks nothing forward. The marquee proof 4 below drives a
+      # survivor plan that clears winter with a positive score and a too-small
+      # plan that starves. (WSURV t[40] is a vacuous 1 for an empty colony —
+      # nothing to starve — so the meaningful zeros are asserted, not the flag.)
       # Proof 2 — the stylus digs a drawn tunnel (the exact host<->ROM
       # lockstep, offset-free): --touch replays CI_DIG_PIXELS from
       # check-underroot.py — a shaft down from the mouth, an east branch,
@@ -2763,7 +2775,7 @@ jobs:
             --keys 200-210:L --touch 200-210:168,56 \
             --keys 215-225:L --touch 215-225:8,184 \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:38 \
+            --watch t:ur_telemetry:44 \
             --assert-watch 190:t:0:eq:0x554E4452 \
             --assert-watch 190:t:8:eq:7 \
             --assert-watch 190:t:9:eq:6 \
@@ -2798,7 +2810,19 @@ jobs:
             --assert-watch 260:t:33:eq:6 \
             --assert-watch 260:t:34:eq:2 \
             --assert-watch 260:t:35:eq:2 \
-            --assert-watch 260:t:36:eq:0
+            --assert-watch 260:t:36:eq:0 \
+            --assert-watch 260:t:37:eq:0 \
+            --assert-watch 260:t:38:eq:0 \
+            --assert-watch 260:t:39:eq:0 \
+            --assert-watch 260:t:42:eq:0
+      # Slice 8 winter lockstep on this shallow plan: the whole colony (pop 2) is
+      # caught by the hawks on the surface-hugging shaft (season survivors 0), so
+      # NO forager carries into winter (t[38]=0) and the store is fully drawn to
+      # brood (store 4 == popfood 4 -> winter store 0, t[37]=0). A colony already
+      # lost to the meadow demands no winter food (t[39]=0) and SCORES 0
+      # (t[42]=0) — the same (wstore 0, wpop 0, drain 0, score 0)
+      # check-underroot.py's ci_fixture() computes and prove_winter() proves. The
+      # marquee proof 4 below drives a DEEP-banked survivor that scores.
       # Proof 3 — the year clock across a whole simulated year (slice 7). No
       # --touch: the season/day counter is a pure function of the frame, so an
       # undug run still marches SPRING -> SUMMER -> AUTUMN -> WINTER as the frame
@@ -2823,7 +2847,7 @@ jobs:
             --shot 3072:ur-year-autumn.png \
             --shot 3800:ur-year-winter.png \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:38 \
+            --watch t:ur_telemetry:44 \
             --assert-watch 400:t:0:eq:0x554E4452 \
             --assert-watch 400:t:3:eq:0 \
             --assert-watch 400:t:31:ge:1 \
@@ -2841,6 +2865,83 @@ jobs:
             --assert-watch 3800:t:31:ge:14 \
             --assert-watch 3800:t:32:eq:0 \
             --assert-watch 3800:t:34:eq:1
+      # Proof 4 — THE MARQUEE (slice 8): a committed survivor dig plan clears
+      # winter and a deliberately-too-small plan STARVES, both predicted exactly
+      # host-side (check-underroot.py prove_winter + marquee_fixture) and
+      # confirmed here in ROM telemetry. ONE deterministic replay shows the SAME
+      # colony flip from starve to survive as the store grows: --touch digs a
+      # row-1 corridor (cols 4..13, opening all six spring patches -> reachable
+      # haul 34), designates two connected nurseries (cols 11,12 -> brood 6), then
+      # THREE granaries (cols 4,5,6). At that point (frame 310, settled) the
+      # colony is fully grown — pop 6 (t[26]), 2 survive the spring hawks
+      # (t[36]=2) — but under-granaried: store capped at 12 (t[23], cap 3*4), and
+      # after the nurseries drew their brood (pop_food 12) the winter store is 0
+      # (t[37]). Winter demands 2 survivors * 2 days * 1 = 4 (t[39]) > 0, so the
+      # colony STARVES: t[40]=0, SCORE t[42]=0. Then three MORE granaries (cols
+      # 7,9,13) are banked (monotone — digging/designating only adds): by frame
+      # 390 the store is 24 (t[23], cap 6*4), the winter store is 24-12 = 12
+      # (t[37]) which covers the drain 4 with 8 to spare (t[41]=8), so the SAME
+      # colony now SURVIVES: t[40]=1, SCORE = 2 survivors * 1000 + 8 leftover =
+      # 2008 (t[42]). The exact (grancon, store, wstore, drain, survive, score)
+      # at each frame are what check-underroot.py's marquee_fixture computes and
+      # prove_winter asserts — host and ROM agree on the winter verdict integer
+      # for integer. All within SPRING (t[3]=0), so the economy is the spring
+      # unit and the boot-latency offset never leaves the season.
+      - name: 'proof 4 — MARQUEE winter survival: too-small plan STARVES (score 0), +3 granaries and the same colony SURVIVES (score 2008)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-winter-410.png \
+            --frames 410 --shot 300:ur-winter-starve.png \
+            --shot 380:ur-winter-survive.png \
+            --touch 60-70:72,24 \
+            --touch 75-85:88,24 \
+            --touch 90-100:104,24 \
+            --touch 105-115:120,24 \
+            --touch 120-130:136,24 \
+            --touch 135-145:152,24 \
+            --touch 150-160:168,24 \
+            --touch 165-175:184,24 \
+            --touch 180-190:200,24 \
+            --touch 195-205:216,24 \
+            --keys 210-220:L --touch 210-220:184,24 \
+            --keys 225-235:L --touch 225-235:200,24 \
+            --keys 240-250:R --touch 240-250:72,24 \
+            --keys 255-265:R --touch 255-265:88,24 \
+            --keys 270-280:R --touch 270-280:104,24 \
+            --keys 320-330:R --touch 320-330:120,24 \
+            --keys 335-345:R --touch 335-345:152,24 \
+            --keys 350-360:R --touch 350-360:216,24 \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:44 \
+            --assert-watch 310:t:0:eq:0x554E4452 \
+            --assert-watch 310:t:3:eq:0 \
+            --assert-watch 310:t:8:eq:11 \
+            --assert-watch 310:t:9:eq:11 \
+            --assert-watch 310:t:21:eq:3 \
+            --assert-watch 310:t:23:eq:12 \
+            --assert-watch 310:t:25:eq:2 \
+            --assert-watch 310:t:26:eq:6 \
+            --assert-watch 310:t:36:eq:2 \
+            --assert-watch 310:t:37:eq:0 \
+            --assert-watch 310:t:38:eq:2 \
+            --assert-watch 310:t:39:eq:4 \
+            --assert-watch 310:t:40:eq:0 \
+            --assert-watch 310:t:41:eq:0 \
+            --assert-watch 310:t:42:eq:0 \
+            --assert-watch 390:t:3:eq:0 \
+            --assert-watch 390:t:8:eq:11 \
+            --assert-watch 390:t:9:eq:11 \
+            --assert-watch 390:t:21:eq:6 \
+            --assert-watch 390:t:23:eq:24 \
+            --assert-watch 390:t:25:eq:2 \
+            --assert-watch 390:t:26:eq:6 \
+            --assert-watch 390:t:36:eq:2 \
+            --assert-watch 390:t:37:eq:12 \
+            --assert-watch 390:t:38:eq:2 \
+            --assert-watch 390:t:39:eq:4 \
+            --assert-watch 390:t:40:eq:1 \
+            --assert-watch 390:t:41:eq:8 \
+            --assert-watch 390:t:42:eq:2008
       - name: upload Underroot ROM + proof screenshots
         uses: actions/upload-artifact@v4
         with:
@@ -2859,5 +2960,8 @@ jobs:
             ur-year-summer.png
             ur-year-autumn.png
             ur-year-winter.png
+            ur-winter-410.png
+            ur-winter-starve.png
+            ur-winter-survive.png
           if-no-files-found: error
           retention-days: 14

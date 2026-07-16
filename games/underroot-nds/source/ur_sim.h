@@ -187,6 +187,26 @@ uint32_t ur_patch_total(uint32_t seed, uint32_t season);
 #define UR_ABUND_AUTUMN 2
 #define UR_ABUND_WINTER 0
 
+// --- winter survival + the survival score (slice 8) ------------------------
+// The arc doc's Decision 3 + the slice-8 row (docs/arcs/UNDERROOT.md): the
+// MARQUEE exam. Winter is the terminal season the clock clamps to
+// (ur_season_of_day), and its meadow abundance is ZERO (UR_ABUND_WINTER) — no
+// meadow food, so the colony lives or starves on what the drawn tunnels banked.
+// Winter DRAINS the banked store: each of the UR_WINTER_DAYS the colony eats
+// pop * UR_CONSUME_PER_DAY, where `pop` is the foragers carried into winter (the
+// slice-7 season survivors) and `store` is the food banked in reachable
+// granaries AFTER the nurseries drew their brood cost (slice 5's
+// ur_pop_food — raising each forager consumes UR_FOOD_PER_ANT banked food, so
+// what winter inherits is the store minus what the colony already ate to grow).
+// The colony SURVIVES iff the running store never goes negative across the
+// whole winter (with pop constant this is exactly store >= pop*days*consume),
+// and the headline SCORE is surviving_pop*1000 + leftover_store, or 0 if
+// starved out — a gradient that rewards banking a MARGIN, not just barely
+// clearing. Pure integers throughout, so the host mirror recomputes the whole
+// winter exam bit-for-bit and CI can PROVE a scripted dig plan survives (or
+// starves) winter, deterministically, host-side AND in the ROM.
+#define UR_CONSUME_PER_DAY 1   /* banked food one forager eats per winter day */
+
 // --- pure hash (identical to gl_hash) --------------------------------------
 uint32_t ur_hash(uint32_t a, uint32_t b);
 
@@ -343,6 +363,30 @@ uint32_t ur_season_predation(const uint8_t grid[UR_CELLS], const uint8_t gran[UR
 uint32_t ur_season_survivors(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
                              const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season);
 
+// --- winter survival + the survival score (slice 8) ------------------------
+// The store carried INTO winter: the banked granary store (slice 4) minus the
+// food the nurseries drew to raise the population (slice 5's ur_pop_food). Since
+// ur_pop <= store/UR_FOOD_PER_ANT, the brood cost never exceeds the store, so
+// this is a non-negative pure f(dig plan, gran plan, nurs plan, seed, season).
+// (Evaluated at the harvest season; winter's own abundance is 0, so the store a
+// colony carries in is what it banked over the growing seasons.)
+uint32_t ur_winter_store(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                         const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season);
+// The total food winter demands: `pop` foragers each eat UR_CONSUME_PER_DAY for
+// each of the UR_WINTER_DAYS = pop * UR_WINTER_DAYS * UR_CONSUME_PER_DAY. Pure.
+uint32_t ur_winter_drain(uint32_t pop);
+// Does the colony survive winter? With pop constant across the drain, the store
+// falls monotonically, so "the running store never goes negative" is exactly
+// store >= ur_winter_drain(pop). Returns 1 (survives) / 0 (starves).
+int ur_winter_survives(uint32_t store, uint32_t pop);
+// The store LEFT after winter: store - drain if the colony survives, else 0 (a
+// starved colony banks nothing forward).
+uint32_t ur_winter_leftover(uint32_t store, uint32_t pop);
+// The survival SCORE (the headline number, arc doc Decision 3): if the colony
+// survives, surviving_pop*1000 + leftover_store (surviving_pop == pop, since a
+// survived winter keeps its foragers); 0 if starved out. Pure f(store, pop).
+uint32_t ur_winter_score(uint32_t store, uint32_t pop);
+
 // --- telemetry mailbox (ELF-exported; read by tools/nds-headless-check.py) -
 #define UR_T_MAGIC0 0    // 0x554E4452 'UNDR'
 #define UR_T_MAGIC1 1    // 0x524F4F54 'ROOT'
@@ -381,7 +425,13 @@ uint32_t ur_season_survivors(const uint8_t grid[UR_CELLS], const uint8_t gran[UR
 #define UR_T_HAWKPASS 34 // hawk sweeps that cross the live season (slice 7)
 #define UR_T_SPRED 35    // per-hawk-pass season predation = min(exposed*passes, pop) (slice 7)
 #define UR_T_SSURV 36    // foragers surviving the season = pop - season predation (slice 7)
-#define UR_T_SPARE 37    // 0
-#define UR_T_WORDS 38
+#define UR_T_WSTORE 37   // store carried into winter = banked store - brood cost (slice 8)
+#define UR_T_WPOP 38     // foragers carried into winter (== season survivors) (slice 8)
+#define UR_T_WDRAIN 39   // total winter food demand = wpop*WINTER_DAYS*CONSUME (slice 8)
+#define UR_T_WSURV 40    // survives winter? wstore >= wdrain -> 1/0 (slice 8)
+#define UR_T_WLEFT 41    // store left after winter = wstore - wdrain if survive else 0 (slice 8)
+#define UR_T_WSCORE 42   // survival score = surviving_pop*1000 + leftover (0 if starved) (slice 8)
+#define UR_T_SPARE 43    // 0
+#define UR_T_WORDS 44
 
 #endif // UR_SIM_H

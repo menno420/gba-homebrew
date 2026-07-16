@@ -94,6 +94,9 @@ UR_ABUND_SUMMER = 6
 UR_ABUND_AUTUMN = 2
 UR_ABUND_WINTER = 0
 
+# --- winter survival + the survival score (slice 8; mirror ur_sim.h) -------
+UR_CONSUME_PER_DAY = 1               # banked food one forager eats per winter day
+
 # --- food patches (top screen; slice 2; mirror ur_sim.h) -------------------
 UR_SCREEN_W = 256             # meadow width (px)
 UR_SCREEN_H = 192             # meadow height (px)
@@ -512,6 +515,37 @@ def ur_season_survivors(grid, gran, nurs, seed, season):
             - ur_season_predation(grid, gran, nurs, seed, season))
 
 
+# --- winter survival + the survival score (slice 8; mirror ur_sim.c) -------
+def ur_winter_store(grid, gran, nurs, seed, season):
+    # The banked granary store minus the brood the nurseries drew (slice 5).
+    # ur_pop <= store/UR_FOOD_PER_ANT, so the brood cost never exceeds the store.
+    store = ur_store(grid, gran, seed, season)
+    brood = ur_pop_food(grid, gran, nurs, seed, season)
+    return store - brood if store >= brood else 0
+
+
+def ur_winter_drain(pop):
+    # Each of the UR_WINTER_DAYS the colony eats pop * UR_CONSUME_PER_DAY.
+    return pop * UR_WINTER_DAYS * UR_CONSUME_PER_DAY
+
+
+def ur_winter_survives(store, pop):
+    # Pop is constant across the drain (no winter brood), so "store never goes
+    # negative" reduces to "store covers the whole drain".
+    return 1 if store >= ur_winter_drain(pop) else 0
+
+
+def ur_winter_leftover(store, pop):
+    return store - ur_winter_drain(pop) if ur_winter_survives(store, pop) else 0
+
+
+def ur_winter_score(store, pop):
+    # 0 if starved; else surviving_pop*1000 + leftover (surviving_pop == pop).
+    if not ur_winter_survives(store, pop):
+        return 0
+    return pop * 1000 + ur_winter_leftover(store, pop)
+
+
 # --- the CI --touch dig script, mirrored (proof 3 anchor) ------------------
 # Each step is a bottom-LCD pixel the stylus is held at; the ROM digs the
 # cell under the stylus every held frame. Centre pixel of cell (c,r) is
@@ -595,7 +629,69 @@ def ci_fixture():
              ur_hawk_passes(UR_SPRING),
              ur_season_predation(grid, gran, nurs, UR_SEED, UR_SPRING),
              ur_season_survivors(grid, gran, nurs, UR_SEED, UR_SPRING))
-    return _dug_total(grid), ur_burrow_size(grid), forage, store, pop, pred, clock
+    # The winter survival exam (slice 8) on this same spring fixture: the whole
+    # colony (pop 2) is caught by the hawks on the shallow shaft (season
+    # survivors 0), so NO foragers carry into winter — wpop 0, drain 0, and with
+    # the store fully drawn down to brood (store 4 == popfood 4) the winter store
+    # is 0 too. A colony already lost to the meadow banks nothing forward and
+    # SCORES 0: the drawn plan must dig DEEP (survive predation) AND bank a store
+    # MARGIN to score, which the slice-8 marquee proves with a survivor plan.
+    wstore = ur_winter_store(grid, gran, nurs, UR_SEED, UR_SPRING)
+    wpop = ur_season_survivors(grid, gran, nurs, UR_SEED, UR_SPRING)
+    winter = (wstore, wpop, ur_winter_drain(wpop),
+              ur_winter_survives(wstore, wpop),
+              ur_winter_leftover(wstore, wpop),
+              ur_winter_score(wstore, wpop))
+    return (_dug_total(grid), ur_burrow_size(grid), forage, store, pop, pred,
+            clock, winter)
+
+
+# --- the slice-8 MARQUEE fixtures (host<->ROM anchor for the winter exam) ---
+# The arc doc's slice-8 headline proof: a committed SURVIVOR dig plan clears
+# winter and a deliberately-too-small plan STARVES, both predicted here and
+# confirmed in ROM telemetry (rom-builds.yml proof 4). Both plans dig the SAME
+# row-1 corridor (cols 4..13, opening all six spring patches so the reachable
+# haul is the full 34) and the SAME two connected nurseries (cols 11,12 -> brood
+# 6); they differ ONLY in how many granary cells are banked. The starve plan
+# banks 3 (capacity 12), the survivor 6 (capacity 24) — the identical colony,
+# one deliberately under-granaried. The ROM replays the survivor as an EXTENSION
+# of the starve (three more granaries added mid-run), so a single deterministic
+# replay shows the same colony flip from starve to survive as the store grows.
+MARQUEE_DIG = [(c, 1) for c in range(4, 14)]          # row-1 corridor cols 4..13
+MARQUEE_NURS = [(11, 1), (12, 1)]                     # 2 connected nurseries
+MARQUEE_GRAN_STARVE = [(4, 1), (5, 1), (6, 1)]        # 3 granaries -> cap 12
+MARQUEE_GRAN_EXTRA = [(7, 1), (9, 1), (13, 1)]        # +3 more    -> cap 24
+
+
+def _marquee_grids(gran_cells):
+    grid = ur_fresh_grid()
+    for (c, r) in MARQUEE_DIG:
+        ur_dig(grid, c, r)
+    gran = ur_fresh_gran()
+    for (c, r) in gran_cells:
+        ur_designate(grid, gran, c, r)
+    nurs = ur_fresh_nurs()
+    for (c, r) in MARQUEE_NURS:
+        ur_nurse(grid, nurs, c, r)
+    return grid, gran, nurs
+
+
+def marquee_fixture(gran_cells):
+    grid, gran, nurs = _marquee_grids(gran_cells)
+    store = ur_store(grid, gran, UR_SEED, UR_SPRING)
+    wstore = ur_winter_store(grid, gran, nurs, UR_SEED, UR_SPRING)
+    wpop = ur_season_survivors(grid, gran, nurs, UR_SEED, UR_SPRING)
+    return {
+        'dug': _dug_total(grid), 'con': ur_burrow_size(grid),
+        'grancon': ur_gran_connected(grid, gran),
+        'nurscon': ur_nurs_connected(grid, nurs),
+        'store': store, 'pop': ur_pop(grid, gran, nurs, UR_SEED, UR_SPRING),
+        'ssurv': wpop, 'wstore': wstore,
+        'wpop': wpop, 'wdrain': ur_winter_drain(wpop),
+        'wsurv': ur_winter_survives(wstore, wpop),
+        'wleft': ur_winter_leftover(wstore, wpop),
+        'wscore': ur_winter_score(wstore, wpop),
+    }
 
 
 # --- proofs ----------------------------------------------------------------
@@ -1434,6 +1530,138 @@ def prove_clock():
     return checks
 
 
+def prove_winter():
+    # The arc doc's slice-8 proof (Decision 3 + the slice-8 row): winter drains
+    # the banked store by the surviving foragers' appetite, the colony survives
+    # iff the store never runs out, and SCORE = surviving_pop*1000 + leftover.
+    #  1. the DRAIN recurrence — the pure day-by-day store fall (store minus
+    #     pop*CONSUME each of the WINTER_DAYS) never going negative is EXACTLY
+    #     store >= ur_winter_drain(pop) (pop constant -> monotone fall), for
+    #     every (store, pop); leftover == the final running store on survival;
+    #  2. the SCORE gradient — 0 iff starved, else pop*1000 + leftover; monotone
+    #     non-decreasing in the store (banking more never lowers the outcome) and
+    #     survival is a single threshold in the store;
+    #  3. the WIRING — ur_winter_store == banked store - brood cost, always
+    #     >= 0 (the nurseries never draw more than the store holds), for a spread
+    #     of dig/gran/nurs plans;
+    #  4. the MARQUEE — the committed survivor plan clears winter with a positive
+    #     score while the deliberately-too-small plan (same colony, fewer
+    #     granaries) STARVES to score 0.
+    checks = 0
+
+    # (1) the drain recurrence == the closed form, for every (store, pop) in a
+    # dense range spanning both regimes (store far below and far above the drain).
+    for pop in range(0, UR_POP_CAP + 3):
+        drain = ur_winter_drain(pop)
+        assert drain == pop * UR_WINTER_DAYS * UR_CONSUME_PER_DAY
+        for store in range(0, 64):
+            # simulate the day-by-day fall
+            s = store
+            ever_negative = False
+            for _ in range(UR_WINTER_DAYS):
+                s -= pop * UR_CONSUME_PER_DAY
+                if s < 0:
+                    ever_negative = True
+            survive_sim = 0 if ever_negative else 1
+            assert ur_winter_survives(store, pop) == survive_sim, \
+                f"winter survive {store},{pop} != day-by-day recurrence"
+            if survive_sim:
+                # the running store never went negative and ends at store-drain
+                assert s == store - drain
+                assert ur_winter_leftover(store, pop) == s
+                assert ur_winter_score(store, pop) == pop * 1000 + s
+            else:
+                assert ur_winter_leftover(store, pop) == 0
+                assert ur_winter_score(store, pop) == 0
+            checks += 1
+
+    # (2) the score gradient: monotone non-decreasing in the store, and survival
+    # is a single upward threshold (once you can afford winter, more only helps).
+    for pop in range(0, UR_POP_CAP + 1):
+        prev_score = -1
+        seen_survive = False
+        for store in range(0, 64):
+            sc = ur_winter_score(store, pop)
+            assert sc >= prev_score, "score fell as the store grew"
+            prev_score = sc
+            sv = ur_winter_survives(store, pop)
+            if sv:
+                seen_survive = True
+            else:
+                assert not seen_survive, "survival flipped back off as store grew"
+            checks += 1
+        # a colony with foragers needs a strictly positive store to survive;
+        # a zero-forager colony survives any store vacuously but scores only the
+        # store it never had to spend (0 here, since store 0 with pop 0).
+        assert ur_winter_survives(ur_winter_drain(pop), pop) == 1
+        if pop > 0:
+            assert ur_winter_survives(ur_winter_drain(pop) - 1, pop) == 0
+
+    # (3) the wiring: ur_winter_store == max(0, store - pop_food) and is never
+    # negative, across a spread of plans (full grid + row-1 corridors with
+    # varying granary/nursery layers), for every season.
+    full = ur_fresh_grid()
+    for i in range(UR_CELLS):
+        full[i] = 1
+    corridor = ur_fresh_grid()
+    for c in range(4, 14):
+        ur_dig(corridor, c, 1)
+    for grid in (full, corridor):
+        for gcount in (0, 2, 4, 8):
+            gran = ur_fresh_gran()
+            placed = 0
+            for r in range(UR_GRID_H):
+                for c in range(UR_GRID_W):
+                    if placed >= gcount:
+                        break
+                    if ur_designate(grid, gran, c, r):
+                        placed += 1
+            for ncount in (0, 1, 2):
+                nurs = ur_fresh_nurs()
+                nplaced = 0
+                for r in range(UR_GRID_H):
+                    for c in range(UR_GRID_W):
+                        if nplaced >= ncount:
+                            break
+                        if ur_nurse(grid, nurs, c, r):
+                            nplaced += 1
+                for season in range(UR_SEASONS):
+                    store = ur_store(grid, gran, UR_SEED, season)
+                    brood = ur_pop_food(grid, gran, nurs, UR_SEED, season)
+                    assert brood <= store, \
+                        f"brood {brood} exceeds store {store} (pop drew more than banked)"
+                    ws = ur_winter_store(grid, gran, nurs, UR_SEED, season)
+                    assert ws == store - brood, "winter store != banked - brood"
+                    assert ws >= 0
+                    checks += 1
+
+    # (4) the marquee: the committed survivor plan clears winter, the too-small
+    # plan (same corridor + nurseries, fewer granaries) starves.
+    starve = marquee_fixture(MARQUEE_GRAN_STARVE)
+    survive = marquee_fixture(MARQUEE_GRAN_EXTRA + MARQUEE_GRAN_STARVE)
+    # identical colony geometry (same dig, same connected nurseries, same pop)
+    assert starve['dug'] == survive['dug'] == len(MARQUEE_DIG) + 1  # +1 mouth
+    assert starve['con'] == survive['con'] == starve['dug']         # all connected
+    assert starve['nurscon'] == survive['nurscon'] == 2
+    assert starve['pop'] == survive['pop'] == 6
+    assert starve['ssurv'] == survive['ssurv'] == 2                 # 2 survive predation
+    # they differ ONLY in banked granaries -> store -> winter store
+    assert starve['grancon'] == 3 and survive['grancon'] == 6
+    assert starve['store'] == 12 and survive['store'] == 24
+    # the too-small plan starves: winter store 0 < drain 4 -> SURVIVE 0, SCORE 0
+    assert starve['wstore'] == 0 and starve['wdrain'] == 4
+    assert starve['wsurv'] == 0 and starve['wscore'] == 0
+    # the survivor clears winter with a margin: store 12 - drain 4 = 8 leftover,
+    # SCORE = 2 survivors * 1000 + 8 = 2008
+    assert survive['wstore'] == 12 and survive['wdrain'] == 4
+    assert survive['wsurv'] == 1 and survive['wleft'] == 8
+    assert survive['wscore'] == 2008
+    # the marquee contrast is exactly the banked margin: same colony, more store
+    assert survive['wscore'] > starve['wscore']
+    checks += 1
+    return checks, starve, survive
+
+
 def main():
     hawk_checks = prove_hawk()
     dig_checks = prove_dig()
@@ -1443,11 +1671,13 @@ def main():
     nursery_checks = prove_nursery()
     predation_checks = prove_predation()
     clock_checks = prove_clock()
+    winter_checks, marq_starve, marq_survive = prove_winter()
     dug_total, connected, (route_i, route_d, route_len), \
         (gran_n, gran_con, gran_cap, gran_store), \
         (nurs_n, nurs_con, pop, pop_food), \
         (exposed, lost, surv), \
-        (abund, sfood, hawk_pass, spred, ssurv) = ci_fixture()
+        (abund, sfood, hawk_pass, spred, ssurv), \
+        (w_store, w_pop, w_drain, w_surv, w_left, w_score) = ci_fixture()
 
     # The lockstep anchor: these are the numbers rom-builds.yml asserts
     # against the ROM's ur_telemetry mailbox after replaying CI_DIG_PIXELS.
@@ -1485,6 +1715,18 @@ def main():
     # ssurv 0) the rom-builds.yml ur_telemetry asserts at the settled dig frame.
     assert (abund, sfood, hawk_pass, spred, ssurv) == (UR_ABUND_SPRING, 6, 2, 2, 0), \
         f"CI fixture year clock drifted: {(abund, sfood, hawk_pass, spred, ssurv)}"
+    # slice-8 winter lockstep on the spring fixture: the whole colony (pop 2) is
+    # lost to the hawks on the shallow shaft (season survivors 0), so NO foragers
+    # carry into winter (wpop 0) and the store is fully drawn to brood (store 4 ==
+    # popfood 4 -> winter store 0). A colony already dead to the meadow demands no
+    # winter food (drain 0) and banks nothing forward (leftover 0), so it SCORES 0
+    # — the same (wstore 0, wpop 0, drain 0, leftover 0, score 0) the
+    # rom-builds.yml ur_telemetry asserts at the settled dig frame. (wsurv is a
+    # vacuous 1 here — an empty colony has nothing to starve — so the ROM proof
+    # asserts the meaningful zeros, not the flag; the marquee proof drives the
+    # non-vacuous survive/starve pair.)
+    assert (w_store, w_pop, w_drain, w_left, w_score) == (0, 0, 0, 0, 0), \
+        f"CI fixture winter drifted: {(w_store, w_pop, w_drain, w_left, w_score)}"
 
     # Pinned hawk telemetry values the CI --assert-watch uses (printed so a
     # human editing the schedule can re-pin the workflow in the same PR).
@@ -1530,6 +1772,27 @@ def main():
           "autumn<spring, winter=0 (season_food scales the haul), "
           "season_predation == min(exposed*passes, pop) (one-pass season == "
           "slice-6 snapshot)")
+    print(f"  winter exam: {winter_checks} cases — drain == pop*"
+          f"{UR_WINTER_DAYS}*{UR_CONSUME_PER_DAY}, the day-by-day store fall "
+          "never-negative == store>=drain (recurrence == closed form), score "
+          "0-if-starved else pop*1000+leftover (monotone in the store, single "
+          "survival threshold), winter store == banked-brood (>=0), and the "
+          f"MARQUEE: survivor clears winter (store {marq_survive['wstore']} - "
+          f"drain {marq_survive['wdrain']} -> SURVIVE, score "
+          f"{marq_survive['wscore']}) vs the too-small plan (store "
+          f"{marq_starve['wstore']} < drain {marq_starve['wdrain']} -> STARVE, "
+          f"score {marq_starve['wscore']})")
+    print(f"  slice-8 marquee fixtures (spring): STARVE=(grancon "
+          f"{marq_starve['grancon']}, store {marq_starve['store']}, pop "
+          f"{marq_starve['pop']}, ssurv {marq_starve['ssurv']}, wstore "
+          f"{marq_starve['wstore']}, drain {marq_starve['wdrain']}, surv "
+          f"{marq_starve['wsurv']}, score {marq_starve['wscore']})  "
+          f"SURVIVE=(grancon {marq_survive['grancon']}, store "
+          f"{marq_survive['store']}, pop {marq_survive['pop']}, ssurv "
+          f"{marq_survive['ssurv']}, wstore {marq_survive['wstore']}, drain "
+          f"{marq_survive['wdrain']}, surv {marq_survive['wsurv']}, leftover "
+          f"{marq_survive['wleft']}, score {marq_survive['wscore']}) "
+          "(== the rom-builds.yml proof-4 ur_telemetry asserts)")
     print(f"  CI lockstep fixture: dug_total={dug_total} connected={connected} "
           f"forage=(patch {route_i}, dist {route_d}, route {route_len}) "
           f"store=(placed {gran_n}, connected {gran_con}, cap {gran_cap}, "
@@ -1539,6 +1802,8 @@ def main():
           f"predation=(exposed {exposed}, lost {lost}, surv {surv}) "
           f"year=(abund {abund}/{UR_ABUND_UNIT}, sfood {sfood}, passes "
           f"{hawk_pass}, spred {spred}, ssurv {ssurv}) "
+          f"winter=(wstore {w_store}, wpop {w_pop}, drain {w_drain}, surv "
+          f"{w_surv}, leftover {w_left}, score {w_score}) "
           "(== the rom-builds.yml ur_telemetry asserts)")
     print(f"  pinned hawk telemetry (seed={hex(UR_SEED)}, season=0): "
           f"f100 on={pins[100][0]} x={pins[100][1]}, "

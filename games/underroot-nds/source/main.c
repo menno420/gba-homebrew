@@ -49,7 +49,8 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
                         ur_forage_t forage, uint32_t store, uint32_t cap,
                         uint32_t pop, uint32_t exposed, uint32_t lost,
                         uint32_t surv, uint32_t season, uint32_t day,
-                        uint32_t abund, uint32_t sfood)
+                        uint32_t abund, uint32_t sfood, uint32_t wstore,
+                        uint32_t wsurv, uint32_t wscore)
 {
     consoleSelect(&top_console);
     consoleClear();
@@ -126,6 +127,13 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
     // food to.
     printf("\x1b[22;0Hseason  abund %lu/%d  food %lu",
            (unsigned long)abund, UR_ABUND_UNIT, (unsigned long)sfood);
+    // The winter survival exam (slice 8): the store carried into winter (banked
+    // minus the brood the nurseries ate), whether the colony SURVIVES the drain,
+    // and the survival SCORE it chases. Zero meadow food in winter, so this is
+    // the whole game's verdict — clears winter or starves on the drawn tunnels.
+    printf("\x1b[23;0Hwinter  store %lu  %s  score %lu",
+           (unsigned long)wstore, wsurv ? "SURVIVE" : "starve",
+           (unsigned long)wscore);
 }
 
 // --- burrow (bottom screen): the tile-snap dig grid ------------------------
@@ -309,12 +317,23 @@ int main(void)
         uint32_t hawk_pass = ur_hawk_passes(season);
         uint32_t spred = ur_season_predation(grid, gran, nurs, UR_SEED, season);
         uint32_t ssurv = ur_season_survivors(grid, gran, nurs, UR_SEED, season);
+        // The winter survival exam (slice 8): the store carried into winter (the
+        // banked granary store minus the brood the nurseries drew), the foragers
+        // carried in (the season survivors), the winter drain that appetite
+        // demands, and the SURVIVE verdict + SCORE. Pure f(dig plan, gran plan,
+        // nurs plan, seed, season) — the arc's headline number.
+        uint32_t wstore = ur_winter_store(grid, gran, nurs, UR_SEED, season);
+        uint32_t wpop = ssurv;
+        uint32_t wdrain = ur_winter_drain(wpop);
+        int wsurv = ur_winter_survives(wstore, wpop);
+        uint32_t wleft = ur_winter_leftover(wstore, wpop);
+        uint32_t wscore = ur_winter_score(wstore, wpop);
 
         // Top screen animates every frame (the hawk sweeps); the burrow is
         // redrawn only when a dig changed it (frame-budget discipline).
         draw_meadow(frame, hawk_on, hawk_x, hawk_y, dug, con, patches,
                     food_total, forage, store, cap, pop, exposed, lost, surv,
-                    season, day, abund, sfood);
+                    season, day, abund, sfood, wstore, (uint32_t)wsurv, wscore);
         if (burrow_dirty)
         {
             draw_burrow(grid, gran, nurs);
@@ -352,6 +371,12 @@ int main(void)
         ur_telemetry[UR_T_HAWKPASS] = hawk_pass;
         ur_telemetry[UR_T_SPRED] = spred;
         ur_telemetry[UR_T_SSURV] = ssurv;
+        ur_telemetry[UR_T_WSTORE] = wstore;
+        ur_telemetry[UR_T_WPOP] = wpop;
+        ur_telemetry[UR_T_WDRAIN] = wdrain;
+        ur_telemetry[UR_T_WSURV] = (uint32_t)wsurv;
+        ur_telemetry[UR_T_WLEFT] = wleft;
+        ur_telemetry[UR_T_WSCORE] = wscore;
     }
 
     return 0;

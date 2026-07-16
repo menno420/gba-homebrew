@@ -669,3 +669,59 @@ int ur_seed_fair(uint32_t seed)
 {
     return ur_ref_score(seed) > 0u ? 1 : 0;
 }
+
+// --- synthesized audio: the cue + ambience decision layer (slice 11) --------
+// One-shot cue rows, indexed by cue id: { freq Hz, len frames, duty code or
+// UR_CUE_ON_NOISE, vol }. One row per sound — the owner-tunable table. Row 0
+// (UR_CUE_NONE) is all zeros: a no-op cue. The gl_cue precedent verbatim.
+static const uint16_t UR_CUE_ROWS[UR_CUE_COUNT][4] = {
+    { 0,    0,  0,               0  },       // NONE:   the no-op cue
+    { 988,  10, 2,               42 },       // FORAGE: B5 chirp, forager home
+    { 1500, 18, UR_CUE_ON_NOISE, 78 },       // HAWK:   the shriek (noise)
+    { 262,  64, 0,               66 },       // WINTER: C4 toll, the year closes
+};
+
+uint32_t ur_cue_freq(uint32_t cue)
+{
+    return UR_CUE_ROWS[cue < UR_CUE_COUNT ? cue : 0][0];
+}
+
+uint32_t ur_cue_len(uint32_t cue)
+{
+    return UR_CUE_ROWS[cue < UR_CUE_COUNT ? cue : 0][1];
+}
+
+uint32_t ur_cue_duty(uint32_t cue)
+{
+    return UR_CUE_ROWS[cue < UR_CUE_COUNT ? cue : 0][2];
+}
+
+uint32_t ur_cue_vol(uint32_t cue)
+{
+    return UR_CUE_ROWS[cue < UR_CUE_COUNT ? cue : 0][3];
+}
+
+// Ambience drone rows, indexed by season tier (spring..winter == 0..3):
+// { freq Hz, duty code, vol }. The burrow's low hum climbs in pitch/volume as
+// the year closes toward winter — freq STRICTLY increases with the tier.
+static const uint16_t UR_AMB_ROWS[UR_AMB_TIERS][3] = {
+    { 180, 1, 22 },                          // SPRING: the burrow wakes
+    { 200, 1, 22 },                          // SUMMER: the colony at work
+    { 230, 1, 24 },                          // AUTUMN: the harvest hurry
+    { 270, 0, 26 },                          // WINTER: the deep cold hum
+};
+
+uint32_t ur_amb_freq(uint32_t tier)
+{
+    return UR_AMB_ROWS[tier < UR_AMB_TIERS ? tier : 0][0];
+}
+
+uint32_t ur_amb_duty(uint32_t tier)
+{
+    return UR_AMB_ROWS[tier < UR_AMB_TIERS ? tier : 0][1];
+}
+
+uint32_t ur_amb_vol(uint32_t tier)
+{
+    return UR_AMB_ROWS[tier < UR_AMB_TIERS ? tier : 0][2];
+}

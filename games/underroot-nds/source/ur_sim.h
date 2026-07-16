@@ -493,6 +493,52 @@ uint32_t ur_ref_score(uint32_t seed);
 // (== ur_ref_score(seed) > 0). True for every seed — the balance guarantee.
 int ur_seed_fair(uint32_t seed);
 
+// --- synthesized audio: the cue + ambience decision layer (slice 11) --------
+// The arc doc's slice-11 row: synthesized PSG cues (forager return, hawk cry,
+// winter toll) + a per-season ambience drone, proven pure/PSG-legal. Reuses the
+// Gloamline gl_amb/gl_cue precedent verbatim (games/gloamline-nds slice 8): the
+// DECISION layer is pure and mirrored — ur_cue_* say what each one-shot cue
+// sounds like, ur_amb_* say what the season's ambience drone sounds like — while
+// the PLAYBACK itself (the libnds soundPlayPSG/soundPlayNoise FIFO writes) is
+// render-like ARM9 glue in main.c that reads these tables. NOTHING here touches
+// hardware or globals, so every pre-slice-11 pin holds bit-for-bit and the whole
+// layer is recomputed identically by the host mirror (tools/check-underroot.py).
+//
+// One-shot cue ids (0 = none). ID ORDER IS PRIORITY: on a frame where several
+// events fire, the HIGHEST id wins the single SFX channel (winter toll > hawk
+// cry > forager return). All numbers are decide-and-flag owner-tunables (one
+// table row per sound in ur_sim.c).
+#define UR_CUE_NONE   0
+#define UR_CUE_FORAGE 1   /* forager returns / food delivered */
+#define UR_CUE_HAWK   2   /* hawk cry (shadow crossing) */
+#define UR_CUE_WINTER 3   /* winter toll (year clock enters winter) */
+#define UR_CUE_COUNT  4
+// ur_cue_duty(cue) == UR_CUE_ON_NOISE routes the cue to the hardware noise
+// channel (soundPlayNoise) instead of a square wave; otherwise the value is the
+// libnds DutyCycle register code (0..7).
+#define UR_CUE_ON_NOISE 255   /* duty marker: route to the noise channel */
+#define UR_AMB_TIERS  4       /* one ambience drone per season */
+
+// One-shot cue parameters: frequency (Hz — square-wave pitch, or the noise-
+// generator rate for UR_CUE_ON_NOISE cues), length the ARM9 holds the channel
+// open (frames, bounded — a cue can never hog the SFX channel), duty (DutyCycle
+// code 0..7, or UR_CUE_ON_NOISE for the noise channel), volume (0..127). Pure
+// lookups; UR_CUE_NONE and out-of-range ids (>= UR_CUE_COUNT) return row 0 (the
+// no-op cue: all zeros).
+uint32_t ur_cue_freq(uint32_t cue);
+uint32_t ur_cue_len(uint32_t cue);
+uint32_t ur_cue_duty(uint32_t cue);
+uint32_t ur_cue_vol(uint32_t cue);
+
+// Ambience drone parameters of a season tier (indexed by season, spring..winter
+// == 0..3): square-wave frequency (Hz), libnds DutyCycle register code (0..7),
+// volume (0..127). Pure lookup; out-of-range tiers return tier 0 (spring).
+// ur_amb_freq is STRICTLY increasing in tier (the burrow hums higher as the year
+// closes toward winter).
+uint32_t ur_amb_freq(uint32_t tier);
+uint32_t ur_amb_duty(uint32_t tier);
+uint32_t ur_amb_vol(uint32_t tier);
+
 // --- telemetry mailbox (ELF-exported; read by tools/nds-headless-check.py) -
 #define UR_T_MAGIC0 0    // 0x554E4452 'UNDR'
 #define UR_T_MAGIC1 1    // 0x524F4F54 'ROOT'
@@ -548,6 +594,11 @@ int ur_seed_fair(uint32_t seed);
 #define UR_T_FAIR 51     // is the live run seed survivable (ref plan)? 0/1 (slice 10)
 #define UR_T_REFSCORE 52 // the reference plan's winter score for the run seed (slice 10)
 #define UR_T_SPARE 53    // 0
-#define UR_T_WORDS 54
+#define UR_T_ACUE   54   /* last cue id played (slice 11) */
+#define UR_T_ACUES  55   /* cumulative cues fired (slice 11) */
+#define UR_T_ACUEFR 56   /* frame the last cue fired (slice 11) */
+#define UR_T_ASFXL  57   /* sfx channel frames left (slice 11) */
+#define UR_T_AMB    58   /* current ambience tier = season (slice 11) */
+#define UR_T_WORDS 59
 
 #endif // UR_SIM_H

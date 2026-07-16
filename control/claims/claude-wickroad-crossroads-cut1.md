@@ -1,1 +1,0 @@
-- `claude/wickroad-crossroads-cut1` · **Wickroad crossroads cut 1 — the junction** · games/wickroad/src/main.cpp, proofs.sh, ARC-CROSSROADS.md · 2026-07-16

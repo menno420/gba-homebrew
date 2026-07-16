@@ -1,309 +1,43 @@
-# SEAT DORMANT (owner order 2026-07-14)
+# COORDINATOR ENDED (owner order, coordinator chat, 2026-07-15)
 
-updated: 2026-07-14T21:16:02Z
+updated: 2026-07-16T00:49:49Z (`date -u`; ender heartbeat for the 2026-07-15
+coordinator session)
 
-## REVIVAL — READ FIRST
+kit: v1.17.0
 
-Ordered reading list:
+## Seat state at close
 
-1. `docs/eap-closeout-walkthrough-2026-07-14.md` — what this seat did, how to verify it, the OWNER ACTIONS checklist.
-2. `docs/audits/eap-project-audit-2026-07-14.md` — the full project audit.
-3. `docs/current-state.md` — the shipped-state ledger.
-4. Newest `.sessions/` cards — the most recent sessions' ground truth.
+- Seat ender executed on owner order (coordinator chat); the coordinator
+  chain is closed.
+- NO pacemaker send_later pending — verified at close.
+- Failsafe cron "Game Lab failsafe wake"
+  `trig_0123fLkN1pzY6uNN3Y7ksYaW` (`50 */2 * * *`, next fire
+  2026-07-16T00:50Z) LEFT ARMED as the successor's dead-man bridge.
 
-## ROUTINES RECORD (deleted at shutdown — re-arm on revival)
+## Day ledger 2026-07-15 (pointers)
 
-- Failsafe cron: name "Game Lab failsafe wake", cron `50 */2 * * *`, bound to the live coordinator session; verify-after-arm via paginated list_triggers before deleting any old trigger. Trigger id deleted at shutdown: trig_01T1E1zn6rtM3YBWjTPBhX2b.
-- Its prompt, EXACTLY: "FAILSAFE WAKE (Game Lab, Q-0265): send_later chain alive → verify in one line, end. Stalled → resume the work loop (sync HEAD → inbox → slice after slice, landed per LANDING), re-arm the chain (~15 min), and write your heartbeat (control/status.md, per-seat grammar) as the deliberate last step."
-- Pacemaker pattern: ONE send_later ~15–20 min per working turn, one pending at a time; never stack. NOTE: on 2026-07-14T06:22Z the auto-mode classifier denied a pacemaker re-arm as "[Create Unsafe Agents]" — revival may require an owner permission rule.
-- No business crons owned by this seat.
+- Wickroad growth cuts 1–5 merged: #142–#146 (dist/wickroad.gba v0.6,
+  sha256 `92df5c91...0947`).
+- Current-state reconcile merged: #147 (docs/current-state.md).
+- Merge-automation verification probe merged: #148.
+- Pages deploy workflow merged: #149 — but deploy-pages.yml has ZERO runs;
+  owner manual dispatch pending.
+- Owner decision menu merged: #150 → docs/NEXT-MENU-2026-07-15.md
+  (awaiting the owner's letter; in-doc rec B1).
 
-## PARKED AT SHUTDOWN
+## Parked
 
-- PR #138 (kit v1.16.0 → v1.17.0 upgrade) was in flight by ANOTHER seat at shutdown — not ours to close; watch on revival. Verified live 2026-07-14T21:15Z: MERGED at 2026-07-14T20:56:11Z by github-actions[bot] (squash of `claude/kit-upgrade-v1.17.0` @ 298b79d) — nothing left to watch.
-- Merged `claude/*` branches await owner prune (walkthrough §C).
-- Nothing else in flight — verified 2026-07-14T21:15Z: the only open PR is #139, this shutdown PR itself.
+- No open PRs in this repo at close (this heartbeat PR excepted).
 
-## SOURCE OF TRUTH
+## ⚑ needs-owner (pointers; detail lives in the PR #149 body + docs/NEXT-MENU-2026-07-15.md)
 
-- Fleet doctrine lives in the owner's fleet-manager repo (docs/prompts/v3/, projects/UNIVERSAL.md) — pointed at, not restated here.
-- Repo-local truth: control/README.md protocol text (keep).
-- Track plan: `docs/concepts/session-1-concepts.md` — the ORDER-001 concept queue (fully built; reference kept here so the doc stays on the read path).
-- Local docs that duplicate fleet doctrine (LISTED, not migrated): docs/ROUTINES.md (wake-chain doctrine), docs/conventions.md (seeded from the gen-2 blueprint), docs/collaboration-model.md, docs/ai-project-workflow.md, docs/helper-policy.md.
+1. Menu letter for the next arc (docs/NEXT-MENU-2026-07-15.md).
+2. Arcade go-live: Settings → Pages → Source "GitHub Actions", then
+   Actions → "Deploy web arcade to Pages" → Run workflow → main.
+3. nds-rom-build is not in the branch-protection required checks.
 
-## Dispatch 2026-07-15 (wickroad-rumors, PR #142)
+## next-2-tasks baton
 
-written: 2026-07-15T04:22:33Z (`date -u`; heartbeat appended second-to-last, card flip follows)
-
-- **ORDER 007 ACKNOWLEDGED** (first rebooted dispatch): EAP EXTENDED through
-  2026-07-21 acknowledged; the 2026-07-14 dormancy orders (the SEAT DORMANT
-  text above) are superseded pending the owner's per-project reboot review.
-  **NO routines re-armed** per the order — waiting for the owner's per-seat
-  go (the v3.6 reboot prompt). Source: control/inbox.md ORDER 007 @
-  2026-07-15T03:37:11Z.
-- This dispatch's slice, neutral facts: branch `claude/wickroad-rumors`,
-  PR #142 (READY, non-draft), Wickroad growth cut 1 "Rumors" per
-  games/wickroad/CONCEPT.md. Proof suite games/wickroad/proofs.sh now
-  P1-P4: 278 watch + 34 text assertion passes per run, P2/P3/P4 each run
-  twice with byte-identical watch-logs. dist/wickroad.gba v0.2, sha256
-  `ebcc10f1...fdea`, two clean builds byte-identical. Work claim
-  control/claims/claude-wickroad-rumors.md retired with this heartbeat
-  (claims README rule 4 — the open PR is the live claim).
-- Landing posture: PR #142 parked READY on green; no merge/approve/
-  auto-merge calls from this session — the server-side enabler decides.
-- Pointers: .sessions/2026-07-15-wickroad-rumors.md (card) ·
-  games/wickroad/CONCEPT.md (cut 1 marked SERVED) · dist/README.md
-  (v0.2 row).
-
-## Dispatch 2026-07-15 (wickroad-contracts, PR #143)
-
-written: 2026-07-15T05:08:58Z (`date -u`; heartbeat appended second-to-last,
-card flip follows)
-
-- Inbox re-read at origin/main HEAD `df55299` before closing: no new
-  orders past ORDER 007 (acknowledged by the wickroad-rumors dispatch
-  above; its standing constraint holds — NO routines re-armed, waiting
-  on the owner's per-seat go).
-- This dispatch's slice, neutral facts: branch `claude/wickroad-contracts`,
-  PR #143 (READY, non-draft), Wickroad growth cut 2 "Contracts" per
-  games/wickroad/CONCEPT.md — dated delivery orders, the second income
-  verb that prices risk. Fixed authored two-contract deck (zero new RNG,
-  zero price-law changes; delivery bypasses the market), RIGHT as the
-  pact verb, lifecycle derived from two player flags, telemetry 24 -> 32.
-  Proof suite games/wickroad/proofs.sh now P1-P5: 384 watch + 48 text
-  assertion passes per run, P2-P5 each run twice with byte-identical
-  watch-logs; every P5 pin mirror-derived first, ROM matched on the
-  first route probe. One measured capacity fact: the pact line pushed
-  dawn-regen peaks over Butano's default 128 sprite-tiles items
-  (frozen-ROM assert on the first full-suite probe); fixed via
-  -DBN_CFG_SPRITE_TILES_MAX_ITEMS=256 in the game Makefile, after which
-  P1-P4 carried verbatim. dist/wickroad.gba v0.3, 122,696 bytes, sha256
-  `6e395a1c...5d3c21`, two clean builds byte-identical, suite re-run
-  green at the dist bytes. Work claim
-  control/claims/claude-wickroad-contracts.md retired with this
-  heartbeat (claims README rule 4 — the open PR is the live claim).
-- Landing posture: PR #143 parked READY; no merge/approve/auto-merge
-  calls from this session — the server-side enabler decides on green.
-- Pointers: .sessions/2026-07-15-wickroad-contracts.md (card) ·
-  games/wickroad/CONCEPT.md (cut 2 marked SERVED) · dist/README.md
-  (v0.3 row) · docs/current-state.md (Wickroad row now v0.3).
-
-## Dispatch 2026-07-15 (wickroad-hazards, PR #144)
-
-written: 2026-07-15T05:42:26Z (`date -u`; heartbeat appended second-to-last,
-card flip follows)
-
-- Inbox re-read at origin/main HEAD `4a61ec9` before closing: no new
-  orders past ORDER 007 (its standing constraint holds — NO routines
-  re-armed, waiting on the owner's per-seat go).
-- This dispatch's slice, neutral facts: branch `claude/wickroad-hazards`,
-  PR #144 (READY, non-draft), Wickroad growth cut 3 "The road itself"
-  per games/wickroad/CONCEPT.md — per-leg hazards (bandits, weather)
-  and a guard-hire decision, so travel cost stops being flat. Fixed
-  authored three-hazard deck (zero new RNG; hazards a pure function of
-  (leg, arrival day); every window after the committed routes' last
-  travel day, so the world is bit-identical and P1-P5 carried
-  verbatim), LEFT as the hire verb (flat fee 4, consumed by the next
-  crossing hazard or not), RAID stretches taxing gold / STORM stretches
-  taxing the clock (one extra dawn camped), the new ROAD line
-  telegraphing each hazard from its announce day on the THIRD quiet
-  frame after a head redraw, telemetry 32 -> 40 (words 0-31 untouched).
-  Proof suite games/wickroad/proofs.sh now P1-P6: 520 watch + 59 text
-  assertion passes per run, P2-P6 each run twice with byte-identical
-  watch-logs, the whole suite run twice end-to-end with byte-identical
-  CSVs across runs; every P6 pin mirror-derived first, the ROM matched
-  all 60+ watch pins on the first route probe (the only two first-probe
-  failures were text-side: the guarded road line's last glyph measurably
-  clipping the 240px screen — fixed by the shorter RAID token — and a
-  road-line assert sitting on a measured 1-frame edge-processing parity,
-  moved one frame later and the parity documented in proofs.sh).
-  dist/wickroad.gba v0.4, 123,844 bytes, sha256
-  `7c061301...2bf8d3`, two clean builds byte-identical, suite re-run
-  green at the dist bytes. Work claim
-  control/claims/claude-wickroad-hazards.md retired with this
-  heartbeat (claims README rule 4 — the open PR is the live claim).
-- Landing posture: PR #144 parked READY; no merge/approve/auto-merge
-  calls from this session — the server-side enabler decides on green.
-- Pointers: .sessions/2026-07-15-wickroad-hazards.md (card) ·
-  games/wickroad/CONCEPT.md (cut 3 marked SERVED) · dist/README.md
-  (v0.4 row) · docs/current-state.md (Wickroad row now v0.4).
-
-## Dispatch 2026-07-15 (wickroad-wider-map, PR #145)
-
-written: 2026-07-15T06:18:30Z (`date -u`; heartbeat appended second-to-last,
-card flip follows)
-
-- Inbox re-read at origin/main HEAD `c0c6882` before closing: no new
-  orders past ORDER 007 (its standing constraint holds — NO routines
-  re-armed, waiting on the owner's per-seat go).
-- This dispatch's slice, neutral facts: branch `claude/wickroad-wider-map`,
-  PR #145 (READY, non-draft), Wickroad growth cut 4 "A wider map + pack
-  upgrades" per games/wickroad/CONCEPT.md — the road runs on past
-  DUNWICK to HOLLOWFEN (the drovers' fair) and MIRGATE (seven markets,
-  each with its own aging ink), and START at the fair buys mules on a
-  fixed authored price ladder (30/55), each growing the pack by 4
-  (8 -> 12 -> 16). RNG delta counted: +16 world-init draws appended
-  strictly after the v0.4 stream (prior cuts: zero) — the legacy world
-  is bit-identical and P1-P6 carried verbatim on the first post-change
-  run. The map deliberately stays ONE road (no branch fork; L/R is a
-  committed verb grammar) — the honest cut is named in CONCEPT.md.
-  Telemetry 40 -> 48 (words 0-39 byte-unchanged). Proof suite
-  games/wickroad/proofs.sh now P1-P7: 655 watch + 68 text assertion
-  passes per run, P2-P7 each run twice with byte-identical watch-logs,
-  the whole suite run twice end-to-end with byte-identical CSVs across
-  runs; every P7 pin mirror-derived first and every watch pin matched
-  on the first route probe (the only first-probe failures were three
-  text asserts on FIXED-font ledger rows — measured fact recorded in
-  proofs.sh: --assert-text templates come from the variable font bmp,
-  so fixed-font rows are not text-assertable; the new towns' ledger
-  states are pinned via watch words 44/45 instead). dist/wickroad.gba
-  v0.5, 125,016 bytes, sha256 `ad4e477b...e8e31a`, two clean builds
-  byte-identical, suite re-run green at the dist bytes. Work claim
-  control/claims/claude-wickroad-wider-map.md retired with this
-  heartbeat (claims README rule 4 — the open PR is the live claim).
-- Landing posture: PR #145 parked READY; no merge/approve/auto-merge
-  calls from this session — the server-side enabler decides on green.
-- Pointers: .sessions/2026-07-15-wickroad-wider-map.md (card) ·
-  games/wickroad/CONCEPT.md (cut 4 marked SERVED) · dist/README.md
-  (v0.5 row) · docs/current-state.md (Wickroad row now v0.5).
-
-## Dispatch 2026-07-15 (wickroad-audio, PR #146)
-
-written: 2026-07-15T10:37:20Z (`date -u`; heartbeat appended second-to-last,
-card flip follows)
-
-- Inbox re-read at origin/main HEAD `18ddd08` before closing: no new
-  orders past ORDER 007 (its standing constraint holds — NO routines
-  re-armed, waiting on the owner's per-seat go).
-- This dispatch's slice, neutral facts: branch `claude/wickroad-audio`,
-  PR #146 (READY, non-draft), Wickroad growth cut 5 "Audio" per
-  games/wickroad/CONCEPT.md — the LAST named cut; the named growth
-  path is now COMPLETE. Three original synthesized cues from the
-  stdlib-only deterministic games/wickroad/audio/generate_audio.py
-  (byte-exact regenerable, LCG noise, no samples ever), played as pure
-  decisions on events the sim already computes: wr_coin when gold
-  changes hands on a trade (market buy, market sell, pact delivery
-  payment), wr_dawn on a day rollover, wr_wind on the pass-closing
-  dawn. Zero new RNG draws; telemetry 48 -> 52 (words 0-47
-  byte-unchanged; 48-50 boot-cumulative play-call counters, 51 total).
-  P1-P7 carried verbatim on the first post-audio run — no clock
-  re-base (the Shoal rung-5 risk, measured absent here). Proof suite
-  games/wickroad/proofs.sh now P1-P8: 755 watch + 72 text assertion
-  passes per run, P2-P8 each run twice with byte-identical watch-logs,
-  the whole suite run twice end-to-end with byte-identical CSVs across
-  runs; P8 pins the coin on both trade edges, one bell per rolled day,
-  the wind exactly once at the close, counter survival across a START
-  restart, and maxmod mixer-memory voicing (silent title, audible
-  cues, silence after the wind dies). Honest limit named in proofs.sh
-  and the PR: audible output itself (mix, timbre, DAC) is not
-  headlessly provable — owner-playtest territory. dist/wickroad.gba
-  v0.6, 159,484 bytes, sha256 `92df5c91...0947`, two clean builds
-  byte-identical, suite re-run green at the dist bytes. Work claim
-  control/claims/claude-wickroad-audio.md retired with this heartbeat
-  (claims README rule 4 — the open PR is the live claim).
-- Landing posture: PR #146 parked READY; no merge/approve/auto-merge
-  calls from this session — the server-side enabler decides on green.
-- Pointers: .sessions/2026-07-15-wickroad-audio.md (card) ·
-  games/wickroad/CONCEPT.md (cut 5 marked SERVED; named path COMPLETE) ·
-  dist/README.md (v0.6 row) · docs/current-state.md (Wickroad row now
-  v0.6).
-
-## Dispatch 2026-07-15 (current-state-reconcile, PR #147)
-
-written: 2026-07-15T10:55:54Z (`date -u`; heartbeat appended second-to-last,
-card flip follows)
-
-- Inbox re-read at origin/main HEAD `4157069` before closing: no new
-  orders past ORDER 007 (its standing constraint holds — NO routines
-  re-armed, waiting on the owner's per-seat go).
-- This dispatch's slice, neutral facts: branch
-  `claude/current-state-reconcile`, PR #147 (READY, non-draft), a
-  docs-only reconcile of docs/current-state.md against the release
-  ledgers at HEAD (post-#146). Edits:
-  - A: Tiltstone row v1.0/stack-OPEN -> v1.1, stack #92/#93/#95/#97
-    landed, packaged with juice.js by the ORDER 006 repin (#134,
-    arcade bundle v1.3).
-  - B: Wickroad row's "audio (cut 5) PR of 2026-07-15" -> "#146
-    (2026-07-15)"; nothing else in that row.
-  - C: In-flight Tiltstone-stack bullet removed (stack landed; its
-    juice.js packaging follow-up served by #134).
-  - D: In-flight PR #85 bullet removed (live API state: closed
-    unmerged 2026-07-14T11:03:37Z — not in flight).
-  - E: stale self-referential closing line replaced with the live
-    open-PR reality (list empty apart from this PR).
-  - F: Release-packaging bullet now cites the ORDER 006 repin (#134)
-    instead of the superseded arcade-refresh cut.
-  - G: header blockquote notes the 2026-07-15 row-level reconcile;
-    living-ledger badge stays at line 3.
-  Sweep of rows 1-10 vs dist/README.md found no other contradicted
-  rows. No status invented — every edit aligns with already-landed
-  facts. Work claim control/claims/claude-current-state-reconcile.md
-  retired with this heartbeat (claims README rule 4 — the open PR is
-  the live claim).
-- Evidence pointers: docs/RELEASES.md (ORDER 006 repin entry) ·
-  dist/README.md (web-arcade repin paragraph + supersession chain) ·
-  merged commits d451b79/7535d6c/1c8e0be/b0d2274/cf107d3/4157069 ·
-  PR #85 live state via API.
-- Landing posture: PR #147 parked READY; no merge/approve/auto-merge
-  calls from this session — the server-side enabler decides on green.
-- Pointers: .sessions/2026-07-15-current-state-reconcile.md (card) ·
-  docs/current-state.md (the reconciled ledger).
-
-## Dispatch 2026-07-15 (web-arcade-pages, PR #149)
-
-written: 2026-07-15T21:26Z (`date -u`; heartbeat appended second-to-last,
-card flip follows)
-
-- Inbox re-read at origin/main HEAD `150abf1` before closing: no new
-  orders past ORDER 007 (its standing constraint holds — NO routines
-  re-armed, waiting on the owner's per-seat go).
-- This dispatch's slice, neutral facts: branch `claude/web-arcade-pages`,
-  PR #149 (READY, non-draft) — GitHub Pages deployment workflow for the
-  web arcade. `.github/workflows/deploy-pages.yml` publishes `dist/web/`
-  ONLY (never ROMs or zips) on merged changes under `dist/web/**` or via
-  workflow_dispatch; target URL https://menno420.github.io/gba-homebrew/.
-  Subpath audit of dist/web/ (grep for root-absolute refs + manual reads
-  of the landing page, all three game entry files, the Drift Garden
-  manifest and service worker): zero absolute paths, zero fixes needed.
-  Docs: hosted-arcade section added to dist/README.md (URL, redeploy
-  triggers, one-time setup). Owner ask pending in the PR body: Settings
-  → Pages → Source = GitHub Actions, then merge — ~2 min, reversible.
-  Work claim control/claims/claude-web-arcade-pages.md retired with this
-  heartbeat (claims README rule 4 — the open PR is the live claim).
-- Landing posture: PR #149 parked READY on green; no merge/approve/
-  auto-merge calls from this session — the owner sweeps.
-- Pointers: .sessions/2026-07-15-web-arcade-pages.md (card) ·
-  .github/workflows/deploy-pages.yml (the workflow) · dist/README.md
-  (hosted-arcade section).
-
-## Dispatch 2026-07-15 (next-menu, PR #150)
-
-written: 2026-07-15T21:38Z (`date -u`; heartbeat appended second-to-last,
-card flip follows)
-
-kit: v1.17.0 · check: designed-red at heartbeat (born-red card open;
-flips complete in the next commit)
-
-- Inbox re-read at origin/main HEAD `872627d` before closing: no new
-  orders past ORDER 007 (its standing constraint holds — NO routines
-  re-armed, waiting on the owner's per-seat go). control/claims/ at that
-  HEAD: README.md only — no collision.
-- This dispatch's slice, neutral facts: branch `claude/next-menu-2026-07-15`,
-  PR #150 (READY, non-draft) — docs-only. New doc
-  docs/NEXT-MENU-2026-07-15.md: the owner decision menu for the next arc,
-  seven lettered options (A1 Tinderhand GBA ~6 slices · A2 Underroot NDS
-  ~11 · A3 Starloom web/PWA ~6 · B1 Tiltstone shareable-daily 5 · B2
-  Wickroad crossroads 4–5 · B3 Brineward bestiary 4 · C Lumen Drift
-  release + arcade go-live pointer), every factual claim cited at
-  `872627d`, bolded recommendation **B1**, answerable with one letter.
-  One-line link added to the `## In flight` section of
-  docs/current-state.md (read-path root — docs-gate reachability by
-  construction). Work claim control/claims/claude-next-menu-2026-07-15.md
-  retired with this heartbeat (claims README rule 4 — the open PR is the
-  live claim).
-- Landing posture: PR #150 parked READY; no merge/approve/auto-merge
-  calls from this session — the server-side enabler decides on green
-  after the card flip.
-- Pointers: .sessions/2026-07-15-next-menu.md (card) ·
-  docs/NEXT-MENU-2026-07-15.md (the menu) · docs/current-state.md
-  (In flight link).
+1. Dispatch the owner's menu letter as the chosen arc's cut 1.
+2. After the arcade clicks, verify the Pages run green and
+   https://menno420.github.io/gba-homebrew/ loads.

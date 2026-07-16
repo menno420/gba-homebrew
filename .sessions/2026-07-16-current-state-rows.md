@@ -12,7 +12,7 @@
   merged_at fetched from the live API this session, no invented state.
   Plus one appended dated section in control/status.md (append-only,
   coordinator convention).
-- 📊 Model: Claude (Fable family) · standard effort · docs-reconcile
+- **📊 Model:** Claude (Fable family) · medium · docs-only — current-state row reconcile
 - landing posture: PR #152 opened READY at the born-red commit; no
   merge/approve/auto-merge calls from this session — the server-side
   enabler decides on green after the flip.

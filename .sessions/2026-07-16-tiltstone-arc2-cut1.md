@@ -153,8 +153,10 @@ distribution-plus-scoring cross none of them names.)
 
 ## PR / CI (filled at close-out)
 
-- PR: **#[[fill:pr]]** — [[fill:pr-url]] (DRAFT, base `main`). Draft-parked under
-  the landing wall — no ready-flip, no auto-merge.
+- PR: **#166** — https://github.com/menno420/gba-homebrew/pull/166 (DRAFT, base
+  `main`; impl commits `c654e01` engine+smoke / `645fc74` shell+html / `f2b50f8`
+  docs, born-red gate `f7d634a`). Draft-parked under the landing wall — no
+  ready-flip, no auto-merge.
 - CI: `rom-builds` (the one required per-PR gate — web-only diff, no GBA/NDS ROM
   source touched, so expected green), `headless-boot` (workflow_dispatch only,
   does not run per-PR), `substrate-gate` **RED (inherited)** — main's 5 known

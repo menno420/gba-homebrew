@@ -107,6 +107,11 @@ UR_SAVE_EEPROM_TYPE = 2
 UR_SAVE_SALT = 0x53415645            # 'SAVE'
 UR_SAVE_POLL_BOUND = 4096
 
+# --- seed dial + balance (slice 10; mirror ur_sim.h) -----------------------
+UR_DIAL_COUNT = 8                    # discrete seed-dial positions
+UR_DIAL_SALT = 0x4449414C            # 'DIAL' — dial->seed stream independent
+UR_DIAL_MASK = 0x0FFF                # bounded seed space for scanned positions
+
 # --- food patches (top screen; slice 2; mirror ur_sim.h) -------------------
 UR_SCREEN_W = 256             # meadow width (px)
 UR_SCREEN_H = 192             # meadow height (px)
@@ -120,6 +125,11 @@ UR_APRON_X0 = UR_PATCH_MARGIN + UR_PATCH_R                # 12
 UR_APRON_X1 = UR_SCREEN_W - UR_PATCH_MARGIN - UR_PATCH_R  # 244
 UR_APRON_Y0 = UR_MEADOW_Y1 + UR_PATCH_R                   # 124: below the lanes
 UR_APRON_Y1 = UR_SCREEN_H - UR_PATCH_MARGIN - UR_PATCH_R  # 180
+
+# The fairness floor (slice 10): the least winter food any seed can offer (all
+# patches at the minimum amount) — a survivable reference score is >= this for
+# EVERY seed. (Defined here, after UR_PATCH_COUNT/UR_PATCH_MIN.)
+UR_FAIR_FLOOR = UR_PATCH_COUNT * UR_PATCH_MIN                 # 18
 
 
 # --- pure hash (mirror ur_hash; identical to gl_hash) ----------------------
@@ -593,6 +603,44 @@ def ur_record_improves(best_score, best_season, score, season):
     return 1 if (score > best_score or season > best_season) else 0
 
 
+# --- seed dial + balance (slice 10; mirror ur_sim.c) -----------------------
+def ur_dial_seed(dial):
+    """Mirror of ur_dial_seed(): dial 0 == UR_SEED, others hash into a bounded
+    seed space down the DIAL-salted stream."""
+    d = dial % UR_DIAL_COUNT
+    if d == 0:
+        return UR_SEED
+    return (ur_hash(UR_SEED ^ UR_DIAL_SALT, d) & UR_DIAL_MASK) + 1
+
+
+def ur_ref_plan():
+    """Mirror of ur_ref_plan(): a row-1 harvest corridor across every column,
+    that whole row designated granary, and no nursery. Returns (grid, gran,
+    nurs)."""
+    grid = ur_fresh_grid()
+    gran = ur_fresh_gran()
+    nurs = ur_fresh_nurs()
+    for c in range(UR_GRID_W):
+        ur_dig(grid, c, UR_DROP_ROW)
+        ur_designate(grid, gran, c, UR_DROP_ROW)
+    return grid, gran, nurs
+
+
+def ur_ref_score(seed):
+    """Mirror of ur_ref_score(): the reference plan's winter score for a seed
+    (population 0 -> drain 0 -> the banked reachable winter food)."""
+    grid, gran, nurs = ur_ref_plan()
+    store = ur_winter_store(grid, gran, nurs, seed, UR_WINTER)
+    pop = ur_season_survivors(grid, gran, nurs, seed, UR_WINTER)
+    return ur_winter_score(store, pop)
+
+
+def ur_seed_fair(seed):
+    """Mirror of ur_seed_fair(): 1 iff the reference plan survives with a
+    positive score (true for every seed)."""
+    return 1 if ur_ref_score(seed) > 0 else 0
+
+
 # --- the CI --touch dig script, mirrored (proof 3 anchor) ------------------
 # Each step is a bottom-LCD pixel the stylus is held at; the ROM digs the
 # cell under the stylus every held frame. Centre pixel of cell (c,r) is
@@ -735,6 +783,28 @@ def marquee_fixture(gran_cells):
         'store': store, 'pop': ur_pop(grid, gran, nurs, UR_SEED, UR_SPRING),
         'ssurv': wpop, 'wstore': wstore,
         'wpop': wpop, 'wdrain': ur_winter_drain(wpop),
+        'wsurv': ur_winter_survives(wstore, wpop),
+        'wleft': ur_winter_leftover(wstore, wpop),
+        'wscore': ur_winter_score(wstore, wpop),
+    }
+
+
+# The slice-10 WINTER-gated save fixture: the SAME survivor plan (full 6
+# granaries), but evaluated at the WINTER season the record now commits at. The
+# store is the reachable WINTER meadow food banked (winter patch columns differ
+# from spring), so the realized winter SCORE differs from the spring forecast —
+# this is exactly the over-optimism the winter gate closes (slice-9's forward
+# note). The ROM drives this plan, advances the year clock to winter, and a
+# START there commits this realized score.
+def marquee_winter_fixture():
+    grid, gran, nurs = _marquee_grids(MARQUEE_GRAN_EXTRA + MARQUEE_GRAN_STARVE)
+    store = ur_store(grid, gran, UR_SEED, UR_WINTER)
+    wstore = ur_winter_store(grid, gran, nurs, UR_SEED, UR_WINTER)
+    wpop = ur_season_survivors(grid, gran, nurs, UR_SEED, UR_WINTER)
+    return {
+        'store': store,
+        'pop': ur_pop(grid, gran, nurs, UR_SEED, UR_WINTER),
+        'wpop': wpop, 'wstore': wstore, 'wdrain': ur_winter_drain(wpop),
         'wsurv': ur_winter_survives(wstore, wpop),
         'wleft': ur_winter_leftover(wstore, wpop),
         'wscore': ur_winter_score(wstore, wpop),
@@ -1742,18 +1812,20 @@ def prove_save():
                     failures += 1
                     print(f'FAIL save roundtrip: ({score},{season},{seed}) -> '
                           f'{ur_save_decode(blob)}')
-    # Golden-bytes pin: the survivor record (best score 2008, spring, run seed
-    # UR_SEED) the CI battery roundtrip reads back out of the DeSmuME battery
-    # file — the C encoder, the emulated chip, and this mirror must agree byte
-    # for byte.
-    golden = ur_save_encode(2008, UR_SPRING, UR_SEED)
-    if golden.hex() != ('56535255' '01000000' 'd8070000' '00000000'
+    # Golden-bytes pin: the WINTER-committed survivor record (best score 3003,
+    # WINTER, run seed UR_SEED) the CI battery roundtrip reads back out of the
+    # DeSmuME battery file. Slice 10 gates the commit on a realized winter, so the
+    # persisted record is now the survivor plan's WINTER score (3003, season 3),
+    # not the spring forecast (2008) — the C encoder, the emulated chip, and this
+    # mirror must agree byte for byte on the new record.
+    golden = ur_save_encode(3003, UR_WINTER, UR_SEED)
+    if golden.hex() != ('56535255' '01000000' 'bb0b0000' '03000000'
                         '5a050000' '00000000' '00000000'
                         + ur_save_checksum([UR_SAVE_MAGIC, UR_SAVE_VERSION,
-                                            2008, UR_SPRING, UR_SEED, 0, 0, 0]
+                                            3003, UR_WINTER, UR_SEED, 0, 0, 0]
                                            ).to_bytes(4, 'little').hex()):
         failures += 1
-        print(f'FAIL save golden bytes: encode(2008, spring, UR_SEED) drifted: '
+        print(f'FAIL save golden bytes: encode(3003, winter, UR_SEED) drifted: '
               f'{golden.hex()}')
     # One-page invariants: the blob is exactly the 8 words it claims and sits
     # page-aligned inside one 32-byte type-2 EEPROM page.
@@ -1769,7 +1841,7 @@ def prove_save():
         if ur_save_decode(blob)[0] != 0:
             failures += 1
             print(f'FAIL save reject {label}: accepted')
-    valid = ur_save_encode(2008, UR_SPRING, UR_SEED)
+    valid = ur_save_encode(3003, UR_WINTER, UR_SEED)
     for i in range(UR_SAVE_BYTES):
         mut = bytearray(valid)
         mut[i] ^= 0xFF
@@ -1781,7 +1853,7 @@ def prove_save():
                            UR_SAVE_VERSION + 1),
                           ('wrong-magic', ur_hash(UR_SAVE_MAGIC, 1),
                            UR_SAVE_VERSION)):
-        w = [w0, w1, 2008, UR_SPRING, UR_SEED, 0, 0, 0]
+        w = [w0, w1, 3003, UR_WINTER, UR_SEED, 0, 0, 0]
         w[UR_SAVE_WORDS - 1] = ur_save_checksum(w)
         crafted = b''.join((x & M32).to_bytes(4, 'little') for x in w)
         checks += 1
@@ -1810,6 +1882,86 @@ def prove_save():
     return checks, golden
 
 
+def prove_balance():
+    # The arc doc's slice-10 proof: the seed dial's seed->schedule wiring is
+    # pure, and the difficulty/escalation pass is FAIR — every dialable seed is
+    # survivable with the reference plan (no death-traps), while the years still
+    # span a real difficulty range.
+    #  1. WIRING PURITY — ur_dial_seed is deterministic, dial 0 is exactly
+    #     UR_SEED (the pinned skeleton), the dial wraps over UR_DIAL_COUNT, the
+    #     scanned seeds are DISTINCT, and the dialed seed drives the whole
+    #     f(seed,season,index) schedule purely (recompute-equal for hawks and
+    #     patches across every dial position and season);
+    #  2. FAIRNESS FLOOR — the reference plan's winter score is >= UR_FAIR_FLOOR
+    #     (> 0) for EVERY dial seed AND for a dense sweep of the bounded seed
+    #     space, so ur_seed_fair is 1 everywhere: no seed is unwinnable;
+    #  3. ESCALATION SPREAD — the reference score is not flat across the dial
+    #     (harder years bank less winter food), so the dial is a real difficulty
+    #     choice, its floor never dropping below survivable;
+    #  4. REFERENCE-PLAN SHAPE — the witness plan reaches EVERY patch column for
+    #     any seed (all patches banked -> score == reachable winter food) and
+    #     raises no population (drain 0), the two facts that make survival
+    #     provable by construction.
+    checks = 0
+
+    # (4) the reference plan's shape: every drop cell dug + connected, capacity
+    # over any patch total, zero nursery -> zero population/drain for any seed.
+    grid, gran, nurs = ur_ref_plan()
+    for c in range(UR_GRID_W):
+        assert ur_dig_dist(grid, c, UR_DROP_ROW) != UR_ROUTE_NONE, \
+            f"ref plan drop col {c} unreachable"
+    assert ur_gran_connected(grid, gran) == UR_GRID_W
+    assert ur_gran_capacity(grid, gran) >= UR_PATCH_COUNT * UR_PATCH_MAX
+    for season in range(UR_SEASONS):
+        for seed in (UR_SEED, 0, 0xFFFFFFFF, 4095):
+            assert ur_pop(grid, gran, nurs, seed, season) == 0
+            # all patches reachable -> reachable food == the full patch total
+            assert ur_reachable_food(grid, seed, season) \
+                == ur_patch_total(seed, season)
+            checks += 1
+
+    # (1) wiring purity: dial 0 == UR_SEED, determinism, wrap, distinctness, and
+    # the dialed seed feeds the schedule purely.
+    assert ur_dial_seed(0) == UR_SEED
+    dial_seeds = []
+    for dial in range(UR_DIAL_COUNT):
+        s = ur_dial_seed(dial)
+        assert ur_dial_seed(dial) == s, "ur_dial_seed not deterministic"
+        assert ur_dial_seed(dial + UR_DIAL_COUNT) == s, "dial does not wrap"
+        dial_seeds.append(s)
+        # the seed drives the whole schedule purely: hawk + patch recompute-equal
+        for season in range(UR_SEASONS):
+            for frame in (0, 137, 511, 1024):
+                assert ur_hawk_x(s, season, frame) == ur_hawk_x(s, season, frame)
+                assert ur_hawk_y(s, season, frame) == ur_hawk_y(s, season, frame)
+            assert ur_patch_total(s, season) == ur_patch_total(s, season)
+            checks += 1
+    assert len(set(dial_seeds)) == UR_DIAL_COUNT, \
+        f"dial seeds not distinct: {dial_seeds}"
+
+    # (2) fairness floor: every dial seed AND a dense sweep of the bounded seed
+    # space is survivable with the reference plan, score >= UR_FAIR_FLOOR.
+    for s in dial_seeds:
+        sc = ur_ref_score(s)
+        assert sc >= UR_FAIR_FLOOR, f"dial seed {s} ref score {sc} < floor"
+        assert ur_seed_fair(s) == 1
+        checks += 1
+    for s in range(0, UR_DIAL_MASK + 2):     # every seed the mask can produce
+        sc = ur_ref_score(s)
+        assert sc >= UR_FAIR_FLOOR, f"seed {s} ref score {sc} below fair floor"
+        assert ur_seed_fair(s) == 1
+        checks += 1
+
+    # (3) escalation spread: the dial is a real difficulty choice — the
+    # reference score varies, its floor still survivable.
+    dial_scores = [ur_ref_score(s) for s in dial_seeds]
+    assert min(dial_scores) < max(dial_scores), \
+        f"dial has no difficulty spread: {dial_scores}"
+    assert min(dial_scores) >= UR_FAIR_FLOOR
+
+    return checks, dial_seeds, dial_scores
+
+
 def main():
     hawk_checks = prove_hawk()
     dig_checks = prove_dig()
@@ -1821,6 +1973,20 @@ def main():
     clock_checks = prove_clock()
     winter_checks, marq_starve, marq_survive = prove_winter()
     save_checks, save_golden = prove_save()
+    balance_checks, dial_seeds, dial_scores = prove_balance()
+    marq_winter = marquee_winter_fixture()
+
+    # slice-10 winter-gated save lockstep: the survivor plan's REALIZED winter
+    # score is what the ROM now commits (season == UR_WINTER). These are the
+    # numbers rom-builds.yml proof-5 asserts at the winter START press.
+    assert marq_winter['wscore'] == 3003, \
+        f"marquee winter score drifted: {marq_winter['wscore']}"
+    assert (marq_winter['store'], marq_winter['wstore'], marq_winter['wpop'],
+            marq_winter['wsurv']) == (21, 9, 3, 1), \
+        f"marquee winter fixture drifted: {marq_winter}"
+    # the winter-committed record's golden bytes (best 3003, season winter, seed
+    # UR_SEED) must equal the spring-forecast score's successor exactly.
+    assert save_golden == ur_save_encode(3003, UR_WINTER, UR_SEED)
     dug_total, connected, (route_i, route_d, route_len), \
         (gran_n, gran_con, gran_cap, gran_store), \
         (nurs_n, nurs_con, pop, pop_food), \
@@ -1943,11 +2109,24 @@ def main():
           f"{marq_survive['wleft']}, score {marq_survive['wscore']}) "
           "(== the rom-builds.yml proof-4 ur_telemetry asserts)")
     print(f"  best-score save: {save_checks} cases — encode/decode roundtrip "
-          f"byte-exact (golden encode(2008,spring,{hex(UR_SEED)})="
+          f"byte-exact (golden encode(3003,winter,{hex(UR_SEED)})="
           f"{save_golden.hex()}), every blank/1-byte-corrupt/wrong-magic/"
           "future-version blob rejects to the fresh table, improves is "
           "strictly-better-score-or-further-season only (tie writes nothing) "
           "(== the rom-builds.yml proof-5 battery roundtrip asserts)")
+    print(f"  seed dial + balance: {balance_checks} cases — ur_dial_seed pure/"
+          f"wrapping (dial 0 == {hex(UR_SEED)}), {UR_DIAL_COUNT} DISTINCT dial "
+          f"seeds {dial_seeds} feed the schedule purely; the reference plan is "
+          f"survivable for EVERY seed (dial ref scores {dial_scores}, and every "
+          f"seed in [0,{UR_DIAL_MASK + 1}] >= UR_FAIR_FLOOR {UR_FAIR_FLOOR} > 0 "
+          f"— no death-traps), with a real difficulty spread "
+          f"{min(dial_scores)}..{max(dial_scores)}")
+    print(f"  slice-10 winter-gated save: the survivor plan's REALIZED winter "
+          f"score (store {marq_winter['store']} -> wstore {marq_winter['wstore']}"
+          f", wpop {marq_winter['wpop']}, SURVIVE -> score "
+          f"{marq_winter['wscore']}) is what the ROM commits at a WINTER START — "
+          f"golden encode(3003,winter,{hex(UR_SEED)})={save_golden.hex()} "
+          "(== the rom-builds.yml proof-5 winter-commit asserts)")
     print(f"  CI lockstep fixture: dug_total={dug_total} connected={connected} "
           f"forage=(patch {route_i}, dist {route_d}, route {route_len}) "
           f"store=(placed {gran_n}, connected {gran_con}, cap {gran_cap}, "

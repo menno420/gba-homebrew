@@ -441,6 +441,58 @@ int ur_save_decode(const uint8_t in[UR_SAVE_BYTES], uint32_t *best_score,
 int ur_record_improves(uint32_t best_score, uint32_t best_season,
                        uint32_t score, uint32_t season);
 
+// --- seed dial + balance (slice 10) ----------------------------------------
+// The arc doc's slice-10 row: pick/scan the year seed with a runtime SEED DIAL,
+// and a difficulty/escalation pass whose balance invariant is provable. The
+// dial is UR_DIAL_COUNT discrete positions; ur_dial_seed(dial) is the pure year
+// seed each position selects. Dial 0 is UR_SEED itself, so the whole slices
+// 1..9 skeleton/marquee/save proof is bit-identical at the dial's home — the
+// seed only leaves UR_SEED when the player scans the dial. Other positions hash
+// off UR_SEED down a DIAL-salted stream into a bounded seed space, so every
+// dialed seed is a distinct deterministic year. The dialed seed then feeds the
+// WHOLE f(seed,season,index) schedule (hawks, patches, forage, economy) exactly
+// as UR_SEED did — the "seed -> schedule wiring" the slice-10 proof asserts is
+// pure.
+//
+// BALANCE / the difficulty pass. The invariant the doc names — "a fair seed is
+// always survivable with an optimal plan" — is made provable by a canonical
+// REFERENCE survivable plan (ur_ref_plan): a broad, shallow, STORE-ONLY
+// excavation that reaches every patch column for any seed and banks the whole
+// reachable winter haul, with NO nurseries (population 0, so winter demands
+// nothing and the banked store IS the score). Its winter score
+// (ur_ref_score) is therefore exactly the reachable winter food, always
+// >= UR_FAIR_FLOOR > 0 — so ur_seed_fair is 1 for every seed: NO dial seed is a
+// death-trap, the balance guarantee. The reference score still VARIES across
+// seeds (more/less meadow food), so the dial spans a real difficulty range: the
+// escalation is the pure f(seed) food curve, proven to have a spread while its
+// floor never drops below survivable. (The reference plan is a survivability
+// WITNESS — it proves the year is winnable — not a global score maximizer; a
+// skilled deep-banked colony scores far higher, per the slice-8 marquee.)
+#define UR_DIAL_COUNT 8              // discrete seed-dial positions
+#define UR_DIAL_SALT  0x4449414Cu    // 'DIAL' — dial->seed stream independent
+#define UR_DIAL_MASK  0x0FFFu        // bounded seed space for scanned positions
+// The fairness floor: the least winter food any seed can offer (all
+// UR_PATCH_COUNT patches at the minimum amount), so a survivable reference
+// score is provably >= this for EVERY seed.
+#define UR_FAIR_FLOOR (UR_PATCH_COUNT * UR_PATCH_MIN)   // 18
+
+// The year seed the dial position selects. Pure; dial 0 == UR_SEED.
+uint32_t ur_dial_seed(uint32_t dial);
+// Build the reference survivable plan into grid/gran/nurs: a row-1 harvest
+// corridor across every column (all patch drops reachable), that whole row
+// designated granary (capacity >= any patch total), and NO nursery (pop 0).
+// Deterministic; independent of seed (it is the fixed witness the balance proof
+// evaluates each seed against).
+void ur_ref_plan(uint8_t grid[UR_CELLS], uint8_t gran[UR_CELLS],
+                 uint8_t nurs[UR_CELLS]);
+// The reference plan's winter survival SCORE for a seed — pure f(seed). Since
+// the plan reaches all patches and raises no population, this is exactly the
+// reachable winter meadow food, always >= UR_FAIR_FLOOR.
+uint32_t ur_ref_score(uint32_t seed);
+// 1 iff the reference plan survives winter with a positive score on this seed
+// (== ur_ref_score(seed) > 0). True for every seed — the balance guarantee.
+int ur_seed_fair(uint32_t seed);
+
 // --- telemetry mailbox (ELF-exported; read by tools/nds-headless-check.py) -
 #define UR_T_MAGIC0 0    // 0x554E4452 'UNDR'
 #define UR_T_MAGIC1 1    // 0x524F4F54 'ROOT'
@@ -491,7 +543,11 @@ int ur_record_improves(uint32_t best_score, uint32_t best_season,
 #define UR_T_SAVEOK 46   // 1 = power-on read decoded a valid save blob (slice 9)
 #define UR_T_SAVEWR 47   // record writes to the backup this power-on (slice 9)
 #define UR_T_SAVEVER 48  // save format version (build-flag visibility) (slice 9)
-#define UR_T_SPARE 49    // 0
-#define UR_T_WORDS 50
+#define UR_T_DIAL 49     // live seed-dial position [0, UR_DIAL_COUNT) (slice 10)
+#define UR_T_RUNSEED 50  // the dialed run seed feeding the schedule (slice 10)
+#define UR_T_FAIR 51     // is the live run seed survivable (ref plan)? 0/1 (slice 10)
+#define UR_T_REFSCORE 52 // the reference plan's winter score for the run seed (slice 10)
+#define UR_T_SPARE 53    // 0
+#define UR_T_WORDS 54
 
 #endif // UR_SIM_H

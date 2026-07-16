@@ -620,3 +620,52 @@ int ur_record_improves(uint32_t best_score, uint32_t best_season,
     // writes nothing (EEPROM wear discipline).
     return (score > best_score || season > best_season) ? 1 : 0;
 }
+
+// --- seed dial + balance (slice 10) -----------------------------------------
+uint32_t ur_dial_seed(uint32_t dial)
+{
+    // Dial 0 is UR_SEED itself, so the dial's home reproduces the pinned
+    // slices 1..9 schedule bit-for-bit; other positions hash off UR_SEED down
+    // the DIAL-salted stream into the bounded seed space [1, UR_DIAL_MASK+1].
+    uint32_t d = dial % (uint32_t)UR_DIAL_COUNT;
+    if (d == 0)
+        return UR_SEED;
+    return (ur_hash(UR_SEED ^ UR_DIAL_SALT, d) & UR_DIAL_MASK) + 1u;
+}
+
+void ur_ref_plan(uint8_t grid[UR_CELLS], uint8_t gran[UR_CELLS],
+                 uint8_t nurs[UR_CELLS])
+{
+    // The canonical survivable witness: a row-1 harvest corridor across EVERY
+    // column (so every patch's drop cell is dug + connected to the mouth for any
+    // seed), that whole row designated granary (capacity 16*UR_GRAN_CAP, over any
+    // patch total), and NO nursery — population 0, so winter demands nothing and
+    // the banked store is the whole outcome.
+    ur_fresh_grid(grid);
+    ur_fresh_gran(gran);
+    ur_fresh_nurs(nurs);
+    for (int32_t c = 0; c < UR_GRID_W; c++)
+    {
+        ur_dig(grid, c, UR_DROP_ROW);
+        ur_designate(grid, gran, c, UR_DROP_ROW);
+    }
+}
+
+uint32_t ur_ref_score(uint32_t seed)
+{
+    // The reference plan's winter score for a seed: with population 0 the winter
+    // drain is 0 and the score collapses to the banked store — the reachable
+    // winter meadow food, always >= UR_FAIR_FLOOR. Computed through the very
+    // same store/winter functions the live game uses, so it is a faithful
+    // outcome, not a shortcut.
+    uint8_t grid[UR_CELLS], gran[UR_CELLS], nurs[UR_CELLS];
+    ur_ref_plan(grid, gran, nurs);
+    uint32_t store = ur_winter_store(grid, gran, nurs, seed, UR_WINTER);
+    uint32_t pop = ur_season_survivors(grid, gran, nurs, seed, UR_WINTER);
+    return ur_winter_score(store, pop);
+}
+
+int ur_seed_fair(uint32_t seed)
+{
+    return ur_ref_score(seed) > 0u ? 1 : 0;
+}

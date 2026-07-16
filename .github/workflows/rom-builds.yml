@@ -2653,14 +2653,21 @@ jobs:
       # no population the season predation and survivors are 0 (t[35]=0,t[36]=0).
       # Proof 3 below drives the clock across the whole year (summer/autumn/
       # winter) and shows the season, day, abundance and pass count advance.
-      - name: 'proof 1/2 — dual-screen boot + telemetry mailbox + food patches + no-route/store/pop/predation-yet + year-clock spring day 0'
+      # Slice 10 asserts the seed dial's HOME defaults at boot: no dial input is
+      # driven here, so the dial rests at position 0 (t[49]=0) whose seed is
+      # UR_SEED itself (t[50]=1370) — the whole boot skeleton is the pinned
+      # meadow. The reference-plan fairness witness for that seed is present and
+      # positive (t[51]=1 fair, t[52]=38 reference winter score), the ROM-side
+      # confirmation of the host balance proof. The dial proof 6 below scans the
+      # dial and shows the seed + schedule follow.
+      - name: 'proof 1/2 — dual-screen boot + telemetry mailbox + food patches + no-route/store/pop/predation-yet + year-clock spring day 0 + seed-dial home'
         run: |
           python3 tools/nds-headless-check.py \
             games/underroot-nds/underroot-nds.nds ur-boot-300.png \
             --frames 300 --shot 120:ur-boot-120.png --shot 240:ur-boot-240.png \
             --require-distinct \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:50 \
+            --watch t:ur_telemetry:54 \
             --watch-log ur-boot-trace.csv \
             --assert-watch 250:t:0:eq:0x554E4452 \
             --assert-watch 250:t:1:eq:0x524F4F54 \
@@ -2695,7 +2702,11 @@ jobs:
             --assert-watch 250:t:44:eq:0 \
             --assert-watch 250:t:46:eq:0 \
             --assert-watch 250:t:47:eq:0 \
-            --assert-watch 250:t:48:eq:1
+            --assert-watch 250:t:48:eq:1 \
+            --assert-watch 250:t:49:eq:0 \
+            --assert-watch 250:t:50:eq:1370 \
+            --assert-watch 250:t:51:eq:1 \
+            --assert-watch 250:t:52:eq:38
       # Slice 9 asserts the companion "fresh chip = fresh table": nds-headless-
       # check imports a factory-fresh 0xFF backup by default, so the power-on
       # read decodes NOTHING (save-loaded t[46]=0), the record is the fresh
@@ -2788,7 +2799,7 @@ jobs:
             --keys 200-210:L --touch 200-210:168,56 \
             --keys 215-225:L --touch 215-225:8,184 \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:50 \
+            --watch t:ur_telemetry:54 \
             --assert-watch 190:t:0:eq:0x554E4452 \
             --assert-watch 190:t:8:eq:7 \
             --assert-watch 190:t:9:eq:6 \
@@ -2860,7 +2871,7 @@ jobs:
             --shot 3072:ur-year-autumn.png \
             --shot 3800:ur-year-winter.png \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:50 \
+            --watch t:ur_telemetry:54 \
             --assert-watch 400:t:0:eq:0x554E4452 \
             --assert-watch 400:t:3:eq:0 \
             --assert-watch 400:t:31:ge:1 \
@@ -2925,7 +2936,7 @@ jobs:
             --keys 335-345:R --touch 335-345:152,24 \
             --keys 350-360:R --touch 350-360:216,24 \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:50 \
+            --watch t:ur_telemetry:54 \
             --assert-watch 310:t:0:eq:0x554E4452 \
             --assert-watch 310:t:3:eq:0 \
             --assert-watch 310:t:8:eq:11 \
@@ -2955,32 +2966,40 @@ jobs:
             --assert-watch 390:t:40:eq:1 \
             --assert-watch 390:t:41:eq:8 \
             --assert-watch 390:t:42:eq:2008
-      # Proof 5 — BEST-SCORE SAVE roundtrip (slice 9), on proof 4's committed
-      # survivor plan: the best SCORE / furthest season persist across power
-      # cycles on the emulated card backup (the gl_save pattern). ONE record
-      # blob — 8 little-endian u32 words { magic, version, best_score,
-      # furthest_season, run_seed, 0, 0, checksum } — round-trips through the
-      # DeSmuME battery BYTE-IDENTICAL to the host mirror's
-      # ur_save_encode(2008, spring, UR_SEED) (golden bytes pinned host-side in
-      # check-underroot.py prove_save). Wear discipline: the record commits ONLY
-      # on a START press AND ONLY when it strictly improves, so a factory-fresh
-      # chip stays fresh through the whole climb until the commit, and an equal
-      # run (START pressed with nothing better) writes NOTHING.
+      # Proof 5 — BEST-SCORE SAVE roundtrip (slice 9) under the slice-10 WINTER
+      # GATE, on proof 4's committed survivor plan: the best SCORE / furthest
+      # season persist across power cycles on the emulated card backup (the
+      # gl_save pattern). ONE record blob — 8 little-endian u32 words { magic,
+      # version, best_score, furthest_season, run_seed, 0, 0, checksum } —
+      # round-trips through the DeSmuME battery BYTE-IDENTICAL to the host
+      # mirror's ur_save_encode(3003, WINTER, UR_SEED) (golden bytes pinned
+      # host-side in check-underroot.py prove_save). Slice 10 gates the commit on
+      # a REALIZED winter (season == UR_WINTER), so the persisted record is the
+      # survivor plan's actual winter score (3003, season 3) — NOT the spring
+      # forecast (2008) — an outcome the colony genuinely reached. Wear
+      # discipline: the record commits ONLY on a START press, ONLY in winter, and
+      # ONLY when it strictly improves, so a fresh chip stays fresh through the
+      # whole climb AND a spring START, and an equal run writes NOTHING.
       #
-      # 5a — fresh chip, dig the survivor plan, commit with START: a 0xFF chip
-      # boots to the fresh table (save-loaded t[46]=0, best t[43]=0, no write
-      # t[47]=0, format version t[48]=1); the survivor plan climbs to SCORE 2008
-      # (t[42], settled by frame 390) with STILL no write (t[47]=0 — START not
-      # pressed yet); START at 395 commits the record ONCE (best t[43]=2008,
-      # furthest season t[44]=0, run seed t[45]=1370=UR_SEED, writes t[47]=1).
-      # The exported battery then carries the record byte-identical to the mirror
-      # encode.
-      - name: 'proof 5a — best-score save: fresh chip, survivor climbs to 2008, START commits ONE write, battery bytes == mirror encode'
+      # 5a — fresh chip, dig the survivor plan, a SPRING START is BLOCKED (the
+      # gate), then a WINTER START commits: a 0xFF chip boots to the fresh table
+      # (save-loaded t[46]=0, best t[43]=0, no write t[47]=0, version t[48]=1);
+      # the survivor plan climbs to its SPRING forecast SCORE 2008 (t[42] at
+      # frame 390) with no write (t[47]=0). START at 395 is in SPRING (t[3]=0), so
+      # the WINTER gate BLOCKS it — STILL no write (t[47]=0 at 405), best still 0.
+      # The year clock then runs to WINTER (t[3]=3 by frame 3800), where the SAME
+      # plan's REALIZED winter score is 3003 (store 21 -> wstore 9, wpop 3,
+      # SURVIVE) with still no write. START at 3810 is now in winter, so it
+      # commits the record ONCE (best t[43]=3003, furthest season t[44]=3, run
+      # seed t[45]=1370=UR_SEED, writes t[47]=1). The exported battery carries the
+      # record byte-identical to the mirror encode(3003, winter, UR_SEED).
+      - name: 'proof 5a — winter-gated save: spring START BLOCKED, winter START commits the REALIZED score 3003 (season 3), battery bytes == mirror encode'
         run: |
           python3 tools/underroot-save.py blank ur-blank.sav
           python3 tools/nds-headless-check.py \
             games/underroot-nds/underroot-nds.nds ur-save-commit.png \
-            --frames 410 --shot 405:ur-save-committed.png \
+            --frames 3880 --shot 3850:ur-save-committed.png \
+            --shot 405:ur-save-spring-blocked.png \
             --touch 60-70:72,24 --touch 75-85:88,24 --touch 90-100:104,24 \
             --touch 105-115:120,24 --touch 120-130:136,24 \
             --touch 135-145:152,24 --touch 150-160:168,24 \
@@ -2995,46 +3014,59 @@ jobs:
             --keys 335-345:R --touch 335-345:152,24 \
             --keys 350-360:R --touch 350-360:216,24 \
             --keys 395-400:START \
+            --keys 3810-3830:START \
             --battery-in ur-blank.sav --battery-out ur-save1.sav \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:50 \
+            --watch t:ur_telemetry:54 \
             --assert-watch 250:t:46:eq:0 \
             --assert-watch 250:t:43:eq:0 \
             --assert-watch 250:t:44:eq:0 \
             --assert-watch 250:t:47:eq:0 \
             --assert-watch 250:t:48:eq:1 \
+            --assert-watch 390:t:3:eq:0 \
             --assert-watch 390:t:42:eq:2008 \
             --assert-watch 390:t:47:eq:0 \
-            --assert-watch 405:t:43:eq:2008 \
-            --assert-watch 405:t:44:eq:0 \
-            --assert-watch 405:t:45:eq:1370 \
-            --assert-watch 405:t:46:eq:0 \
-            --assert-watch 405:t:47:eq:1
-          python3 tools/underroot-save.py expect ur-save1.sav --score 2008 --season 0 --seed 1370
+            --assert-watch 405:t:3:eq:0 \
+            --assert-watch 405:t:47:eq:0 \
+            --assert-watch 405:t:43:eq:0 \
+            --assert-watch 3800:t:3:eq:3 \
+            --assert-watch 3800:t:23:eq:21 \
+            --assert-watch 3800:t:38:eq:3 \
+            --assert-watch 3800:t:42:eq:3003 \
+            --assert-watch 3800:t:47:eq:0 \
+            --assert-watch 3850:t:43:eq:3003 \
+            --assert-watch 3850:t:44:eq:3 \
+            --assert-watch 3850:t:45:eq:1370 \
+            --assert-watch 3850:t:46:eq:0 \
+            --assert-watch 3850:t:47:eq:1
+          python3 tools/underroot-save.py expect ur-save1.sav --score 3003 --season 3 --seed 1370
           python3 tools/underroot-save.py inspect ur-save1.sav
-      # 5b — power cycle loads the record + an equal run writes nothing: a fresh
-      # boot with 5a's battery loads the record (save-loaded t[46]=1, best 2008,
-      # furthest season 0, seed 1370 — on the title BEFORE any input); with the
-      # SAME record standing and NO colony dug, START at 395 ties nothing
-      # (improves = 0), so the commit writes NOTHING (t[47] stays 0 — the wear
-      # discipline). The battery image is byte-identical after the run.
-      - name: 'proof 5b — save persistence: power cycle loads the record, an equal (empty) run writes nothing'
+      # 5b — power cycle loads the record + an equal WINTER run writes nothing: a
+      # fresh boot with 5a's battery loads the record (save-loaded t[46]=1, best
+      # 3003, furthest season 3, seed 1370 — on the title BEFORE any input); with
+      # the SAME record standing and NO colony dug, the clock runs to WINTER
+      # (t[3]=3) and a START at 3810 ties nothing (an empty colony scores 0 in
+      # winter, and season 3 == the record's season, so improves = 0), so the
+      # commit writes NOTHING (t[47] stays 0 — the wear discipline). The battery
+      # image is byte-identical after the run.
+      - name: 'proof 5b — save persistence: power cycle loads the record, an equal (empty) winter run writes nothing'
         run: |
           python3 tools/nds-headless-check.py \
             games/underroot-nds/underroot-nds.nds ur-save-reload.png \
-            --frames 410 --keys 395-400:START \
+            --frames 3880 --keys 3810-3830:START \
             --battery-in ur-save1.sav --battery-out ur-save2.sav \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:50 \
+            --watch t:ur_telemetry:54 \
             --assert-watch 250:t:46:eq:1 \
-            --assert-watch 250:t:43:eq:2008 \
-            --assert-watch 250:t:44:eq:0 \
+            --assert-watch 250:t:43:eq:3003 \
+            --assert-watch 250:t:44:eq:3 \
             --assert-watch 250:t:45:eq:1370 \
             --assert-watch 250:t:47:eq:0 \
-            --assert-watch 405:t:43:eq:2008 \
-            --assert-watch 405:t:47:eq:0
+            --assert-watch 3800:t:3:eq:3 \
+            --assert-watch 3850:t:43:eq:3003 \
+            --assert-watch 3850:t:47:eq:0
           cmp ur-save1.sav ur-save2.sav
-          echo "battery image byte-identical after the equal run"
+          echo "battery image byte-identical after the equal winter run"
       # 5c — corrupt save = fresh table + the game plays on; future version =
       # reset (slice 9): a battery image with one flipped bit in the record's
       # checksum word (data intact — only the checksum can reject it) boots to
@@ -3052,7 +3084,7 @@ jobs:
             --frames 300 \
             --battery-in ur-corrupt.sav \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:50 \
+            --watch t:ur_telemetry:54 \
             --assert-watch 250:t:0:eq:0x554E4452 \
             --assert-watch 250:t:2:ge:200 \
             --assert-watch 250:t:46:eq:0 \
@@ -3065,11 +3097,39 @@ jobs:
             --frames 300 \
             --battery-in ur-vbump.sav \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:50 \
+            --watch t:ur_telemetry:54 \
             --assert-watch 250:t:0:eq:0x554E4452 \
             --assert-watch 250:t:46:eq:0 \
             --assert-watch 250:t:43:eq:0 \
             --assert-watch 250:t:48:eq:1
+      # Proof 6 — THE SEED DIAL + balance (slice 10): scanning the dial picks a
+      # different year seed, and the dialed seed feeds the whole schedule. Two
+      # RIGHT presses step the dial 0 -> 1 -> 2 (no touch, so nothing is dug); by
+      # frame 250 (still SPRING day 0, t[3]=0) the dial rests at position 2
+      # (t[49]=2) whose seed is 2171 (t[50]=2171) — NOT the home UR_SEED — and the
+      # meadow's patch-sum has FOLLOWED the new seed to ur_patch_total(2171,
+      # spring)=32 (t[16]=32, vs the home seed's 34), the ROM-visible proof that
+      # the seed->schedule wiring is live. The reference-plan fairness witness
+      # tracks the dialed seed too (t[51]=1 fair, t[52]=35 = the reference winter
+      # score for seed 2171) — the ROM-side confirmation of check-underroot.py's
+      # prove_balance that every dialable seed is survivable. The distinctness,
+      # purity and fairness of ALL dial seeds are proven exhaustively host-side.
+      - name: 'proof 6 — seed dial: RIGHT scans to dial 2 (seed 2171), the patch schedule + fairness witness follow the dialed seed'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-dial-250.png \
+            --frames 250 --shot 240:ur-dial-240.png \
+            --keys 60-70:RIGHT \
+            --keys 120-130:RIGHT \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:54 \
+            --assert-watch 250:t:0:eq:0x554E4452 \
+            --assert-watch 250:t:3:eq:0 \
+            --assert-watch 250:t:49:eq:2 \
+            --assert-watch 250:t:50:eq:2171 \
+            --assert-watch 250:t:16:eq:32 \
+            --assert-watch 250:t:51:eq:1 \
+            --assert-watch 250:t:52:eq:35
       - name: upload Underroot ROM + proof screenshots
         uses: actions/upload-artifact@v4
         with:
@@ -3093,9 +3153,12 @@ jobs:
             ur-winter-survive.png
             ur-save-commit.png
             ur-save-committed.png
+            ur-save-spring-blocked.png
             ur-save-reload.png
             ur-save-corrupt.png
             ur-save-vbump.png
+            ur-dial-250.png
+            ur-dial-240.png
             ur-save1.sav
             ur-save2.sav
           if-no-files-found: error

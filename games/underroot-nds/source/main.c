@@ -281,14 +281,26 @@ int main(void)
     uint8_t nurs[UR_CELLS];
     ur_fresh_nurs(nurs);
 
+    // The seed dial (slice 10): the runtime-selectable year seed. The dial rests
+    // at position 0 (== UR_SEED, so the boot skeleton is the pinned meadow); the
+    // player scans it with LEFT/RIGHT to pick a different year. run_seed is the
+    // dialed seed that feeds the WHOLE f(seed,season,index) schedule below. The
+    // reference-plan fairness witness (ur_seed_fair / ur_ref_score) is recomputed
+    // ONLY on a dial change (never per frame) — it is a bounded burrow BFS sweep,
+    // fine as a one-shot on a button press but not worth every vblank.
+    uint32_t dial = 0;
+    uint32_t run_seed = ur_dial_seed(dial);
+    uint32_t ref_score = ur_ref_score(run_seed);
+    uint32_t seed_fair = ref_score > 0 ? 1u : 0u;
+
     // The meadow's food patches: pure f(seed, season, index). Recomputed each
     // frame for the LIVE season (slice 7's year clock), so the meadow's patch
     // layout and total food advance with the seasons. At boot (frame 0 -> day 0
     // -> spring) this is the slice-2 pinned spring meadow.
     ur_patch_t patches[UR_PATCH_COUNT];
     for (int i = 0; i < UR_PATCH_COUNT; i++)
-        patches[i] = ur_patch(UR_SEED, UR_SPRING, (uint32_t)i);
-    uint32_t food_total = ur_patch_total(UR_SEED, UR_SPRING);
+        patches[i] = ur_patch(run_seed, UR_SPRING, (uint32_t)i);
+    uint32_t food_total = ur_patch_total(run_seed, UR_SPRING);
 
     uint32_t frame = 0;
     int32_t last_col = -1;
@@ -366,6 +378,26 @@ int main(void)
             }
         }
 
+        // The seed dial (slice 10): LEFT/RIGHT scan the year seed. A discrete
+        // d-pad edge steps the dial one position (wrapping over UR_DIAL_COUNT);
+        // the dialed run seed re-feeds the whole schedule from this frame on, and
+        // the reference-plan fairness witness is recomputed for the new seed (a
+        // one-shot BFS sweep, only on the change). Guarded by pad_seen_idle so a
+        // boot-all-pressed emulator cannot phantom-scan at frame 1 (the KEYINPUT
+        // boot-trap note). LEFT/RIGHT are otherwise unused, so this never
+        // collides with the stylus verbs or the START commit.
+        if (pad_seen_idle && (down & (KEY_LEFT | KEY_RIGHT)))
+        {
+            if (down & KEY_RIGHT)
+                dial = (dial + 1u) % (uint32_t)UR_DIAL_COUNT;
+            if (down & KEY_LEFT)
+                dial = (dial + (uint32_t)UR_DIAL_COUNT - 1u)
+                       % (uint32_t)UR_DIAL_COUNT;
+            run_seed = ur_dial_seed(dial);
+            ref_score = ur_ref_score(run_seed);
+            seed_fair = ref_score > 0 ? 1u : 0u;
+        }
+
         // The year clock (slice 7): the day the frame counter is on and the
         // season that day falls in. EVERYTHING below reads this LIVE season
         // (the meadow, the patches, the forage/economy chain) rather than a
@@ -376,72 +408,79 @@ int main(void)
         uint32_t season = ur_season_of_day(day);
         // The live meadow: patches move with the season (f(seed, season, index)).
         for (int i = 0; i < UR_PATCH_COUNT; i++)
-            patches[i] = ur_patch(UR_SEED, season, (uint32_t)i);
-        food_total = ur_patch_total(UR_SEED, season);
+            patches[i] = ur_patch(run_seed, season, (uint32_t)i);
+        food_total = ur_patch_total(run_seed, season);
 
         int hawk_on = ur_hawk_active(frame);
-        int32_t hawk_x = ur_hawk_x(UR_SEED, season, frame);
-        int32_t hawk_y = ur_hawk_y(UR_SEED, season, frame);
+        int32_t hawk_x = ur_hawk_x(run_seed, season, frame);
+        int32_t hawk_y = ur_hawk_y(run_seed, season, frame);
         uint32_t dug = dug_total(grid);
         uint32_t con = ur_burrow_size(grid);
         // The forager route (slice 3): the nearest reachable patch over the
         // drawn tunnel graph — pure f(dig plan, seed, season).
-        ur_forage_t forage = ur_forage(grid, UR_SEED, season);
+        ur_forage_t forage = ur_forage(grid, run_seed, season);
         // The food store (slice 4): connected granary cells, their capacity,
         // and the reachable meadow haul banked up to it — pure f(dig plan,
         // gran plan, seed, season).
         uint32_t gran_n = ur_gran_count(grid, gran);
         uint32_t gran_con = ur_gran_connected(grid, gran);
         uint32_t cap = ur_gran_capacity(grid, gran);
-        uint32_t store = ur_store(grid, gran, UR_SEED, season);
+        uint32_t store = ur_store(grid, gran, run_seed, season);
         // The population (slice 5): connected nurseries brood the banked store
         // into new foragers on a pure bounded schedule — pure f(dig plan, gran
         // plan, nurs plan, seed, season).
         uint32_t nurs_n = ur_nurs_count(grid, nurs);
         uint32_t nurs_con = ur_nurs_connected(grid, nurs);
-        uint32_t pop = ur_pop(grid, gran, nurs, UR_SEED, season);
-        uint32_t pop_food = ur_pop_food(grid, gran, nurs, UR_SEED, season);
+        uint32_t pop = ur_pop(grid, gran, nurs, run_seed, season);
+        uint32_t pop_food = ur_pop_food(grid, gran, nurs, run_seed, season);
         // Hawk predation (slice 6): the hawks catch foragers on the EXPOSED
         // (shallow) cells of the forager route; deep cells are safe. Pure
         // f(dig plan, gran plan, nurs plan, seed, season).
-        uint32_t exposed = ur_forage_exposed(grid, UR_SEED, season);
-        uint32_t lost = ur_predation(grid, gran, nurs, UR_SEED, season);
-        uint32_t surv = ur_survivors(grid, gran, nurs, UR_SEED, season);
+        uint32_t exposed = ur_forage_exposed(grid, run_seed, season);
+        uint32_t lost = ur_predation(grid, gran, nurs, run_seed, season);
+        uint32_t surv = ur_survivors(grid, gran, nurs, run_seed, season);
         // The year clock's economy (slice 7): the meadow abundance scale, the
         // seasonal haul it scales the reachable food to, and the per-hawk-pass
         // predation over the whole season (the slice-6-deferred temporal scale).
         uint32_t abund = ur_abundance(season);
-        uint32_t sfood = ur_season_food(grid, UR_SEED, season);
+        uint32_t sfood = ur_season_food(grid, run_seed, season);
         uint32_t hawk_pass = ur_hawk_passes(season);
-        uint32_t spred = ur_season_predation(grid, gran, nurs, UR_SEED, season);
-        uint32_t ssurv = ur_season_survivors(grid, gran, nurs, UR_SEED, season);
+        uint32_t spred = ur_season_predation(grid, gran, nurs, run_seed, season);
+        uint32_t ssurv = ur_season_survivors(grid, gran, nurs, run_seed, season);
         // The winter survival exam (slice 8): the store carried into winter (the
         // banked granary store minus the brood the nurseries drew), the foragers
         // carried in (the season survivors), the winter drain that appetite
         // demands, and the SURVIVE verdict + SCORE. Pure f(dig plan, gran plan,
         // nurs plan, seed, season) — the arc's headline number.
-        uint32_t wstore = ur_winter_store(grid, gran, nurs, UR_SEED, season);
+        uint32_t wstore = ur_winter_store(grid, gran, nurs, run_seed, season);
         uint32_t wpop = ssurv;
         uint32_t wdrain = ur_winter_drain(wpop);
         int wsurv = ur_winter_survives(wstore, wpop);
         uint32_t wleft = ur_winter_leftover(wstore, wpop);
         uint32_t wscore = ur_winter_score(wstore, wpop);
 
-        // The best-score record commit (slice 9): pressing START banks the run's
-        // survival SCORE and season into the persistent record — but ONLY when
-        // it strictly improves (a higher score OR a further season). A discrete
-        // player action + a strict-improve gate is the EEPROM wear discipline:
-        // one bounded page program per improving commit, never per frame, never
-        // on a tie. (Guarded by pad_seen_idle so a boot-all-pressed emulator
+        // The best-score record commit (slice 9 + slice-10 winter gate): pressing
+        // START banks the run's survival SCORE and season into the persistent
+        // record — but ONLY when the live season is WINTER, and ONLY when it
+        // strictly improves (a higher score OR a further season). The WINTER gate
+        // (slice 10, honoring slice-9's forward note) is the correctness half:
+        // slice 8 evaluates the winter exam as a live forecast in the growing
+        // seasons, so a spring START would bank a PROJECTED number the run never
+        // realized; gating the commit to season == UR_WINTER — the one season the
+        // exam IS the realized outcome — means the persisted best is a score the
+        // colony actually reached. A discrete player action + a strict-improve
+        // gate is the EEPROM wear discipline: one bounded page program per
+        // improving winter commit, never per frame, never on a tie, never in a
+        // growing season. (Guarded by pad_seen_idle so a boot-all-pressed emulator
         // cannot phantom-commit at frame 1 — the same KEYINPUT boot-trap note.)
-        if (pad_seen_idle && (down & KEY_START)
+        if (pad_seen_idle && (down & KEY_START) && season == UR_WINTER
             && ur_record_improves(best_score, best_season, wscore, season))
         {
             if (wscore > best_score)
                 best_score = wscore;
             if (season > best_season)
                 best_season = season;
-            best_seed = UR_SEED;
+            best_seed = run_seed;
             ur_save_encode(best_score, best_season, best_seed, save_blob);
             save_write_backup(save_blob);
             save_writes++;
@@ -458,6 +497,12 @@ int main(void)
         // title row.)
         consoleSelect(&top_console);
         printf("\x1b[0;22Hbest %lu", (unsigned long)best_score);
+        // The seed dial (slice 10): the picked year seed and whether it is a fair
+        // (survivable) year — scan LEFT/RIGHT to pick another. Drawn on row 2
+        // (above the grass field) so the player sees which year they are playing.
+        printf("\x1b[2;0Hseed %lu (dial %lu/%d) %s",
+               (unsigned long)run_seed, (unsigned long)dial, UR_DIAL_COUNT,
+               seed_fair ? "fair" : "harsh");
         if (burrow_dirty)
         {
             draw_burrow(grid, gran, nurs);
@@ -466,7 +511,7 @@ int main(void)
 
         ur_telemetry[UR_T_FRAME] = frame;
         ur_telemetry[UR_T_SEASON] = season;    // LIVE season (slice 7 year clock)
-        ur_telemetry[UR_T_SEED] = UR_SEED;
+        ur_telemetry[UR_T_SEED] = run_seed;
         ur_telemetry[UR_T_HAWKON] = (uint32_t)hawk_on;
         ur_telemetry[UR_T_HAWKX] = hawk_on ? (uint32_t)hawk_x : 0;
         ur_telemetry[UR_T_HAWKY] = hawk_on ? (uint32_t)hawk_y : 0;
@@ -509,6 +554,16 @@ int main(void)
         ur_telemetry[UR_T_SAVEOK] = save_ok;
         ur_telemetry[UR_T_SAVEWR] = save_writes;
         ur_telemetry[UR_T_SAVEVER] = UR_SAVE_VERSION;
+        // The seed dial + balance (slice 10): the live dial position, the dialed
+        // run seed feeding the schedule, and the reference-plan fairness witness
+        // (is this seed survivable? and its reference winter score) recomputed on
+        // the last dial change — the ROM-side confirmation of the host balance
+        // proof that no dialed seed is a death-trap.
+        ur_telemetry[UR_T_DIAL] = dial;
+        ur_telemetry[UR_T_RUNSEED] = run_seed;
+        ur_telemetry[UR_T_FAIR] = seed_fair;
+        ur_telemetry[UR_T_REFSCORE] = ref_score;
+        ur_telemetry[UR_T_SPARE] = 0;
     }
 
     return 0;

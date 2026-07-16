@@ -213,8 +213,9 @@ winter to *characterizing* what that winter can hold.
 
 ## PR / CI (filled at close-out)
 
-- PR: **(opened DRAFT at push; number recorded in the session report and a
-  follow-up card commit)** — base `claude/underroot-slice-9`; impl commit
-  `27bea03`, card commit is the branch tip at open.
+- PR: **#164** — https://github.com/menno420/gba-homebrew/pull/164 (DRAFT,
+  base `claude/underroot-slice-9`; impl commit `27bea03`, card commit is the
+  branch tip). Draft-parked under the landing wall — no ready-flip, no
+  auto-merge.
 - CI (`nds-underroot-build` + the gates): recorded in the session report /
   status; substrate-gate red is the inherited #151 orphan set, not this slice.

@@ -1,6 +1,6 @@
 # Session — current-state rows: reconcile the ledger with merged PRs #148–#151
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-16 (branch `claude/current-state-rows`; started
   01:14Z, `date -u`)

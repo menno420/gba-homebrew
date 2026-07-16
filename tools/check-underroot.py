@@ -73,6 +73,9 @@ UR_POP_CAP = 8                        # hard bound on raised foragers
 UR_FOOD_PER_ANT = 2                   # banked food consumed to raise one forager
 UR_NURS_BROOD = 3                     # foragers one connected nursery can brood
 
+# --- hawks predate: exposed shallow route cells (slice 6; mirror ur_sim.h) --
+UR_SAFE_DEPTH = 2                     # grid rows [0, UR_SAFE_DEPTH) are hawk-exposed
+
 # --- food patches (top screen; slice 2; mirror ur_sim.h) -------------------
 UR_SCREEN_W = 256             # meadow width (px)
 UR_SCREEN_H = 192             # meadow height (px)
@@ -355,6 +358,74 @@ def ur_pop_food(grid, gran, nurs, seed, season):
     return ur_pop(grid, gran, nurs, seed, season) * UR_FOOD_PER_ANT
 
 
+# --- hawks predate: exposed shallow route cells (slice 6; mirror ur_sim.c) --
+def ur_route_exposed(grid, col, row):
+    # Count of EXPOSED cells (grid row < UR_SAFE_DEPTH) on the canonical
+    # shortest dug path from the mouth to (col,row). Same BFS graph as
+    # ur_dig_dist (E,W,S,N neighbour order), reconstructed via first-reached
+    # predecessors -> a deterministic integer path. 0 if soil / OOB / no route.
+    if col < 0 or col >= UR_GRID_W or row < 0 or row >= UR_GRID_H:
+        return 0
+    start = UR_ENTRANCE_ROW * UR_GRID_W + UR_ENTRANCE_COL
+    target = row * UR_GRID_W + col
+    if grid[start] == 0 or grid[target] == 0:
+        return 0
+    pred = [-1] * UR_CELLS
+    pred[start] = start                   # the mouth is its own root (visited)
+    q = deque([start])
+    found = False
+    while q:
+        i = q.popleft()
+        if i == target:
+            found = True
+            break
+        c, r = i % UR_GRID_W, i // UR_GRID_W
+        for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nc, nr = c + dc, r + dr
+            if 0 <= nc < UR_GRID_W and 0 <= nr < UR_GRID_H:
+                j = nr * UR_GRID_W + nc
+                if grid[j] == 1 and pred[j] == -1:
+                    pred[j] = i
+                    q.append(j)
+    if not found:
+        return 0
+    exposed = 0
+    cur = target
+    while True:
+        r = cur // UR_GRID_W
+        if r < UR_SAFE_DEPTH:
+            exposed += 1
+        if cur == start:
+            break
+        cur = pred[cur]
+    return exposed
+
+
+def ur_forage_exposed(grid, seed, season):
+    # Exposed cells on the forager's route: ur_forage picks the nearest
+    # reachable patch, ur_route_exposed counts the shallow cells on the path to
+    # its drop cell. 0 if no patch is reachable.
+    f = ur_forage(grid, seed, season)
+    if f[0] == UR_ROUTE_NONE:
+        return 0
+    p = ur_patch(seed, season, f[0])
+    col = ur_patch_col(p)
+    return ur_route_exposed(grid, col, UR_DROP_ROW)
+
+
+def ur_predation(grid, gran, nurs, seed, season):
+    # Foragers lost to hawk predation = min(exposed route cells, population).
+    pop = ur_pop(grid, gran, nurs, seed, season)
+    exposed = ur_forage_exposed(grid, seed, season)
+    return exposed if exposed < pop else pop
+
+
+def ur_survivors(grid, gran, nurs, seed, season):
+    # Surviving foragers = ur_pop - ur_predation (predation <= pop, no underflow).
+    return (ur_pop(grid, gran, nurs, seed, season)
+            - ur_predation(grid, gran, nurs, seed, season))
+
+
 # --- the CI --touch dig script, mirrored (proof 3 anchor) ------------------
 # Each step is a bottom-LCD pixel the stylus is held at; the ROM digs the
 # cell under the stylus every held frame. Centre pixel of cell (c,r) is
@@ -419,7 +490,15 @@ def ci_fixture():
     pop = (ur_nurs_count(grid, nurs), ur_nurs_connected(grid, nurs),
            ur_pop(grid, gran, nurs, UR_SEED, 0),
            ur_pop_food(grid, gran, nurs, UR_SEED, 0))
-    return _dug_total(grid), ur_burrow_size(grid), forage, store, pop
+    # The predation (slice 6): the forager route is the shallow shaft to patch 4
+    # (drop (8,1), dist 1) — cells (8,0) row 0 and (8,1) row 1 are BOTH exposed
+    # (row < UR_SAFE_DEPTH), so exposed = 2; the population (2) is fully caught
+    # (losses = min(2, 2) = 2), leaving 0 survivors — a surface-hugging route is
+    # hawk-food. A buried route would expose fewer cells; proven host-side.
+    pred = (ur_forage_exposed(grid, UR_SEED, 0),
+            ur_predation(grid, gran, nurs, UR_SEED, 0),
+            ur_survivors(grid, gran, nurs, UR_SEED, 0))
+    return _dug_total(grid), ur_burrow_size(grid), forage, store, pop, pred
 
 
 # --- proofs ----------------------------------------------------------------
@@ -921,6 +1000,193 @@ def prove_nursery():
     return checks
 
 
+def _ref_route(grid, col, row):
+    # Independent reconstruction of the canonical shortest path mouth->(col,row):
+    # a fresh BFS + predecessor walk returning the ordered list of path cells,
+    # to cross-check ur_route_exposed's geometry against the ur_dig_dist graph.
+    if col < 0 or col >= UR_GRID_W or row < 0 or row >= UR_GRID_H:
+        return None
+    start = UR_ENTRANCE_ROW * UR_GRID_W + UR_ENTRANCE_COL
+    target = row * UR_GRID_W + col
+    if grid[start] == 0 or grid[target] == 0:
+        return None
+    pred = {start: start}
+    q = deque([start])
+    while q:
+        i = q.popleft()
+        if i == target:
+            break
+        c, r = i % UR_GRID_W, i // UR_GRID_W
+        for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nc, nr = c + dc, r + dr
+            if 0 <= nc < UR_GRID_W and 0 <= nr < UR_GRID_H:
+                j = nr * UR_GRID_W + nc
+                if grid[j] == 1 and j not in pred:
+                    pred[j] = i
+                    q.append(j)
+    if target not in pred:
+        return None
+    path = []
+    cur = target
+    while True:
+        path.append(cur)
+        if cur == start:
+            break
+        cur = pred[cur]
+    path.reverse()
+    return path
+
+
+def prove_predation():
+    # The arc doc's slice-6 proof (for many inputs, not a replay):
+    #  1. ur_route_exposed geometry — for many scripted dig plans, to every
+    #     reachable cell: the counted route is a VALID shortest path (contiguous
+    #     4-adjacent dug cells, mouth->target, length == ur_dig_dist + 1), and
+    #     the exposed count == the shallow (row < UR_SAFE_DEPTH) cells on that
+    #     path; unreachable / soil / OOB targets expose 0;
+    #  2. the exposed<->deep boundary is EXACT — on single-corridor grids (a
+    #     unique shortest path, no tie ambiguity) a surface-hugging route and a
+    #     buried route to the SAME drop cell expose the hand-computed counts,
+    #     with cells at row == UR_SAFE_DEPTH provably NOT counted (burying below
+    #     the band is what saves them);
+    #  3. ur_predation == min(exposed, pop) — the two binding regimes proven on
+    #     controlled grids: POP-BOUND (a very exposed route, few foragers ->
+    #     losses = pop, survivors 0) and EXPOSURE-BOUND (a shallow but short
+    #     route, many foragers -> losses = exposed, survivors = pop - exposed),
+    #     each asserting the winning term by value (the slice-5 min-regime idiom);
+    #  4. emergence: a fresh grid / no reachable patch predates nothing
+    #     (exposed 0, losses 0, survivors 0).
+    checks = 0
+
+    # (1) ur_route_exposed == shallow cells on a valid shortest path
+    for seed in range(300):
+        grid = ur_fresh_grid()
+        for step in range(24):
+            h = ur_hash(seed, step)
+            ur_dig(grid, h % UR_GRID_W, (h >> 8) % UR_GRID_H)
+        for row in range(UR_GRID_H):
+            for col in range(UR_GRID_W):
+                idx = row * UR_GRID_W + col
+                ex = ur_route_exposed(grid, col, row)
+                path = _ref_route(grid, col, row)
+                d = ur_dig_dist(grid, col, row)
+                if grid[idx] == 0 or d == UR_ROUTE_NONE:
+                    assert ex == 0 and path is None, \
+                        f"route_exposed to soil/unreachable {col},{row} = {ex}"
+                else:
+                    # a valid shortest path: right endpoints, right length, and
+                    # every consecutive pair 4-adjacent + dug
+                    assert path[0] == UR_ENTRANCE_ROW * UR_GRID_W + UR_ENTRANCE_COL
+                    assert path[-1] == idx
+                    assert len(path) == d + 1, \
+                        f"path len {len(path)} != dist+1 {d + 1}"
+                    for a, b in zip(path, path[1:]):
+                        ac, ar = a % UR_GRID_W, a // UR_GRID_W
+                        bc, br = b % UR_GRID_W, b // UR_GRID_W
+                        assert abs(ac - bc) + abs(ar - br) == 1, "path not contiguous"
+                        assert grid[b] == 1, "path crosses soil"
+                    shallow = sum(1 for p in path if (p // UR_GRID_W) < UR_SAFE_DEPTH)
+                    assert ex == shallow, \
+                        f"route_exposed {ex} != shallow-on-path {shallow}"
+                    assert 0 <= ex <= len(path)
+                checks += 1
+    # OOB targets expose nothing
+    g = ur_fresh_grid()
+    for col, row in ((-1, 0), (0, -1), (UR_GRID_W, 0), (0, UR_GRID_H)):
+        assert ur_route_exposed(g, col, row) == 0, "OOB route exposed"
+
+    # (2) exact exposed<->deep boundary: shallow vs buried route to the SAME
+    # drop cell (12,1). The single corridor makes each shortest path unique.
+    shallow = ur_fresh_grid()
+    for col in range(UR_ENTRANCE_COL + 1, 13):     # along row 0 (the surface)
+        ur_dig(shallow, col, 0)
+    ur_dig(shallow, 12, UR_DROP_ROW)
+    assert ur_dig_dist(shallow, 12, UR_DROP_ROW) == 5
+    # path (8,0)(9,0)(10,0)(11,0)(12,0) row 0 + (12,1) row 1 -> all 6 exposed
+    assert ur_route_exposed(shallow, 12, UR_DROP_ROW) == 6, "shallow route exposed != 6"
+    buried = ur_fresh_grid()
+    for cell in ((8, 1), (8, 2), (8, 3), (9, 3), (10, 3),
+                 (11, 3), (12, 3), (12, 2), (12, 1)):
+        ur_dig(buried, cell[0], cell[1])
+    assert ur_dig_dist(buried, 12, UR_DROP_ROW) == 9
+    # path rows 0,1,2,3,3,3,3,3,2,1 -> exposed (row<2) = (8,0)(8,1)(12,1) = 3;
+    # the row-2 cells (8,2),(12,2) sit AT/below the boundary and are NOT counted
+    # (proof the boundary is exactly UR_SAFE_DEPTH, not deeper).
+    assert ur_route_exposed(buried, 12, UR_DROP_ROW) == 3, "buried route exposed != 3"
+    # every row-2 cell on the buried path is safe; drop below the band and the
+    # forager stops being hawk-food — the arc's "deep or dead".
+    assert ur_route_exposed(buried, 12, UR_DROP_ROW) < \
+        ur_route_exposed(shallow, 12, UR_DROP_ROW), "burying did not lower exposure"
+    checks += 1
+
+    # (3) ur_predation regimes.
+    # POP-BOUND: the shallow surface route to patch 5 (col 12) exposes 6 cells,
+    # but only patch 5 (food 4) is reachable, so one connected granary (cap 4 ->
+    # store 4) and one connected nursery brood a food-bound pop of 2. The hawks
+    # can catch no more than the 2 foragers alive: losses = min(6, 2) = 2 (pop),
+    # survivors 0.
+    gp = ur_fresh_grid()
+    for col in range(UR_ENTRANCE_COL + 1, 13):
+        ur_dig(gp, col, 0)
+    ur_dig(gp, 12, UR_DROP_ROW)
+    assert ur_forage(gp, UR_SEED, 0) == (5, 5, 10), "pop-bound route drifted"
+    assert ur_forage_exposed(gp, UR_SEED, 0) == 6
+    granp = ur_fresh_gran()
+    ur_designate(gp, granp, 12, UR_DROP_ROW)                          # 1 connected
+    nursp = ur_fresh_nurs()
+    ur_nurse(gp, nursp, 12, 0)                                        # 1 connected
+    assert ur_pop(gp, granp, nursp, UR_SEED, 0) == 2, "pop-bound pop != 2"
+    lost = ur_predation(gp, granp, nursp, UR_SEED, 0)
+    assert lost == 2 == ur_pop(gp, granp, nursp, UR_SEED, 0), \
+        f"POP-BOUND losses {lost} != pop 2"
+    assert ur_survivors(gp, granp, nursp, UR_SEED, 0) == 0, "pop-bound survivors != 0"
+    checks += 1
+
+    # EXPOSURE-BOUND: a full-dug grid — the nearest patch is patch 4 at the mouth
+    # column (drop (8,1), dist 1), so the route is the shallow shaft exposing
+    # exactly 2 cells; two granaries (cap 8 -> store 8) and two nurseries brood a
+    # pop of 4. Only the 2 exposed cells cost a forager: losses = min(2, 4) = 2
+    # (exposure), survivors = 4 - 2 = 2. Fewer than the population caught, so the
+    # burial geometry — not the headcount — binds.
+    full = ur_fresh_grid()
+    for i in range(UR_CELLS):
+        full[i] = 1
+
+    def full_layer(count):
+        layer = [0] * UR_CELLS
+        placed = 0
+        for i in range(UR_CELLS):
+            if i == UR_ENTRANCE_ROW * UR_GRID_W + UR_ENTRANCE_COL:
+                continue
+            if placed >= count:
+                break
+            layer[i] = 1
+            placed += 1
+        return layer
+
+    granf = full_layer(2)
+    nursf = full_layer(2)
+    assert ur_forage(full, UR_SEED, 0) == (4, 1, 2), "exposure-bound route drifted"
+    assert ur_forage_exposed(full, UR_SEED, 0) == 2
+    assert ur_pop(full, granf, nursf, UR_SEED, 0) == 4, "exposure-bound pop != 4"
+    lost = ur_predation(full, granf, nursf, UR_SEED, 0)
+    assert lost == 2 == ur_forage_exposed(full, UR_SEED, 0), \
+        f"EXPOSURE-BOUND losses {lost} != exposed 2"
+    assert ur_survivors(full, granf, nursf, UR_SEED, 0) == 2, \
+        "exposure-bound survivors != 2"
+    checks += 1
+
+    # (4) emergence: a fresh grid has no route, so nothing is predated.
+    grid = ur_fresh_grid()
+    gran = ur_fresh_gran()
+    nurs = ur_fresh_nurs()
+    assert ur_forage_exposed(grid, UR_SEED, 0) == 0
+    assert ur_predation(grid, gran, nurs, UR_SEED, 0) == 0
+    assert ur_survivors(grid, gran, nurs, UR_SEED, 0) == 0
+    checks += 1
+    return checks
+
+
 def main():
     hawk_checks = prove_hawk()
     dig_checks = prove_dig()
@@ -928,9 +1194,11 @@ def main():
     forage_checks = prove_forage()
     granary_checks = prove_granary()
     nursery_checks = prove_nursery()
+    predation_checks = prove_predation()
     dug_total, connected, (route_i, route_d, route_len), \
         (gran_n, gran_con, gran_cap, gran_store), \
-        (nurs_n, nurs_con, pop, pop_food) = ci_fixture()
+        (nurs_n, nurs_con, pop, pop_food), \
+        (exposed, lost, surv) = ci_fixture()
 
     # The lockstep anchor: these are the numbers rom-builds.yml asserts
     # against the ROM's ur_telemetry mailbox after replaying CI_DIG_PIXELS.
@@ -953,6 +1221,13 @@ def main():
     # broods nothing (nurs_con 1 < nurs_n 2).
     assert (nurs_n, nurs_con, pop, pop_food) == (2, 1, 2, 4), \
         f"CI fixture population drifted: {(nurs_n, nurs_con, pop, pop_food)}"
+    # slice-6 predation lockstep: the forager route is the shallow shaft to
+    # patch 4 (drop (8,1), dist 1); cells (8,0) row 0 and (8,1) row 1 are both
+    # exposed (row < UR_SAFE_DEPTH), so exposed = 2. The whole population (2) is
+    # caught on that surface-hugging route (lost = min(2, 2) = 2), leaving 0
+    # survivors — a shallow route is hawk-food.
+    assert (exposed, lost, surv) == (2, 2, 0), \
+        f"CI fixture predation drifted: {(exposed, lost, surv)}"
 
     # Pinned hawk telemetry values the CI --assert-watch uses (printed so a
     # human editing the schedule can re-pin the workflow in the same PR).
@@ -985,12 +1260,18 @@ def main():
           f"nothing), pop == min(connected*{UR_NURS_BROOD}, "
           f"store//{UR_FOOD_PER_ANT}) capped at {UR_POP_CAP} "
           "(food-bound/brood-bound/cap branches)")
+    print(f"  predation: {predation_checks} cases — route_exposed == shallow "
+          f"cells on a valid shortest path (row < {UR_SAFE_DEPTH} exposed), "
+          "exact exposed<->deep boundary (shallow route 6 vs buried 3 to the "
+          "same drop), predation == min(exposed, pop) (pop-bound + "
+          "exposure-bound regimes), no route predates nothing")
     print(f"  CI lockstep fixture: dug_total={dug_total} connected={connected} "
           f"forage=(patch {route_i}, dist {route_d}, route {route_len}) "
           f"store=(placed {gran_n}, connected {gran_con}, cap {gran_cap}, "
           f"banked {gran_store}) "
           f"pop=(placed {nurs_n}, connected {nurs_con}, pop {pop}, "
           f"popfood {pop_food}) "
+          f"predation=(exposed {exposed}, lost {lost}, surv {surv}) "
           "(== the rom-builds.yml ur_telemetry asserts)")
     print(f"  pinned hawk telemetry (seed={hex(UR_SEED)}, season=0): "
           f"f100 on={pins[100][0]} x={pins[100][1]}, "

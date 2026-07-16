@@ -354,3 +354,99 @@ uint32_t ur_pop_food(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
 {
     return ur_pop(grid, gran, nurs, seed, season) * UR_FOOD_PER_ANT;
 }
+
+// --- hawks predate: exposed shallow route cells (slice 6) -------------------
+uint32_t ur_route_exposed(const uint8_t grid[UR_CELLS], int32_t col, int32_t row)
+{
+    if (col < 0 || col >= UR_GRID_W || row < 0 || row >= UR_GRID_H)
+        return 0;
+    int32_t start = UR_ENTRANCE_ROW * UR_GRID_W + UR_ENTRANCE_COL;
+    int32_t target = row * UR_GRID_W + col;
+    if (grid[start] == 0 || grid[target] == 0)
+        return 0;
+
+    // BFS over the SAME 4-connected dug graph ur_dig_dist walks, recording the
+    // predecessor each cell was FIRST reached from (E,W,S,N neighbour order) —
+    // so the reconstructed path is the canonical shortest path, a deterministic
+    // integer both host and ROM compute identically.
+    int32_t pred[UR_CELLS];
+    for (int32_t i = 0; i < UR_CELLS; i++)
+        pred[i] = -1;
+
+    int32_t queue[UR_CELLS];
+    int32_t head = 0, tail = 0;
+    pred[start] = start;            // the mouth is its own root (also = visited)
+    queue[tail++] = start;
+
+    static const int32_t dc[4] = {1, -1, 0, 0};
+    static const int32_t dr[4] = {0, 0, 1, -1};
+
+    int found = 0;
+    while (head < tail)
+    {
+        int32_t i = queue[head++];
+        if (i == target)
+        {
+            found = 1;
+            break;
+        }
+        int32_t c = i % UR_GRID_W;
+        int32_t r = i / UR_GRID_W;
+        for (int k = 0; k < 4; k++)
+        {
+            int32_t nc = c + dc[k];
+            int32_t nr = r + dr[k];
+            if (nc < 0 || nc >= UR_GRID_W || nr < 0 || nr >= UR_GRID_H)
+                continue;
+            int32_t j = nr * UR_GRID_W + nc;
+            if (grid[j] == 1 && pred[j] == -1)
+            {
+                pred[j] = i;
+                queue[tail++] = j;
+            }
+        }
+    }
+    if (!found)
+        return 0;
+
+    // Walk the canonical path target->mouth, counting EXPOSED cells (grid row
+    // < UR_SAFE_DEPTH). Both endpoints are on the path.
+    uint32_t exposed = 0;
+    int32_t cur = target;
+    while (1)
+    {
+        int32_t r = cur / UR_GRID_W;
+        if (r < UR_SAFE_DEPTH)
+            exposed++;
+        if (cur == start)
+            break;
+        cur = pred[cur];
+    }
+    return exposed;
+}
+
+uint32_t ur_forage_exposed(const uint8_t grid[UR_CELLS], uint32_t seed, uint32_t season)
+{
+    ur_forage_t f = ur_forage(grid, seed, season);
+    if (f.index == UR_ROUTE_NONE)
+        return 0;
+    ur_patch_t p = ur_patch(seed, season, f.index);
+    int32_t col = ur_patch_col(p);
+    return ur_route_exposed(grid, col, UR_DROP_ROW);
+}
+
+uint32_t ur_predation(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                      const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season)
+{
+    uint32_t pop = ur_pop(grid, gran, nurs, seed, season);
+    uint32_t exposed = ur_forage_exposed(grid, seed, season);
+    return exposed < pop ? exposed : pop;   // min: capped by the population
+}
+
+uint32_t ur_survivors(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                      const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season)
+{
+    // predation <= pop, so this never underflows.
+    return ur_pop(grid, gran, nurs, seed, season)
+         - ur_predation(grid, gran, nurs, seed, season);
+}

@@ -129,6 +129,26 @@ uint32_t ur_patch_total(uint32_t seed, uint32_t season);
 #define UR_FOOD_PER_ANT 2   /* banked food consumed to raise one forager */
 #define UR_NURS_BROOD   3   /* foragers one connected nursery can brood */
 
+// --- hawks predate: exposed shallow route cells (slice 6) ------------------
+// The arc doc's slice-6 decision (docs/arcs/UNDERROOT.md, Decision 2 "Deep or
+// dead" + the slice-6 row): the hawk shadows that sweep the meadow (slice 1)
+// catch foragers on the EXPOSED cells of the forager route — the ones near the
+// surface, within a hawk's stoop — while cells buried DEEP below the surface
+// are safe. The exposed<->deep boundary is a pure grid-row threshold: a route
+// cell at row < UR_SAFE_DEPTH is EXPOSED, at row >= UR_SAFE_DEPTH is DEEP. The
+// route counted is slice 3's shortest dug path (ur_forage's canonical BFS path
+// to the nearest reachable patch's drop cell), so predation is the
+// deterministic consequence of the drawn tunnel: a surface-hugging route is
+// hawk-food; digging a deeper-only path (so the forager's SHORTEST route dives
+// below the exposed band) costs more digging but survives the meadow. The
+// colony loses min(exposed route cells, population) foragers; survivors =
+// pop - losses. Pure integers, so the host mirror recomputes it bit-for-bit.
+// (The per-pass HAWK-SCHEDULE timing scaling — how many of the sweeps catch
+// how many foragers over a season — is the slice-7 year clock's concern; slice
+// 6 is the instantaneous exposure GEOMETRY, the same time-deferred discipline
+// slices 4/5 kept.)
+#define UR_SAFE_DEPTH   2   /* grid rows [0, UR_SAFE_DEPTH) are hawk-exposed */
+
 // --- pure hash (identical to gl_hash) --------------------------------------
 uint32_t ur_hash(uint32_t a, uint32_t b);
 
@@ -229,6 +249,30 @@ uint32_t ur_pop(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
 uint32_t ur_pop_food(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
                      const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season);
 
+// --- hawks predate: exposed shallow route cells (slice 6) ------------------
+// Count of EXPOSED cells (grid row < UR_SAFE_DEPTH) on the canonical shortest
+// dug path from the mouth to (col,row). The path is the SAME BFS graph
+// ur_dig_dist walks (E,W,S,N neighbour order), reconstructed via first-reached
+// predecessors — so the path, and thus the exposed count, is a deterministic
+// integer. Returns 0 if (col,row) is soil, out of bounds, or not connected to
+// the mouth (no route -> nothing exposed).
+uint32_t ur_route_exposed(const uint8_t grid[UR_CELLS], int32_t col, int32_t row);
+// Exposed cells on the forager's route: ur_forage picks the nearest reachable
+// patch, ur_route_exposed counts the shallow cells on the path to its drop
+// cell. 0 if no patch is reachable (no route to predate).
+uint32_t ur_forage_exposed(const uint8_t grid[UR_CELLS], uint32_t seed, uint32_t season);
+// Foragers lost to hawk predation = min(ur_forage_exposed, ur_pop) — each
+// exposed route cell can cost at most one forager, and the colony can lose no
+// more foragers than it has (the min's two binding regimes: exposure-bound and
+// pop-bound). Pure f(dig plan, gran plan, nurs plan, seed, season).
+uint32_t ur_predation(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                      const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season);
+// Surviving foragers = ur_pop - ur_predation. Since predation <= pop, this
+// never underflows. This is the population the colony carries into winter
+// (slice 8's survival score reads it).
+uint32_t ur_survivors(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                      const uint8_t nurs[UR_CELLS], uint32_t seed, uint32_t season);
+
 // --- telemetry mailbox (ELF-exported; read by tools/nds-headless-check.py) -
 #define UR_T_MAGIC0 0    // 0x554E4452 'UNDR'
 #define UR_T_MAGIC1 1    // 0x524F4F54 'ROOT'
@@ -258,7 +302,10 @@ uint32_t ur_pop_food(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
 #define UR_T_NURSCON 25  // designated nursery cells connected to the mouth (slice 5)
 #define UR_T_POP 26      // population = min(nurscon*brood, store/food_per_ant) capped (slice 5)
 #define UR_T_POPFOOD 27  // banked food that population consumes (POP*UR_FOOD_PER_ANT) (slice 5)
-#define UR_T_SPARE 28    // 0
-#define UR_T_WORDS 29
+#define UR_T_EXPOSED 28  // exposed shallow route cells on the forager route (slice 6)
+#define UR_T_LOST 29     // foragers lost to hawk predation = min(exposed, pop) (slice 6)
+#define UR_T_SURV 30     // surviving foragers = pop - lost (slice 6)
+#define UR_T_SPARE 31    // 0
+#define UR_T_WORDS 32
 
 #endif // UR_SIM_H

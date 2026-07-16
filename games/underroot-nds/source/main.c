@@ -36,7 +36,8 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
                         int32_t hawk_y, uint32_t dug, uint32_t con,
                         const ur_patch_t *patches, uint32_t food_total,
                         ur_forage_t forage, uint32_t store, uint32_t cap,
-                        uint32_t pop)
+                        uint32_t pop, uint32_t exposed, uint32_t lost,
+                        uint32_t surv)
 {
     consoleSelect(&top_console);
     consoleClear();
@@ -99,6 +100,11 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
         printf("\x1b[19;0Hno forage route (dig to a patch)");
     printf("\x1b[20;0Hburrow  dug %lu  con %lu",
            (unsigned long)dug, (unsigned long)con);
+    // Hawk predation (slice 6): the exposed (shallow) cells on the forager
+    // route, the foragers the hawks catch there, and the survivors that carry
+    // into winter. A deeper route exposes fewer cells and loses fewer foragers.
+    printf("\x1b[21;0Hhawk  exposed %lu  lost %lu  surv %lu",
+           (unsigned long)exposed, (unsigned long)lost, (unsigned long)surv);
 }
 
 // --- burrow (bottom screen): the tile-snap dig grid ------------------------
@@ -254,11 +260,17 @@ int main(void)
         uint32_t nurs_con = ur_nurs_connected(grid, nurs);
         uint32_t pop = ur_pop(grid, gran, nurs, UR_SEED, 0);
         uint32_t pop_food = ur_pop_food(grid, gran, nurs, UR_SEED, 0);
+        // Hawk predation (slice 6): the hawks catch foragers on the EXPOSED
+        // (shallow) cells of the forager route; deep cells are safe. Pure
+        // f(dig plan, gran plan, nurs plan, seed, season).
+        uint32_t exposed = ur_forage_exposed(grid, UR_SEED, 0);
+        uint32_t lost = ur_predation(grid, gran, nurs, UR_SEED, 0);
+        uint32_t surv = ur_survivors(grid, gran, nurs, UR_SEED, 0);
 
         // Top screen animates every frame (the hawk sweeps); the burrow is
         // redrawn only when a dig changed it (frame-budget discipline).
         draw_meadow(frame, hawk_on, hawk_x, hawk_y, dug, con, patches,
-                    food_total, forage, store, cap, pop);
+                    food_total, forage, store, cap, pop, exposed, lost, surv);
         if (burrow_dirty)
         {
             draw_burrow(grid, gran, nurs);
@@ -287,6 +299,9 @@ int main(void)
         ur_telemetry[UR_T_NURSCON] = nurs_con;
         ur_telemetry[UR_T_POP] = pop;
         ur_telemetry[UR_T_POPFOOD] = pop_food;
+        ur_telemetry[UR_T_EXPOSED] = exposed;
+        ur_telemetry[UR_T_LOST] = lost;
+        ur_telemetry[UR_T_SURV] = surv;
     }
 
     return 0;

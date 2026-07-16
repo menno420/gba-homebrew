@@ -2641,14 +2641,19 @@ jobs:
       # nursery": with nothing designated, no nursery is placed (t[24]=0) and
       # the population is 0 (t[26]=0). The dig proof below designates a nursery
       # and shows the population brood.
-      - name: 'proof 1/2 — dual-screen boot + telemetry mailbox + food patches + no-route/store/pop-yet'
+      # Slice 6 asserts the companion "no predation until there is a route to
+      # predate": with nothing dug the forager has no route, so no route cell is
+      # exposed (t[28]=0), no forager is lost (t[29]=0) and survivors is 0
+      # (t[30]=0). The dig proof below drives the shallow shaft and shows the
+      # hawks catch the foragers on it.
+      - name: 'proof 1/2 — dual-screen boot + telemetry mailbox + food patches + no-route/store/pop/predation-yet'
         run: |
           python3 tools/nds-headless-check.py \
             games/underroot-nds/underroot-nds.nds ur-boot-300.png \
             --frames 300 --shot 120:ur-boot-120.png --shot 240:ur-boot-240.png \
             --require-distinct \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:29 \
+            --watch t:ur_telemetry:32 \
             --watch-log ur-boot-trace.csv \
             --assert-watch 250:t:0:eq:0x554E4452 \
             --assert-watch 250:t:1:eq:0x524F4F54 \
@@ -2665,7 +2670,10 @@ jobs:
             --assert-watch 250:t:22:eq:0 \
             --assert-watch 250:t:23:eq:0 \
             --assert-watch 250:t:24:eq:0 \
-            --assert-watch 250:t:26:eq:0
+            --assert-watch 250:t:26:eq:0 \
+            --assert-watch 250:t:28:eq:0 \
+            --assert-watch 250:t:29:eq:0 \
+            --assert-watch 250:t:30:eq:0
       # Proof 2 — the stylus digs a drawn tunnel (the exact host<->ROM
       # lockstep, offset-free): --touch replays CI_DIG_PIXELS from
       # check-underroot.py — a shaft down from the mouth, an east branch,
@@ -2705,7 +2713,17 @@ jobs:
       # (placed 2, connected 1, pop 2, popfood 4) check-underroot.py's
       # ci_fixture() computes and prove_nursery() proves for every reachable
       # dig+designate plan. Asserted settled at frame 260 (after input ends 225).
-      - name: 'proof 2/2 — stylus dig (dug=7 con=6) + forager route (patch 4 route 2) + granary store (banked 4) + population (pop 2)'
+      #
+      # Slice 6 predation lockstep: under this dig plan the forager route is the
+      # shallow shaft to patch 4 (drop (8,1), dist 1) — cells (8,0) row 0 and
+      # (8,1) row 1 are BOTH exposed (row < UR_SAFE_DEPTH=2), so t:28==2 exposed
+      # cells. The whole population (2) is caught on that surface-hugging route:
+      # t:29==2 lost (min(exposed 2, pop 2)), leaving t:30==0 survivors — a
+      # shallow route is hawk-food. The same (exposed 2, lost 2, surv 0)
+      # check-underroot.py's ci_fixture() computes and prove_predation() proves
+      # (with the buried-route contrast) for every reachable plan. Asserted
+      # settled at frame 260.
+      - name: 'proof 2/2 — stylus dig (dug=7 con=6) + forager route (patch 4 route 2) + granary store (banked 4) + population (pop 2) + hawk predation (exposed 2 lost 2 surv 0)'
         run: |
           python3 tools/nds-headless-check.py \
             games/underroot-nds/underroot-nds.nds ur-dig-280.png \
@@ -2722,7 +2740,7 @@ jobs:
             --keys 200-210:L --touch 200-210:168,56 \
             --keys 215-225:L --touch 215-225:8,184 \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:29 \
+            --watch t:ur_telemetry:32 \
             --assert-watch 190:t:0:eq:0x554E4452 \
             --assert-watch 190:t:8:eq:7 \
             --assert-watch 190:t:9:eq:6 \
@@ -2748,7 +2766,10 @@ jobs:
             --assert-watch 260:t:24:eq:2 \
             --assert-watch 260:t:25:eq:1 \
             --assert-watch 260:t:26:eq:2 \
-            --assert-watch 260:t:27:eq:4
+            --assert-watch 260:t:27:eq:4 \
+            --assert-watch 260:t:28:eq:2 \
+            --assert-watch 260:t:29:eq:2 \
+            --assert-watch 260:t:30:eq:0
       - name: upload Underroot ROM + proof screenshots
         uses: actions/upload-artifact@v4
         with:

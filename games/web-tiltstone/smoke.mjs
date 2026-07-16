@@ -638,6 +638,91 @@ check("daily seed is a pure date mapping", E.dailySeed("2026-07-13") === 2026071
     sweepOk === 12, `${sweepOk}/12`);
 }
 
+// ----------------------------------- 15. solver hints (arc 2, cut 2)
+{
+  const par0 = E.par(g0.level);
+
+  // the hint from a pristine board is exactly the solver's first stored move —
+  // hintFrom re-derives it via the SAME BFS `solve` uses, it doesn't read the line
+  check("hintFrom(pristine) == level.solution[0] (agrees with the stored solver line)",
+    E.hintFrom(E.newGame(SEED, 0)) === g0.level.solution.charAt(0),
+    `${E.hintFrom(E.newGame(SEED, 0))} vs ${g0.level.solution.charAt(0)}`);
+
+  // never reveal a hint for a terminal or malformed board
+  check("hintFrom: null on won / lost / gridless / junk states",
+    E.hintFrom({ status: "won" }) === null &&
+    E.hintFrom({ status: "lost" }) === null &&
+    E.hintFrom({ status: "playing" }) === null &&   // no grid/quota -> defensive null
+    E.hintFrom(null) === null && E.hintFrom(undefined) === null);
+
+  // following the hint move-by-move ALWAYS reaches 'won', within budget, in
+  // exactly par turns (each hint is the first step of a shortest winning
+  // continuation, so greedily following stays optimal)
+  function followHints(seed) {
+    let st = E.newGame(seed, 0), guard = 0, taken = "";
+    while (st.status === "playing") {
+      const h = E.hintFrom(st);
+      if (h !== "L" && h !== "R") return { ok: false, taken, st };
+      taken += h;
+      st = E.rotate(st, h === "R" ? "cw" : "ccw");
+      if (++guard > st.budget + 2) return { ok: false, taken, st };
+    }
+    return { ok: st.status === "won" && st.used <= st.budget, taken, st };
+  }
+  const f0 = followHints(SEED);
+  check("hintFrom: following hints from seed 42 wins within budget, in exactly par turns",
+    f0.ok && f0.st.used === par0 && f0.taken.length === par0 && E.hintFrom(f0.st) === null,
+    `used=${f0.st.used} par=${par0} taken=${f0.taken} terminalHint=${E.hintFrom(f0.st)}`);
+
+  let hintSweep = 0;
+  for (let s = SEED; s < SEED + 12; s++) {
+    const f = followHints(s);
+    const p = E.par(E.newGame(s, 0).level);
+    if (f.ok && f.st.used === p && f.taken.length === p && E.hintFrom(f.st) === null) hintSweep++;
+  }
+  check("hintFrom: hint-follow wins in exactly par across the 12-seed sweep",
+    hintSweep === 12, `${hintSweep}/12`);
+
+  // OFF-LINE HONESTY: after a deliberate NON-solver first move, hintFrom re-solves
+  // from the ACTUAL board — either pointing along a fresh shortest win (following
+  // it still wins in the remaining budget) or honestly returning null when the
+  // detour made the cavern unwinnable. It never parrots the stale stored line.
+  {
+    const start = E.newGame(SEED, 0);
+    const off = g0.level.solution.charAt(0) === "R" ? "ccw" : "cw";   // opposite of the solver
+    const s1 = E.rotate(start, off);
+    const offHint = E.hintFrom(s1);
+    const need1 = s1.quota - s1.collected;
+    const rec = E.search(s1.grid, s1.budget - s1.used).records.find(r => r.collected >= need1);
+    if (rec) {
+      let st = s1, guard = 0;
+      while (st.status === "playing") {
+        const h = E.hintFrom(st);
+        if (h !== "L" && h !== "R") break;
+        st = E.rotate(st, h === "R" ? "cw" : "ccw");
+        if (++guard > st.budget + 2) break;
+      }
+      check("hintFrom: after an off-line detour it re-solves the ACTUAL board and still wins in budget",
+        offHint === rec.path.charAt(0) && st.status === "won" && st.used <= st.budget,
+        `offHint=${offHint} used=${st.used} par=${par0}`);
+    } else {
+      check("hintFrom: an off-line detour that kills the cavern returns an honest null",
+        offHint === null, `offHint=${offHint}`);
+    }
+  }
+
+  // spend-gating: hintedGrade folds hints into `used` like over-par turns, so a
+  // par run leaning on 2 hints grades GOOD not PERFECT; 0 hints == plain grade
+  check("hintedGrade: pinned spend-gating truth table (a hint dings the card like an over-par turn)",
+    E.hintedGrade(par0, par0, 0).label === "PERFECT" && E.hintedGrade(par0, par0, 0).diff === 0 &&
+    E.hintedGrade(par0, par0, 1).label === "GREAT"   && E.hintedGrade(par0, par0, 1).diff === 1 &&
+    E.hintedGrade(par0, par0, 2).label === "GOOD"    && E.hintedGrade(par0, par0, 2).diff === 2 &&
+    E.hintedGrade(par0, par0, 3).label === "CLEARED" && E.hintedGrade(par0, par0, 3).diff === 3 &&
+    JSON.stringify(E.hintedGrade(par0 + 4, par0, 0)) === JSON.stringify(E.grade(par0 + 4, par0)) &&
+    JSON.stringify(E.hintedGrade(par0, par0, -5)) === JSON.stringify(E.grade(par0, par0)),
+    JSON.stringify(E.hintedGrade(par0, par0, 2)));
+}
+
 // ------------------------------------------------------------------- verdict
 if (failures) {
   console.error(`SMOKE FAIL: ${failures} assertion(s) red`);

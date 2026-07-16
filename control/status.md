@@ -55,3 +55,20 @@ kit: v1.17.0
 - ORDER 007 ack check: the done-when ack IS on record — "ORDER 007
   ACKNOWLEDGED (first rebooted dispatch)" landed in control/status.md
   at `df55299` (#142, 2026-07-15); no re-ack needed here.
+
+## Dispatched slice 2026-07-16 — denial-triage ledger append (append-only)
+
+- updated: 2026-07-16T09:31:28Z (`date -u`); session card
+  `.sessions/2026-07-16-denial-triage.md`, branch `claude/denial-triage`,
+  PR #154 (DRAFT).
+- What: two dated classifier-denial triage entries appended to
+  docs/CAPABILITIES.md (the capabilities/walls living-ledger, Append log) —
+  the [Modify Shared Resources] denial on the #152-adjacent status.md
+  orphan-restore and the [Merge Without Review] denial on the #153
+  land-on-green shape, denial strings verbatim. Docs-only; no dist/, no
+  workflows, no routines, no .substrate/ touched.
+- Landing: PR #154 parked DRAFT, card left in-progress, land path = owner
+  ready-click. The READY+flip land-on-green shape was attempted once this
+  session and denied by the auto-mode classifier ([Merge Without Review]);
+  routed per attempt-once doctrine, not retried. PR inherits the known #151
+  5-orphan substrate-gate red (blocked-on-#153).

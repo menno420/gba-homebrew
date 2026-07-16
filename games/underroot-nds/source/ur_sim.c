@@ -220,3 +220,74 @@ ur_forage_t ur_forage(const uint8_t grid[UR_CELLS], uint32_t seed, uint32_t seas
     }
     return best;
 }
+
+// --- granaries: the food store (slice 4) ------------------------------------
+int ur_designate(const uint8_t grid[UR_CELLS], uint8_t gran[UR_CELLS],
+                 int32_t col, int32_t row)
+{
+    if (col < 0 || col >= UR_GRID_W || row < 0 || row >= UR_GRID_H)
+        return 0;
+    int32_t i = row * UR_GRID_W + col;
+    if (grid[i] == 0)                // only a DUG cell can hold a granary
+        return 0;
+    int changed = gran[i] == 0 ? 1 : 0;
+    gran[i] = 1;
+    return changed;
+}
+
+void ur_fresh_gran(uint8_t gran[UR_CELLS])
+{
+    for (int32_t i = 0; i < UR_CELLS; i++)
+        gran[i] = 0;
+}
+
+uint32_t ur_gran_count(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS])
+{
+    uint32_t n = 0;
+    for (int32_t i = 0; i < UR_CELLS; i++)
+        n += (gran[i] && grid[i]) ? 1u : 0u;
+    return n;
+}
+
+uint32_t ur_gran_connected(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS])
+{
+    // A designated cell banks only if it is CONNECTED to the mouth — the same
+    // reachability the burrow BFS defines (finite ur_dig_dist). Reusing
+    // ur_dig_dist keeps storage reachability and forager reachability the ONE
+    // meaning of the dug graph (the slice-3 cross-layer guard).
+    uint32_t n = 0;
+    for (int32_t r = 0; r < UR_GRID_H; r++)
+        for (int32_t c = 0; c < UR_GRID_W; c++)
+        {
+            int32_t i = r * UR_GRID_W + c;
+            if (gran[i] && grid[i] && ur_dig_dist(grid, c, r) != UR_ROUTE_NONE)
+                n++;
+        }
+    return n;
+}
+
+uint32_t ur_gran_capacity(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS])
+{
+    return ur_gran_connected(grid, gran) * (uint32_t)UR_GRAN_CAP;
+}
+
+uint32_t ur_reachable_food(const uint8_t grid[UR_CELLS], uint32_t seed, uint32_t season)
+{
+    uint32_t total = 0;
+    for (uint32_t i = 0; i < UR_PATCH_COUNT; i++)
+    {
+        ur_patch_t p = ur_patch(seed, season, i);
+        int32_t col = ur_patch_col(p);
+        if (ur_dig_dist(grid, col, UR_DROP_ROW) != UR_ROUTE_NONE)
+            total += (uint32_t)p.amount;
+    }
+    return total;
+}
+
+uint32_t ur_store(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                  uint32_t seed, uint32_t season)
+{
+    uint32_t food = ur_reachable_food(grid, seed, season);
+    uint32_t cap = ur_gran_capacity(grid, gran);
+    return food < cap ? food : cap;  // deposits bank up to capacity
+}

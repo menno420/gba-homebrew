@@ -65,6 +65,9 @@ UR_ENTRANCE_ROW = 0           # top row (the meadow<->burrow seam)
 UR_DROP_ROW = UR_ENTRANCE_ROW + 1     # subsurface drop row (1)
 UR_ROUTE_NONE = 0xFFFFFFFF            # no reachable patch / unreachable
 
+# --- granaries: the food store (slice 4; mirror ur_sim.h) ------------------
+UR_GRAN_CAP = 4                       # food units one granary cell banks
+
 # --- food patches (top screen; slice 2; mirror ur_sim.h) -------------------
 UR_SCREEN_W = 256             # meadow width (px)
 UR_SCREEN_H = 192             # meadow height (px)
@@ -232,6 +235,66 @@ def ur_forage(grid, seed, season):
     return (best_i, best_d, best_r)
 
 
+# --- granaries: the food store (slice 4; mirror ur_sim.c) ------------------
+def ur_designate(grid, gran, col, row):
+    # Designate a DUG cell a granary; return 1 iff it changed. Only a dug cell
+    # can hold a granary; idempotent + monotone (mirrors ur_dig). `gran` is a
+    # parallel 0/1 designation layer over the dig grid.
+    if col < 0 or col >= UR_GRID_W or row < 0 or row >= UR_GRID_H:
+        return 0
+    i = row * UR_GRID_W + col
+    if grid[i] == 0:
+        return 0
+    changed = 1 if gran[i] == 0 else 0
+    gran[i] = 1
+    return changed
+
+
+def ur_fresh_gran():
+    return [0] * UR_CELLS
+
+
+def ur_gran_count(grid, gran):
+    # Designated granary cells that are also dug (total placed).
+    return sum(1 for i in range(UR_CELLS) if gran[i] and grid[i])
+
+
+def ur_gran_connected(grid, gran):
+    # Designated granary cells CONNECTED to the mouth (finite ur_dig_dist — the
+    # same reachability the burrow BFS defines). Unreachable ones bank nothing.
+    n = 0
+    for r in range(UR_GRID_H):
+        for c in range(UR_GRID_W):
+            i = r * UR_GRID_W + c
+            if gran[i] and grid[i] and ur_dig_dist(grid, c, r) != UR_ROUTE_NONE:
+                n += 1
+    return n
+
+
+def ur_gran_capacity(grid, gran):
+    return ur_gran_connected(grid, gran) * UR_GRAN_CAP
+
+
+def ur_reachable_food(grid, seed, season):
+    # Total food the colony can HAUL: sum of amounts over patches whose burrow
+    # drop cell is reachable (connect-or-waste for patches; slice-3 graph).
+    total = 0
+    for i in range(UR_PATCH_COUNT):
+        p = ur_patch(seed, season, i)
+        col = ur_patch_col(p)
+        if ur_dig_dist(grid, col, UR_DROP_ROW) != UR_ROUTE_NONE:
+            total += p[2]
+    return total
+
+
+def ur_store(grid, gran, seed, season):
+    # Banked store = min(reachable food, granary capacity). Deposits bank up to
+    # capacity; food over capacity spoils, capacity over food sits empty.
+    food = ur_reachable_food(grid, seed, season)
+    cap = ur_gran_capacity(grid, gran)
+    return food if food < cap else cap
+
+
 # --- the CI --touch dig script, mirrored (proof 3 anchor) ------------------
 # Each step is a bottom-LCD pixel the stylus is held at; the ROM digs the
 # cell under the stylus every held frame. Centre pixel of cell (c,r) is
@@ -246,6 +309,15 @@ CI_DIG_PIXELS = [
     (8, 184),    # cell (0,11) — an ISOLATED pocket (not connected)
 ]
 
+# The slice-4 granary designations the CI replays (hold R + tap): one
+# CONNECTED dug cell and one DISCONNECTED dug cell (the isolated pocket). The
+# connected one gives capacity UR_GRAN_CAP; the disconnected one is counted in
+# the placed total but adds ZERO capacity (unreachable granaries bank nothing).
+CI_GRAN_PIXELS = [
+    (152, 56),   # cell (9,3)  — dug + CONNECTED -> banks
+    (8, 184),    # cell (0,11) — dug but DISCONNECTED -> banks nothing
+]
+
 
 def ci_fixture():
     grid = ur_fresh_grid()
@@ -253,11 +325,20 @@ def ci_fixture():
         cell = ur_cell_of_touch(tx, ty)
         assert cell is not None, f"CI dig pixel {tx},{ty} out of bounds"
         ur_dig(grid, cell[0], cell[1])
+    gran = ur_fresh_gran()
+    for (tx, ty) in CI_GRAN_PIXELS:
+        cell = ur_cell_of_touch(tx, ty)
+        assert cell is not None, f"CI gran pixel {tx},{ty} out of bounds"
+        ur_designate(grid, gran, cell[0], cell[1])
     # The forager route (slice 3) the ROM asserts under this same dig plan:
     # only patch 4 (mouth column 8, drop (8,1) on the shaft) is reachable;
     # the other five patches' columns are undug, so they are never visited.
     forage = ur_forage(grid, UR_SEED, 0)
-    return _dug_total(grid), ur_burrow_size(grid), forage
+    # The store (slice 4): 2 granary cells placed, 1 connected (cap
+    # UR_GRAN_CAP), reachable food = patch 4's amount; banked up to capacity.
+    store = (ur_gran_count(grid, gran), ur_gran_connected(grid, gran),
+             ur_gran_capacity(grid, gran), ur_store(grid, gran, UR_SEED, 0))
+    return _dug_total(grid), ur_burrow_size(grid), forage, store
 
 
 # --- proofs ----------------------------------------------------------------
@@ -502,12 +583,131 @@ def prove_forage():
     return checks
 
 
+def prove_granary():
+    # The arc doc's slice-4 proof (for EVERY reachable input, not a replay):
+    #  1. ur_designate only marks DUG cells, is idempotent + monotone (the
+    #     placed count never falls, re-designating is a no-op), and rejects
+    #     soil / out-of-bounds;
+    #  2. capacity accounting is exact — capacity == connected granary cells
+    #     * UR_GRAN_CAP, and a designated cell that is NOT connected to the
+    #     mouth adds ZERO capacity (unreachable granaries bank nothing);
+    #  3. cross-layer consistency (the slice-3 guard, third consumer of the
+    #     dug graph): the connected-granary count equals the count of
+    #     designated cells inside ur_burrow_size's reachable set — storage
+    #     reachability and forager reachability are the ONE meaning of the
+    #     dug graph;
+    #  4. the store is min(reachable food, capacity) — banked up to capacity,
+    #     never above either bound;
+    #  5. emergence: on a fresh grid nothing is designated and the store is 0;
+    #     designating a connected cell and digging to a patch is exactly what
+    #     makes food bank.
+    checks = 0
+
+    # designation rejects soil / OOB, is idempotent + monotone (many plans)
+    for seed in range(300):
+        grid = ur_fresh_grid()
+        gran = ur_fresh_gran()
+        # dig a random burrow first
+        for step in range(24):
+            h = ur_hash(seed, step)
+            ur_dig(grid, h % UR_GRID_W, (h >> 8) % UR_GRID_H)
+        prev_placed = 0
+        for step in range(30):
+            h = ur_hash(seed, step + 55)
+            col, row = h % UR_GRID_W, (h >> 8) % UR_GRID_H
+            i = row * UR_GRID_W + col
+            dug_before = grid[i]
+            gran_before = gran[i]
+            changed = ur_designate(grid, gran, col, row)
+            if dug_before == 0:
+                assert changed == 0 and gran[i] == 0, \
+                    "designate marked a SOIL cell a granary"
+            else:
+                assert changed == (1 if gran_before == 0 else 0), \
+                    "designate changed-flag wrong"
+                assert gran[i] == 1, "designate did not mark a dug cell"
+            assert ur_designate(grid, gran, col, row) == 0, \
+                "re-designate not idempotent"
+            placed = ur_gran_count(grid, gran)
+            assert placed >= prev_placed, "placed granary count fell"
+            prev_placed = placed
+            checks += 1
+        # OOB designations reject
+        for col, row in ((-1, 0), (0, -1), (UR_GRID_W, 0), (0, UR_GRID_H)):
+            assert ur_designate(grid, gran, col, row) == 0, \
+                "OOB designation accepted"
+
+        # capacity + store accounting exact; cross-layer reachability guard
+        reachable = _bfs_all_dists(grid)          # cells reachable from mouth
+        placed_connected = sum(
+            1 for r in range(UR_GRID_H) for c in range(UR_GRID_W)
+            if gran[r * UR_GRID_W + c] and (r * UR_GRID_W + c) in reachable)
+        assert ur_gran_connected(grid, gran) == placed_connected, \
+            "gran_connected != designated cells in the burrow reachable set"
+        assert ur_gran_capacity(grid, gran) == placed_connected * UR_GRAN_CAP, \
+            "capacity != connected granaries * UR_GRAN_CAP"
+        # every connected granary really has a finite dig_dist; every placed
+        # but UNconnected granary is excluded (banks nothing)
+        for r in range(UR_GRID_H):
+            for c in range(UR_GRID_W):
+                i = r * UR_GRID_W + c
+                if gran[i]:
+                    d = ur_dig_dist(grid, c, r)
+                    inset = (i in reachable)
+                    assert (d != UR_ROUTE_NONE) == inset, \
+                        "granary reachability disagrees with the dug graph"
+        # store is banked up to capacity, never above either bound
+        food = ur_reachable_food(grid, UR_SEED, 0)
+        cap = ur_gran_capacity(grid, gran)
+        store = ur_store(grid, gran, UR_SEED, 0)
+        assert store == min(food, cap), f"store {store} != min({food},{cap})"
+        assert store <= cap and store <= food, "store above a bound"
+        checks += 1
+
+    # emergence: fresh grid banks nothing; a hand-built plan banks a known haul
+    grid = ur_fresh_grid()
+    gran = ur_fresh_gran()
+    assert ur_gran_count(grid, gran) == 0 and ur_store(grid, gran, UR_SEED, 0) == 0, \
+        "fresh grid banks food with nothing dug or designated"
+    # designating the (soil) drop cell does nothing until it is dug
+    assert ur_designate(grid, gran, 8, UR_DROP_ROW) == 0
+    # tunnel the shaft down to patch 4's drop cell (col 8), designate a granary
+    # on the shaft: patch 4 (amount 6) becomes reachable, 1 connected granary
+    # gives capacity UR_GRAN_CAP=4, so the store is capped at 4 (< 6 reachable).
+    for r in range(1, 4):
+        ur_dig(grid, UR_ENTRANCE_COL, r)
+    assert ur_dig_dist(grid, 8, UR_DROP_ROW) == 1, "shaft did not reach the drop"
+    assert ur_designate(grid, gran, UR_ENTRANCE_COL, 2) == 1, "shaft cell not dug"
+    assert ur_reachable_food(grid, UR_SEED, 0) == 6, "patch-4 haul drifted"
+    assert ur_gran_connected(grid, gran) == 1
+    assert ur_gran_capacity(grid, gran) == UR_GRAN_CAP
+    assert ur_store(grid, gran, UR_SEED, 0) == UR_GRAN_CAP, \
+        "store not capped at capacity when food exceeds it"
+    # a SECOND connected granary lifts capacity to 8 >= 6, so the full haul
+    # banks (store == reachable food, no longer capped)
+    assert ur_designate(grid, gran, UR_ENTRANCE_COL, 3) == 1
+    assert ur_gran_capacity(grid, gran) == 2 * UR_GRAN_CAP
+    assert ur_store(grid, gran, UR_SEED, 0) == 6, \
+        "store not the full haul once capacity covers it"
+    # a designated cell in an ISOLATED pocket banks nothing: capacity unchanged
+    ur_dig(grid, 0, UR_GRID_H - 1)               # isolated pocket cell
+    assert ur_designate(grid, gran, 0, UR_GRID_H - 1) == 1
+    assert ur_gran_count(grid, gran) == 3
+    assert ur_gran_connected(grid, gran) == 2, "disconnected granary counted"
+    assert ur_gran_capacity(grid, gran) == 2 * UR_GRAN_CAP, \
+        "isolated granary added capacity"
+    checks += 1
+    return checks
+
+
 def main():
     hawk_checks = prove_hawk()
     dig_checks = prove_dig()
     patch_checks = prove_patches()
     forage_checks = prove_forage()
-    dug_total, connected, (route_i, route_d, route_len) = ci_fixture()
+    granary_checks = prove_granary()
+    dug_total, connected, (route_i, route_d, route_len), \
+        (gran_n, gran_con, gran_cap, gran_store) = ci_fixture()
 
     # The lockstep anchor: these are the numbers rom-builds.yml asserts
     # against the ROM's ur_telemetry mailbox after replaying CI_DIG_PIXELS.
@@ -517,6 +717,12 @@ def main():
     # two round trip; the other five patches' columns are undug -> skipped.
     assert (route_i, route_d, route_len) == (4, 1, 2), \
         f"CI fixture forage route drifted: {(route_i, route_d, route_len)}"
+    # slice-4 store lockstep: 2 granary cells placed (one connected, one in the
+    # isolated pocket), 1 connected -> capacity 4; patch 4's haul (6) banked up
+    # to that capacity -> store 4 (capped). The disconnected granary banks
+    # nothing (gran_con 1 < gran_n 2).
+    assert (gran_n, gran_con, gran_cap, gran_store) == (2, 1, UR_GRAN_CAP, UR_GRAN_CAP), \
+        f"CI fixture store drifted: {(gran_n, gran_con, gran_cap, gran_store)}"
 
     # Pinned hawk telemetry values the CI --assert-watch uses (printed so a
     # human editing the schedule can re-pin the workflow in the same PR).
@@ -540,8 +746,14 @@ def main():
     print(f"  foragers: {forage_checks} cases — dig_dist == independent BFS "
           "(shortest, >= Manhattan), fresh grid has no route, ur_forage "
           "nearest-wins, a disconnected patch is never visited")
+    print(f"  granaries: {granary_checks} cases — designate dug-only/"
+          "idempotent/monotone, capacity == connected*{0} exact, disconnected "
+          "granaries bank nothing (cross-layer == burrow BFS), store == "
+          "min(reachable food, capacity)".format(UR_GRAN_CAP))
     print(f"  CI lockstep fixture: dug_total={dug_total} connected={connected} "
           f"forage=(patch {route_i}, dist {route_d}, route {route_len}) "
+          f"store=(placed {gran_n}, connected {gran_con}, cap {gran_cap}, "
+          f"banked {gran_store}) "
           "(== the rom-builds.yml ur_telemetry asserts)")
     print(f"  pinned hawk telemetry (seed={hex(UR_SEED)}, season=0): "
           f"f100 on={pins[100][0]} x={pins[100][1]}, "

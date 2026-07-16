@@ -2633,14 +2633,18 @@ jobs:
       # drop cell is dug/connected, so ur_telemetry[17] (nearest reachable
       # patch index) is UR_ROUTE_NONE (0xFFFFFFFF) — the emergent "no route
       # until you dig". The dig proof below shows the route appear.
-      - name: 'proof 1/2 — dual-screen boot + telemetry mailbox + food patches + no-route-yet'
+      # Slice 4 asserts the companion "no store until you dig+designate": with
+      # nothing dug OR designated, no granary is placed (t[20]=0), capacity is
+      # 0 (t[22]=0) and the banked store is 0 (t[23]=0). The dig proof below
+      # designates a granary and shows the store bank.
+      - name: 'proof 1/2 — dual-screen boot + telemetry mailbox + food patches + no-route/store-yet'
         run: |
           python3 tools/nds-headless-check.py \
             games/underroot-nds/underroot-nds.nds ur-boot-300.png \
             --frames 300 --shot 120:ur-boot-120.png --shot 240:ur-boot-240.png \
             --require-distinct \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:21 \
+            --watch t:ur_telemetry:25 \
             --watch-log ur-boot-trace.csv \
             --assert-watch 250:t:0:eq:0x554E4452 \
             --assert-watch 250:t:1:eq:0x524F4F54 \
@@ -2652,7 +2656,10 @@ jobs:
             --assert-watch 250:t:15:eq:6 \
             --assert-watch 250:t:16:eq:34 \
             --assert-watch 250:t:17:eq:0xFFFFFFFF \
-            --assert-watch 250:t:18:eq:0xFFFFFFFF
+            --assert-watch 250:t:18:eq:0xFFFFFFFF \
+            --assert-watch 250:t:20:eq:0 \
+            --assert-watch 250:t:22:eq:0 \
+            --assert-watch 250:t:23:eq:0
       # Proof 2 — the stylus digs a drawn tunnel (the exact host<->ROM
       # lockstep, offset-free): --touch replays CI_DIG_PIXELS from
       # check-underroot.py — a shaft down from the mouth, an east branch,
@@ -2668,11 +2675,23 @@ jobs:
       # provably NEVER visited (the arc's connect-or-waste guarantee) — the
       # same (patch 4, dist 1, route 2) check-underroot.py's ci_fixture()
       # computes and prove_forage() proves for every reachable dig plan.
-      - name: 'proof 2/2 — stylus dig writes the tunnel grid (dug=7 con=6) + forager route (patch 4 route 2)'
+      #
+      # Slice 4 granary lockstep: after digging, the SECOND stylus verb (hold R
+      # + tap) designates two DUG cells granary — cell (9,3) on the east branch
+      # (CONNECTED to the mouth) and the isolated pocket (0,11) (dug but NOT
+      # connected). So two granaries are placed (t:20==2) but only one banks
+      # (t:21==1) for a capacity of 4 (t:22==UR_GRAN_CAP); patch 4's haul (6
+      # units) banks up to that capacity, so the store is CAPPED at 4
+      # (t:23==4 < 6 reachable). The disconnected pocket granary banks nothing
+      # (t:21 < t:20) — the same (placed 2, connected 1, cap 4, banked 4)
+      # check-underroot.py's ci_fixture() computes and prove_granary() proves
+      # for every reachable dig+designate plan. Designation does not dig, so
+      # dug=7/con=6 are re-asserted unchanged at frame 230.
+      - name: 'proof 2/2 — stylus dig (dug=7 con=6) + forager route (patch 4 route 2) + granary store (banked 4)'
         run: |
           python3 tools/nds-headless-check.py \
-            games/underroot-nds/underroot-nds.nds ur-dig-200.png \
-            --frames 200 --shot 165:ur-dig-165.png \
+            games/underroot-nds/underroot-nds.nds ur-dig-240.png \
+            --frames 240 --shot 165:ur-dig-165.png --shot 195:ur-dig-195.png \
             --touch 60-70:136,8 \
             --touch 75-85:136,24 \
             --touch 90-100:136,40 \
@@ -2680,8 +2699,10 @@ jobs:
             --touch 120-130:152,56 \
             --touch 135-145:168,56 \
             --touch 150-160:8,184 \
+            --keys 170-180:R --touch 170-180:152,56 \
+            --keys 185-195:R --touch 185-195:8,184 \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:21 \
+            --watch t:ur_telemetry:25 \
             --assert-watch 190:t:0:eq:0x554E4452 \
             --assert-watch 190:t:8:eq:7 \
             --assert-watch 190:t:9:eq:6 \
@@ -2691,7 +2712,14 @@ jobs:
             --assert-watch 190:t:16:eq:34 \
             --assert-watch 190:t:17:eq:4 \
             --assert-watch 190:t:18:eq:1 \
-            --assert-watch 190:t:19:eq:2
+            --assert-watch 190:t:19:eq:2 \
+            --assert-watch 230:t:8:eq:7 \
+            --assert-watch 230:t:9:eq:6 \
+            --assert-watch 230:t:17:eq:4 \
+            --assert-watch 230:t:20:eq:2 \
+            --assert-watch 230:t:21:eq:1 \
+            --assert-watch 230:t:22:eq:4 \
+            --assert-watch 230:t:23:eq:4
       - name: upload Underroot ROM + proof screenshots
         uses: actions/upload-artifact@v4
         with:
@@ -2703,7 +2731,8 @@ jobs:
             ur-boot-120.png
             ur-boot-240.png
             ur-boot-trace.csv
-            ur-dig-200.png
+            ur-dig-240.png
             ur-dig-165.png
+            ur-dig-195.png
           if-no-files-found: error
           retention-days: 14

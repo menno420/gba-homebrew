@@ -35,7 +35,7 @@ static PrintConsole bottom_console;
 static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
                         int32_t hawk_y, uint32_t dug, uint32_t con,
                         const ur_patch_t *patches, uint32_t food_total,
-                        ur_forage_t forage)
+                        ur_forage_t forage, uint32_t store, uint32_t cap)
 {
     consoleSelect(&top_console);
     consoleClear();
@@ -81,8 +81,11 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
         printf("\x1b[17;0Hsky clear");
     }
 
-    printf("\x1b[18;0Hfood patches %d  store %lu",
-           UR_PATCH_COUNT, (unsigned long)food_total);
+    // Meadow food total (all patches) and the colony's BANKED store / granary
+    // capacity (slice 4): the reachable haul banked up to the connected
+    // granaries' capacity — unreachable granaries bank nothing.
+    printf("\x1b[18;0Hfood %lu  store %lu/%lu",
+           (unsigned long)food_total, (unsigned long)store, (unsigned long)cap);
     // Forager route (slice 3): the nearest reachable patch and its round-trip
     // route length over the drawn tunnel graph, or a prompt to dig one open.
     if (forage.index != UR_ROUTE_NONE)
@@ -95,24 +98,28 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
 }
 
 // --- burrow (bottom screen): the tile-snap dig grid ------------------------
-static void draw_burrow(const uint8_t grid[UR_CELLS])
+static void draw_burrow(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS])
 {
     consoleSelect(&bottom_console);
     consoleClear();
     printf("\x1b[0;0HTHE BURROW  cross-section");
-    printf("\x1b[1;0H# soil  . dug  M mouth");
+    printf("\x1b[1;0H# soil . dug G granary M mouth");
 
-    // The grid, one char per cell, drawn from console row 3, col 4.
+    // The grid, one char per cell, drawn from console row 3, col 4. A
+    // designated granary cell (slice 4) reads 'G'; a plain dug cell '.'.
     for (int r = 0; r < UR_GRID_H; r++)
     {
         printf("\x1b[%d;4H", r + 3);
         for (int c = 0; c < UR_GRID_W; c++)
         {
+            int idx = r * UR_GRID_W + c;
             char ch;
             if (c == UR_ENTRANCE_COL && r == UR_ENTRANCE_ROW)
                 ch = 'M';
+            else if (grid[idx] && gran[idx])
+                ch = 'G';
             else
-                ch = grid[r * UR_GRID_W + c] ? '.' : '#';
+                ch = grid[idx] ? '.' : '#';
             printf("%c", ch);
         }
     }
@@ -140,6 +147,10 @@ int main(void)
 
     uint8_t grid[UR_CELLS];
     ur_fresh_grid(grid);
+    // The granary designation layer (slice 4): a parallel 0/1 mask over the
+    // dig grid, nothing designated at boot.
+    uint8_t gran[UR_CELLS];
+    ur_fresh_gran(gran);
 
     // The meadow's food patches: pure f(seed, season, index), fixed for the
     // slice-2 pinned meadow (UR_SEED, spring). Rendered each frame; the count
@@ -163,7 +174,7 @@ int main(void)
     ur_telemetry[UR_T_PATCHSUM] = food_total;
     ur_telemetry[UR_T_SPARE] = 0;
 
-    draw_burrow(grid);
+    draw_burrow(grid, gran);
 
     while (1)
     {
@@ -189,7 +200,15 @@ int main(void)
                 touch_now = 1;
                 last_col = col;
                 last_row = row;
-                if (ur_dig(grid, col, row))
+                // The second stylus verb (slice 4): hold R and tap a DUG cell
+                // to designate it a GRANARY; a bare tap digs (slice 1). Both
+                // are idempotent, and both redraw the burrow on a change.
+                if (held & KEY_R)
+                {
+                    if (ur_designate(grid, gran, col, row))
+                        burrow_dirty = true;
+                }
+                else if (ur_dig(grid, col, row))
                     burrow_dirty = true;
             }
         }
@@ -202,14 +221,21 @@ int main(void)
         // The forager route (slice 3): the nearest reachable patch over the
         // drawn tunnel graph — pure f(dig plan, seed, season).
         ur_forage_t forage = ur_forage(grid, UR_SEED, 0);
+        // The food store (slice 4): connected granary cells, their capacity,
+        // and the reachable meadow haul banked up to it — pure f(dig plan,
+        // gran plan, seed, season).
+        uint32_t gran_n = ur_gran_count(grid, gran);
+        uint32_t gran_con = ur_gran_connected(grid, gran);
+        uint32_t cap = ur_gran_capacity(grid, gran);
+        uint32_t store = ur_store(grid, gran, UR_SEED, 0);
 
         // Top screen animates every frame (the hawk sweeps); the burrow is
         // redrawn only when a dig changed it (frame-budget discipline).
         draw_meadow(frame, hawk_on, hawk_x, hawk_y, dug, con, patches,
-                    food_total, forage);
+                    food_total, forage, store, cap);
         if (burrow_dirty)
         {
-            draw_burrow(grid);
+            draw_burrow(grid, gran);
             burrow_dirty = false;
         }
 
@@ -227,6 +253,10 @@ int main(void)
         ur_telemetry[UR_T_ROUTEI] = forage.index;
         ur_telemetry[UR_T_ROUTED] = forage.dist;
         ur_telemetry[UR_T_ROUTELEN] = forage.route;
+        ur_telemetry[UR_T_GRANN] = gran_n;
+        ur_telemetry[UR_T_GRANCON] = gran_con;
+        ur_telemetry[UR_T_CAP] = cap;
+        ur_telemetry[UR_T_STORE] = store;
     }
 
     return 0;

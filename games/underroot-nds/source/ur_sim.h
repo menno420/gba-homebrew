@@ -100,6 +100,19 @@ uint32_t ur_patch_total(uint32_t seed, uint32_t season);
 #define UR_DROP_ROW (UR_ENTRANCE_ROW + 1)   // subsurface drop row (1)
 #define UR_ROUTE_NONE 0xFFFFFFFFu            // no reachable patch / unreachable
 
+// --- granaries: the food store (slice 4) -----------------------------------
+// The arc doc's slice-4 decision: a SECOND stylus verb designates dug cells
+// GRANARY (hold R + tap a tunnel cell), and the meadow food the foragers can
+// reach is BANKED there up to capacity. Storage inherits the same
+// connect-or-waste graph as everything else: a granary cell banks only if it
+// is DUG, DESIGNATED, and CONNECTED back to the mouth (finite ur_dig_dist) —
+// an unreachable designated pocket adds ZERO capacity, exactly as an
+// unreachable patch feeds nothing. Each connected granary cell holds
+// UR_GRAN_CAP food units; the store is min(reachable meadow food, capacity)
+// — deposits bank UP TO capacity, the overflow is spoilage. Pure integers, so
+// the host mirror recomputes the whole store bit-for-bit.
+#define UR_GRAN_CAP 4                        // food units one granary cell banks
+
 // --- pure hash (identical to gl_hash) --------------------------------------
 uint32_t ur_hash(uint32_t a, uint32_t b);
 
@@ -145,6 +158,34 @@ typedef struct {
 // no patch's drop cell is reachable, every field is UR_ROUTE_NONE.
 ur_forage_t ur_forage(const uint8_t grid[UR_CELLS], uint32_t seed, uint32_t season);
 
+// --- granaries: the food store (slice 4) -----------------------------------
+// Designate a DUG cell a granary. Returns 1 iff it changed (was an
+// undesignated dug cell), 0 for a soil cell (only dug cells hold a granary),
+// an already-designated cell, or an out-of-bounds cell. Idempotent + monotone,
+// mirroring ur_dig; `gran` is a parallel 0/1 designation layer over the dig
+// grid (a granary cell stays a normal dug cell for pathing/connectivity — the
+// dug graph is unchanged).
+int ur_designate(const uint8_t grid[UR_CELLS], uint8_t gran[UR_CELLS],
+                 int32_t col, int32_t row);
+// Initialise a fresh designation layer: nothing designated.
+void ur_fresh_gran(uint8_t gran[UR_CELLS]);
+// Count of DESIGNATED granary cells that are also dug (total placed, reachable
+// or not).
+uint32_t ur_gran_count(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS]);
+// Count of designated granary cells CONNECTED to the mouth (finite
+// ur_dig_dist — the same reachability the burrow BFS defines). Unreachable
+// designated cells are excluded: they bank nothing.
+uint32_t ur_gran_connected(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS]);
+// Total granary capacity = connected granary cells * UR_GRAN_CAP.
+uint32_t ur_gran_capacity(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS]);
+// Total food the colony can HAUL: sum of amounts over the meadow patches whose
+// burrow drop cell is reachable (connect-or-waste for patches; slice 3 graph).
+uint32_t ur_reachable_food(const uint8_t grid[UR_CELLS], uint32_t seed, uint32_t season);
+// The banked store = min(reachable food, granary capacity). Deposits bank up
+// to capacity; food over capacity spoils, capacity over food sits empty.
+uint32_t ur_store(const uint8_t grid[UR_CELLS], const uint8_t gran[UR_CELLS],
+                  uint32_t seed, uint32_t season);
+
 // --- telemetry mailbox (ELF-exported; read by tools/nds-headless-check.py) -
 #define UR_T_MAGIC0 0    // 0x554E4452 'UNDR'
 #define UR_T_MAGIC1 1    // 0x524F4F54 'ROOT'
@@ -166,7 +207,11 @@ ur_forage_t ur_forage(const uint8_t grid[UR_CELLS], uint32_t seed, uint32_t seas
 #define UR_T_ROUTEI 17   // nearest reachable patch index (UR_ROUTE_NONE=none; slice 3)
 #define UR_T_ROUTED 18   // one-way dug distance mouth->drop (UR_ROUTE_NONE=none; slice 3)
 #define UR_T_ROUTELEN 19 // round-trip route length, 2*dist (UR_ROUTE_NONE=none; slice 3)
-#define UR_T_SPARE 20    // 0
-#define UR_T_WORDS 21
+#define UR_T_GRANN 20    // designated granary cells (dug), total (slice 4)
+#define UR_T_GRANCON 21  // designated granary cells connected to the mouth (slice 4)
+#define UR_T_CAP 22      // total granary capacity (GRANCON*UR_GRAN_CAP; slice 4)
+#define UR_T_STORE 23    // banked store = min(reachable food, capacity) (slice 4)
+#define UR_T_SPARE 24    // 0
+#define UR_T_WORDS 25
 
 #endif // UR_SIM_H

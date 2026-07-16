@@ -512,6 +512,12 @@ int main(void)
         ur_telemetry[UR_T_FRAME] = frame;
         ur_telemetry[UR_T_SEASON] = season;    // LIVE season (slice 7 year clock)
         ur_telemetry[UR_T_SEED] = run_seed;
+        // The meadow food total (slice 2), refreshed LIVE each frame off the
+        // dialed run seed + live season (slice 7/10) — not just the boot value —
+        // so it tracks the seed dial and the year clock. At the dial home
+        // (dial 0 == UR_SEED) in spring day 0 this is the pinned 34, exactly as
+        // the boot snapshot; scanning the dial moves it to the new seed's total.
+        ur_telemetry[UR_T_PATCHSUM] = food_total;
         ur_telemetry[UR_T_HAWKON] = (uint32_t)hawk_on;
         ur_telemetry[UR_T_HAWKX] = hawk_on ? (uint32_t)hawk_x : 0;
         ur_telemetry[UR_T_HAWKY] = hawk_on ? (uint32_t)hawk_y : 0;

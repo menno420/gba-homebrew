@@ -1,6 +1,7 @@
 # Wickroad — the CROSSROADS arc (second arc plan)
 
-> **Status:** `cut 1 in-progress` (2026-07-16) — cuts 2-4 planned.
+> **Status:** `cuts 1-2 in-progress` (2026-07-16, DRAFT/held; cut 2
+> stacked on cut 1) — cuts 3-4 planned.
 
 The named *growth path* (`CONCEPT.md` § Growth cuts, cuts 1-5) is
 **complete** as of 2026-07-15 (v0.6, PRs #142-#146). Its biggest idea,
@@ -31,12 +32,21 @@ pass», «Seed dial», «The best ledger»").
    `[52] → [56]` (words 52-55 appended). Proven by new proof **P9 THE
    JUNCTION**.
 
-2. **SPRITE ART PASS** — *planned.* Give the towns and the road a real
-   face on the Cindervault art method (`.sessions/2026-07-14-cindervault-art.md`):
-   authored tiles/palettes for the market, the ledger, the junction,
-   replacing the glyph-only breadth-slice presentation. No sim change;
-   the committed telemetry and proofs are the guard rail that the art
-   pass changes nothing the sim decides.
+2. **SPRITE ART PASS** — *SERVED — v0.8 (in-progress, DRAFT/held,
+   stacked on cut 1).* Gives the towns and the road a real face on the
+   Cindervault art method (`.sessions/2026-07-14-cindervault-art.md`):
+   an authored `regular_bg` (original procedural tiles/palette,
+   `games/wickroad/graphics/generate_assets.py`) baked from the SAME sim
+   state the glyph rows read (town, price[], cargo[], cursor, the
+   fork/junction words) — a road band with the fork drawn when a
+   junction is live, the current town's skyline, a four-good market
+   whose bars scale to the live prices. The bg sits at BACKMOST priority
+   so the variable-font glyphs still draw on top; the bake is DEFERRED
+   off every committed edge frame so the dawn/stagger sprite budget is
+   untouched. Presentation ONLY — the committed telemetry (56 words),
+   the 27 `--assert-text` lines and proofs P1-P9 are the guard rail,
+   carried BYTE-IDENTICAL; the art itself is proven in a second `wr_art`
+   mailbox + DISPCNT/palette-RAM/VRAM hardware pins in new proof P10.
 
 3. **SEED DIAL** — *planned.* A title-screen dial that picks the world
    seed (`.sessions/2026-07-14-cindervault-seed.md` precedent), turning

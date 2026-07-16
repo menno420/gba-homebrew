@@ -262,11 +262,39 @@
  * reachable ONLY by the chord, never by a spine R. Word 54 pins the
  * branch market against the host mirror. Words 0-51 are byte-unchanged.
  *
- * Presentation is deliberately trivial (breadth-program slice): the
- * market table and the ledger are fixed-font glyph lines; headers,
- * title and end cards use the common variable 8x8 font (the one
- * --assert-text can read). All code original; fonts are Butano's
- * zlib-licensed common assets (third_party/butano/common).
+ * PRESENTATION MAILBOX (crossroads cut 2, the sprite art pass) — a SECOND
+ * committed symbol, volatile unsigned wr_art[8], separate from
+ * wr_telemetry so the 56 sim words stay byte-identical by contract. The
+ * cut adds an authored 32x32-cell regular_bg baked from the SAME sim
+ * state (town, price[], cargo[], cursor, the fork/junction words) at
+ * backmost priority (3), so every variable-font glyph sprite still draws
+ * ON TOP (GBA draws OBJ over BG) and every --assert-text line and every
+ * P1-P9 pin carries verbatim. wr_art, updated every frame:
+ *   [0] 0x57415254 'WART' magic     [4] checksum fold of the 32x32 baked
+ *   [1] scene id (= state: 0 title,     bg cells (a deterministic hash of
+ *       1 trading, 2 win, 3 closed)     the authored art on screen)
+ *   [2] town id (0..7)              [5] bg-enabled flag (1 once the road
+ *   [3] cursor good (0..3)              bg is created + shown)
+ *                                   [6] fork-edge mirror (branch_leg while
+ *                                       a fork is live here, else 0)
+ *                                   [7] rebake count (cumulative bakes
+ *                                       since boot — bumps only when the
+ *                                       cached scene key changes)
+ * Words [4]/[5] make THE ART PASS assertable off the machine: the harness
+ * pins the checksum distinct across scenes (title vs junction vs branch),
+ * the bg-enable bit in DISPCNT, the committed palette's BGR555 colors in
+ * BG palette RAM, and the baked cells in the map's VRAM screenblock —
+ * proofs.sh P10 pins exactly that, run twice byte-identical. The bake
+ * re-runs (and reload_cells_ref()) ONLY when the scene key changes, so
+ * quiet frames and the committed dawn edges do no extra bg work.
+ *
+ * Presentation was deliberately trivial through v0.7 (breadth-program
+ * slice): the market table and the ledger are fixed-font glyph lines;
+ * headers, title and end cards use the common variable 8x8 font (the one
+ * --assert-text can read). Crossroads cut 2 gives that glyph-only face an
+ * authored background WITHOUT touching the glyphs. All code and art
+ * original; fonts are Butano's zlib-licensed common assets
+ * (third_party/butano/common).
  */
 
 #include "bn_core.h"
@@ -280,6 +308,14 @@
 #include "bn_sprite_ptr.h"
 #include "bn_sound_items.h"
 #include "bn_sprite_text_generator.h"
+#include "bn_regular_bg_ptr.h"
+#include "bn_regular_bg_item.h"
+#include "bn_regular_bg_map_ptr.h"
+#include "bn_regular_bg_map_item.h"
+#include "bn_regular_bg_map_cell_info.h"
+
+#include "bn_regular_bg_tiles_items_wr_tiles.h"
+#include "bn_bg_palette_items_wr_palette.h"
 
 #include "common_fixed_8x8_sprite_font.h"
 #include "common_variable_8x8_sprite_font.h"
@@ -288,6 +324,12 @@ extern "C"
 {
     // Headless telemetry mailbox — layout in the header comment.
     volatile unsigned wr_telemetry[56];
+
+    // Presentation telemetry (crossroads cut 2, the sprite art pass) — the
+    // authored regular_bg's OWN mailbox, so wr_telemetry's 56 simulation
+    // words stay untouched by contract. volatile so every write lands on
+    // the emulator bus. Layout in the header comment (search 'wr_art').
+    volatile unsigned wr_art[8];
 }
 
 namespace
@@ -1020,6 +1062,244 @@ int main()
         }
     };
 
+    // --- the authored background (crossroads cut 2, the sprite art pass) -----
+    // A 32x32-cell regular_bg baked from the SAME sim state the glyph rows
+    // read, at BACKMOST priority so every text sprite (OBJ) draws on top.
+    // Pure presentation: nothing here feeds back into the sim, so
+    // wr_telemetry's 56 words and every P1-P9 pin are byte-identical to
+    // v0.7 (the Cindervault art-pass method: a second mailbox + hardware
+    // pins, never a widened sim mailbox).
+    constexpr int bg_cols = 32;
+    constexpr int bg_rows = 32;
+    // create_bg() places the MAP CENTER; putting cell (0,0)'s top-left on
+    // the screen top-left (-120,-80) means the center sits (16,16) cells =
+    // (128,128) px past that. The 30x20 visible cells then tile the screen.
+    constexpr int bg_origin_x = -120;
+    constexpr int bg_origin_y = -80;
+
+    // tile ids in wr_tiles (see graphics/generate_assets.py)
+    enum tile_t : int {
+        T_SKY = 1, T_ROAD = 2, T_EDGE = 3, T_WALL = 4, T_ROOF = 5,
+        T_WINDOW = 6, T_BAR_FILL = 7, T_BAR_EMPTY = 8, T_CURSOR = 9,
+        T_FORK = 10, T_PIP = 11,
+    };
+
+    alignas(int) bn::regular_bg_map_cell bg_cells[bg_cols * bg_rows] = {};
+    bn::regular_bg_map_item bg_map_item(bg_cells[0],
+                                        bn::size(bg_cols, bg_rows));
+    bn::regular_bg_item bg_item(bn::regular_bg_tiles_items::wr_tiles,
+                                bn::bg_palette_items::wr_palette, bg_map_item);
+    bn::regular_bg_ptr road_bg = bg_item.create_bg(
+            bg_origin_x + bg_cols * 4, bg_origin_y + bg_rows * 4);
+    road_bg.set_priority(3);
+    bn::regular_bg_map_ptr road_map = road_bg.map();
+
+    auto set_cell = [&](int x, int y, int gfx)
+    {
+        if(x < 0 || x >= bg_cols || y < 0 || y >= bg_rows)
+        {
+            return;
+        }
+
+        bn::regular_bg_map_cell& cell = bg_cells[bg_map_item.cell_index(x, y)];
+        bn::regular_bg_map_cell_info info(cell);
+        info.set_tile_index(gfx);
+        cell = info.cell();
+    };
+
+    // Bake the current scene into bg_cells and return a checksum fold of the
+    // whole 32x32 grid. Reads ONLY sim state (never writes it). Layout, in
+    // the 30x20 visible cells: sky, a town skyline whose building heights
+    // key off the town id (each town a distinct roofline), a road band (the
+    // fork drawn when a junction is live from here), and — while trading —
+    // a four-good market whose bars scale to price(town, g), the cursor good
+    // chevroned and cargo shown as coin pips.
+    auto bake_scene = [&]() -> unsigned
+    {
+        for(int y = 0; y < bg_rows; ++y)
+        {
+            for(int x = 0; x < bg_cols; ++x)
+            {
+                set_cell(x, y, T_SKY);
+            }
+        }
+
+        constexpr int road_top = 7;      // road band rows 7..10
+        constexpr int road_bot = 10;
+        constexpr int base_row = 18;     // market bars sit on this row
+        constexpr int cargo_row = 19;
+
+        for(int x = 0; x < bg_cols; ++x)
+        {
+            set_cell(x, road_top, T_EDGE);
+            set_cell(x, 8, T_ROAD);
+            set_cell(x, 9, T_ROAD);
+            set_cell(x, road_bot, T_EDGE);
+        }
+
+        // town skyline: five buildings, heights keyed off the town id
+        constexpr int slot_x[5] = {2, 8, 14, 20, 26};
+        int t = (state == st_title) ? 0 : town;
+        for(int i = 0; i < 5; ++i)
+        {
+            int h = 2 + ((t * 3 + i * 2) % 4);   // 2..5 rows tall
+            int bx = slot_x[i];
+            int roof = road_top - 1 - h;
+
+            for(int by = roof + 1; by <= road_top - 1; ++by)
+            {
+                for(int dx = 0; dx < 3; ++dx)
+                {
+                    set_cell(bx + dx, by, T_WALL);
+                }
+            }
+
+            for(int dx = 0; dx < 3; ++dx)
+            {
+                set_cell(bx + dx, roof, T_ROOF);
+            }
+
+            set_cell(bx + 1, road_top - 2, T_WINDOW);
+        }
+
+        // the fork: a signpost on the road + a branch spur climbing away,
+        // drawn only when a fork is live from here (the junction DUNWICK or
+        // the branch WYRMHOLLOW) — the junction's face on the road
+        bool fork_live = (state != st_title) && adjacency[t].fork >= 0;
+        if(fork_live)
+        {
+            set_cell(15, road_bot, T_FORK);
+            set_cell(16, 9, T_ROAD);
+            set_cell(17, 8, T_ROAD);
+            set_cell(18, road_top, T_ROAD);
+        }
+
+        // the market panel — only while trading (prices are undefined until
+        // the first reset_run). Four goods, one bar each, height scaled per
+        // good into 1..8 cells; the cursor good chevroned, cargo pipped.
+        if(state == st_trading)
+        {
+            constexpr int bar_x[good_count] = {3, 10, 17, 24};
+
+            for(int g = 0; g < good_count; ++g)
+            {
+                int p = price(town, g);
+                int span = price_hi[g] - price_lo[g];
+                int h = 1 + (span > 0 ? (p - price_lo[g]) * 7 / span : 0);
+                h = h < 1 ? 1 : (h > 8 ? 8 : h);
+                int bx = bar_x[g];
+
+                for(int k = 0; k < 8; ++k)
+                {
+                    int gfx = (k < h) ? T_BAR_FILL : T_BAR_EMPTY;
+
+                    for(int dx = 0; dx < 3; ++dx)
+                    {
+                        set_cell(bx + dx, base_row - k, gfx);
+                    }
+                }
+
+                if(g == cursor)
+                {
+                    set_cell(bx + 1, base_row - h, T_CURSOR);
+                }
+
+                int pips = cargo[g] > 3 ? 3 : cargo[g];
+                for(int k = 0; k < pips; ++k)
+                {
+                    set_cell(bx + k, cargo_row, T_PIP);
+                }
+            }
+        }
+        else if(state == st_balanced)    // win: a full row of coin pips
+        {
+            for(int x = 2; x < 28; x += 2)
+            {
+                set_cell(x, base_row, T_PIP);
+            }
+        }
+        else if(state == st_closed)      // pass closed: empty market frames
+        {
+            constexpr int bar_x[good_count] = {3, 10, 17, 24};
+
+            for(int g = 0; g < good_count; ++g)
+            {
+                for(int k = 0; k < 8; ++k)
+                {
+                    for(int dx = 0; dx < 3; ++dx)
+                    {
+                        set_cell(bar_x[g] + dx, base_row - k, T_BAR_EMPTY);
+                    }
+                }
+            }
+        }
+        else                             // title: a coin banner + a signpost
+        {
+            for(int x = 2; x < 28; x += 3)
+            {
+                set_cell(x, base_row, T_PIP);
+            }
+
+            set_cell(15, base_row - 2, T_FORK);
+        }
+
+        // checksum fold of the whole grid (a deterministic hash of the
+        // authored art actually on screen — the FNV-1a of every tile index)
+        unsigned sum = 2166136261u;
+        for(int i = 0; i < bg_cols * bg_rows; ++i)
+        {
+            bn::regular_bg_map_cell_info info(bg_cells[i]);
+            sum = (sum ^ unsigned(info.tile_index())) * 16777619u;
+        }
+
+        return sum;
+    };
+
+    // Scene cache key: the bake re-runs (and reload_cells_ref DMAs to VRAM)
+    // ONLY when this changes, so quiet frames and the committed dawn edges
+    // do no extra bg work — the staggered dawn budget is respected.
+    auto scene_key = [&]() -> unsigned
+    {
+        unsigned k = unsigned(state) * 131u + unsigned(town) * 17u
+                   + unsigned(cursor);
+
+        if(state == st_trading)
+        {
+            for(int g = 0; g < good_count; ++g)
+            {
+                k = k * 41u + unsigned(price(town, g)) * 7u
+                    + unsigned(cargo[g]);
+            }
+
+            k += adjacency[town].fork >= 0 ? 999u : 0u;
+        }
+
+        return k;
+    };
+
+    // Boot bake: paint the title scene once, off any committed edge frame
+    // (this runs before the first bn::core::update(), long before P1's
+    // frame-60 title pins).
+    unsigned art_key = scene_key();
+    unsigned art_checksum = bake_scene();
+    road_map.reload_cells_ref();
+    unsigned art_rebakes = 1;
+
+    // Deferred-bake budget (crossroads cut 2). The bake is ~1024 cells of
+    // CPU; running it ON a head-redraw / stagger frame overruns that frame's
+    // vblank and slips the road-line sprite one frame late — measurably
+    // breaking P6's frame-100 pin (the day-13 hazard-announce redraw, the
+    // route's heaviest text regeneration). So the bake NEVER runs on a busy
+    // frame: it waits for the scene to fall CALM (no head redraw, no stagger
+    // line still regenerating, no card just flipped) for a few frames, then
+    // catches up. Presentation-only: the bg simply settles a beat after the
+    // player acts, and every committed text pin is byte-identical to v0.7.
+    constexpr unsigned art_calm_needed = 6;   // past head(0)+crier/pact/road
+                                              // (1-3)+ledgers(4,5): frame 6
+                                              // is the first with no regen
+    unsigned art_calm = 0;
+    unsigned prev_state = state;
+
     while(true)
     {
         bool start = bn::keypad::start_pressed();
@@ -1618,6 +1898,41 @@ int main()
                                      : unsigned(price(branch_town,
                                                       branch_town % good_count));
             wr_telemetry[55] = 0u;       // reserved
+        }
+
+        // --- the authored background: rebake only when the scene changed,
+        // and ONLY on a calm frame (crossroads cut 2). A frame is BUSY while
+        // a card just flipped or a trading head redraw / stagger line is
+        // still regenerating (head_quiet < art_calm_needed); the bake defers
+        // until the scene has been calm for art_calm_needed frames, so no
+        // committed edge frame carries the bake's CPU (P1-P9 text pins stay
+        // byte-identical). wr_art publishes the presentation for the headless
+        // harness (P10) — a SECOND mailbox, so wr_telemetry above is
+        // byte-identical to v0.7 by contract.
+        {
+            bool busy = (state != prev_state)
+                        || (state == st_trading
+                            && head_quiet < art_calm_needed);
+            prev_state = state;
+            art_calm = busy ? 0u : art_calm + 1u;
+
+            unsigned key = scene_key();
+            if(key != art_key && art_calm >= art_calm_needed)
+            {
+                art_checksum = bake_scene();
+                road_map.reload_cells_ref();
+                art_key = key;
+                ++art_rebakes;
+            }
+
+            wr_art[0] = 0x57415254u;      // 'WART'
+            wr_art[1] = state;
+            wr_art[2] = unsigned(town);
+            wr_art[3] = unsigned(cursor);
+            wr_art[4] = art_checksum;
+            wr_art[5] = 1u;              // the road bg is created + shown
+            wr_art[6] = adjacency[town].fork >= 0 ? unsigned(branch_leg) : 0u;
+            wr_art[7] = art_rebakes;
         }
 
         bn::core::update();

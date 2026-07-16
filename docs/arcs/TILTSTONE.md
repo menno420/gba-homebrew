@@ -1,6 +1,8 @@
 # Tiltstone — arc 2 design doc (the shareable daily)
 
-> **Status:** cut **4 of 5 BUILT** — arc opened 2026-07-16. Source code and
+> **Status:** all **5 of 5 cuts BUILT** — arc **growth-complete pending owner
+> clicks** (the standing 2026-07-16 landing wall; the cut PRs are draft-parked, not
+> merged). Arc opened 2026-07-16. Source code and
 > merged PRs always win over this file; it states the plan and the
 > decide-and-flag design calls, updated as cuts land. Kicked off from the owner
 > decision menu (docs/NEXT-MENU-2026-07-15.md § B1, the in-doc recommendation)
@@ -113,20 +115,31 @@ one). Provenance is the arc-1 ender card whose deduped 💡 seeded it.
   fingerprints as lock-load-bearing. Neutralization is a pure grid transform — no
   edit to `settle`/`resolve`, a parallel BFS input only.
 
-### CUT 5 — «The monotone ramp»
+### CUT 5 — «The monotone ramp» — BUILT (this PR, the ARC CLOSER)
 
 - **Provenance:** `.sessions/2026-07-13-tiltstone-packs.md` § idea (difficulty-floor
   re-salt → a provably non-decreasing daily chain).
-- **What:** `generateLevel` gains an OPTIONAL difficulty floor (a pure function of
-  `levelIndex`) and re-salts until `difficulty(level).score` clears it — the daily
-  chain becomes a MONOTONE ramp (LV n+1 provably rated ≥ LV n) instead of today's
-  flat parameter-bump ramp.
-- **Proof strategy:** the floor gates behind a `levelIndex` the current pinned
-  chain never reaches, so every existing level pin survives byte-identical; assert
-  in the smoke that with the floor on, `difficulty(LV n+1).score ≥ difficulty(LV
-  n).score` across the ramp, and that floor-off generation is bit-identical to
-  today. This is the one cut that touches generation — additively, behind an
-  optional parameter defaulting to the current behaviour.
+- **What:** `generateLevel` gains an OPTIONAL difficulty floor and re-salts until
+  `difficulty(level).score` clears it — the daily chain becomes a MONOTONE ramp
+  (LV n+1 provably rated ≥ LV n) instead of today's flat parameter-bump ramp, which
+  can actually sag mid-run (seed 42 dips par 7 → par 5 from LV3 → LV4). The floor is
+  driven by a new pure `rampFloor(scores)` (running max of the prefix) and a
+  `generateRamp(seed, count, {monotone})` chain builder; both are opt-in and the
+  floor defaults OFF.
+- **Proof strategy (shipped):** the optional floor is a NO-OP when absent — the accept
+  path is byte-identical to before (same RNG stream, same first-valid salt), so every
+  existing level pin survives unchanged. `smoke.mjs` **§18** proves it: `rampFloor`
+  truths; a **14-seed × 6-level byte-identity sweep** (floor-off `generateLevel` ≡
+  `{}` ≡ `{floor:0}` ≡ pre-cut-5); the natural chain pinned and shown to genuinely DIP
+  (LV4 < LV3); the **monotone chain (seed 42 ×6)** pinned exactly and asserted
+  non-decreasing (`difficulty(LV n+1).score ≥ difficulty(LV n).score`), floor-clearing,
+  and pointwise-dominant over the natural chain; LV0 byte-identical to the natural LV0;
+  determinism run-twice; and the honest floor-exhaustion throw. This is the one cut that
+  touches generation — additively, behind an optional parameter defaulting to the
+  current behaviour; engine bumped `1.7.0 → 1.8.0`, no prior value moved. The daily-chain
+  shell opt-in is a flagged browser follow-up (it needs a progression refactor with no
+  in-container proof); `app.js` is untouched, which is what guarantees default output is
+  unchanged.
 
 *(+1 optional touch cut per CONCEPT § Sellability — mobile touch controls — is
 tracked there, not here; it is polish, not a determinism feature.)*
@@ -135,8 +148,12 @@ tracked there, not here; it is polish, not a determinism feature.)*
 
 | Cut | Title | Provenance card | Status | PR |
 |-----|-------|-----------------|--------|----|
-| 1 | Share your line | tiltstone-juice | **BUILT** | this |
+| 1 | Share your line | tiltstone-juice | **BUILT** | #166 |
 | 2 | Hints from the solver | web-tiltstone | **BUILT** | #167 |
 | 3 | Undo×par curation | tiltstone-par | **BUILT** | #168 |
-| 4 | Mechanic fingerprints | tiltstone-cells | **BUILT** | this |
-| 5 | The monotone ramp | tiltstone-packs | planned | — |
+| 4 | Mechanic fingerprints | tiltstone-cells | **BUILT** | #169 |
+| 5 | The monotone ramp (arc closer) | tiltstone-packs | **BUILT** | this |
+
+**Arc status:** all five cuts BUILT — **growth-complete pending owner clicks**. The
+cuts are a stacked draft chain under the standing 2026-07-16 landing wall; land order
+**#153 → #166 (cut 1) → #167 (cut 2) → #168 (cut 3) → #169 (cut 4) → this (cut 5)**.

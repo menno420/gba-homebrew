@@ -41,7 +41,7 @@
   else root.TiltstoneEngine = api;
 })(typeof self !== "undefined" ? self : this, function () {
 
-  var VERSION = "1.7.0";
+  var VERSION = "1.8.0";
   var SIZE = 8;          // grid is SIZE x SIZE (square — rotation-safe)
   var EMPTY = 0, WALL = 1, STONE = 2, GEM0 = 3;
   var ICE = 11;          // slice 4 — first code past the 8 reserved gem slots
@@ -437,9 +437,16 @@
   // Deterministic level from (seed, levelIndex). Internally tries salted
   // layouts until one (a) starts merge-free after the initial settle and
   // (b) the BFS solver proves >= MIN_BEST gems collectible within budget.
-  function generateLevel(seed, levelIndex) {
+  function generateLevel(seed, levelIndex, opts) {
     levelIndex = levelIndex | 0;
     var P = paramsFor(levelIndex);
+    // arc 2, cut 5: an OPTIONAL difficulty floor. When opts.floor is a finite
+    // number, generation re-salts until difficulty(candidate).score clears it.
+    // When absent, the accept path is byte-identical to before — the same RNG
+    // stream, the same first-valid salt returned — so every pinned level (and
+    // today's daily chain) survives unchanged. floor 0 is a no-op the first
+    // valid salt always clears, so a floor-on chain's opening level is identical.
+    var floor = opts && typeof opts.floor === "number" && isFinite(opts.floor) ? opts.floor : null;
     for (var salt = 0; salt < MAX_SALT; salt++) {
       var rng = mulberry32(mixSeed(seed, levelIndex, salt));
       var grid = emptyGrid(SIZE);
@@ -472,14 +479,20 @@
         if (found.records[i].collected >= quota) { solution = found.records[i].path; break; }
       if (!solution) continue;                  // defensive; cannot happen
 
-      return {
+      var level = {
         size: SIZE, grid: grid, colors: P.colors,
         quota: quota, budget: P.budget,
         seed: seed >>> 0, levelIndex: levelIndex, salt: salt,
         best: found.best, solution: solution
       };
+      // arc 2, cut 5: below the floor (if any) -> re-salt. Skipped entirely when
+      // no floor is set, so floor-off output is the pre-cut-5 first-valid salt.
+      if (floor !== null && difficulty(level).score < floor) continue;
+      return level;
     }
-    throw new Error("generateLevel: no solvable layout in " + MAX_SALT + " salts (seed=" + seed + ", level=" + levelIndex + ")");
+    throw new Error("generateLevel: no " +
+      (floor !== null ? "layout clearing difficulty floor " + floor : "solvable layout") +
+      " in " + MAX_SALT + " salts (seed=" + seed + ", level=" + levelIndex + ")");
   }
 
   // ------------------------------------------------ level packs (slice 5) --
@@ -878,6 +891,48 @@
     return "NEEDS " + carried.join("+");
   }
 
+  // ---- monotone difficulty ramp (arc 2, cut 5) --------------------------------
+  // The daily chain today ramps by PARAMETER (paramsFor bumps colors/gems/cells
+  // with levelIndex) but not by MEASURED difficulty: a generated LV n+1 can rate
+  // EASIER than LV n (seed 42 dips par 7 at LV3 -> par 5 at LV4). Cut 5 adds an
+  // OPTIONAL monotone floor: build each level against a floor equal to the hardest
+  // difficulty().score seen so far, and generateLevel's cut-5 re-salt keeps
+  // drawing layouts until one clears it -> the chain is PROVABLY non-decreasing in
+  // difficulty. All ADDITIVE and behind an opt-in flag: floor-off generation (and
+  // today's daily chain) is byte-identical, so no pinned level moves.
+
+  // The floor the NEXT level must clear: the running max difficulty score across
+  // the levels built so far (0 for an empty prefix — a no-op floor the first valid
+  // salt always clears). Pure; non-decreasing in the prefix by construction, which
+  // is exactly what makes the ramp it drives monotone.
+  function rampFloor(scores) {
+    var m = 0;
+    for (var i = 0; i < scores.length; i++) if (scores[i] > m) m = scores[i];
+    return m;
+  }
+
+  // Build a `count`-level daily chain from one seed. With opts.monotone, level i>0
+  // is generated against rampFloor(scores[0..i-1]), so its difficulty score is >=
+  // every earlier level's and the chain is provably non-decreasing:
+  // scores[i] >= floor[i] = max(scores[0..i-1]) >= scores[i-1]. Without the flag
+  // (the default) the chain is plain generateLevel(seed, i) per level — the third
+  // arg is never passed, so it is byte-identical to today's daily chain. Pure;
+  // returns the levels plus their per-level difficulty scores and applied floors.
+  function generateRamp(seed, count, opts) {
+    var monotone = !!(opts && opts.monotone);
+    count = count | 0;
+    var levels = [], scores = [], floors = [];
+    for (var i = 0; i < count; i++) {
+      var floor = monotone ? rampFloor(scores) : null;
+      var level = generateLevel(seed, i, floor === null ? undefined : { floor: floor });
+      levels.push(level);
+      scores.push(difficulty(level).score);
+      floors.push(floor === null ? 0 : floor);
+    }
+    return { seed: seed >>> 0, count: count, monotone: monotone,
+             levels: levels, scores: scores, floors: floors };
+  }
+
   return {
     VERSION: VERSION, SIZE: SIZE,
     EMPTY: EMPTY, WALL: WALL, STONE: STONE, GEM0: GEM0, MERGE_MIN: MERGE_MIN,
@@ -896,6 +951,7 @@
     encodeShare: encodeShare, decodeShare: decodeShare, spectate: spectate,
     hintFrom: hintFrom, hintedGrade: hintedGrade,
     deception: deception, deceptionLabel: deceptionLabel,
-    neutralizeClass: neutralizeClass, fingerprint: fingerprint, fingerprintTag: fingerprintTag
+    neutralizeClass: neutralizeClass, fingerprint: fingerprint, fingerprintTag: fingerprintTag,
+    rampFloor: rampFloor, generateRamp: generateRamp
   };
 });

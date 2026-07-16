@@ -868,6 +868,95 @@ check("daily seed is a pure date mapping", E.dailySeed("2026-07-13") === 2026071
   }
 }
 
+// -------------------------- 18. monotone difficulty ramp (arc 2, cut 5)
+{
+  // rampFloor is the running max difficulty score of the prefix: 0 on empty
+  // (a no-op floor every level clears), else the largest score so far. Pure and
+  // non-decreasing in the prefix — the property that makes the ramp monotone.
+  check("rampFloor([]) == 0 (empty prefix -> no-op floor)", E.rampFloor([]) === 0, `${E.rampFloor([])}`);
+  check("rampFloor([10,3,7]) == 10 (running max, order-independent)",
+    E.rampFloor([10, 3, 7]) === 10 && E.rampFloor([7, 10, 3]) === 10);
+
+  // ADDITIVE / default-unchanged: the optional floor never moves floor-off output.
+  // generateLevel with no opts, {} , and {floor:0} are byte-identical to today
+  // across a 14-seed x 6-level sweep — the same RNG stream, the same first-valid
+  // salt. This is the load-bearing "no pinned level moves" guarantee for cut 5.
+  {
+    let bad = 0;
+    for (const seed of [42, 7, 100, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12])
+      for (let lv = 0; lv < 6; lv++) {
+        const base = JSON.stringify(E.generateLevel(seed, lv));
+        if (base !== JSON.stringify(E.generateLevel(seed, lv, undefined)) ||
+            base !== JSON.stringify(E.generateLevel(seed, lv, {})) ||
+            base !== JSON.stringify(E.generateLevel(seed, lv, { floor: 0 }))) bad++;
+      }
+    check("floor-off generation byte-identical to pre-cut-5 (14 seeds x 6 levels, opts absent/empty/floor:0)",
+      bad === 0, `${bad} mismatch(es)`);
+  }
+
+  // The natural (floor-off) daily chain is NOT monotone: seed 42 dips from a
+  // score of 7992 at LV3 (par 7) to 5991 at LV4 (par 5). generateRamp with no
+  // flag reproduces exactly the per-level chain, pinned — this is the ramp cut 5
+  // improves on, and it must stay byte-identical to plain generateLevel.
+  const NAT = E.generateRamp(SEED, 6);
+  check("floor-off ramp == per-level generateLevel chain (byte-identical), scores pinned",
+    NAT.monotone === false &&
+    NAT.levels.every((l, i) => E.gridString(l.grid) === E.gridString(E.generateLevel(SEED, i).grid)) &&
+    JSON.stringify(NAT.scores) === JSON.stringify([3995, 3995, 4993, 7992, 5991, 6992]) &&
+    JSON.stringify(NAT.floors) === JSON.stringify([0, 0, 0, 0, 0, 0]),
+    `scores=${NAT.scores.join(",")}`);
+  check("the natural chain genuinely DIPS (LV4 < LV3) — so the floor is not a no-op",
+    NAT.scores[4] < NAT.scores[3], `${NAT.scores[4]} vs ${NAT.scores[3]}`);
+
+  // With the monotone flag ON, the same seed re-salts each level against the
+  // running-max floor, yielding a chain that is PROVABLY non-decreasing in
+  // difficulty. Seed 42 count 6: LV4 lifts 5991 -> 8991 and LV5 6992 -> 9991.
+  // Pinned exactly (deterministic generator): scores/floors/salts/pars.
+  const RAMP = E.generateRamp(SEED, 6, { monotone: true });
+  check("monotone ramp (seed 42 x6): scores pinned = [3995,3995,4993,7992,8991,9991]",
+    JSON.stringify(RAMP.scores) === JSON.stringify([3995, 3995, 4993, 7992, 8991, 9991]),
+    `scores=${RAMP.scores.join(",")}`);
+  check("monotone ramp: applied floors pinned = [0,3995,3995,4993,7992,8991]",
+    JSON.stringify(RAMP.floors) === JSON.stringify([0, 3995, 3995, 4993, 7992, 8991]),
+    `floors=${RAMP.floors.join(",")}`);
+  check("monotone ramp: per-level pars pinned = [3,3,4,7,8,9]",
+    JSON.stringify(RAMP.levels.map((l) => E.par(l))) === JSON.stringify([3, 3, 4, 7, 8, 9]),
+    `pars=${RAMP.levels.map((l) => E.par(l)).join(",")}`);
+  {
+    let mono = true;
+    for (let i = 1; i < RAMP.scores.length; i++) if (RAMP.scores[i] < RAMP.scores[i - 1]) mono = false;
+    check("monotone ramp: difficulty(LV n+1).score >= difficulty(LV n).score across the chain",
+      mono, `scores=${RAMP.scores.join(",")}`);
+    // each level clears its own applied floor (the by-construction guarantee)
+    let clears = 0;
+    for (let i = 0; i < RAMP.scores.length; i++) if (RAMP.scores[i] >= RAMP.floors[i]) clears++;
+    check("monotone ramp: every level clears its applied floor", clears === RAMP.scores.length, `${clears}/${RAMP.scores.length}`);
+    // the floor only ever RAISES difficulty: monotone score >= natural score at each index
+    check("monotone ramp dominates the natural chain pointwise (floor never lowers difficulty)",
+      RAMP.scores.every((s, i) => s >= NAT.scores[i]), `${RAMP.scores.join(",")} vs ${NAT.scores.join(",")}`);
+  }
+
+  // opening level is untouched: rampFloor([]) == 0, so LV0 of a monotone chain is
+  // byte-identical to the natural LV0 (floor 0 is cleared by the first valid salt).
+  check("monotone ramp LV0 byte-identical to natural LV0 (floor 0 is a no-op)",
+    E.gridString(RAMP.levels[0].grid) === E.gridString(E.generateLevel(SEED, 0).grid) &&
+    RAMP.levels[0].salt === E.generateLevel(SEED, 0).salt);
+
+  // determinism: the whole monotone chain is a pure function of (seed, count).
+  check("monotone ramp is deterministic (same seed/count twice -> identical JSON)",
+    JSON.stringify(E.generateRamp(SEED, 6, { monotone: true })) === JSON.stringify(RAMP));
+
+  // honest bound: a floor no layout can clear within MAX_SALT throws a floor-named
+  // error rather than silently returning an under-floor level (the re-salt is a
+  // genuine gate, not best-effort). An unreachable floor on the base cavern proves it.
+  {
+    let threw = false, msg = "";
+    try { E.generateLevel(SEED, 0, { floor: 9_999_999 }); } catch (e) { threw = true; msg = e.message; }
+    check("generateLevel: an unclearable floor throws a floor-named error (gate is honest)",
+      threw && /difficulty floor 9999999/.test(msg), msg);
+  }
+}
+
 // ------------------------------------------------------------------- verdict
 if (failures) {
   console.error(`SMOKE FAIL: ${failures} assertion(s) red`);

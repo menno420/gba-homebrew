@@ -41,3 +41,17 @@ kit: v1.17.0
 1. Dispatch the owner's menu letter as the chosen arc's cut 1.
 2. After the arcade clicks, verify the Pages run green and
    https://menno420.github.io/gba-homebrew/ loads.
+
+## Dispatched slice 2026-07-16 — current-state rows (append-only)
+
+- updated: 2026-07-16T01:13:55Z (`date -u`); session card
+  `.sessions/2026-07-16-current-state-rows.md`, branch
+  `claude/current-state-rows`, PR #152.
+- What: docs/current-state.md reconciled against the live GitHub PR
+  list at HEAD `d38887c` — the stale In-flight NEXT-MENU row resolved
+  (merged as #150, `588aa4e`, 2026-07-15T21:42:05Z) and the shipped
+  ledger carried through #148–#151 with merge SHAs + merged_at from
+  the live API. Docs-only; no dist/, no workflows, no routines touched.
+- ORDER 007 ack check: the done-when ack IS on record — "ORDER 007
+  ACKNOWLEDGED (first rebooted dispatch)" landed in control/status.md
+  at `df55299` (#142, 2026-07-15); no re-ack needed here.

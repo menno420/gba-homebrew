@@ -55,3 +55,22 @@ kit: v1.17.0
 - ORDER 007 ack check: the done-when ack IS on record — "ORDER 007
   ACKNOWLEDGED (first rebooted dispatch)" landed in control/status.md
   at `df55299` (#142, 2026-07-15); no re-ack needed here.
+
+## Dispatched slice 2026-07-16 — overnight planning menu (append-only)
+
+- updated: 2026-07-16T21:51Z (`date -u` at grounding: Thu Jul 16
+  21:51:45 UTC 2026); session card
+  `.sessions/2026-07-16-overnight-menu.md`, branch
+  `claude/overnight-menu-2026-07-16`, work claim
+  `control/claims/claude-overnight-menu-2026-07-16.md`.
+- What: `docs/planning/OVERNIGHT-MENU-2026-07-16.md` — an owner
+  veto-ready planning menu, **84 distinct proposals** (44 per-game
+  across all 12 games incl. Underroot + Tiltstone, plus engine,
+  tooling/CI, web arcade, release, new-game, cross-game), grounded
+  against main HEAD `478bf16` (#152). Planning docs only; no game
+  sources, no dist/, no workflows, no routines touched. Proposals that
+  build on today's unlanded stack (#155–#165 Underroot v1.0, #166–#170
+  Tiltstone arc 2) are marked as depending on it landing.
+- Landing posture: **STANDING 07-16 LANDING WALL** — DRAFT PR only, NO
+  ready-flip, NO auto-merge, does not touch #153–#170; card left
+  `in-progress` (HOLD held) awaiting the owner's ready-click.

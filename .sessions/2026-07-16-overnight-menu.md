@@ -13,7 +13,7 @@
   `478bf167892751f907b02d26b59ec07596f602e2` (#152), with today's
   unlanded stack (#155–#165 Underroot v1.0, #166–#170 Tiltstone arc 2)
   read so dependent proposals are marked.
-- **📊 Model:** [[fill: model family · effort · task-class]]
+- **📊 Model:** Opus 4.8 (Claude family) · medium · planning/docs — overnight veto-menu
 - landing posture: **DRAFT ONLY** under the STANDING 07-16 LANDING WALL
   — draft PR, NO ready-flip, NO auto-merge, does not touch #153–#170;
   awaiting owner ready-click. Card **stays `in-progress`** per the wall
@@ -39,8 +39,29 @@
 
 ## 💡 Session idea
 
-[[fill: one genuine session idea]]
+**A veto-menu's honesty lives in its category tally, not its length —
+so the tally belongs IN the doc, machine-checkable, next to the summary
+table.** Writing 84 proposals across 18 groups, the real failure mode is
+not padding but *silent per-game imbalance*: it is easy to give the
+freshest games (Underroot, Tiltstone) five cuts each and quietly leave
+an older title (Undertow, Deepcast) with one, so the owner vetoes a rich
+menu without noticing a whole game was under-served. The cheap guard is
+a committed per-category count table (this doc's foot) that a future
+session — or a CI check — can diff against the game roster: "every game
+in current-state.md has ≥1 row in the latest planning menu" is a
+one-line assertion that turns menu-breadth from a vibe into a pin, the
+same move the lane already makes for proofs and claims.
 
 ## Previous-session review
 
-[[fill: one-line prev-session review]]
+- Prior lane slice: `.sessions/2026-07-16-current-state-rows.md` (PR
+  #152) — its discipline of citing every published SHA against the live
+  API a day later is exactly what this menu leaned on: it reconciled the
+  ledger to `d38887c`/#151, so grounding this menu against the #152
+  merge (`478bf16`) started from a trusted table rather than a stale
+  one, and its 💡 (an ender that condenses control/status.md can drop a
+  done-when receipt) is why this slice APPENDS a dated section to
+  status.md rather than rewriting it. One thing it could not know:
+  today's #155–#170 stack was still unlanded at its write, so this menu
+  is the first doc to fold Underroot (the 12th game) and Tiltstone arc 2
+  into the roster — as dependency-flagged rows, not shipped state.

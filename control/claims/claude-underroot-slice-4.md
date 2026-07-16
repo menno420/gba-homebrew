@@ -1,0 +1,1 @@
+- `claude/underroot-slice-4` · **Underroot arc slice 4 — granaries + food store (a second stylus verb designates dug cells granary; connected granary capacity banks the reachable meadow haul up to cap — unreachable granaries bank nothing) + host mirror + ROM store telemetry** · games/underroot-nds/, tools/check-underroot.py, .github/workflows/rom-builds.yml · 2026-07-16

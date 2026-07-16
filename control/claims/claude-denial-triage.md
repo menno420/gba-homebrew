@@ -1,0 +1,1 @@
+- `claude/denial-triage` · **classifier-denial triage ledger append** · docs/CAPABILITIES.md, control/status.md · 2026-07-16

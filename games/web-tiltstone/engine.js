@@ -41,7 +41,7 @@
   else root.TiltstoneEngine = api;
 })(typeof self !== "undefined" ? self : this, function () {
 
-  var VERSION = "1.5.0";
+  var VERSION = "1.6.0";
   var SIZE = 8;          // grid is SIZE x SIZE (square — rotation-safe)
   var EMPTY = 0, WALL = 1, STONE = 2, GEM0 = 3;
   var ICE = 11;          // slice 4 — first code past the 8 reserved gem slots
@@ -750,6 +750,32 @@
     return grade((used | 0) + Math.max(0, hints | 0), parTurns);
   }
 
+  // ---- undo×par deception curation (arc 2, cut 3) -----------------------------
+  // Rate a cleared level's *deceptiveness* from the (undos, overshoot) pair.
+  //   overshoot = turns used beyond par  -> honest, visible forward effort
+  //   undos     = in-place backtracking  -> hidden effort; what makes a level deceptive
+  // A win at par that ate many undos is HARD-deceptive; par+2 with no undos is
+  // medium-honest. Pure integers, no I/O -- the shell persists the pair in guarded
+  // localStorage and renders deceptionLabel().
+  function deception(undos, used, parTurns) {
+    var u = undos > 0 ? (undos | 0) : 0;
+    var overshoot = used - parTurns;
+    if (overshoot < 0) overshoot = 0;
+    var d = u * 2 - overshoot;
+    return d > 0 ? d : 0;
+  }
+
+  function deceptionLabel(undos, used, parTurns) {
+    var u = undos > 0 ? (undos | 0) : 0;
+    var overshoot = used - parTurns;
+    if (overshoot < 0) overshoot = 0;
+    var effort = u + overshoot;
+    var tier = effort === 0 ? "clean" : (effort <= 3 ? "medium" : "HARD");
+    var d = deception(undos, used, parTurns);
+    var honesty = d === 0 ? "honest" : (d <= 3 ? "tricky" : "deceptive");
+    return tier + "-" + honesty;
+  }
+
   return {
     VERSION: VERSION, SIZE: SIZE,
     EMPTY: EMPTY, WALL: WALL, STONE: STONE, GEM0: GEM0, MERGE_MIN: MERGE_MIN,
@@ -766,6 +792,7 @@
     newGame: newGame, rotate: rotate, replay: replay,
     isReplayLine: isReplayLine, normalizeLine: normalizeLine,
     encodeShare: encodeShare, decodeShare: decodeShare, spectate: spectate,
-    hintFrom: hintFrom, hintedGrade: hintedGrade
+    hintFrom: hintFrom, hintedGrade: hintedGrade,
+    deception: deception, deceptionLabel: deceptionLabel
   };
 });

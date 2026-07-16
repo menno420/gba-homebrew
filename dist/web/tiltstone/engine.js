@@ -41,7 +41,7 @@
   else root.TiltstoneEngine = api;
 })(typeof self !== "undefined" ? self : this, function () {
 
-  var VERSION = "1.4.0";
+  var VERSION = "1.6.0";
   var SIZE = 8;          // grid is SIZE x SIZE (square — rotation-safe)
   var EMPTY = 0, WALL = 1, STONE = 2, GEM0 = 3;
   var ICE = 11;          // slice 4 — first code past the 8 reserved gem slots
@@ -598,6 +598,184 @@
     return state;
   }
 
+  // ------------------------------------------- shareable line (arc 2, cut 1) --
+
+  // Determinism is TOTAL, so a cleared (or attempted) cavern is fully described
+  // by three things: the SEED, the levelIndex, and the ROTATION LINE the player
+  // took (a string of 'L'/'R'). That triple replays the identical game anywhere.
+  // These pure helpers turn the triple into a shareable query string and back,
+  // and re-drive it through resolveTrace for the full scored, animated playback —
+  // the social half of the daily-seed hook: today players share the CAVERN
+  // (?seed=N), now they share their LINE too. Only the player's OWN line is ever
+  // encoded; the solver's stays hidden, so par bragging rights survive. No DOM,
+  // no clock, no URL object — just strings. All ADDITIVE: nothing above is edited.
+
+  var LINE_RE = /^[LR]*$/;
+  var MAX_LINE = 64;   // generous cap (budget is 10); guards a hostile URL
+
+  // Is `s` a legal rotation line? (a string of only 'L'/'R', within the cap)
+  function isReplayLine(s) {
+    return typeof s === "string" && s.length <= MAX_LINE && LINE_RE.test(s);
+  }
+
+  // Normalize a raw line: uppercase, drop every non-L/R char, cap the length.
+  // Lets a hand-typed or arrow-glyph share degrade to its legal core instead of
+  // throwing. Pure.
+  function normalizeLine(s) {
+    if (typeof s !== "string") return "";
+    var out = "";
+    for (var i = 0; i < s.length && out.length < MAX_LINE; i++) {
+      var ch = s.charAt(i).toUpperCase();
+      if (ch === "L" || ch === "R") out += ch;
+    }
+    return out;
+  }
+
+  // Encode a share as the canonical query fragment `seed=N&level=L&replay=RRLR`
+  // (`level` omitted when 0 — the common daily case — so the URL stays short).
+  // Pure; the leading '?' is the caller's business. THROWS on an illegal line so
+  // a share is never silently corrupted at creation.
+  function encodeShare(share) {
+    var seed = (share && share.seed) >>> 0;
+    var level = Math.max(0, (share && share.levelIndex) | 0);
+    var line = share && share.line != null ? String(share.line) : "";
+    if (!isReplayLine(line)) throw new Error("encodeShare: line must match /^[LR]*$/ within " + MAX_LINE + ", got: " + line);
+    var parts = ["seed=" + seed];
+    if (level > 0) parts.push("level=" + level);
+    parts.push("replay=" + line);
+    return parts.join("&");
+  }
+
+  function safeDecodeURIComponent(s) {
+    try { return decodeURIComponent(s); } catch (e) { return null; }
+  }
+
+  // Decode a share from a query string ('?a=b&c=d' or 'a=b&c=d'), a
+  // URLSearchParams-like object (has .get()), or a plain {seed,level,replay} bag.
+  // Returns { seed, levelIndex, line } with the line NORMALIZED to its legal
+  // core, or null when there is no usable seed+replay pair. Pure — never touches
+  // the URL/DOM; a malformed %-escape degrades to null, never throws.
+  function decodeShare(src) {
+    var get;
+    if (src && typeof src.get === "function") {            // URLSearchParams-like
+      get = function (k) { return src.get(k); };
+    } else if (typeof src === "string") {
+      var q = src.charAt(0) === "?" ? src.slice(1) : src;
+      var map = {}, bad = false;
+      q.split("&").forEach(function (kv) {
+        if (!kv) return;
+        var eq = kv.indexOf("=");
+        var rawK = eq < 0 ? kv : kv.slice(0, eq);
+        var rawV = eq < 0 ? "" : kv.slice(eq + 1);
+        var k = safeDecodeURIComponent(rawK), v = safeDecodeURIComponent(rawV);
+        if (k === null || v === null) { bad = true; return; }
+        map[k] = v;
+      });
+      if (bad) return null;
+      get = function (k) { return Object.prototype.hasOwnProperty.call(map, k) ? map[k] : null; };
+    } else if (src && typeof src === "object") {
+      get = function (k) { return src[k] != null ? String(src[k]) : null; };
+    } else {
+      return null;
+    }
+    var rawSeed = get("seed"), rawReplay = get("replay");
+    if (rawSeed == null || rawReplay == null) return null;
+    var seed = parseInt(rawSeed, 10);
+    if (!isFinite(seed)) return null;
+    var level = parseInt(get("level") || "0", 10);
+    if (!isFinite(level) || level < 0) level = 0;
+    return { seed: seed >>> 0, levelIndex: level, line: normalizeLine(rawReplay) };
+  }
+
+  // Replay a shared line as a SPECTATED run: generate the (seed, levelIndex)
+  // cavern, then apply the line one rotation at a time, capturing for each the
+  // resolveTrace phases (what the shell tweens) and the post-rotation state.
+  // Stops early if the game reaches a terminal state before the line ends (a won
+  // cavern freezes; extra rotations are ignored, exactly like the live shell).
+  // Pure — reuses newGame/rotate/resolveTrace, so the reconstructed run is
+  // byte-identical to the sharer's own play. Returns:
+  //   { start, steps:[{ dir, from, trace, state }], final, consumed, clean }
+  // `clean` is true when the input line was already legal (nothing normalized away).
+  function spectate(seed, levelIndex, line) {
+    var clean = isReplayLine(typeof line === "string" ? line : "");
+    var norm = normalizeLine(line);
+    var start = newGame(seed >>> 0, levelIndex | 0);
+    var state = start, steps = [];
+    for (var i = 0; i < norm.length; i++) {
+      if (state.status !== "playing") break;
+      var dir = norm.charAt(i) === "R" ? "cw" : "ccw";
+      var from = state.grid;
+      var trace = resolveTrace(rotateGrid(from, dir));
+      state = rotate(state, dir);
+      steps.push({ dir: dir, from: from, trace: trace, state: state });
+    }
+    return { start: start, steps: steps, final: state, consumed: steps.length, clean: clean };
+  }
+
+  // ------------------------------------------- solver hints (arc 2, cut 2) --
+
+  // The solver already stores each cavern's shortest winning line (level.solution);
+  // that line "doubles as a free hint system". hintFrom() surfaces the ONE next
+  // rotation of a shortest winning continuation FROM THE CURRENT board — not the
+  // whole solution, a single nudge. It re-runs the same BFS `search` from
+  // state.grid against the REMAINING budget for the REMAINING quota, so it stays
+  // honest after the player has wandered off the solver's pristine line (a detour
+  // or an undo): the hint always points along a shortest win from where you
+  // actually are, never a stale parrot of the stored line. Spend-gated — a hint is
+  // meant to cost, so hintedGrade() folds the hint count into `used`, dinging the
+  // card exactly like the same number of over-par turns. Never reveals a hint for
+  // a terminal (won/lost) board. Pure — reuses search/resolve, no DOM, no clock,
+  // no generator change. All ADDITIVE: nothing above is edited.
+
+  // The next rotation ('L'=ccw / 'R'=cw) of a shortest winning line from THIS
+  // board, or null when the board is terminal OR no line still reaches quota from
+  // here within the remaining budget. Deterministic: it selects the first shortest
+  // quota-meeting continuation in the same BFS order `solve` uses, so from a
+  // pristine board it agrees with level.solution[0].
+  function hintFrom(state) {
+    if (!state || state.status !== "playing") return null;
+    var need = (state.quota | 0) - (state.collected | 0);
+    if (need <= 0) return null;                         // quota already met
+    var left = (state.budget | 0) - (state.used | 0);
+    if (left <= 0) return null;                         // no turns remain
+    var found = search(state.grid, left);
+    for (var i = 0; i < found.records.length; i++)
+      if (found.records[i].collected >= need) return found.records[i].path.charAt(0);
+    return null;                                        // unwinnable from here
+  }
+
+  // Spend-gated grade: each hint taken counts like one extra (over-par) turn, so
+  // leaning on the solver dings your card. hints<=0 reproduces plain grade(). Pure.
+  function hintedGrade(used, parTurns, hints) {
+    return grade((used | 0) + Math.max(0, hints | 0), parTurns);
+  }
+
+  // ---- undo×par deception curation (arc 2, cut 3) -----------------------------
+  // Rate a cleared level's *deceptiveness* from the (undos, overshoot) pair.
+  //   overshoot = turns used beyond par  -> honest, visible forward effort
+  //   undos     = in-place backtracking  -> hidden effort; what makes a level deceptive
+  // A win at par that ate many undos is HARD-deceptive; par+2 with no undos is
+  // medium-honest. Pure integers, no I/O -- the shell persists the pair in guarded
+  // localStorage and renders deceptionLabel().
+  function deception(undos, used, parTurns) {
+    var u = undos > 0 ? (undos | 0) : 0;
+    var overshoot = used - parTurns;
+    if (overshoot < 0) overshoot = 0;
+    var d = u * 2 - overshoot;
+    return d > 0 ? d : 0;
+  }
+
+  function deceptionLabel(undos, used, parTurns) {
+    var u = undos > 0 ? (undos | 0) : 0;
+    var overshoot = used - parTurns;
+    if (overshoot < 0) overshoot = 0;
+    var effort = u + overshoot;
+    var tier = effort === 0 ? "clean" : (effort <= 3 ? "medium" : "HARD");
+    var d = deception(undos, used, parTurns);
+    var honesty = d === 0 ? "honest" : (d <= 3 ? "tricky" : "deceptive");
+    return tier + "-" + honesty;
+  }
+
   return {
     VERSION: VERSION, SIZE: SIZE,
     EMPTY: EMPTY, WALL: WALL, STONE: STONE, GEM0: GEM0, MERGE_MIN: MERGE_MIN,
@@ -611,6 +789,10 @@
     difficulty: difficulty, curatePack: curatePack,
     PACK_DEFS: PACK_DEFS, PACKS: PACKS, packById: packById,
     paramsFor: paramsFor, generateLevel: generateLevel,
-    newGame: newGame, rotate: rotate, replay: replay
+    newGame: newGame, rotate: rotate, replay: replay,
+    isReplayLine: isReplayLine, normalizeLine: normalizeLine,
+    encodeShare: encodeShare, decodeShare: decodeShare, spectate: spectate,
+    hintFrom: hintFrom, hintedGrade: hintedGrade,
+    deception: deception, deceptionLabel: deceptionLabel
   };
 });

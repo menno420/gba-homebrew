@@ -723,6 +723,31 @@ check("daily seed is a pure date mapping", E.dailySeed("2026-07-13") === 2026071
     JSON.stringify(E.hintedGrade(par0, par0, 2)));
 }
 
+// ----------------------------- 16. undo×par deception (arc 2, cut 3)
+{
+  const par0 = E.par(g0.level);
+  // pinned truth table: [undos, used, par, want deception scalar, want label]
+  const rows = [
+    [0, par0,     par0, 0,  "clean-honest"],
+    [6, par0,     par0, 12, "HARD-deceptive"],
+    [0, par0 + 2, par0, 0,  "medium-honest"],
+    [2, par0,     par0, 4,  "medium-deceptive"],
+    [3, par0 + 3, par0, 3,  "HARD-tricky"],
+    [1, par0,     par0, 2,  "medium-tricky"],
+    [1, par0 + 1, par0, 1,  "medium-tricky"],
+  ];
+  for (const [undos, used, p, wantD, wantLabel] of rows) {
+    check(`deception(${undos},${used},${p})==${wantD}`, E.deception(undos, used, p) === wantD, `got ${E.deception(undos, used, p)}`);
+    check(`deceptionLabel(${undos},${used},${p})=="${wantLabel}"`, E.deceptionLabel(undos, used, p) === wantLabel, `got "${E.deceptionLabel(undos, used, p)}"`);
+  }
+  const a = E.deception(4, par0 + 1, par0), b = E.deception(4, par0 + 1, par0);
+  check("deception deterministic", a === b, `${a} vs ${b}`);
+  let mono = true, prev = -1;
+  for (let k = 0; k <= 8; k++) { const v = E.deception(k, par0, par0); if (v < prev) mono = false; prev = v; }
+  check("deception monotone in undos", mono, "");
+  check("deception floors at 0", E.deception(-3, par0, par0) === 0 && E.deception(0, par0 + 9, par0) === 0, "");
+}
+
 // ------------------------------------------------------------------- verdict
 if (failures) {
   console.error(`SMOKE FAIL: ${failures} assertion(s) red`);

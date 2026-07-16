@@ -37,15 +37,26 @@
   var anim = null;    // live replay of the last rotation's resolveTrace, or null
   var pack = null;    // slice 5: the active curated pack object, or null (free play)
   var stage = 0;      // slice 5: 0-based index into pack.entries
+  var line = "";      // arc2 cut1: the player's OWN rotation line ('R'=cw, 'L'=ccw)
+  var hints = 0;      // arc2 cut2: opt-in solver hints taken this attempt (spend-gates the grade)
+  var spectating = false;   // arc2 cut1: a shared line is auto-playing
+  var spectQueue = "";      // remaining shared-line chars during a spectate
+  var spectTok = 0;         // bumps to abort an in-flight spectate pump
+
+  // arc2 cut1: stop any in-flight shared-line playback (user took over).
+  function cancelSpectate() { spectating = false; spectQueue = ""; spectTok++; }
 
   function reset(newSeed, newLevel) {
     cancelAnim();
+    cancelSpectate();
     pack = null;                          // any explicit seed/level load exits pack mode
     seed = newSeed >>> 0;
     levelIndex = Math.max(0, newLevel | 0);
     state = E.newGame(seed, levelIndex);
     history = [];
     undos = 0;
+    line = "";
+    hints = 0;
     setMsg("");
     render();
   }
@@ -55,6 +66,7 @@
   // pinned PACKS data carries which seeds the solver rated hardest.
   function startPackStage(p, i) {
     cancelAnim();
+    cancelSpectate();
     pack = p;
     stage = Math.max(0, Math.min(p.entries.length - 1, i | 0));
     seed = p.entries[stage].seed >>> 0;
@@ -62,6 +74,8 @@
     state = E.newGame(seed, levelIndex);
     history = [];
     undos = 0;
+    line = "";
+    hints = 0;
     setMsg(p.name + " — stage " + (stage + 1) + "/" + p.entries.length);
     render();
   }
@@ -73,8 +87,10 @@
   }
 
   function gradeLine() {
-    var p = E.par(state.level), g = E.grade(state.used, p);
+    var p = E.par(state.level), g = E.hintedGrade(state.used, p, hints);   // arc2 cut2: hints ding the grade
     return "PAR " + p + " — YOU " + state.used + " — " + g.label +
+      " [" + E.deceptionLabel(undos, state.used, p) + "]" +   // arc2 cut3: undo×par deceptiveness read
+      (hints ? " (" + hints + " hint" + (hints === 1 ? "" : "s") + ")" : "") +
       (undos ? " (" + undos + " undo" + (undos === 1 ? "" : "s") + ")" : "");
   }
 
@@ -84,6 +100,7 @@
     var prev = state;
     state = E.rotate(state, dir);         // authoritative, IMMEDIATE
     history.push(prev);
+    line += dir === "cw" ? "R" : "L";     // arc2 cut1: record the player's line
     audio.play("rotate");
     if (state.events.length) {
       var got = state.collected - prev.collected;
@@ -91,6 +108,7 @@
       setMsg("+" + got + " gem" + (got === 1 ? "" : "s") + (chains > 1 ? " (chain x" + chains + "!)" : ""));
     } else setMsg("");
     if (state.status === "won") {
+      saveDeception();                    // arc2 cut3: record undo×par deceptiveness of this clear
       if (pack) {
         savePackStage();
         var last = stage + 1 >= pack.entries.length;
@@ -115,11 +133,87 @@
   function undo() {
     if (!history.length || state.status === "won") return;
     cancelAnim();
+    cancelSpectate();
     state = history.pop();
+    line = line.slice(0, -1);             // arc2 cut1: keep the line honest with the stack
     undos++;
     audio.play("undo");
     setMsg("took back a turn (" + undos + " undo" + (undos === 1 ? "" : "s") + " this attempt)");
     render();
+  }
+
+  // --- share your line (arc 2, cut 1) ----------------------------------------
+  // Determinism is total, so (seed, levelIndex, line) fully describes a run. The
+  // Share button hands you a URL of your OWN line; loading a ?replay= URL plays
+  // that line back as a spectated run on the very juice animation the player saw.
+
+  function shareURL() {
+    var frag = E.encodeShare({ seed: seed, levelIndex: levelIndex, line: line });
+    var base = (location.origin && location.origin !== "null")
+      ? location.origin + location.pathname
+      : location.href.split("#")[0].split("?")[0];
+    return base + "?" + frag;
+  }
+
+  function doShare() {
+    var url = shareURL();
+    var moves = line.length + " move" + (line.length === 1 ? "" : "s");
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(
+          function () { setMsg("Share link copied (" + moves + ")"); },
+          function () { setMsg(url); });        // clipboard refused — show it to copy
+        return;
+      }
+    } catch (e) { /* guarded — insecure context, etc. */ }
+    setMsg(url);                                // no clipboard API — show the URL
+  }
+
+  // --- solver hint (arc 2, cut 2) --------------------------------------------
+  // One opt-in nudge: the NEXT rotation of a shortest winning line from the board
+  // as it stands now. Spend-gated — every hint dings the win card like an over-par
+  // turn (E.hintedGrade folds the count into `used`). Does NOT auto-rotate.
+  function doHint() {
+    if (state.status !== "playing") { setMsg("No hint — this cavern is already " + state.status); return; }
+    var h = E.hintFrom(state);
+    if (h !== "L" && h !== "R") { setMsg("No hint — no winning line left from here"); return; }
+    hints++;
+    var dir = h === "R" ? "clockwise ↻ (D / →)" : "counter-clockwise ↺ (A / ←)";
+    setMsg("Hint: rotate " + dir + " — costs 1 on your grade (" + hints + " used)");
+  }
+
+  // Load a decoded ?replay= share and auto-play its line, move by move, on the
+  // real animation. Any manual input (rotate/undo/reset) bumps spectTok and the
+  // pump aborts on its next tick.
+  function beginSpectate(share) {
+    reset(share.seed, share.levelIndex);        // clears line, cancels any prior spectate
+    var norm = E.normalizeLine(share.line);
+    if (!norm.length) { setMsg("Shared cavern loaded (seed " + seed + ") — your move"); return; }
+    spectating = true;
+    spectQueue = norm;
+    var tok = spectTok;
+    setMsg("Spectating a shared line — " + norm.length + " move" + (norm.length === 1 ? "" : "s") + "…");
+    pumpSpectate(tok);
+  }
+
+  function pumpSpectate(tok) {
+    if (tok !== spectTok) return;               // superseded by user input
+    if (!spectQueue.length || state.status !== "playing") {
+      spectating = false;
+      if (state.status === "won") setMsg("Shared line: " + gradeLine() + " — R to play it yourself");
+      else if (state.status === "lost") setMsg("Shared line came up short — R to try this cavern");
+      else setMsg("Shared line played — your move (R to restart)");
+      return;
+    }
+    var ch = spectQueue.charAt(0);
+    spectQueue = spectQueue.slice(1);
+    act(ch === "R" ? "cw" : "ccw");             // authoritative + animates
+    var waitThenNext = function () {
+      if (tok !== spectTok) return;
+      if (anim) { setTimeout(waitThenNext, 60); return; }   // let the tween finish
+      setTimeout(function () { pumpSpectate(tok); }, 240);
+    };
+    setTimeout(waitThenNext, 60);
   }
 
   // --- juice replay ----------------------------------------------------------
@@ -263,6 +357,14 @@
       var k = "tiltstone-best-" + seed;
       var prev = parseInt(window.localStorage.getItem(k) || "-1", 10);
       if (levelIndex > prev) window.localStorage.setItem(k, String(levelIndex));
+    } catch (e) { /* private mode etc. */ }
+  }
+  function saveDeception() { // arc2 cut3: persist the (undos, overshoot) pair + label for a clear, guarded
+    try {
+      var p = E.par(state.level);
+      var overshoot = Math.max(0, state.used - p);
+      var rec = { undos: undos, overshoot: overshoot, label: E.deceptionLabel(undos, state.used, p) };
+      window.localStorage.setItem("tiltstone-deception-" + seed + "-" + levelIndex, JSON.stringify(rec));
     } catch (e) { /* private mode etc. */ }
   }
   function savePackStage() { // slice 5: highest pack stage cleared, per pack id
@@ -431,15 +533,19 @@
       return;
     }
     var k = ev.key.toLowerCase();
-    if (k === "arrowleft" || k === "a") { ev.preventDefault(); act("ccw"); }
-    else if (k === "arrowright" || k === "d") { ev.preventDefault(); act("cw"); }
+    if (k === "arrowleft" || k === "a") { ev.preventDefault(); cancelSpectate(); act("ccw"); }
+    else if (k === "arrowright" || k === "d") { ev.preventDefault(); cancelSpectate(); act("cw"); }
     else if (k === "r") restart();
     else if (k === "n") nextLevel();
     else if (k === "u") undo();
     else if (k === "m") toggleMute();
+    else if (k === "s") doShare();
+    else if (k === "h") doHint();
   });
-  document.getElementById("btn-ccw").addEventListener("click", function () { act("ccw"); });
-  document.getElementById("btn-cw").addEventListener("click", function () { act("cw"); });
+  document.getElementById("btn-ccw").addEventListener("click", function () { cancelSpectate(); act("ccw"); });
+  document.getElementById("btn-cw").addEventListener("click", function () { cancelSpectate(); act("cw"); });
+  document.getElementById("btn-share").addEventListener("click", doShare);
+  document.getElementById("btn-hint").addEventListener("click", doHint);
   document.getElementById("btn-undo").addEventListener("click", undo);
   document.getElementById("btn-restart").addEventListener("click", restart);
   document.getElementById("btn-next").addEventListener("click", nextLevel);
@@ -476,13 +582,22 @@
     isAnimating: function () { return !!anim; },
     isMuted: function () { return audio.isMuted(); },
     render: function () { render(); },
+    getLine: function () { return line; },                       // arc2 cut1
+    getShareURL: function () { return shareURL(); },             // arc2 cut1
+    isSpectating: function () { return spectating; },            // arc2 cut1
+    spectate: function (share) { beginSpectate(share); return state; }, // arc2 cut1
+    getHints: function () { return hints; },                     // arc2 cut2
+    hint: function () { return E.hintFrom(state); },             // arc2 cut2
     loadPack: function (id, i) { var p = E.packById(id); if (p) startPackStage(p, i || 0); return state; },
     getPack: function () { return pack ? { id: pack.id, name: pack.name, stage: stage, size: pack.entries.length } : null; },
     dailySeed: DAILY
   };
 
-  // slice 5: ?pack=<id>[&stage=<1-based>] boots straight into a pack stage
+  // boot precedence: a ?replay= share spectates first (arc2 cut1); else a
+  // ?pack= stage (slice 5); else the daily/seed cavern renders.
+  var bootShare = qs.has("replay") ? E.decodeShare(qs) : null;
   var bootPack = qs.has("pack") ? E.packById(qs.get("pack")) : null;
-  if (bootPack) startPackStage(bootPack, ((parseInt(qs.get("stage") || "1", 10) || 1) - 1));
+  if (bootShare) beginSpectate(bootShare);
+  else if (bootPack) startPackStage(bootPack, ((parseInt(qs.get("stage") || "1", 10) || 1) - 1));
   else render();
 })();

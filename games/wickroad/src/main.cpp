@@ -131,8 +131,8 @@
  *     input script replays bit-identically.
  *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
- * --elf --watch wr:wr_telemetry:52; the v0.1/v0.2/v0.3/v0.4/v0.5 proofs
- * keep watching the first 16/24/32/40/48 words unchanged), volatile,
+ * --elf --watch wr:wr_telemetry:56; the v0.1/v0.2/v0.3/v0.4/v0.5/v0.6 proofs
+ * keep watching the first 16/24/32/40/48/52 words unchanged), volatile,
  * C-linkage, every frame:
  *   [0] 0x5749434B 'WICK' magic     [8]  pack used (0..8)
  *   [1] 0x524F4144 'ROAD' magic     [9]  cargo TALLOW
@@ -246,6 +246,22 @@
  * Actual audible output (mix levels, timbre, the DAC) is NOT
  * headlessly assertable — that is named owner-playtest territory.
  *
+ * Crossroads witness words (crossroads cut 1; all 0 on the title):
+ *   [52] on-branch flag: 1 while    [54] TRUE price of WYRMHOLLOW's
+ *        standing on WYRMHOLLOW           produce good (RESIN) — the
+ *        (town 7), else 0                 branch-town price witness,
+ *   [53] fork-edge id: branch_leg         so the fork market is pinned
+ *        (7) while a fork is live         from the mirror even from
+ *        from the current town (at        across the spine
+ *        the junction DUNWICK or on  [55] free / reserved (0)
+ *        WYRMHOLLOW), else 0
+ * Words 52/53 make THE FORK verb assertable: the harness pins the flag
+ * flipping 0 -> 1 on the L+R chord that rides onto the branch and back
+ * to 0 on the return, and word 53 reading 7 exactly at the two ends of
+ * the fork road (junction + branch) and 0 elsewhere — the branch is
+ * reachable ONLY by the chord, never by a spine R. Word 54 pins the
+ * branch market against the host mirror. Words 0-51 are byte-unchanged.
+ *
  * Presentation is deliberately trivial (breadth-program slice): the
  * market table and the ledger are fixed-font glyph lines; headers,
  * title and end cards use the common variable 8x8 font (the one
@@ -271,7 +287,7 @@
 extern "C"
 {
     // Headless telemetry mailbox — layout in the header comment.
-    volatile unsigned wr_telemetry[52];
+    volatile unsigned wr_telemetry[56];
 }
 
 namespace
@@ -307,7 +323,15 @@ namespace
     };
 
     // --- the road (all owner-tunable integers) ------------------------------
-    constexpr int town_count = 7;        // widened from 5 (growth cut 4)
+    constexpr int town_count = 8;        // widened to 8 (crossroads cut 1:
+                                         //   +WYRMHOLLOW, the off-spine
+                                         //   branch town — was 7 in v0.5/0.6)
+    constexpr int spine_town_count = 7;  // the LINEAR spine 0<->1<->...<->6
+                                         //   that L/R walk (crossroads cut 1);
+                                         //   town 7 hangs off it, fork-only —
+                                         //   the spine travel/display bounds
+                                         //   use this, not town_count, so R at
+                                         //   MIRGATE never falls onto the branch
     constexpr int legacy_town_count = 5; // the v0.4 world: its 40 world-init
                                          //   draws keep their exact stream
                                          //   order (see reset_run)
@@ -315,7 +339,7 @@ namespace
 
     constexpr const char* town_names[town_count] = {
         "EMBERTON", "GLASSMERE", "SALTCOMBE", "THORNBY", "DUNWICK",
-        "HOLLOWFEN", "MIRGATE",
+        "HOLLOWFEN", "MIRGATE", "WYRMHOLLOW",
     };
 
     constexpr const char* good_names[good_count] = {
@@ -340,6 +364,33 @@ namespace
     // The stale-ink witness pair (mailbox words 14/15).
     constexpr int witness_town = 3;      // THORNBY
     constexpr int witness_good = 1;      // SALT
+
+    // --- the CROSSROADS (crossroads cut 1) ----------------------------------
+    // The map is no longer a bare linear index. A tiny static adjacency
+    // table names, per town, its spine-left / spine-right neighbours
+    // (-1 = none) and its FORK neighbour (the off-spine town reached by
+    // the L+R chord; -1 = none). L/R read the .left/.right columns and
+    // still walk the spine 0<->1<->...<->6 BIT-IDENTICALLY (the spine
+    // legs and their hazards are unchanged); only WYRMHOLLOW (7) hangs
+    // off the junction DUNWICK (4), reachable ONLY by the fork verb, and
+    // R at DUNWICK still follows the spine to HOLLOWFEN.
+    constexpr int junction_town = 4;     // DUNWICK: the mid-spine fork
+    constexpr int branch_town = 7;       // WYRMHOLLOW: the off-spine child
+    constexpr int branch_leg = spine_town_count;  // 7: a leg id the hazard
+                                         //   deck never uses, so the fork
+                                         //   road carries no bandits/storm
+
+    struct adj_t { int left; int right; int fork; };
+    constexpr adj_t adjacency[town_count] = {
+        { -1,  1, -1 },   // 0 EMBERTON  (spine start)
+        {  0,  2, -1 },   // 1 GLASSMERE
+        {  1,  3, -1 },   // 2 SALTCOMBE
+        {  2,  4, -1 },   // 3 THORNBY
+        {  3,  5,  7 },   // 4 DUNWICK    (the junction: fork -> WYRMHOLLOW)
+        {  4,  6, -1 },   // 5 HOLLOWFEN
+        {  5, -1, -1 },   // 6 MIRGATE    (spine end)
+        {  4, -1,  4 },   // 7 WYRMHOLLOW (branch: left/fork -> DUNWICK)
+    };
 
     // --- the MULES (growth cut 4) --------------------------------------------
     // Gold buys logistics: at the Hollowfen fair START buys a mule,
@@ -780,11 +831,14 @@ int main()
     {
         // The SAME world every run: the PRNG restarts at the fixed
         // seed and is consumed only here, in a fixed order. THE ORDER
-        // IS A COMMITTED INTERFACE (growth cut 4): the five legacy
-        // towns draw base then phase EXACTLY as in v0.1-v0.4 (40
-        // draws, bit-identical world, every committed pin carries),
-        // and the two new towns' 16 draws (base then phase) are
-        // APPENDED strictly after — the cut's whole RNG delta.
+        // IS A COMMITTED INTERFACE (growth cut 4, extended crossroads
+        // cut 1): the five legacy towns draw base then phase EXACTLY
+        // as in v0.1-v0.4 (40 draws), the two wider-map towns (5-6)
+        // draw their 16 (base then phase) APPENDED after that, and the
+        // branch town (7 = WYRMHOLLOW) draws its 8 (4 base + 4 phase,
+        // mirroring town 6's pattern) APPENDED strictly after town 6 —
+        // each delta counted, the old stream order frozen, so towns
+        // 0-6's world is bit-identical and P1-P8 carry verbatim.
         rng_t rng(seed_constant);
 
         for(int t = 0; t < legacy_town_count; ++t)
@@ -804,7 +858,7 @@ int main()
             }
         }
 
-        for(int t = legacy_town_count; t < town_count; ++t)
+        for(int t = legacy_town_count; t < spine_town_count; ++t)
         {
             for(int g = 0; g < good_count; ++g)
             {
@@ -813,12 +867,27 @@ int main()
             }
         }
 
-        for(int t = legacy_town_count; t < town_count; ++t)
+        for(int t = legacy_town_count; t < spine_town_count; ++t)
         {
             for(int g = 0; g < good_count; ++g)
             {
                 phase[t][g] = rng.range(12);
             }
+        }
+
+        // The branch town (crossroads cut 1): +8 draws, appended after
+        // town 6 — 4 base then 4 phase, mirroring town 6's pattern.
+        // THE FREEZE POINT: any future off-spine town appends its draws
+        // strictly after this, never in between (the wire-format rule).
+        for(int g = 0; g < good_count; ++g)
+        {
+            base[branch_town][g] = (price_lo[g] + price_hi[g]) / 2 - 3
+                                 + rng.range(7);
+        }
+
+        for(int g = 0; g < good_count; ++g)
+        {
+            phase[branch_town][g] = rng.range(12);
         }
 
         // Every town produces one good cheap and craves another dear —
@@ -1024,24 +1093,57 @@ int main()
                 }
             }
 
-            if(state == st_trading && bn::keypad::l_pressed()
-               && town > 0 && gold >= travel_toll)
+            // The travel verbs read the adjacency table (crossroads
+            // cut 1). A ride is the same everywhere: pay the toll, move,
+            // mark visited, dawn, then resolve the leg's hazards. The
+            // leg id is the LOWER town index for a spine leg (so a spine
+            // L/R ride is byte-identical to v0.6 — min(4,3)=3 is the
+            // (3,4) leg, min(3,4)=3 the same), or branch_leg for a fork
+            // ride (the fork road carries no deck hazard).
+            auto ride = [&](int dest)
             {
+                int leg = (int(town) == branch_town || dest == branch_town)
+                        ? branch_leg
+                        : (int(town) < dest ? int(town) : dest);
                 gold -= travel_toll;
-                --town;
+                town = unsigned(dest);
                 visited_mask |= 1u << unsigned(town);
                 dawn();
-                cross(town);             // rode the (town, town+1) leg
+                cross(leg);
+            };
+
+            // L: walk the spine left (or ride the branch back down to the
+            // junction). Guarded against the chord frame so L+R never
+            // also fires a single move — byte-identical, since no
+            // committed route presses both shoulders on one frame.
+            if(state == st_trading && bn::keypad::l_pressed()
+               && !bn::keypad::r_pressed()
+               && adjacency[town].left >= 0 && gold >= travel_toll)
+            {
+                ride(adjacency[town].left);
             }
 
+            // R: walk the spine right — never onto the branch (the fork
+            // column is separate), so R at the junction still goes to
+            // HOLLOWFEN and R at MIRGATE (spine end, .right == -1) does
+            // nothing, exactly as the old `town < town_count - 1` bound.
             if(state == st_trading && bn::keypad::r_pressed()
-               && town < town_count - 1 && gold >= travel_toll)
+               && !bn::keypad::l_pressed()
+               && adjacency[town].right >= 0 && gold >= travel_toll)
             {
-                gold -= travel_toll;
-                ++town;
-                visited_mask |= 1u << unsigned(town);
-                dawn();
-                cross(town - 1);         // rode the (town-1, town) leg
+                ride(adjacency[town].right);
+            }
+
+            // THE FORK VERB (crossroads cut 1): L+R chorded on one frame —
+            // "take the fork". Purely additive (no committed route chords
+            // the shoulders): from the junction it rides ONTO the branch
+            // (WYRMHOLLOW), from the branch it rides back to the junction.
+            // Same toll + dawn() + cross(leg) as any spine ride.
+            if(state == st_trading && bn::keypad::l_pressed()
+               && bn::keypad::r_pressed()
+               && adjacency[town].fork >= 0 && gold >= travel_toll)
+            {
+                ride(adjacency[town].fork);
             }
 
             if(state == st_trading && bn::keypad::select_pressed())
@@ -1312,7 +1414,15 @@ int main()
 
             int slot = 0;
 
-            for(int t = 0; t < town_count; ++t)
+            // The ledger lists the SPINE towns (crossroads cut 1 bounds
+            // this to spine_town_count, not town_count): standing on a
+            // spine town this renders the other six EXACTLY as v0.6
+            // (byte-identical display), and standing on the branch it
+            // shows all seven spine towns — WYRMHOLLOW's own row is
+            // never listed (you are standing in it, and its price is in
+            // the market table). ledger_lines has town_count - 1 = 7
+            // slots, room for the seven-row branch case.
+            for(int t = 0; t < spine_town_count; ++t)
             {
                 if(t == town)
                 {
@@ -1495,6 +1605,20 @@ int main()
         wr_telemetry[49] = audio_dawn;
         wr_telemetry[50] = audio_wind;
         wr_telemetry[51] = audio_coin + audio_dawn + audio_wind;
+
+        // Crossroads witness words (crossroads cut 1) — layout in the
+        // header. All 0 on the title.
+        {
+            bool title = state == st_title;
+            wr_telemetry[52] = title ? 0u
+                                     : (int(town) == branch_town ? 1u : 0u);
+            wr_telemetry[53] = title || adjacency[town].fork < 0
+                                     ? 0u : unsigned(branch_leg);
+            wr_telemetry[54] = title ? 0u
+                                     : unsigned(price(branch_town,
+                                                      branch_town % good_count));
+            wr_telemetry[55] = 0u;       // reserved
+        }
 
         bn::core::update();
     }

@@ -116,7 +116,13 @@ twice byte-identical.
    the map deliberately stays ONE road — no branch fork, L/R is a
    committed verb grammar and a junction would need a new travel
    verb — the honest cut named here; witness words 40-47, proven in
-   `proofs.sh` P7).
+   `proofs.sh` P7). **JUNCTION SERVED — v0.7** (the second arc, the
+   *crossroads* arc, finally builds the fork this note named: a static
+   adjacency table hangs WYRMHOLLOW off the DUNWICK junction, and the
+   new travel verb it needed is the L+R chord "take the fork" — purely
+   additive, since no committed route presses both shoulders on one
+   frame; +8 RNG draws appended after town 6, telemetry 52→56, proven
+   in `proofs.sh` P9. Arc plan + remaining cuts: `ARC-CROSSROADS.md`.)
 5. **Audio** — synthesized cues via the proven `generate_audio.py`
    pipeline (coin chink, dawn bell, the pass-closing wind), decisions
    hook-counted per the house method. **SERVED — v0.6** (growth cut 5,
@@ -137,9 +143,12 @@ twice byte-identical.
 One xorshift32 at fixed seed `0x5749434B`, consumed only at world
 init in a fixed order; integer math only; prices are pure functions
 of (day, impact). Same input script = identical run (proven run-twice
-byte-identical). Telemetry mailbox `wr_telemetry[52]` every frame
-(grown 16 → 24 → 32 → 40 → 48 → 52 across the growth cuts; each cut
-appended words only, earlier words byte-unchanged).
+byte-identical). Telemetry mailbox `wr_telemetry[56]` every frame
+(grown 16 → 24 → 32 → 40 → 48 → 52 → 56 across the growth cuts and the
+crossroads arc; each cut appended words only, earlier words byte-
+unchanged). The RNG draw ORDER is a committed wire format: the branch
+town (crossroads cut 1) appends its 8 draws strictly after town 6's —
+the freeze point named in `reset_run()`.
 
 ## Sellability guess
 

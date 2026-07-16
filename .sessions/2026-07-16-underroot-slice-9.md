@@ -212,6 +212,7 @@ both legible and honest.
 ## PR / CI (filled at close-out)
 
 - PR: **#163** — https://github.com/menno420/gba-homebrew/pull/163 (DRAFT,
-  base `claude/underroot-slice-8`, head `bd55af6`)
+  base `claude/underroot-slice-8`; impl commit `bd55af6`, card commit is the
+  branch tip)
 - CI (`nds-underroot-build` + the gates): recorded in the session report /
   status; substrate-gate red is the inherited #151 orphan set, not this slice.

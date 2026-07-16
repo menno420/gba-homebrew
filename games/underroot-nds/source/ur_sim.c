@@ -138,3 +138,85 @@ uint32_t ur_burrow_size(const uint8_t grid[UR_CELLS])
     }
     return count;
 }
+
+// --- foragers: shortest dug path + nearest reachable patch (slice 3) --------
+int32_t ur_patch_col(ur_patch_t p)
+{
+    int32_t col = p.x / UR_CELL;
+    if (col < 0)
+        col = 0;
+    else if (col >= UR_GRID_W)
+        col = UR_GRID_W - 1;
+    return col;
+}
+
+uint32_t ur_dig_dist(const uint8_t grid[UR_CELLS], int32_t col, int32_t row)
+{
+    if (col < 0 || col >= UR_GRID_W || row < 0 || row >= UR_GRID_H)
+        return UR_ROUTE_NONE;
+    int32_t start = UR_ENTRANCE_ROW * UR_GRID_W + UR_ENTRANCE_COL;
+    int32_t target = row * UR_GRID_W + col;
+    if (grid[start] == 0 || grid[target] == 0)
+        return UR_ROUTE_NONE;
+
+    uint32_t dist[UR_CELLS];
+    for (int32_t i = 0; i < UR_CELLS; i++)
+        dist[i] = UR_ROUTE_NONE;
+
+    // FIFO queue for a breadth-first sweep -> shortest path in an unweighted
+    // grid (dug cells only). A ring buffer sized to the cell count.
+    int32_t queue[UR_CELLS];
+    int32_t head = 0, tail = 0;
+    dist[start] = 0;
+    queue[tail++] = start;
+
+    static const int32_t dc[4] = {1, -1, 0, 0};
+    static const int32_t dr[4] = {0, 0, 1, -1};
+
+    while (head < tail)
+    {
+        int32_t i = queue[head++];
+        if (i == target)
+            return dist[i];
+        int32_t c = i % UR_GRID_W;
+        int32_t r = i / UR_GRID_W;
+        for (int k = 0; k < 4; k++)
+        {
+            int32_t nc = c + dc[k];
+            int32_t nr = r + dr[k];
+            if (nc < 0 || nc >= UR_GRID_W || nr < 0 || nr >= UR_GRID_H)
+                continue;
+            int32_t j = nr * UR_GRID_W + nc;
+            if (grid[j] == 1 && dist[j] == UR_ROUTE_NONE)
+            {
+                dist[j] = dist[i] + 1;
+                queue[tail++] = j;
+            }
+        }
+    }
+    return dist[target]; // UR_ROUTE_NONE if never reached
+}
+
+ur_forage_t ur_forage(const uint8_t grid[UR_CELLS], uint32_t seed, uint32_t season)
+{
+    ur_forage_t best;
+    best.index = UR_ROUTE_NONE;
+    best.dist = UR_ROUTE_NONE;
+    best.route = UR_ROUTE_NONE;
+
+    for (uint32_t i = 0; i < UR_PATCH_COUNT; i++)
+    {
+        ur_patch_t p = ur_patch(seed, season, i);
+        int32_t col = ur_patch_col(p);
+        uint32_t d = ur_dig_dist(grid, col, UR_DROP_ROW);
+        // Reachable and strictly nearer than the best so far (ascending scan
+        // keeps the lowest index on a tie).
+        if (d != UR_ROUTE_NONE && (best.dist == UR_ROUTE_NONE || d < best.dist))
+        {
+            best.index = i;
+            best.dist = d;
+            best.route = d * 2u;
+        }
+    }
+    return best;
+}

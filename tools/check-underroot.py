@@ -61,6 +61,10 @@ UR_CELLS = UR_GRID_W * UR_GRID_H
 UR_ENTRANCE_COL = 8           # the surface mouth column
 UR_ENTRANCE_ROW = 0           # top row (the meadow<->burrow seam)
 
+# --- foragers: emergent pathing (slice 3; mirror ur_sim.h) -----------------
+UR_DROP_ROW = UR_ENTRANCE_ROW + 1     # subsurface drop row (1)
+UR_ROUTE_NONE = 0xFFFFFFFF            # no reachable patch / unreachable
+
 # --- food patches (top screen; slice 2; mirror ur_sim.h) -------------------
 UR_SCREEN_W = 256             # meadow width (px)
 UR_SCREEN_H = 192             # meadow height (px)
@@ -176,6 +180,58 @@ def _dug_total(grid):
     return sum(grid)
 
 
+# --- foragers: shortest dug path + nearest reachable patch (slice 3) --------
+def ur_patch_col(patch):
+    # A meadow patch's burrow drop column (patch.x / UR_CELL), clamped.
+    col = patch[0] // UR_CELL
+    if col < 0:
+        col = 0
+    elif col >= UR_GRID_W:
+        col = UR_GRID_W - 1
+    return col
+
+
+def ur_dig_dist(grid, col, row):
+    # Shortest dug-path distance (cells; mouth is 0) from the entrance to
+    # (col,row) over 4-connected dug cells, or UR_ROUTE_NONE if that cell is
+    # soil or unconnected. A BFS over the same graph as ur_burrow_size.
+    if col < 0 or col >= UR_GRID_W or row < 0 or row >= UR_GRID_H:
+        return UR_ROUTE_NONE
+    start = UR_ENTRANCE_ROW * UR_GRID_W + UR_ENTRANCE_COL
+    target = row * UR_GRID_W + col
+    if grid[start] == 0 or grid[target] == 0:
+        return UR_ROUTE_NONE
+    dist = {start: 0}
+    q = deque([start])
+    while q:
+        i = q.popleft()
+        if i == target:
+            return dist[i]
+        c, r = i % UR_GRID_W, i // UR_GRID_W
+        for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nc, nr = c + dc, r + dr
+            if 0 <= nc < UR_GRID_W and 0 <= nr < UR_GRID_H:
+                j = nr * UR_GRID_W + nc
+                if grid[j] == 1 and j not in dist:
+                    dist[j] = dist[i] + 1
+                    q.append(j)
+    return dist.get(target, UR_ROUTE_NONE)
+
+
+def ur_forage(grid, seed, season):
+    # The nearest reachable meadow patch over the dug graph:
+    # (index, dist, route) for the smallest dug-path distance (ties -> lowest
+    # index), route = 2*dist; all UR_ROUTE_NONE if none reachable.
+    best_i = best_d = best_r = UR_ROUTE_NONE
+    for i in range(UR_PATCH_COUNT):
+        p = ur_patch(seed, season, i)
+        col = ur_patch_col(p)
+        d = ur_dig_dist(grid, col, UR_DROP_ROW)
+        if d != UR_ROUTE_NONE and (best_d == UR_ROUTE_NONE or d < best_d):
+            best_i, best_d, best_r = i, d, d * 2
+    return (best_i, best_d, best_r)
+
+
 # --- the CI --touch dig script, mirrored (proof 3 anchor) ------------------
 # Each step is a bottom-LCD pixel the stylus is held at; the ROM digs the
 # cell under the stylus every held frame. Centre pixel of cell (c,r) is
@@ -197,7 +253,11 @@ def ci_fixture():
         cell = ur_cell_of_touch(tx, ty)
         assert cell is not None, f"CI dig pixel {tx},{ty} out of bounds"
         ur_dig(grid, cell[0], cell[1])
-    return _dug_total(grid), ur_burrow_size(grid)
+    # The forager route (slice 3) the ROM asserts under this same dig plan:
+    # only patch 4 (mouth column 8, drop (8,1) on the shaft) is reachable;
+    # the other five patches' columns are undug, so they are never visited.
+    forage = ur_forage(grid, UR_SEED, 0)
+    return _dug_total(grid), ur_burrow_size(grid), forage
 
 
 # --- proofs ----------------------------------------------------------------
@@ -318,16 +378,145 @@ def prove_patches():
     return checks
 
 
+def _bfs_all_dists(grid):
+    # Independent reference BFS: shortest dug-path distance from the mouth to
+    # EVERY reachable cell. Proves ur_dig_dist against a second source.
+    start = UR_ENTRANCE_ROW * UR_GRID_W + UR_ENTRANCE_COL
+    if grid[start] == 0:
+        return {}
+    dist = {start: 0}
+    q = deque([start])
+    while q:
+        i = q.popleft()
+        c, r = i % UR_GRID_W, i // UR_GRID_W
+        for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nc, nr = c + dc, r + dr
+            if 0 <= nc < UR_GRID_W and 0 <= nr < UR_GRID_H:
+                j = nr * UR_GRID_W + nc
+                if grid[j] == 1 and j not in dist:
+                    dist[j] = dist[i] + 1
+                    q.append(j)
+    return dist
+
+
+def prove_forage():
+    # The arc doc's slice-3 proof (for EVERY reachable input, not a replay):
+    #  1. ur_dig_dist is the true shortest path — equal to an independent BFS
+    #     over the dug graph, UR_ROUTE_NONE exactly for soil/unconnected
+    #     cells, >= the mouth->cell Manhattan lower bound, and never less than
+    #     ur_burrow_size implies (a reachable cell has a finite distance iff
+    #     it is in the connected burrow);
+    #  2. ur_forage picks the NEAREST reachable patch with a lowest-index tie
+    #     break, route == 2*dist, and — the arc guarantee — a patch whose drop
+    #     cell is soil or unconnected is NEVER the chosen one (a disconnected
+    #     patch is never visited);
+    #  3. emergence: on a fresh grid no patch is reachable (nothing dug), and
+    #     digging a corridor to a patch's drop cell is exactly what makes it
+    #     the route target.
+    checks = 0
+
+    # (1) ur_dig_dist == independent BFS, over many scripted dig plans.
+    for seed in range(300):
+        grid = ur_fresh_grid()
+        for step in range(24):
+            h = ur_hash(seed, step)
+            ur_dig(grid, h % UR_GRID_W, (h >> 8) % UR_GRID_H)
+        ref = _bfs_all_dists(grid)
+        for row in range(UR_GRID_H):
+            for col in range(UR_GRID_W):
+                idx = row * UR_GRID_W + col
+                d = ur_dig_dist(grid, col, row)
+                if grid[idx] == 0 or idx not in ref:
+                    assert d == UR_ROUTE_NONE, \
+                        f"dig_dist to soil/unreachable {col},{row} = {d}"
+                else:
+                    assert d == ref[idx], \
+                        f"dig_dist {col},{row} = {d} != BFS {ref[idx]}"
+                    # Manhattan lower bound from the mouth (a dug path can
+                    # never be shorter than the straight-line cell distance).
+                    manh = abs(col - UR_ENTRANCE_COL) + abs(row - UR_ENTRANCE_ROW)
+                    assert d >= manh, f"dig_dist {d} below Manhattan {manh}"
+                checks += 1
+        # a reachable-cell count from dig_dist matches ur_burrow_size exactly
+        reach = sum(1 for row in range(UR_GRID_H) for col in range(UR_GRID_W)
+                    if ur_dig_dist(grid, col, row) != UR_ROUTE_NONE)
+        assert reach == ur_burrow_size(grid), \
+            "dig_dist reachable-count != burrow_size"
+    # out-of-bounds targets reject
+    g = ur_fresh_grid()
+    for col, row in ((-1, 0), (0, -1), (UR_GRID_W, 0), (0, UR_GRID_H)):
+        assert ur_dig_dist(g, col, row) == UR_ROUTE_NONE, "OOB dist accepted"
+
+    # (2)+(3) ur_forage: emergence + nearest-wins + disconnected-never-visited
+    for seed in range(256):
+        # fresh grid: nothing dug below the seam -> no patch reachable
+        grid = ur_fresh_grid()
+        idx, dist, route = ur_forage(grid, seed, 0)
+        assert (idx, dist, route) == (UR_ROUTE_NONE,) * 3, \
+            "fresh grid has a forage route with nothing dug"
+        # dig a random burrow, then recompute the reference nearest patch
+        for step in range(30):
+            h = ur_hash(seed, step + 101)
+            ur_dig(grid, h % UR_GRID_W, (h >> 8) % UR_GRID_H)
+        idx, dist, route = ur_forage(grid, seed, 0)
+        # independent reference: min dist over reachable patch drop cells
+        cand = []
+        for i in range(UR_PATCH_COUNT):
+            col = ur_patch_col(ur_patch(seed, 0, i))
+            d = ur_dig_dist(grid, col, UR_DROP_ROW)
+            if d != UR_ROUTE_NONE:
+                cand.append((d, i))
+        if not cand:
+            assert (idx, dist, route) == (UR_ROUTE_NONE,) * 3, \
+                "forage claims a route but no drop cell is reachable"
+        else:
+            cand.sort()  # (dist, index) -> nearest, ties lowest index
+            ref_d, ref_i = cand[0]
+            assert (idx, dist, route) == (ref_i, ref_d, ref_d * 2), \
+                f"forage {(idx, dist, route)} != nearest {(ref_i, ref_d)}"
+            # the CHOSEN patch's drop cell really is dug + connected...
+            chosen_col = ur_patch_col(ur_patch(seed, 0, idx))
+            assert grid[UR_DROP_ROW * UR_GRID_W + chosen_col] == 1, \
+                "forage chose a patch whose drop cell is soil"
+            # ...and no UNREACHABLE patch was chosen (never-visited guarantee)
+            for i in range(UR_PATCH_COUNT):
+                col = ur_patch_col(ur_patch(seed, 0, i))
+                if ur_dig_dist(grid, col, UR_DROP_ROW) == UR_ROUTE_NONE:
+                    assert i != idx, "forage visited a disconnected patch"
+        checks += 1
+
+    # a hand-built corridor makes a specific distant patch the route target,
+    # and severing it (never digging the drop cell) leaves that patch skipped.
+    grid = ur_fresh_grid()
+    # tunnel east along the surface seam+subsurface to patch 5's column (12),
+    # down to its drop cell (12,1): (8,0)->(9,0)->..(12,0)->(12,1)
+    for col in range(UR_ENTRANCE_COL + 1, 13):
+        ur_dig(grid, col, 0)
+    ur_dig(grid, 12, UR_DROP_ROW)
+    idx, dist, route = ur_forage(grid, UR_SEED, 0)
+    assert idx == 5 and dist == 5 and route == 10, \
+        f"scripted corridor to patch 5 -> {(idx, dist, route)} (expected 5,5,10)"
+    # patch 4 (col 8) was NOT dug at row 1 on this plan, so it is skipped
+    assert ur_dig_dist(grid, 8, UR_DROP_ROW) == UR_ROUTE_NONE
+    checks += 1
+    return checks
+
+
 def main():
     hawk_checks = prove_hawk()
     dig_checks = prove_dig()
     patch_checks = prove_patches()
-    dug_total, connected = ci_fixture()
+    forage_checks = prove_forage()
+    dug_total, connected, (route_i, route_d, route_len) = ci_fixture()
 
     # The lockstep anchor: these are the numbers rom-builds.yml asserts
     # against the ROM's ur_telemetry mailbox after replaying CI_DIG_PIXELS.
     assert dug_total == 7, f"CI fixture dug_total drifted: {dug_total}"
     assert connected == 6, f"CI fixture connected drifted: {connected}"
+    # slice-3 forage lockstep: patch 4 (mouth column) reached at one cell out,
+    # two round trip; the other five patches' columns are undug -> skipped.
+    assert (route_i, route_d, route_len) == (4, 1, 2), \
+        f"CI fixture forage route drifted: {(route_i, route_d, route_len)}"
 
     # Pinned hawk telemetry values the CI --assert-watch uses (printed so a
     # human editing the schedule can re-pin the workflow in the same PR).
@@ -348,7 +537,11 @@ def main():
     print(f"  dig grid: {dig_checks} pixel+graph cases — touch->cell total, "
           "dig idempotent/monotone, burrow BFS connected<=total, "
           "corridor grows by one, isolated pocket never counted")
+    print(f"  foragers: {forage_checks} cases — dig_dist == independent BFS "
+          "(shortest, >= Manhattan), fresh grid has no route, ur_forage "
+          "nearest-wins, a disconnected patch is never visited")
     print(f"  CI lockstep fixture: dug_total={dug_total} connected={connected} "
+          f"forage=(patch {route_i}, dist {route_d}, route {route_len}) "
           "(== the rom-builds.yml ur_telemetry asserts)")
     print(f"  pinned hawk telemetry (seed={hex(UR_SEED)}, season=0): "
           f"f100 on={pins[100][0]} x={pins[100][1]}, "

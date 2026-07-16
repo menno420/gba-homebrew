@@ -86,6 +86,20 @@ uint32_t ur_patch_total(uint32_t seed, uint32_t season);
 #define UR_ENTRANCE_COL 8                // the surface mouth column
 #define UR_ENTRANCE_ROW 0                // top row (meadow<->burrow seam)
 
+// --- foragers: emergent pathing (slice 3) ----------------------------------
+// The arc doc's slice-3 decision: forager pathing EMERGES from the drawn
+// tunnel graph, no scripted AI. A meadow patch at column c is gathered
+// through the burrow DROP CELL (c, UR_DROP_ROW) — the top subsurface cell of
+// its column, one row below the seam: a forager surfaces there to reach the
+// patch above. The mouth (the doorway, row 0) by itself opens no patch — you
+// must tunnel to just beneath a patch to feed. A forager walks the SHORTEST
+// dug path (BFS over the same 4-connected dug graph ur_burrow_size counts)
+// from the mouth to the nearest REACHABLE drop cell and back; a patch whose
+// drop cell is soil or unconnected is NEVER visited (connect-or-waste).
+// Everything here is a pure integer function of the dig plan + (seed,season).
+#define UR_DROP_ROW (UR_ENTRANCE_ROW + 1)   // subsurface drop row (1)
+#define UR_ROUTE_NONE 0xFFFFFFFFu            // no reachable patch / unreachable
+
 // --- pure hash (identical to gl_hash) --------------------------------------
 uint32_t ur_hash(uint32_t a, uint32_t b);
 
@@ -111,6 +125,26 @@ void ur_fresh_grid(uint8_t grid[UR_CELLS]);
 // itself is somehow soil.
 uint32_t ur_burrow_size(const uint8_t grid[UR_CELLS]);
 
+// --- foragers: shortest dug path + nearest reachable patch (slice 3) --------
+// A meadow patch's burrow drop COLUMN (patch.x / UR_CELL), clamped to the
+// grid. The drop cell is that column at UR_DROP_ROW.
+int32_t ur_patch_col(ur_patch_t p);
+// Shortest dug-path distance (in cells; mouth is 0) from the entrance mouth
+// to (col,row) over 4-connected dug cells, or UR_ROUTE_NONE if that cell is
+// soil or not connected to the mouth. BFS over the same graph as
+// ur_burrow_size, so the route is a consequence of what was drawn.
+uint32_t ur_dig_dist(const uint8_t grid[UR_CELLS], int32_t col, int32_t row);
+// The nearest reachable meadow patch for (seed, season) over the dug graph.
+typedef struct {
+    uint32_t index;   // nearest reachable patch index, or UR_ROUTE_NONE
+    uint32_t dist;    // one-way steps mouth->drop, or UR_ROUTE_NONE
+    uint32_t route;   // round trip (2*dist), or UR_ROUTE_NONE
+} ur_forage_t;
+// Scans all UR_PATCH_COUNT patches; returns the one whose drop cell has the
+// smallest dug-path distance (ties -> lowest index), with route = 2*dist. If
+// no patch's drop cell is reachable, every field is UR_ROUTE_NONE.
+ur_forage_t ur_forage(const uint8_t grid[UR_CELLS], uint32_t seed, uint32_t season);
+
 // --- telemetry mailbox (ELF-exported; read by tools/nds-headless-check.py) -
 #define UR_T_MAGIC0 0    // 0x554E4452 'UNDR'
 #define UR_T_MAGIC1 1    // 0x524F4F54 'ROOT'
@@ -129,7 +163,10 @@ uint32_t ur_burrow_size(const uint8_t grid[UR_CELLS]);
 #define UR_T_GH 14       // UR_GRID_H
 #define UR_T_PATCHN 15   // food-patch count (== UR_PATCH_COUNT; slice 2)
 #define UR_T_PATCHSUM 16 // total food across patches, f(seed,season) (slice 2)
-#define UR_T_SPARE 17    // 0
-#define UR_T_WORDS 18
+#define UR_T_ROUTEI 17   // nearest reachable patch index (UR_ROUTE_NONE=none; slice 3)
+#define UR_T_ROUTED 18   // one-way dug distance mouth->drop (UR_ROUTE_NONE=none; slice 3)
+#define UR_T_ROUTELEN 19 // round-trip route length, 2*dist (UR_ROUTE_NONE=none; slice 3)
+#define UR_T_SPARE 20    // 0
+#define UR_T_WORDS 21
 
 #endif // UR_SIM_H

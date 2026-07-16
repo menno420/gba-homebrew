@@ -34,7 +34,8 @@ static PrintConsole bottom_console;
 // --- meadow (top screen): grass + the deterministic hawk shadow ------------
 static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
                         int32_t hawk_y, uint32_t dug, uint32_t con,
-                        const ur_patch_t *patches, uint32_t food_total)
+                        const ur_patch_t *patches, uint32_t food_total,
+                        ur_forage_t forage)
 {
     consoleSelect(&top_console);
     consoleClear();
@@ -51,14 +52,18 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
 
     // Food patches (slice 2): a '*' at each patch's meadow cell, drawn on the
     // foraging apron BELOW the hawk lane band (console rows 15+). Positions
-    // are the pure f(seed, season, index) ur_patch schedule.
+    // are the pure f(seed, season, index) ur_patch schedule. The nearest
+    // REACHABLE patch (slice 3) — the one the forager routes to — is marked
+    // 'o' instead, so the drawn tunnel's consequence is visible.
     for (int i = 0; i < UR_PATCH_COUNT; i++)
     {
         int pc = patches[i].x / 8;       // px -> 8px console column
         int pr = patches[i].y / 8;       // px -> 8px console row
         if (pc < 0) pc = 0; else if (pc > 31) pc = 31;
         if (pr < 15) pr = 15; else if (pr > 23) pr = 23;
-        printf("\x1b[%d;%dH*", pr, pc);
+        char glyph = (forage.index != UR_ROUTE_NONE &&
+                      (uint32_t)i == forage.index) ? 'o' : '*';
+        printf("\x1b[%d;%dH%c", pr, pc, glyph);
     }
 
     // The hawk shadow: one glyph at its pure-scheduled meadow cell.
@@ -78,7 +83,13 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
 
     printf("\x1b[18;0Hfood patches %d  store %lu",
            UR_PATCH_COUNT, (unsigned long)food_total);
-    printf("\x1b[19;0Hdig below: hold stylus");
+    // Forager route (slice 3): the nearest reachable patch and its round-trip
+    // route length over the drawn tunnel graph, or a prompt to dig one open.
+    if (forage.index != UR_ROUTE_NONE)
+        printf("\x1b[19;0Hforager -> patch %lu route %lu",
+               (unsigned long)forage.index, (unsigned long)forage.route);
+    else
+        printf("\x1b[19;0Hno forage route (dig to a patch)");
     printf("\x1b[20;0Hburrow  dug %lu  con %lu",
            (unsigned long)dug, (unsigned long)con);
 }
@@ -188,10 +199,14 @@ int main(void)
         int32_t hawk_y = ur_hawk_y(UR_SEED, 0, frame);
         uint32_t dug = dug_total(grid);
         uint32_t con = ur_burrow_size(grid);
+        // The forager route (slice 3): the nearest reachable patch over the
+        // drawn tunnel graph — pure f(dig plan, seed, season).
+        ur_forage_t forage = ur_forage(grid, UR_SEED, 0);
 
         // Top screen animates every frame (the hawk sweeps); the burrow is
         // redrawn only when a dig changed it (frame-budget discipline).
-        draw_meadow(frame, hawk_on, hawk_x, hawk_y, dug, con, patches, food_total);
+        draw_meadow(frame, hawk_on, hawk_x, hawk_y, dug, con, patches,
+                    food_total, forage);
         if (burrow_dirty)
         {
             draw_burrow(grid);
@@ -209,6 +224,9 @@ int main(void)
         ur_telemetry[UR_T_TCOL] = (uint32_t)last_col;
         ur_telemetry[UR_T_TROW] = (uint32_t)last_row;
         ur_telemetry[UR_T_TOUCH] = (uint32_t)touch_now;
+        ur_telemetry[UR_T_ROUTEI] = forage.index;
+        ur_telemetry[UR_T_ROUTED] = forage.dist;
+        ur_telemetry[UR_T_ROUTELEN] = forage.route;
     }
 
     return 0;

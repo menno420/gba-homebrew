@@ -2587,11 +2587,15 @@ jobs:
       - uses: actions/checkout@v4
       # Host-side proof first (stdlib-only, <1s): the check-underroot.py
       # mirror of games/underroot-nds/source/ur_sim.c proves the hawk
-      # schedule pure/bounded/on-band for 150k (seed,season,frame) cases and
-      # the dig grid's touch->cell mapping, idempotent+monotone digging, and
-      # burrow-BFS connectivity (isolated pockets never counted) — plus the
-      # exact dug-total/connected the ROM asserts below. Mirror rule:
-      # check-underroot.py moves in lockstep with ur_sim.c, same PR.
+      # schedule pure/bounded/on-band for 150k (seed,season,frame) cases, the
+      # dig grid's touch->cell mapping, idempotent+monotone digging, and
+      # burrow-BFS connectivity (isolated pockets never counted), the food
+      # patches pure/on-meadow/off-the-lanes, and (slice 3) the forager route:
+      # ur_dig_dist is the true shortest dug path (== an independent BFS) and
+      # ur_forage picks the nearest reachable patch while a disconnected patch
+      # is NEVER visited — plus the exact dug-total/connected/route the ROM
+      # asserts below. Mirror rule: check-underroot.py moves in lockstep with
+      # ur_sim.c, same PR.
       - name: Underroot host proof (ur_sim mirror)
         run: python3 tools/check-underroot.py
       - name: make /opt/wonderful runner-writable
@@ -2624,14 +2628,19 @@ jobs:
       # exhaustively host-side by check-underroot.py (the ROM shares that
       # very ur_sim.c). --watch-log emits the mailbox trace so a follow-up
       # can pin exact hawk values off the observed boot offset.
-      - name: 'proof 1/2 — dual-screen boot + telemetry mailbox + food patches'
+      # Slice 3 also asserts here that with NOTHING dug (this proof drives no
+      # --touch, so the grid stays fresh) the forager has NO route: no patch's
+      # drop cell is dug/connected, so ur_telemetry[17] (nearest reachable
+      # patch index) is UR_ROUTE_NONE (0xFFFFFFFF) — the emergent "no route
+      # until you dig". The dig proof below shows the route appear.
+      - name: 'proof 1/2 — dual-screen boot + telemetry mailbox + food patches + no-route-yet'
         run: |
           python3 tools/nds-headless-check.py \
             games/underroot-nds/underroot-nds.nds ur-boot-300.png \
             --frames 300 --shot 120:ur-boot-120.png --shot 240:ur-boot-240.png \
             --require-distinct \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:18 \
+            --watch t:ur_telemetry:21 \
             --watch-log ur-boot-trace.csv \
             --assert-watch 250:t:0:eq:0x554E4452 \
             --assert-watch 250:t:1:eq:0x524F4F54 \
@@ -2641,7 +2650,9 @@ jobs:
             --assert-watch 250:t:13:eq:16 \
             --assert-watch 250:t:14:eq:12 \
             --assert-watch 250:t:15:eq:6 \
-            --assert-watch 250:t:16:eq:34
+            --assert-watch 250:t:16:eq:34 \
+            --assert-watch 250:t:17:eq:0xFFFFFFFF \
+            --assert-watch 250:t:18:eq:0xFFFFFFFF
       # Proof 2 — the stylus digs a drawn tunnel (the exact host<->ROM
       # lockstep, offset-free): --touch replays CI_DIG_PIXELS from
       # check-underroot.py — a shaft down from the mouth, an east branch,
@@ -2649,7 +2660,15 @@ jobs:
       # cells and 6 connected to the entrance (the pocket is dug but NOT
       # reachable) — the same numbers check-underroot.py's ci_fixture()
       # asserts. The bottom-screen screenshot shows the drawn burrow.
-      - name: 'proof 2/2 — stylus dig writes the tunnel grid (dug=7 con=6)'
+      #
+      # Slice 3 forager lockstep: under this exact dig plan the shaft opens
+      # patch 4's drop cell (8,1) (patch 4 sits in the mouth column 8), so the
+      # nearest reachable patch is index 4, one cell out (t:18==1), two round
+      # trip (t:19==2). The other five patches' columns are undug, so they are
+      # provably NEVER visited (the arc's connect-or-waste guarantee) — the
+      # same (patch 4, dist 1, route 2) check-underroot.py's ci_fixture()
+      # computes and prove_forage() proves for every reachable dig plan.
+      - name: 'proof 2/2 — stylus dig writes the tunnel grid (dug=7 con=6) + forager route (patch 4 route 2)'
         run: |
           python3 tools/nds-headless-check.py \
             games/underroot-nds/underroot-nds.nds ur-dig-200.png \
@@ -2662,14 +2681,17 @@ jobs:
             --touch 135-145:168,56 \
             --touch 150-160:8,184 \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:18 \
+            --watch t:ur_telemetry:21 \
             --assert-watch 190:t:0:eq:0x554E4452 \
             --assert-watch 190:t:8:eq:7 \
             --assert-watch 190:t:9:eq:6 \
             --assert-watch 190:t:13:eq:16 \
             --assert-watch 190:t:14:eq:12 \
             --assert-watch 190:t:15:eq:6 \
-            --assert-watch 190:t:16:eq:34
+            --assert-watch 190:t:16:eq:34 \
+            --assert-watch 190:t:17:eq:4 \
+            --assert-watch 190:t:18:eq:1 \
+            --assert-watch 190:t:19:eq:2
       - name: upload Underroot ROM + proof screenshots
         uses: actions/upload-artifact@v4
         with:

@@ -2660,7 +2660,7 @@ jobs:
             --frames 300 --shot 120:ur-boot-120.png --shot 240:ur-boot-240.png \
             --require-distinct \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:44 \
+            --watch t:ur_telemetry:50 \
             --watch-log ur-boot-trace.csv \
             --assert-watch 250:t:0:eq:0x554E4452 \
             --assert-watch 250:t:1:eq:0x524F4F54 \
@@ -2690,7 +2690,20 @@ jobs:
             --assert-watch 250:t:37:eq:0 \
             --assert-watch 250:t:38:eq:0 \
             --assert-watch 250:t:39:eq:0 \
-            --assert-watch 250:t:42:eq:0
+            --assert-watch 250:t:42:eq:0 \
+            --assert-watch 250:t:43:eq:0 \
+            --assert-watch 250:t:44:eq:0 \
+            --assert-watch 250:t:46:eq:0 \
+            --assert-watch 250:t:47:eq:0 \
+            --assert-watch 250:t:48:eq:1
+      # Slice 9 asserts the companion "fresh chip = fresh table": nds-headless-
+      # check imports a factory-fresh 0xFF backup by default, so the power-on
+      # read decodes NOTHING (save-loaded t[46]=0), the record is the fresh
+      # all-zero table (best score t[43]=0, furthest season t[44]=0), no write
+      # has fired (t[47]=0) and the format version is visible (t[48]=1). The
+      # battery-roundtrip proof 5 below drives a real record through the
+      # emulated chip. No START is pressed in any pre-slice-9 proof, so the
+      # record never moves and every earlier pin is bit-identical.
       # Slice 8 asserts the companion "no winter exam until there is a colony":
       # with nothing dug there is no store and no forager, so the winter store is
       # 0 (t[37]=0), no forager carries into winter (t[38]=0), winter demands
@@ -2775,7 +2788,7 @@ jobs:
             --keys 200-210:L --touch 200-210:168,56 \
             --keys 215-225:L --touch 215-225:8,184 \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:44 \
+            --watch t:ur_telemetry:50 \
             --assert-watch 190:t:0:eq:0x554E4452 \
             --assert-watch 190:t:8:eq:7 \
             --assert-watch 190:t:9:eq:6 \
@@ -2847,7 +2860,7 @@ jobs:
             --shot 3072:ur-year-autumn.png \
             --shot 3800:ur-year-winter.png \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:44 \
+            --watch t:ur_telemetry:50 \
             --assert-watch 400:t:0:eq:0x554E4452 \
             --assert-watch 400:t:3:eq:0 \
             --assert-watch 400:t:31:ge:1 \
@@ -2912,7 +2925,7 @@ jobs:
             --keys 335-345:R --touch 335-345:152,24 \
             --keys 350-360:R --touch 350-360:216,24 \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:44 \
+            --watch t:ur_telemetry:50 \
             --assert-watch 310:t:0:eq:0x554E4452 \
             --assert-watch 310:t:3:eq:0 \
             --assert-watch 310:t:8:eq:11 \
@@ -2942,6 +2955,121 @@ jobs:
             --assert-watch 390:t:40:eq:1 \
             --assert-watch 390:t:41:eq:8 \
             --assert-watch 390:t:42:eq:2008
+      # Proof 5 — BEST-SCORE SAVE roundtrip (slice 9), on proof 4's committed
+      # survivor plan: the best SCORE / furthest season persist across power
+      # cycles on the emulated card backup (the gl_save pattern). ONE record
+      # blob — 8 little-endian u32 words { magic, version, best_score,
+      # furthest_season, run_seed, 0, 0, checksum } — round-trips through the
+      # DeSmuME battery BYTE-IDENTICAL to the host mirror's
+      # ur_save_encode(2008, spring, UR_SEED) (golden bytes pinned host-side in
+      # check-underroot.py prove_save). Wear discipline: the record commits ONLY
+      # on a START press AND ONLY when it strictly improves, so a factory-fresh
+      # chip stays fresh through the whole climb until the commit, and an equal
+      # run (START pressed with nothing better) writes NOTHING.
+      #
+      # 5a — fresh chip, dig the survivor plan, commit with START: a 0xFF chip
+      # boots to the fresh table (save-loaded t[46]=0, best t[43]=0, no write
+      # t[47]=0, format version t[48]=1); the survivor plan climbs to SCORE 2008
+      # (t[42], settled by frame 390) with STILL no write (t[47]=0 — START not
+      # pressed yet); START at 395 commits the record ONCE (best t[43]=2008,
+      # furthest season t[44]=0, run seed t[45]=1370=UR_SEED, writes t[47]=1).
+      # The exported battery then carries the record byte-identical to the mirror
+      # encode.
+      - name: 'proof 5a — best-score save: fresh chip, survivor climbs to 2008, START commits ONE write, battery bytes == mirror encode'
+        run: |
+          python3 tools/underroot-save.py blank ur-blank.sav
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-save-commit.png \
+            --frames 410 --shot 405:ur-save-committed.png \
+            --touch 60-70:72,24 --touch 75-85:88,24 --touch 90-100:104,24 \
+            --touch 105-115:120,24 --touch 120-130:136,24 \
+            --touch 135-145:152,24 --touch 150-160:168,24 \
+            --touch 165-175:184,24 --touch 180-190:200,24 \
+            --touch 195-205:216,24 \
+            --keys 210-220:L --touch 210-220:184,24 \
+            --keys 225-235:L --touch 225-235:200,24 \
+            --keys 240-250:R --touch 240-250:72,24 \
+            --keys 255-265:R --touch 255-265:88,24 \
+            --keys 270-280:R --touch 270-280:104,24 \
+            --keys 320-330:R --touch 320-330:120,24 \
+            --keys 335-345:R --touch 335-345:152,24 \
+            --keys 350-360:R --touch 350-360:216,24 \
+            --keys 395-400:START \
+            --battery-in ur-blank.sav --battery-out ur-save1.sav \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:50 \
+            --assert-watch 250:t:46:eq:0 \
+            --assert-watch 250:t:43:eq:0 \
+            --assert-watch 250:t:44:eq:0 \
+            --assert-watch 250:t:47:eq:0 \
+            --assert-watch 250:t:48:eq:1 \
+            --assert-watch 390:t:42:eq:2008 \
+            --assert-watch 390:t:47:eq:0 \
+            --assert-watch 405:t:43:eq:2008 \
+            --assert-watch 405:t:44:eq:0 \
+            --assert-watch 405:t:45:eq:1370 \
+            --assert-watch 405:t:46:eq:0 \
+            --assert-watch 405:t:47:eq:1
+          python3 tools/underroot-save.py expect ur-save1.sav --score 2008 --season 0 --seed 1370
+          python3 tools/underroot-save.py inspect ur-save1.sav
+      # 5b — power cycle loads the record + an equal run writes nothing: a fresh
+      # boot with 5a's battery loads the record (save-loaded t[46]=1, best 2008,
+      # furthest season 0, seed 1370 — on the title BEFORE any input); with the
+      # SAME record standing and NO colony dug, START at 395 ties nothing
+      # (improves = 0), so the commit writes NOTHING (t[47] stays 0 — the wear
+      # discipline). The battery image is byte-identical after the run.
+      - name: 'proof 5b — save persistence: power cycle loads the record, an equal (empty) run writes nothing'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-save-reload.png \
+            --frames 410 --keys 395-400:START \
+            --battery-in ur-save1.sav --battery-out ur-save2.sav \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:50 \
+            --assert-watch 250:t:46:eq:1 \
+            --assert-watch 250:t:43:eq:2008 \
+            --assert-watch 250:t:44:eq:0 \
+            --assert-watch 250:t:45:eq:1370 \
+            --assert-watch 250:t:47:eq:0 \
+            --assert-watch 405:t:43:eq:2008 \
+            --assert-watch 405:t:47:eq:0
+          cmp ur-save1.sav ur-save2.sav
+          echo "battery image byte-identical after the equal run"
+      # 5c — corrupt save = fresh table + the game plays on; future version =
+      # reset (slice 9): a battery image with one flipped bit in the record's
+      # checksum word (data intact — only the checksum can reject it) boots to
+      # the fresh table with NO crash (magic t[0] alive, frame t[2] running,
+      # save-loaded t[46]=0, best t[43]=0); a crafted FUTURE-VERSION record
+      # carrying a VALID recomputed checksum (differing only in the version
+      # word) ALSO resets to the fresh table — the version gate rejects on its
+      # own. Both fixtures are built by tools/underroot-save.py through the
+      # check-underroot.py mirror, which asserts they must NOT decode.
+      - name: 'proof 5c — corrupt save = fresh table + the game plays on; future version = reset'
+        run: |
+          python3 tools/underroot-save.py corrupt ur-save1.sav --out ur-corrupt.sav
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-save-corrupt.png \
+            --frames 300 \
+            --battery-in ur-corrupt.sav \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:50 \
+            --assert-watch 250:t:0:eq:0x554E4452 \
+            --assert-watch 250:t:2:ge:200 \
+            --assert-watch 250:t:46:eq:0 \
+            --assert-watch 250:t:43:eq:0 \
+            --assert-watch 250:t:44:eq:0 \
+            --assert-watch 250:t:48:eq:1
+          python3 tools/underroot-save.py version-bump ur-save1.sav --out ur-vbump.sav
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-save-vbump.png \
+            --frames 300 \
+            --battery-in ur-vbump.sav \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:50 \
+            --assert-watch 250:t:0:eq:0x554E4452 \
+            --assert-watch 250:t:46:eq:0 \
+            --assert-watch 250:t:43:eq:0 \
+            --assert-watch 250:t:48:eq:1
       - name: upload Underroot ROM + proof screenshots
         uses: actions/upload-artifact@v4
         with:
@@ -2963,5 +3091,12 @@ jobs:
             ur-winter-410.png
             ur-winter-starve.png
             ur-winter-survive.png
+            ur-save-commit.png
+            ur-save-committed.png
+            ur-save-reload.png
+            ur-save-corrupt.png
+            ur-save-vbump.png
+            ur-save1.sav
+            ur-save2.sav
           if-no-files-found: error
           retention-days: 14

@@ -565,3 +565,58 @@ uint32_t ur_winter_score(uint32_t store, uint32_t pop)
         return 0u;
     return pop * 1000u + ur_winter_leftover(store, pop);
 }
+
+// --- best-score save record (slice 9) ---------------------------------------
+uint32_t ur_save_checksum(const uint32_t words[UR_SAVE_WORDS])
+{
+    uint32_t h = UR_SAVE_SALT;
+    for (int i = 0; i < UR_SAVE_WORDS - 1; i++)
+        h = ur_hash(h, words[i]);
+    return h;
+}
+
+void ur_save_encode(uint32_t best_score, uint32_t best_season,
+                    uint32_t best_seed, uint8_t out[UR_SAVE_BYTES])
+{
+    uint32_t w[UR_SAVE_WORDS] = {
+        UR_SAVE_MAGIC, UR_SAVE_VERSION, best_score, best_season, best_seed,
+        0, 0, 0,
+    };
+    w[UR_SAVE_WORDS - 1] = ur_save_checksum(w);
+    for (int i = 0; i < UR_SAVE_WORDS; i++)          // little-endian words
+    {
+        out[4 * i + 0] = (uint8_t)(w[i] & 0xFFu);
+        out[4 * i + 1] = (uint8_t)((w[i] >> 8) & 0xFFu);
+        out[4 * i + 2] = (uint8_t)((w[i] >> 16) & 0xFFu);
+        out[4 * i + 3] = (uint8_t)((w[i] >> 24) & 0xFFu);
+    }
+}
+
+int ur_save_decode(const uint8_t in[UR_SAVE_BYTES], uint32_t *best_score,
+                   uint32_t *best_season, uint32_t *best_seed)
+{
+    uint32_t w[UR_SAVE_WORDS];
+    for (int i = 0; i < UR_SAVE_WORDS; i++)
+        w[i] = (uint32_t)in[4 * i + 0]
+             | ((uint32_t)in[4 * i + 1] << 8)
+             | ((uint32_t)in[4 * i + 2] << 16)
+             | ((uint32_t)in[4 * i + 3] << 24);
+    if (w[0] != UR_SAVE_MAGIC)
+        return 0;                                    // blank/garbage chip
+    if (w[1] != UR_SAVE_VERSION)
+        return 0;                                    // layout changed: reset
+    if (w[UR_SAVE_WORDS - 1] != ur_save_checksum(w))
+        return 0;                                    // corrupt: reset
+    *best_score = w[2];
+    *best_season = w[3];
+    *best_seed = w[4];
+    return 1;
+}
+
+int ur_record_improves(uint32_t best_score, uint32_t best_season,
+                       uint32_t score, uint32_t season)
+{
+    // A higher score OR a further season is an improvement; a tie in both
+    // writes nothing (EEPROM wear discipline).
+    return (score > best_score || season > best_season) ? 1 : 0;
+}

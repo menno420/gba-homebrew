@@ -176,6 +176,87 @@ static uint32_t dug_total(const uint8_t grid[UR_CELLS])
     return n;
 }
 
+// --- slice-9 backup I/O (bounded card-SPI EEPROM read + page program) ----------
+// The record's ONLY two backup touches: one read at power-on, one page program
+// on a commit that improves the record. Both are the standard SPI-EEPROM command
+// flows (READ 0x03 / WREN 0x06 / PAGE PROGRAM 0x02 / RDSR 0x05 with
+// UR_SAVE_EEPROM_TYPE-2 = 2-byte addressing), hand-rolled instead of libnds's
+// cardReadEeprom/cardWriteEeprom for two measured reasons carried verbatim from
+// the Gloamline slice-9 precedent:
+//
+// 1. CHIP-SELECT DISCIPLINE. The AUXSPI protocol releases the chip select AFTER
+//    the next byte once CARD_SPI_HOLD (bit 6) is dropped — so a command must
+//    clear HOLD BEFORE its last byte. libnds "deselects" by writing 0x0040 (bit
+//    6 stays set): real chips tolerate it, but DeSmuME's backup device (the
+//    proof carrier) never sees a select edge, keeps the previous command open,
+//    and swallows every later byte as read traffic — the record write lands
+//    NOWHERE and the unbounded WIP poll then hangs the ROM.
+// 2. BOUNDED WAITS. Every wait below gives up after UR_SAVE_POLL_BOUND
+//    iterations — a chip (or emulator) that never answers costs a bounded
+//    sub-frame stall on one boot/commit frame, never a hang. An expired program
+//    poll is harmless: the page data is already clocked in and the chip finishes
+//    programming internally; the next backup command is a power cycle away.
+
+static void save_spi_byte(uint8_t b)
+{
+    REG_AUXSPIDATA = b;
+    for (uint32_t i = 0;
+         i < UR_SAVE_POLL_BOUND && (REG_AUXSPICNT & CARD_SPI_BUSY); i++) { }
+}
+
+static uint8_t save_spi_read(void)
+{
+    save_spi_byte(0);
+    return REG_AUXSPIDATA;
+}
+
+static void save_select(void)                // begin a command window
+{
+    REG_AUXSPICNT = CARD_ENABLE | CARD_SPI_ENABLE | CARD_SPI_HOLD;
+}
+
+static void save_final_byte(void)            // CS releases after the NEXT
+{                                            // byte (drop HOLD first —
+    REG_AUXSPICNT = CARD_ENABLE | CARD_SPI_ENABLE;   // the protocol rule)
+}
+
+static void save_read_backup(uint8_t blob[UR_SAVE_BYTES])
+{
+    save_select();
+    save_spi_byte(0x03);                     // READ + 2 address bytes
+    save_spi_byte((UR_SAVE_ADDR >> 8) & 0xFF);
+    save_spi_byte(UR_SAVE_ADDR & 0xFF);
+    for (int i = 0; i < UR_SAVE_BYTES - 1; i++)
+        blob[i] = save_spi_read();
+    save_final_byte();
+    blob[UR_SAVE_BYTES - 1] = save_spi_read();
+}
+
+static void save_write_backup(const uint8_t blob[UR_SAVE_BYTES])
+{
+    // WRITE ENABLE — its own one-byte chip-select window
+    save_select();
+    save_final_byte();
+    save_spi_byte(0x06);
+    // PAGE PROGRAM: UR_SAVE_BYTES is exactly one 32-byte page at UR_SAVE_ADDR 0,
+    // so no page-crossing loop is needed.
+    save_select();
+    save_spi_byte(0x02);
+    save_spi_byte((UR_SAVE_ADDR >> 8) & 0xFF);
+    save_spi_byte(UR_SAVE_ADDR & 0xFF);
+    for (int i = 0; i < UR_SAVE_BYTES - 1; i++)
+        save_spi_byte(blob[i]);
+    save_final_byte();
+    save_spi_byte(blob[UR_SAVE_BYTES - 1]);  // CS falls: the chip programs
+    // READ STATUS: wait out the program cycle — BOUNDED
+    save_select();
+    save_spi_byte(0x05);
+    for (uint32_t i = 0;
+         i < UR_SAVE_POLL_BOUND && (save_spi_read() & 0x01); i++) { }
+    save_final_byte();
+    save_spi_read();                         // terminating dummy byte
+}
+
 int main(void)
 {
     videoSetMode(MODE_0_2D);
@@ -215,6 +296,22 @@ int main(void)
     bool pad_seen_idle = false;          // KEYINPUT boot-trap guard (PL note)
     bool burrow_dirty = true;            // redraw the grid on next frame
 
+    // The best-score record (slice 9): read the backup ONCE at power-on and
+    // decode it. A corrupt / blank / future-version blob decodes to 0 and the
+    // fresh all-zero table stands — never a crash, never a hang. The record then
+    // persists across power cycles; a run commits it (a discrete START press)
+    // ONLY when it strictly improves. UR_SAVE_EEPROM_TYPE is the assumed
+    // decide-and-flag addressing constant, not a boot-time chip probe.
+    uint32_t best_score = 0;
+    uint32_t best_season = 0;
+    uint32_t best_seed = 0;
+    uint32_t save_ok = 0;
+    uint32_t save_writes = 0;
+    uint8_t save_blob[UR_SAVE_BYTES];
+    save_read_backup(save_blob);
+    save_ok = (uint32_t)ur_save_decode(save_blob, &best_score, &best_season,
+                                       &best_seed);
+
     ur_telemetry[UR_T_MAGIC0] = 0x554E4452u;   // 'UNDR'
     ur_telemetry[UR_T_MAGIC1] = 0x524F4F54u;   // 'ROOT'
     ur_telemetry[UR_T_GW] = UR_GRID_W;
@@ -232,6 +329,7 @@ int main(void)
         frame++;
 
         uint32_t held = keysHeld();
+        uint32_t down = keysDown();
         // Don't trust the pad (incl. KEY_TOUCH) until it has read idle once:
         // an emulator whose KEYINPUT boots all-pressed must not phantom-dig
         // at frame 1 (the py-desmume boot-trap, docs/PLATFORM-LIMITS.md).
@@ -329,11 +427,37 @@ int main(void)
         uint32_t wleft = ur_winter_leftover(wstore, wpop);
         uint32_t wscore = ur_winter_score(wstore, wpop);
 
+        // The best-score record commit (slice 9): pressing START banks the run's
+        // survival SCORE and season into the persistent record — but ONLY when
+        // it strictly improves (a higher score OR a further season). A discrete
+        // player action + a strict-improve gate is the EEPROM wear discipline:
+        // one bounded page program per improving commit, never per frame, never
+        // on a tie. (Guarded by pad_seen_idle so a boot-all-pressed emulator
+        // cannot phantom-commit at frame 1 — the same KEYINPUT boot-trap note.)
+        if (pad_seen_idle && (down & KEY_START)
+            && ur_record_improves(best_score, best_season, wscore, season))
+        {
+            if (wscore > best_score)
+                best_score = wscore;
+            if (season > best_season)
+                best_season = season;
+            best_seed = UR_SEED;
+            ur_save_encode(best_score, best_season, best_seed, save_blob);
+            save_write_backup(save_blob);
+            save_writes++;
+        }
+
         // Top screen animates every frame (the hawk sweeps); the burrow is
         // redrawn only when a dig changed it (frame-budget discipline).
         draw_meadow(frame, hawk_on, hawk_x, hawk_y, dug, con, patches,
                     food_total, forage, store, cap, pop, exposed, lost, surv,
                     season, day, abund, sfood, wstore, (uint32_t)wsurv, wscore);
+        // The persisted best-score record (slice 9): the headline number the
+        // colony chases, carried across power cycles. START banks an improving
+        // run. (Drawn after draw_meadow's consoleClear on the free right of the
+        // title row.)
+        consoleSelect(&top_console);
+        printf("\x1b[0;22Hbest %lu", (unsigned long)best_score);
         if (burrow_dirty)
         {
             draw_burrow(grid, gran, nurs);
@@ -377,6 +501,14 @@ int main(void)
         ur_telemetry[UR_T_WSURV] = (uint32_t)wsurv;
         ur_telemetry[UR_T_WLEFT] = wleft;
         ur_telemetry[UR_T_WSCORE] = wscore;
+        // The best-score record (slice 9): the live persisted table + the
+        // power-on decode flag + the writes this power-on + the format version.
+        ur_telemetry[UR_T_BEST] = best_score;
+        ur_telemetry[UR_T_BESTSEASON] = best_season;
+        ur_telemetry[UR_T_BESTSEED] = best_seed;
+        ur_telemetry[UR_T_SAVEOK] = save_ok;
+        ur_telemetry[UR_T_SAVEWR] = save_writes;
+        ur_telemetry[UR_T_SAVEVER] = UR_SAVE_VERSION;
     }
 
     return 0;

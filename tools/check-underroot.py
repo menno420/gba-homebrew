@@ -97,6 +97,16 @@ UR_ABUND_WINTER = 0
 # --- winter survival + the survival score (slice 8; mirror ur_sim.h) -------
 UR_CONSUME_PER_DAY = 1               # banked food one forager eats per winter day
 
+# --- best-score save record (slice 9; mirror ur_sim.h) ---------------------
+UR_SAVE_MAGIC = 0x55525356           # 'URSV'
+UR_SAVE_VERSION = 1
+UR_SAVE_WORDS = 8
+UR_SAVE_BYTES = 32
+UR_SAVE_ADDR = 0
+UR_SAVE_EEPROM_TYPE = 2
+UR_SAVE_SALT = 0x53415645            # 'SAVE'
+UR_SAVE_POLL_BOUND = 4096
+
 # --- food patches (top screen; slice 2; mirror ur_sim.h) -------------------
 UR_SCREEN_W = 256             # meadow width (px)
 UR_SCREEN_H = 192             # meadow height (px)
@@ -544,6 +554,43 @@ def ur_winter_score(store, pop):
     if not ur_winter_survives(store, pop):
         return 0
     return pop * 1000 + ur_winter_leftover(store, pop)
+
+
+# --- best-score save record (slice 9; mirror ur_sim.c) ---------------------
+def ur_save_checksum(words):
+    """Mirror of ur_save_checksum()."""
+    h = UR_SAVE_SALT
+    for i in range(UR_SAVE_WORDS - 1):
+        h = ur_hash(h, words[i])
+    return h
+
+
+def ur_save_encode(best_score, best_season, best_seed):
+    """Mirror of ur_save_encode() (returns the blob as bytes)."""
+    w = [UR_SAVE_MAGIC, UR_SAVE_VERSION, best_score & M32, best_season & M32,
+         best_seed & M32, 0, 0, 0]
+    w[UR_SAVE_WORDS - 1] = ur_save_checksum(w)
+    return b''.join(x.to_bytes(4, 'little') for x in w)
+
+
+def ur_save_decode(blob):
+    """Mirror of ur_save_decode() (returns (ok, best_score, best_season,
+    best_seed); on ok == 0 the C leaves its outputs untouched — callers keep
+    the fresh table)."""
+    w = [int.from_bytes(blob[4 * i:4 * i + 4], 'little')
+         for i in range(UR_SAVE_WORDS)]
+    if w[0] != UR_SAVE_MAGIC:
+        return 0, 0, 0, 0
+    if w[1] != UR_SAVE_VERSION:
+        return 0, 0, 0, 0
+    if w[UR_SAVE_WORDS - 1] != ur_save_checksum(w):
+        return 0, 0, 0, 0
+    return 1, w[2], w[3], w[4]
+
+
+def ur_record_improves(best_score, best_season, score, season):
+    """Mirror of ur_record_improves()."""
+    return 1 if (score > best_score or season > best_season) else 0
 
 
 # --- the CI --touch dig script, mirrored (proof 3 anchor) ------------------
@@ -1662,6 +1709,107 @@ def prove_winter():
     return checks, starve, survive
 
 
+def prove_save():
+    # The arc doc's slice-9 proof: the best SCORE / furthest season persist via
+    # the card backup, mirroring the gl_save pattern.
+    #  (a) ENCODE/DECODE roundtrip over a value grid incl. extremes: encoding is
+    #      deterministic + byte-exact-sized, decode returns exactly what encode
+    #      wrote, plus a GOLDEN-BYTES pin (the survivor record the CI battery
+    #      roundtrip reads back) so any C<->Python drift is caught at byte level;
+    #  (b) REJECTION = fresh table, never a crash: blank chips (all-00/all-FF),
+    #      EVERY single-byte corruption of a valid blob, and a wrong-magic and a
+    #      future-version blob EACH WITH A RECOMPUTED VALID checksum (so magic
+    #      and version are proven to reject on their own) — all decode to fresh;
+    #  (c) IMPROVES is strictly-better-or-further only (a tie in BOTH writes
+    #      nothing — EEPROM wear discipline), full truth table.
+    failures = 0
+    checks = 0
+
+    # (a) roundtrip.
+    for score in (0, 1, 2008, 8008, 999999, 0xFFFFFFFF):
+        for season in (0, 1, 2, 3, 0xFFFFFFFF):
+            for seed in (0, UR_SEED, 0xDEADBEEF, 0xFFFFFFFF):
+                blob = ur_save_encode(score, season, seed)
+                checks += 1
+                if blob != ur_save_encode(score, season, seed):
+                    failures += 1
+                    print(f'FAIL save determinism: ({score},{season},{seed})')
+                if len(blob) != UR_SAVE_BYTES:
+                    failures += 1
+                    print(f'FAIL save size: ({score},{season},{seed}): '
+                          f'{len(blob)}')
+                if ur_save_decode(blob) != (1, score, season, seed):
+                    failures += 1
+                    print(f'FAIL save roundtrip: ({score},{season},{seed}) -> '
+                          f'{ur_save_decode(blob)}')
+    # Golden-bytes pin: the survivor record (best score 2008, spring, run seed
+    # UR_SEED) the CI battery roundtrip reads back out of the DeSmuME battery
+    # file — the C encoder, the emulated chip, and this mirror must agree byte
+    # for byte.
+    golden = ur_save_encode(2008, UR_SPRING, UR_SEED)
+    if golden.hex() != ('56535255' '01000000' 'd8070000' '00000000'
+                        '5a050000' '00000000' '00000000'
+                        + ur_save_checksum([UR_SAVE_MAGIC, UR_SAVE_VERSION,
+                                            2008, UR_SPRING, UR_SEED, 0, 0, 0]
+                                           ).to_bytes(4, 'little').hex()):
+        failures += 1
+        print(f'FAIL save golden bytes: encode(2008, spring, UR_SEED) drifted: '
+              f'{golden.hex()}')
+    # One-page invariants: the blob is exactly the 8 words it claims and sits
+    # page-aligned inside one 32-byte type-2 EEPROM page.
+    if UR_SAVE_BYTES != UR_SAVE_WORDS * 4 or UR_SAVE_BYTES > 32 \
+            or UR_SAVE_ADDR % 32 != 0:
+        failures += 1
+        print('FAIL save layout: blob does not fit one EEPROM page')
+
+    # (b) rejection = fresh table.
+    for label, blob in (('all-00', b'\x00' * UR_SAVE_BYTES),
+                        ('all-FF', b'\xff' * UR_SAVE_BYTES)):
+        checks += 1
+        if ur_save_decode(blob)[0] != 0:
+            failures += 1
+            print(f'FAIL save reject {label}: accepted')
+    valid = ur_save_encode(2008, UR_SPRING, UR_SEED)
+    for i in range(UR_SAVE_BYTES):
+        mut = bytearray(valid)
+        mut[i] ^= 0xFF
+        checks += 1
+        if ur_save_decode(bytes(mut))[0] != 0:
+            failures += 1
+            print(f'FAIL save reject: byte {i} corruption accepted')
+    for label, w0, w1 in (('future-version', UR_SAVE_MAGIC,
+                           UR_SAVE_VERSION + 1),
+                          ('wrong-magic', ur_hash(UR_SAVE_MAGIC, 1),
+                           UR_SAVE_VERSION)):
+        w = [w0, w1, 2008, UR_SPRING, UR_SEED, 0, 0, 0]
+        w[UR_SAVE_WORDS - 1] = ur_save_checksum(w)
+        crafted = b''.join((x & M32).to_bytes(4, 'little') for x in w)
+        checks += 1
+        if ur_save_decode(crafted)[0] != 0:
+            failures += 1
+            print(f'FAIL save reject {label}: accepted despite a valid '
+                  'checksum')
+
+    # (c) improves is strictly-better-or-further only, full truth table over a
+    # small (score, season) grid incl. extremes.
+    scores = list(range(6)) + [2008, 0xFFFFFFFF]
+    seasons = list(range(UR_SEASONS)) + [0xFFFFFFFF]
+    for bscore in scores:
+        for bseason in seasons:
+            for rscore in scores:
+                for rseason in seasons:
+                    checks += 1
+                    want = 1 if (rscore > bscore or rseason > bseason) else 0
+                    if ur_record_improves(bscore, bseason, rscore,
+                                          rseason) != want:
+                        failures += 1
+                        print(f'FAIL record improves: '
+                              f'({bscore},{bseason},{rscore},{rseason})')
+
+    assert failures == 0, f'prove_save: {failures} failure(s)'
+    return checks, golden
+
+
 def main():
     hawk_checks = prove_hawk()
     dig_checks = prove_dig()
@@ -1672,6 +1820,7 @@ def main():
     predation_checks = prove_predation()
     clock_checks = prove_clock()
     winter_checks, marq_starve, marq_survive = prove_winter()
+    save_checks, save_golden = prove_save()
     dug_total, connected, (route_i, route_d, route_len), \
         (gran_n, gran_con, gran_cap, gran_store), \
         (nurs_n, nurs_con, pop, pop_food), \
@@ -1793,6 +1942,12 @@ def main():
           f"{marq_survive['wdrain']}, surv {marq_survive['wsurv']}, leftover "
           f"{marq_survive['wleft']}, score {marq_survive['wscore']}) "
           "(== the rom-builds.yml proof-4 ur_telemetry asserts)")
+    print(f"  best-score save: {save_checks} cases — encode/decode roundtrip "
+          f"byte-exact (golden encode(2008,spring,{hex(UR_SEED)})="
+          f"{save_golden.hex()}), every blank/1-byte-corrupt/wrong-magic/"
+          "future-version blob rejects to the fresh table, improves is "
+          "strictly-better-score-or-further-season only (tie writes nothing) "
+          "(== the rom-builds.yml proof-5 battery roundtrip asserts)")
     print(f"  CI lockstep fixture: dug_total={dug_total} connected={connected} "
           f"forage=(patch {route_i}, dist {route_d}, route {route_len}) "
           f"store=(placed {gran_n}, connected {gran_con}, cap {gran_cap}, "

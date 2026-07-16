@@ -387,6 +387,60 @@ uint32_t ur_winter_leftover(uint32_t store, uint32_t pop);
 // survived winter keeps its foragers); 0 if starved out. Pure f(store, pop).
 uint32_t ur_winter_score(uint32_t store, uint32_t pop);
 
+// --- best-score save record (slice 9) --------------------------------------
+// The arc doc's slice-9 row: the best SCORE and furthest season persist across
+// power cycles on the cartridge backup chip (EEPROM over the card SPI bus — the
+// battery save DeSmuME emulates as a .sav). The record is one fixed 32-byte
+// blob: 8 little-endian u32 words { magic, version, best_score, furthest_season,
+// run_seed, 0, 0, checksum-of-words-0..6 }, so serialization is fully
+// deterministic and word-aligned to one type-2 EEPROM page write.
+// SAFETY BY CONSTRUCTION: ur_save_decode returns 0 (and the caller keeps the
+// fresh all-zero table) on ANY bad blob — wrong magic, wrong version, bad
+// checksum, blank/0xFF chip — a corrupt save can reset the record, NEVER crash
+// or hang the game. Writes are wear-disciplined: the ARM9 writes the blob ONLY
+// when the player commits the run (a discrete START press) AND the run strictly
+// improves the record (ur_record_improves) — never per frame, never on a tie.
+// All constants are decide-and-flag owner-tunables; UR_SAVE_EEPROM_TYPE is the
+// libnds addrtype the ROM ASSUMES (64Kbit-class EEPROM, 2-byte addressing) — a
+// fixed constant, not a boot-time chip probe. The gl_save precedent (Gloamline
+// slice 9) is reused verbatim for the hand-rolled bounded card-SPI I/O.
+#define UR_SAVE_MAGIC 0x55525356u            // 'URSV'
+#define UR_SAVE_VERSION 1u                   // bump on any layout change
+#define UR_SAVE_WORDS 8
+#define UR_SAVE_BYTES 32                     // one type-2 EEPROM page
+#define UR_SAVE_ADDR 0                       // blob offset in the backup
+#define UR_SAVE_EEPROM_TYPE 2                // libnds addrtype (see card.h)
+#define UR_SAVE_SALT 0x53415645u             // 'SAVE' checksum stream
+// Iteration cap on every card-SPI wait in the write path (main.c's
+// save_write_backup): libnds's cardWriteEeprom polls the chip status register
+// UNBOUNDEDLY and hangs forever under DeSmuME's backup emulation, so every wait
+// gives up after this many iterations instead. An expired poll is harmless by
+// construction: the page commits on chip-deselect and the chip finishes
+// programming internally; the next backup command is a power cycle away. (The
+// exact Gloamline-slice-9 rail, sized the same way.)
+#define UR_SAVE_POLL_BOUND 4096u
+
+// Checksum of a save blob's words 0..UR_SAVE_WORDS-2 (a ur_hash fold on the
+// UR_SAVE_SALT stream). Pure; word UR_SAVE_WORDS-1 is not read.
+uint32_t ur_save_checksum(const uint32_t words[UR_SAVE_WORDS]);
+// Serialize the best-run record into a UR_SAVE_BYTES blob: { UR_SAVE_MAGIC,
+// UR_SAVE_VERSION, best_score, furthest_season, run_seed, 0, 0, checksum } as
+// little-endian u32 words. Deterministic: equal records encode to identical
+// bytes.
+void ur_save_encode(uint32_t best_score, uint32_t best_season,
+                    uint32_t best_seed, uint8_t out[UR_SAVE_BYTES]);
+// Parse a blob read back from the backup: returns 1 and fills the record ONLY
+// if magic, version AND checksum all match; returns 0 on any other input
+// (corrupt, blank, 0xFF, future version) WITHOUT touching the outputs — the
+// caller's fresh table stands. Never crashes on any 32-byte input. Pure.
+int ur_save_decode(const uint8_t in[UR_SAVE_BYTES], uint32_t *best_score,
+                   uint32_t *best_season, uint32_t *best_seed);
+// 1 if a run's (score, season) STRICTLY improves the record — a higher score
+// OR a further season (a tie in both writes nothing: EEPROM wear discipline).
+// Pure f(best_score, best_season, score, season).
+int ur_record_improves(uint32_t best_score, uint32_t best_season,
+                       uint32_t score, uint32_t season);
+
 // --- telemetry mailbox (ELF-exported; read by tools/nds-headless-check.py) -
 #define UR_T_MAGIC0 0    // 0x554E4452 'UNDR'
 #define UR_T_MAGIC1 1    // 0x524F4F54 'ROOT'
@@ -431,7 +485,13 @@ uint32_t ur_winter_score(uint32_t store, uint32_t pop);
 #define UR_T_WSURV 40    // survives winter? wstore >= wdrain -> 1/0 (slice 8)
 #define UR_T_WLEFT 41    // store left after winter = wstore - wdrain if survive else 0 (slice 8)
 #define UR_T_WSCORE 42   // survival score = surviving_pop*1000 + leftover (0 if starved) (slice 8)
-#define UR_T_SPARE 43    // 0
-#define UR_T_WORDS 44
+#define UR_T_BEST 43     // best SCORE on record (live table) (slice 9)
+#define UR_T_BESTSEASON 44 // furthest season on record (slice 9)
+#define UR_T_BESTSEED 45 // seed of the record run (slice 9)
+#define UR_T_SAVEOK 46   // 1 = power-on read decoded a valid save blob (slice 9)
+#define UR_T_SAVEWR 47   // record writes to the backup this power-on (slice 9)
+#define UR_T_SAVEVER 48  // save format version (build-flag visibility) (slice 9)
+#define UR_T_SPARE 49    // 0
+#define UR_T_WORDS 50
 
 #endif // UR_SIM_H

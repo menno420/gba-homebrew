@@ -55,3 +55,16 @@ kit: v1.17.0
 - ORDER 007 ack check: the done-when ack IS on record — "ORDER 007
   ACKNOWLEDGED (first rebooted dispatch)" landed in control/status.md
   at `df55299` (#142, 2026-07-15); no re-ack needed here.
+
+## Dispatched slice 2026-07-16 — Underroot slice 2: meadow food patches (append-only)
+
+- updated: 2026-07-16T15:43:58Z (`date -u`); session card
+  `.sessions/2026-07-16-underroot-slice-2.md`, branch
+  `claude/underroot-slice-2`, draft-parked stacked on PR #155
+  (`claude/underroot-slice-1`).
+- What: a pure `f(seed, season, index)` food-patch layer on the meadow —
+  positions + amounts on the foraging apron below the hawk lanes, rendered
+  on the top screen, with a host↔ROM patch-count + total-food (patch_n=6
+  patch_sum=34) lockstep at pinned frames. Host mirror
+  `tools/check-underroot.py` runs green locally; `nds-underroot-build`
+  green pending CI.

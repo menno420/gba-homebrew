@@ -9,8 +9,9 @@
 #     bash games/wickroad/proofs.sh
 # Artifacts land in $WICKROAD_PROOF_OUT (default /tmp/wickroad-proofs).
 #
-# The ten proofs (asserts inline below; P10 is crossroads cut 2, the sprite
-# art pass — appended behind P1-P9, which are UNTOUCHED and carry verbatim):
+# The eleven proofs (asserts inline below; P11 is crossroads cut 3, the seed
+# dial — appended behind P1-P10, which are UNTOUCHED and carry verbatim; P10
+# is crossroads cut 2, the sprite art pass, behind P1-P9):
 #   P1 boot/title            — magics, title state, every title line incl.
 #                              the hook line ("BUT THE INK AGES") and the
 #                              full verb help; witness words zero on title.
@@ -237,8 +238,28 @@
 #                              runs only once the scene falls calm), so the 56
 #                              sim words and the 27 variable-font text lines
 #                              are untouched — P1-P9 pass verbatim.
+#   P11 THE SEED DIAL (crossroads cut 3) — the single fixed 'WICK' world
+#                              becomes a family of daily/challenge worlds via a
+#                              title-screen dial (LEFT/RIGHT, edge-triggered,
+#                              title ONLY). dial 0 IS seed_constant, so P1-P10
+#                              carry BYTE-IDENTICAL. P11a: on the title, RIGHT
+#                              x3 climbs the dial 0->3 and LEFT x3 walks it back
+#                              to 0, the live dialed seed pinned in the appended
+#                              word 56 at every step against the host mirror
+#                              (0x5749434B -> 002FC1A3 -> 003B0B8A -> 00405452
+#                              and back), the SEED digits glyph-exact on the
+#                              title, state/gold staying 0 (the dial never
+#                              leaves the title); run twice byte-identical.
+#                              P11b: dial 0 START dives the pinned world — day 1
+#                              EMBERTON cursor word 13 = 9 (the P2 pin), word 56
+#                              carrying the seed into the run. P11c: dial 1
+#                              START dives a DIFFERENT world — the same day-1
+#                              cursor now reads 12, not 9, word 56 = the dial-1
+#                              seed; run twice byte-identical. Word 56 is
+#                              APPENDED behind the frozen 0-55, so P1-P10 (which
+#                              watch only :56) never see it.
 #
-# Mailbox: wr_telemetry[56] since the crossroads cut (layout in
+# Mailbox: wr_telemetry[57] since crossroads cut 3 (layout in
 # games/wickroad/src/main.cpp;
 # P1-P3 keep watching the first 16 words, unchanged from v0.1; P4 the first
 # 24, unchanged from v0.2; P5 the first 32, unchanged from v0.3; P6 the
@@ -247,7 +268,10 @@
 # stayed byte-identical: P1-P7 passed verbatim on the first post-audio run,
 # zero re-pins. Crossroads cut 1 appended words 52-55 behind the frozen
 # 0-51 and +8 RNG draws behind town 6's: P1-P8 passed verbatim again,
-# zero re-pins — the same append-only wire-format discipline.)
+# zero re-pins. Crossroads cut 3 appended word 56 (the live dialed seed)
+# behind the frozen 0-55: P1-P10 watch only :56 (words 0-55), so they never
+# see it and carry byte-identical — the same append-only wire-format
+# discipline, and dial 0 == seed_constant keeps the world itself identical.)
 # Word 15 encodes the THORNBY/SALT ledger entry as (ink price << 8) | age:
 # 6912 = 27 @ age 0 · 6913 = 27 @ 1 · 6915 = 27 @ 3 · 6937 = 27 @ 25.
 # Turn-based determinism: the same script replays bit-identically by
@@ -1190,5 +1214,110 @@ H "$OUT/p10b.png" --frames 176 $ART_W $ART_ROUTE \
   "${P10_ART_ASSERTS[@]}"
 cmp "$OUT/p10-run1.csv" "$OUT/p10-run2.csv"
 echo "P10 run-twice: byte-identical"
+
+# ---------------------------------------------------------------------------
+# P11 — THE SEED DIAL (crossroads cut 3; ADDITIVE — P1-P10 above carried
+# BYTE-IDENTICAL). Wickroad's single fixed 'WICK' world becomes a family of
+# daily/challenge worlds via a title-screen dial (LEFT/RIGHT, edge-triggered,
+# title ONLY). THE CONTRACT (Underroot slice-10 / Cindervault-seed): dial 0 IS
+# seed_constant, so the default world — and every proof P1-P10 — is
+# bit-identical. The live dialed seed is published in the APPENDED telemetry
+# word [56] (the mailbox grows [56] -> [57]; words 0-55 stay byte-unchanged,
+# so P1-P10 never see it). Every dialed seed below was derived on a host-side
+# Python mirror of reset_run + the price law FIRST, then matched by the ROM:
+#   dial 0 = 0x5749434B = 1464419147   (seed_constant, the pinned world)
+#   dial 1 = 0x002FC1A3 =    3129763
+#   dial 2 = 0x003B0B8A =    3869578
+#   dial 3 = 0x00405452 =    4215890
+# The default world's day-1 EMBERTON TALLOW price (cursor word 13) is 9 (the
+# P2 pin); the dial-1 world's is 12 — the dial provably changes the world.
+# ---------------------------------------------------------------------------
+W57='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:57'
+
+# P11a THE DIAL SCANS + REVERSES — on the title, RIGHT x3 climbs the dial 0->3
+# (word 56 stepping through each host-mirrored seed) then LEFT x3 walks it back
+# to 0: the dial is fully reversible and NEVER leaves the title (state word 2
+# and gold word 5 stay 0 the whole scan — no run is started). The SEED digits
+# render live on the title once dialed off 0 ("PRESS START" prefix carries).
+DIAL_SCAN='--keys 20-22:RIGHT --keys 30-32:RIGHT --keys 40-42:RIGHT --keys 50-52:LEFT --keys 60-62:LEFT --keys 70-72:LEFT'
+
+DIAL_SCAN_ASSERTS=(
+  # boot title: dial 0, word 56 = seed_constant, state/gold 0, plain START line
+  --assert-watch 18:wr:2:eq:0
+  --assert-watch 18:wr:5:eq:0
+  --assert-watch 18:wr:56:eq:1464419147
+  --assert-text "18:PRESS START"
+  # R x3 climbs 0 -> 1 -> 2 -> 3, each dialed seed pinned from the mirror; the
+  # title stays the title (state/gold 0) and the SEED digits render live
+  --assert-watch 25:wr:2:eq:0
+  --assert-watch 25:wr:5:eq:0
+  --assert-watch 25:wr:56:eq:3129763
+  --assert-text "25:PRESS START"
+  --assert-text "25:SEED 002FC1A3"
+  --assert-watch 35:wr:56:eq:3869578
+  --assert-text "35:SEED 003B0B8A"
+  --assert-watch 45:wr:2:eq:0
+  --assert-watch 45:wr:56:eq:4215890
+  --assert-text "45:SEED 00405452"
+  # L x3 walks it back 3 -> 2 -> 1 -> 0 (fully reversible): word 56 returns to
+  # each mirror seed and ends EXACTLY on seed_constant, the pinned world
+  --assert-watch 55:wr:56:eq:3869578
+  --assert-watch 65:wr:56:eq:3129763
+  --assert-watch 78:wr:2:eq:0
+  --assert-watch 78:wr:5:eq:0
+  --assert-watch 78:wr:56:eq:1464419147
+  --assert-text "78:PRESS START"
+)
+
+echo "== P11a: THE SEED DIAL — the title dial scans + reverses (run 1) =="
+H "$OUT/p11a.png" --frames 85 $W57 $DIAL_SCAN \
+  --watch-log "$OUT/p11a-run1.csv" --shot "45:$OUT/p11a-dial3.png" \
+  "${DIAL_SCAN_ASSERTS[@]}"
+
+echo "== P11a: run 2 (must be byte-identical) =="
+H "$OUT/p11ab.png" --frames 85 $W57 $DIAL_SCAN \
+  --watch-log "$OUT/p11a-run2.csv" \
+  "${DIAL_SCAN_ASSERTS[@]}"
+cmp "$OUT/p11a-run1.csv" "$OUT/p11a-run2.csv"
+echo "P11a run-twice: byte-identical"
+
+# P11b DIAL 0 START == THE PINNED WORLD — with the dial untouched (position 0),
+# START dives the committed 'WICK' world: day 1 EMBERTON, gold 60, and the
+# cursor word 13 = 9 (the exact P2 day-1 pin), while word 56 carries the seed
+# into the run — dial 0 reproduces the pinned stream bit-for-bit.
+echo "== P11b: dial 0 START == the pinned WICK world =="
+H "$OUT/p11b.png" --frames 36 $W57 --keys 20-22:START \
+  --assert-watch 30:wr:2:eq:1 \
+  --assert-watch 30:wr:4:eq:1 \
+  --assert-watch 30:wr:5:eq:60 \
+  --assert-watch 30:wr:6:eq:0 \
+  --assert-watch 30:wr:13:eq:9 \
+  --assert-watch 30:wr:56:eq:1464419147
+
+# P11c A DIALED WORLD DIFFERS — dial to 1 (RIGHT) then START: the SAME day-1
+# EMBERTON cursor now reads 12, NOT the pinned 9, and word 56 = the dial-1 seed
+# carried into the run — the dial provably feeds a different, repeatable world.
+DIAL1_RUN='--keys 10-12:RIGHT --keys 20-22:START'
+DIAL1_ASSERTS=(
+  --assert-watch 30:wr:2:eq:1
+  --assert-watch 30:wr:4:eq:1
+  --assert-watch 30:wr:5:eq:60
+  --assert-watch 30:wr:6:eq:0
+  --assert-watch 30:wr:13:eq:12
+  --assert-watch 30:wr:13:ne:9
+  --assert-watch 30:wr:56:eq:3129763
+)
+
+echo "== P11c: a dialed world DIFFERS + the seed carries into the run (run 1) =="
+H "$OUT/p11c.png" --frames 36 $W57 $DIAL1_RUN \
+  --watch-log "$OUT/p11c-run1.csv" \
+  "${DIAL1_ASSERTS[@]}"
+
+echo "== P11c: run 2 (must be byte-identical) =="
+H "$OUT/p11cb.png" --frames 36 $W57 $DIAL1_RUN \
+  --watch-log "$OUT/p11c-run2.csv" \
+  "${DIAL1_ASSERTS[@]}"
+cmp "$OUT/p11c-run1.csv" "$OUT/p11c-run2.csv"
+echo "P11c run-twice: byte-identical"
 
 echo "ALL WICKROAD PROOFS PASS"

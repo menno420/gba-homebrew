@@ -748,6 +748,126 @@ check("daily seed is a pure date mapping", E.dailySeed("2026-07-13") === 2026071
   check("deception floors at 0", E.deception(-3, par0, par0) === 0 && E.deception(0, par0 + 9, par0) === 0, "");
 }
 
+// ----------------------------- 17. mechanic fingerprint (arc 2, cut 4)
+{
+  // base cavern (seed 42 level 0 places ZERO slice-4 cells): every class is
+  // absent, so neutralizing any of them is a no-op and the tag is "no-mechanic".
+  const fp0 = E.fingerprint(g0.level);
+  check("fingerprint(base cavern): base == par, all classes absent, no-op deltas",
+    fp0.base === E.par(g0.level) &&
+    !fp0.ice.present && !fp0.lock.present && !fp0.grate.present &&
+    fp0.ice.delta === 0 && fp0.lock.delta === 0 && fp0.grate.delta === 0 &&
+    !fp0.ice.loadBearing && !fp0.lock.loadBearing && !fp0.grate.loadBearing,
+    `base=${fp0.base} par=${E.par(g0.level)}`);
+  check("fingerprintTag(base cavern) == 'no-mechanic'",
+    E.fingerprintTag(g0.level) === "no-mechanic", E.fingerprintTag(g0.level));
+
+  // neutralizeClass is a PURE grid transform: on cell content with none of the
+  // class it is byte-identical to the input, and it never mutates its argument.
+  {
+    const before = E.gridString(g0.grid);
+    const idIce = E.neutralizeClass(g0.grid, "ice");
+    const idLock = E.neutralizeClass(g0.grid, "lock");
+    const idGrate = E.neutralizeClass(g0.grid, "grate");
+    check("neutralizeClass: identity on class-free content, and never mutates input",
+      E.gridString(idIce) === before && E.gridString(idLock) === before &&
+      E.gridString(idGrate) === before && E.gridString(g0.grid) === before);
+  }
+
+  // a hand-built lock-dependent cavern: the locked blue at the floor is a
+  // dead-weight PLUG the winning line needs. Pre-freeing it (neutralize "lock")
+  // lets it collect and vanish, so quota is no longer reachable within budget —
+  // the class is DEAD-without and therefore load-bearing. Ice/grate are absent.
+  {
+    const A = E.GEM0, B = E.GEM0 + 1, LOCKB = E.LOCK0 + 1, WALL = E.WALL;
+    const cells = [[6,3,B],[5,4,B],[7,4,B],[7,1,B],[5,2,A],[6,4,WALL],[7,5,LOCKB]];
+    const raw = E.emptyGrid(8);
+    for (const [r,c,v] of cells) raw[r][c] = v;
+    const grid = E.settle(raw);
+    const found = E.search(grid, 6);
+    let solution = null;
+    for (const rec of found.records) if (rec.collected >= 4) { solution = rec.path; break; }
+    const level = { size: 8, grid, quota: 4, budget: 6, best: found.best, solution };
+
+    const PINNED_LOCK_CAVERN = [
+      "........",
+      "........",
+      "........",
+      "........",
+      "........",
+      "....B...",
+      "....#...",
+      ".BABBb..",
+    ].join("\n");
+    check("hand cavern: pinned grid, merge-free at spawn, solver line wins WITH the lock",
+      E.gridString(grid) === PINNED_LOCK_CAVERN && E.findGroups(grid).length === 0 &&
+      solution !== null && E.par(level) === 5,
+      `par=${E.par(level)} solution="${solution}"`);
+    // replay the solver line manually (no seed -> no newGame) and confirm the win
+    {
+      let g = E.cloneGrid(grid), collected = 0, used = 0, status = "playing";
+      for (const ch of solution) {
+        if (status !== "playing") break;
+        const res = E.resolve(E.rotateGrid(g, ch === "R" ? "cw" : "ccw"));
+        g = res.grid; collected += res.collected; used += 1;
+        status = collected >= level.quota ? "won" : (used >= level.budget ? "lost" : "playing");
+      }
+      check("hand cavern: manual replay of the solver line reaches quota (won)",
+        status === "won" && collected >= level.quota,
+        `status=${status} collected=${collected}/${level.quota} used=${used}`);
+    }
+
+    const fp = E.fingerprint(level);
+    check("fingerprint(lock cavern): lock present + DEAD-without + load-bearing; ice/grate absent",
+      fp.base === 5 && fp.lock.present && fp.lock.dead && fp.lock.par === null &&
+      fp.lock.delta === null && fp.lock.loadBearing &&
+      !fp.ice.present && !fp.grate.present &&
+      !fp.ice.loadBearing && !fp.grate.loadBearing,
+      JSON.stringify(fp.lock));
+    check("fingerprintTag(lock cavern) == 'NEEDS lock'",
+      E.fingerprintTag(level) === "NEEDS lock", E.fingerprintTag(level));
+    check("fingerprint is deterministic (same level twice -> identical JSON)",
+      JSON.stringify(E.fingerprint(level)) === JSON.stringify(fp));
+    // neutralizing the lock really removes it (pre-frees to a normal gem) -> the
+    // dead verdict is the solver's, on a genuinely different board
+    const neu = E.neutralizeClass(grid, "lock");
+    const neuWinnable = E.search(neu, level.budget).records.some(r => r.collected >= level.quota);
+    check("neutralizeClass('lock') pre-frees the locked gem and kills solvability",
+      E.gridString(neu) !== E.gridString(grid) && !E.isLocked(neu[7][5]) && !neuWinnable,
+      `neu[7][5]=${neu[7][5]} winnable=${neuWinnable}`);
+  }
+
+  // a REAL deep daily (seed 42 level 4): the grate is load-bearing — removing the
+  // one-way barrier lets pieces fall freely and par DROPS by 2, so the honest tag
+  // is "NEEDS grate". Ice + locks are present here but neutralizing them leaves
+  // par unmoved, so they are not tagged. Pinned exactly (deterministic generator).
+  {
+    const l4 = E.generateLevel(SEED, 4);
+    const fp = E.fingerprint(l4);
+    check("fingerprint(seed 42 lv4): base 5 == par; grate delta -2 load-bearing; ice/lock not",
+      fp.base === 5 && fp.base === E.par(l4) &&
+      fp.grate.present && fp.grate.delta === -2 && fp.grate.loadBearing &&
+      fp.ice.present && fp.ice.delta === 0 && !fp.ice.loadBearing &&
+      fp.lock.present && fp.lock.delta === 0 && !fp.lock.loadBearing,
+      JSON.stringify(fp));
+    check("fingerprintTag(seed 42 lv4) == 'NEEDS grate'",
+      E.fingerprintTag(l4) === "NEEDS grate", E.fingerprintTag(l4));
+  }
+
+  // determinism + base-honesty across the deep 12-seed sweep: every level-4
+  // cavern fingerprints identically twice and its base is exactly par(level).
+  {
+    let sweepOk = 0;
+    for (let s = 100; s < 112; s++) {
+      const lvl = E.generateLevel(s, 4);
+      const a = E.fingerprint(lvl), b = E.fingerprint(lvl);
+      if (JSON.stringify(a) === JSON.stringify(b) && a.base === E.par(lvl)) sweepOk++;
+    }
+    check("12-seed sweep at level 4: fingerprint deterministic and base == par(level)",
+      sweepOk === 12, `${sweepOk}/12`);
+  }
+}
+
 // ------------------------------------------------------------------- verdict
 if (failures) {
   console.error(`SMOKE FAIL: ${failures} assertion(s) red`);

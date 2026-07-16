@@ -86,10 +86,21 @@
     else reset(seed, levelIndex);
   }
 
+  // arc2 cut4: the cavern's mechanic-fingerprint tag ("NEEDS grate", …). fingerprint()
+  // re-runs the solver BFS, too heavy for the per-frame render, so cache it once per
+  // (seed, levelIndex); a base cavern ("no-mechanic") adds nothing to the grade line.
+  var _fpTag = {};
+  function mechTag() {
+    var key = seed + ":" + levelIndex;
+    if (!(key in _fpTag)) _fpTag[key] = E.fingerprintTag(state.level);
+    return _fpTag[key] === "no-mechanic" ? "" : " {" + _fpTag[key] + "}";
+  }
+
   function gradeLine() {
     var p = E.par(state.level), g = E.hintedGrade(state.used, p, hints);   // arc2 cut2: hints ding the grade
     return "PAR " + p + " — YOU " + state.used + " — " + g.label +
       " [" + E.deceptionLabel(undos, state.used, p) + "]" +   // arc2 cut3: undo×par deceptiveness read
+      mechTag() +                                             // arc2 cut4: mechanic fingerprint
       (hints ? " (" + hints + " hint" + (hints === 1 ? "" : "s") + ")" : "") +
       (undos ? " (" + undos + " undo" + (undos === 1 ? "" : "s") + ")" : "");
   }

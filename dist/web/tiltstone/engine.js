@@ -41,7 +41,7 @@
   else root.TiltstoneEngine = api;
 })(typeof self !== "undefined" ? self : this, function () {
 
-  var VERSION = "1.6.0";
+  var VERSION = "1.7.0";
   var SIZE = 8;          // grid is SIZE x SIZE (square — rotation-safe)
   var EMPTY = 0, WALL = 1, STONE = 2, GEM0 = 3;
   var ICE = 11;          // slice 4 — first code past the 8 reserved gem slots
@@ -776,6 +776,108 @@
     return tier + "-" + honesty;
   }
 
+  // ---- mechanic fingerprint: per-class par deltas (arc 2, cut 4) --------------
+  // Which slice-4 cell CLASS actually carries a cavern? Re-run the solver's own BFS
+  // on the grid with ONE class NEUTRALIZED and read how par moves:
+  //   ice   -> slip disabled  (ICE becomes STONE: same dead-weight fall, no slide)
+  //   lock  -> pre-freed      (each locked gem becomes a normal gem of its color)
+  //   grate -> all-porous     (grate cells removed: no one-way barrier remains)
+  // Neutralization is a PURE grid transform fed to `search` as a parallel input --
+  // zero edits to settle/resolve/rotate, so every prior pin stays byte-identical.
+  // If neutralizing a class the cavern actually places moves par (delta != 0) OR
+  // kills the level (no winning line within budget -> dead), that mechanic is
+  // load-bearing: an honest per-seed tag ("this daily NEEDS the grate"). A class
+  // the cavern never places is a no-op (delta 0, not load-bearing). All ADDITIVE.
+
+  var FP_CLASSES = ["ice", "lock", "grate"];
+
+  function classAt(v, cls) {
+    return cls === "ice"   ? v === ICE
+         : cls === "lock"  ? isLocked(v)
+         : cls === "grate" ? isGrate(v)
+         : false;
+  }
+
+  // Grid with every cell of ONE class replaced by its neutral stand-in. Pure:
+  // returns a NEW grid, input untouched; cells of any other class pass through.
+  // On content with none of `cls` the result is byte-identical to the input.
+  function neutralizeClass(g, cls) {
+    var n = g.length, out = cloneGrid(g);
+    for (var r = 0; r < n; r++)
+      for (var c = 0; c < n; c++) {
+        var v = g[r][c];
+        if (cls === "ice"   && v === ICE)   out[r][c] = STONE;
+        else if (cls === "lock"  && isLocked(v)) out[r][c] = GEM0 + (v - LOCK0);
+        else if (cls === "grate" && isGrate(v)) out[r][c] = EMPTY;
+      }
+    return out;
+  }
+
+  function hasClass(g, cls) {
+    for (var r = 0; r < g.length; r++)
+      for (var c = 0; c < g.length; c++)
+        if (classAt(g[r][c], cls)) return true;
+    return false;
+  }
+
+  // Shortest winning depth for `quota` on `grid` within `budget`, or null when no
+  // rotation line up to `budget` deep reaches quota. `search` pushes records
+  // shortest-first, so the first quota-meeting record's depth IS the minimum. Pure.
+  function shortestWinDepth(grid, budget, quota) {
+    var found = search(grid, budget);
+    for (var i = 0; i < found.records.length; i++)
+      if (found.records[i].collected >= quota) return found.records[i].depth;
+    return null;
+  }
+
+  // Fingerprint a level: base par plus, per slice-4 class, the neutralized par and
+  // its signed delta from base. `dead` marks a class the level cannot win without;
+  // a class is `loadBearing` when it is PRESENT and neutralizing it moves par or
+  // kills the level. Deterministic — a pure function of the level's grid/budget/
+  // quota. The base equals par(level) for a generated level (both the BFS shortest
+  // line). Absent classes report present:false, delta:0, not load-bearing.
+  function fingerprint(level) {
+    var base = shortestWinDepth(level.grid, level.budget, level.quota);
+    var out = { base: base };
+    for (var i = 0; i < FP_CLASSES.length; i++) {
+      var cls = FP_CLASSES[i];
+      if (!hasClass(level.grid, cls)) {
+        out[cls] = { present: false, par: base, delta: 0, dead: false, loadBearing: false };
+        continue;
+      }
+      var np = shortestWinDepth(neutralizeClass(level.grid, cls), level.budget, level.quota);
+      var dead = np === null;
+      var delta = dead ? null : np - base;
+      out[cls] = { present: true, par: np, delta: delta, dead: dead,
+                   loadBearing: dead || delta !== 0 };
+    }
+    return out;
+  }
+
+  // How load-bearing a class is, as a sortable scalar: a level that DIES without it
+  // outranks any finite par shift; otherwise the size of the par move. Pure.
+  function fpLoad(entry) {
+    return entry.dead ? Infinity : Math.abs(entry.delta || 0);
+  }
+
+  // Honest per-seed tag: the load-bearing mechanics, heaviest carrier first
+  // ("NEEDS grate", "NEEDS lock+ice"), or "no-mechanic" when neutralizing every
+  // class leaves par unmoved (a base cavern, or a deep one its mechanics do not
+  // gate). Deterministic: equal loads break ties in FP_CLASSES order. Pure.
+  function fingerprintTag(level) {
+    var fp = fingerprint(level);
+    var carried = [];
+    for (var i = 0; i < FP_CLASSES.length; i++)
+      if (fp[FP_CLASSES[i]].loadBearing) carried.push(FP_CLASSES[i]);
+    if (!carried.length) return "no-mechanic";
+    carried.sort(function (a, b) {
+      var la = fpLoad(fp[a]), lb = fpLoad(fp[b]);
+      if (lb !== la) return lb - la;
+      return FP_CLASSES.indexOf(a) - FP_CLASSES.indexOf(b);
+    });
+    return "NEEDS " + carried.join("+");
+  }
+
   return {
     VERSION: VERSION, SIZE: SIZE,
     EMPTY: EMPTY, WALL: WALL, STONE: STONE, GEM0: GEM0, MERGE_MIN: MERGE_MIN,
@@ -793,6 +895,7 @@
     isReplayLine: isReplayLine, normalizeLine: normalizeLine,
     encodeShare: encodeShare, decodeShare: decodeShare, spectate: spectate,
     hintFrom: hintFrom, hintedGrade: hintedGrade,
-    deception: deception, deceptionLabel: deceptionLabel
+    deception: deception, deceptionLabel: deceptionLabel,
+    neutralizeClass: neutralizeClass, fingerprint: fingerprint, fingerprintTag: fingerprintTag
   };
 });

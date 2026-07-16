@@ -1,6 +1,6 @@
 # Tiltstone — arc 2 design doc (the shareable daily)
 
-> **Status:** cut **2 of 5 BUILT** — arc opened 2026-07-16. Source code and
+> **Status:** cut **4 of 5 BUILT** — arc opened 2026-07-16. Source code and
 > merged PRs always win over this file; it states the plan and the
 > decide-and-flag design calls, updated as cuts land. Kicked off from the owner
 > decision menu (docs/NEXT-MENU-2026-07-15.md § B1, the in-doc recommendation)
@@ -137,6 +137,6 @@ tracked there, not here; it is polish, not a determinism feature.)*
 |-----|-------|-----------------|--------|----|
 | 1 | Share your line | tiltstone-juice | **BUILT** | this |
 | 2 | Hints from the solver | web-tiltstone | **BUILT** | #167 |
-| 3 | Undo×par curation | tiltstone-par | planned | — |
-| 4 | Mechanic fingerprints | tiltstone-cells | planned | — |
+| 3 | Undo×par curation | tiltstone-par | **BUILT** | #168 |
+| 4 | Mechanic fingerprints | tiltstone-cells | **BUILT** | this |
 | 5 | The monotone ramp | tiltstone-packs | planned | — |

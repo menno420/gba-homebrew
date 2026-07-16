@@ -1,6 +1,6 @@
 # Session — Tiltstone arc 2, cut 2: «Hints from the solver»
 
-> **Status:** in-progress
+> **Status:** complete
 
 - date: 2026-07-16 (branch `claude/tiltstone-arc2-cut2`, base
   **`claude/tiltstone-arc2-cut1`** @ `baf2ee3` — stacked on cut 1; started 20:30Z,
@@ -18,7 +18,8 @@
   `hintedGrade`, zero edits to generation / rotation / settle / resolve / state), so
   every pinned smoke value from arc-1 slices 1–5 and cut-1 §14 re-passes
   byte-identical. No backend — pure static-hosting scope.
-- **📊 Model:** [[fill: family-level model line, resolved at close-out]]
+- **📊 Model:** Claude Opus 4.8 family · high · implementation — Tiltstone arc-2
+  cut 2 (solver hints)
 - landing posture: **DRAFT PR stacked on cut 1** (`claude/tiltstone-arc2-cut1`).
   Under the standing **2026-07-16 LANDING WALL** (PR ready-flips + auto-merge are
   classifier-denied for this seat), an honest draft-park is the terminal state.
@@ -57,11 +58,21 @@ trivializing par. **How (all ADDITIVE):**
 
 ## 💡 Session idea
 
-[[fill: one genuine forward idea, resolved at close-out]]
+**A hint budget, and a bigger-hit "whole line" reveal.** Cut 2 makes one hint =
+one over-par turn, but every hint costs the same and there is no ceiling. The
+deduped next axis is *hint economy*: a per-cavern hint cap (say `ceil(par/2)`),
+past which the only option left is a **"show the solver's whole line"** reveal
+gated behind a much bigger grade hit (drop straight to CLEARED, or mark the run
+"assisted" so it is excluded from a share's par brag). That keeps the honest-nudge
+default cheap while giving a truly stuck player a guaranteed exit that is visibly
+*not* a clean clear — the same spend-gate spirit, one notch louder, and it composes
+with cut 3's undo×par curation (a cavern that eats its whole hint budget is
+provably deceptive) without either owning the other.
 
 ## 📊 Model
 
-[[fill: family-level model line, resolved at close-out]]
+Claude Opus 4.8 family · high · implementation — Tiltstone arc-2 cut 2 (solver
+hints).
 
 ## Known / honest gaps
 
@@ -76,9 +87,41 @@ trivializing par. **How (all ADDITIVE):**
 
 ## Previous-session review
 
-[[fill: honest review of cut 1 / PR #166, resolved at close-out]]
+- Prior cut card: `.sessions/2026-07-16-tiltstone-arc2-cut1.md` (**PR #166**, head
+  `f2b50f8`, arc-2 cut 1 — «Share your line»). It shipped the pure share layer in
+  `engine.js` (`isReplayLine`/`normalizeLine`/`encodeShare`/`decodeShare`/`spectate`,
+  v1.4.0 → 1.5.0, strictly additive), a shell Share button + `?replay=` spectate
+  mode, the arc-2 plan doc `docs/arcs/TILTSTONE.md`, and the load-bearing **§14**
+  smoke proof (encode/decode round-trip + `spectate == live replay`, byte-identical,
+  across the seed-42 line and the 12-seed sweep). It is **draft-parked** under the
+  standing 2026-07-16 landing wall — its card stays `in-progress` on purpose (that
+  flip is what would release auto-merge), but it is complete in content.
+- **What this cut borrowed from #166, verbatim:** the strict-additive engine
+  discipline. Cut 1 added new pure functions with zero edits to
+  generation/rotation/settle/resolve, so every arc-1 pin re-passed byte-identical
+  under v1.5.0; cut 2 does the same — `hintFrom`/`hintedGrade` are two NEW pure
+  functions, and the full smoke (arc-1 §1–§13 + cut-1 §14 + new §15) runs green with
+  engine still v1.5.0, no old value moved. The proof-surface split is mirrored too:
+  the hint *functions* are headless-gated in §15, the Hint *button* UX is flagged
+  browser-only (as cut 1 flagged the Share button + spectate animation). And the
+  draft-park convention is inherited — this PR is stacked on #166's branch and holds
+  DRAFT under the same wall.
+- **Concrete strength observed reviewing the cut-1 diff:** its `spectate` re-derives
+  the run by *reusing* `newGame`/`rotate`/`resolveTrace` rather than re-encoding the
+  rules, so the reconstruction is provably byte-identical to live play. Cut 2 leans
+  on the identical move: `hintFrom` re-runs the same `search` BFS the generator and
+  `solve` already use, so the pristine hint provably equals `level.solution[0]`
+  without ever reading the stored line — the honesty comes from reuse, not a second
+  copy of the logic.
 
 ## PR / CI (filled at close-out)
 
-- PR: [[fill: PR number + URL, base branch, born-red SHA, impl SHA, card-finish SHA]]
-- CI: [[fill: rom-builds + substrate-gate posture at close-out]]
+- PR: **#167** — https://github.com/menno420/gba-homebrew/pull/167 (DRAFT, base
+  `claude/tiltstone-arc2-cut1` — stacked on #166; born-red gate `d93b152`, impl
+  `46293b5` engine+smoke+shell+html, card-finish = this commit). Draft-parked under
+  the 2026-07-16 landing wall — no ready-flip, no auto-merge.
+- CI: `rom-builds` (the one required per-PR gate — web-only diff, no GBA/NDS ROM
+  source touched, so expected green), `substrate-gate` **RED** — main's known #151
+  orphans + the born-red card HOLD (inherited/designed), not a cut fault. The
+  Tiltstone pure-Node smoke is not CI-wired (as with cut 1); it ran green locally
+  (`node games/web-tiltstone/smoke.mjs`, exit 0, §15 included).

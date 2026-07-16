@@ -68,3 +68,23 @@ kit: v1.17.0
   patch_sum=34) lockstep at pinned frames. Host mirror
   `tools/check-underroot.py` runs green locally; `nds-underroot-build`
   green pending CI.
+
+## Dispatched slice 2026-07-16 — Underroot slice 5: nurseries + population (append-only)
+
+- updated: 2026-07-16T16:45:59Z (`date -u`); session card
+  `.sessions/2026-07-16-underroot-slice-5.md`, branch
+  `claude/underroot-slice-5`, PR #159 draft-parked stacked on PR #158
+  (`claude/underroot-slice-4`).
+- What: a pure population layer — a third stylus verb (hold L + tap a dug
+  cell) designates it a nursery; connected nurseries convert the granary
+  store into new foragers on a pure bounded schedule
+  `pop = min(connected*UR_NURS_BROOD, store/UR_FOOD_PER_ANT)` capped at
+  `UR_POP_CAP`; disconnected nurseries brood nothing. Host mirror
+  `tools/check-underroot.py` (`prove_nursery()` + ci_fixture pop tuple) runs
+  green locally; the `ur_sim.c` host-`gcc` compile is clean and bit-equal on
+  the fixture (`nursn=2 nurscon=1 pop=2 popfood=4`). 4 new telemetry words
+  (NURSN=24 NURSCON=25 POP=26 POPFOOD=27, WORDS=29); `nds-underroot-build`
+  green pending CI.
+- Landing posture: PR opened DRAFT and left DRAFT at the standing
+  2026-07-16 LANDING WALL; no ready-flip / merge / auto-merge. Land order
+  #153 → #155 → #156 → #157 → #158 → this.

@@ -9,7 +9,8 @@
 #     bash games/wickroad/proofs.sh
 # Artifacts land in $WICKROAD_PROOF_OUT (default /tmp/wickroad-proofs).
 #
-# The nine proofs (asserts inline below):
+# The ten proofs (asserts inline below; P10 is crossroads cut 2, the sprite
+# art pass — appended behind P1-P9, which are UNTOUCHED and carry verbatim):
 #   P1 boot/title            — magics, title state, every title line incl.
 #                              the hook line ("BUT THE INK AGES") and the
 #                              full verb help; witness words zero on title.
@@ -204,6 +205,38 @@
 #                              across the spine. RUN TWICE — byte-identical
 #                              watch-logs. Every value derived on the mirror
 #                              FIRST; the ROM matched on the first probe.
+#
+#   P10 THE ART PASS (crossroads cut 2) — the towns/market/junction get a
+#                              real face: an authored regular_bg baked from
+#                              the SAME sim state (town, price[], cargo[],
+#                              cursor, the fork/junction words) at BACKMOST
+#                              priority, so every glyph still draws on top and
+#                              P1-P9 carry BYTE-IDENTICAL. Presentation-only —
+#                              proven off the hardware exactly like the
+#                              Cindervault art proof (P8): a SECOND mailbox
+#                              wr_art (8 words: 'WART' magic, scene id, town,
+#                              cursor, a checksum fold of the 32x32 baked
+#                              cells, the bg-enable flag, the fork-edge
+#                              mirror, the rebake count) is pinned across a
+#                              walk from the title, through EMBERTON and the
+#                              spine, to the junction DUNWICK and — by the L+R
+#                              chord — the branch WYRMHOLLOW. The checksum
+#                              word is DISTINCT at every scene (title vs each
+#                              town vs the branch), and the fork-edge word
+#                              lights to 7 ONLY at the junction and the branch
+#                              — the art tracks the sim. The art is read
+#                              straight off the machine: DISPCNT 0xF840 (bit
+#                              11 = the road bg enabled on BG3), BG palette
+#                              RAM bank 15 at 0x050001E0 holds 0x08640000 (the
+#                              committed parchment color 0x0864 in BGR555 =
+#                              (36,28,20), a nonzero authored palette), and
+#                              the map's VRAM screenblock at 0x06000800 holds
+#                              0xF001F001 (two bank-15 sky cells baked in).
+#                              RUN TWICE — watch-log byte-identical. The bake
+#                              is deferred off every committed edge frame (it
+#                              runs only once the scene falls calm), so the 56
+#                              sim words and the 27 variable-font text lines
+#                              are untouched — P1-P9 pass verbatim.
 #
 # Mailbox: wr_telemetry[56] since the crossroads cut (layout in
 # games/wickroad/src/main.cpp;
@@ -1065,5 +1098,97 @@ H "$OUT/p9b.png" --frames 100 $W56 $JUNCTION_ROUTE \
   "${JUNCTION_ASSERTS[@]}"
 cmp "$OUT/p9-run1.csv" "$OUT/p9-run2.csv"
 echo "P9 run-twice: byte-identical"
+
+# ---------------------------------------------------------------------------
+# P10 — THE ART PASS (crossroads cut 2, the sprite art pass; presentation
+# ONLY — P1-P9 above carried VERBATIM). The proof reads the authored
+# background back off the hardware, the Cindervault art-proof method:
+#   wr_art (ELF symbol, 8 words): 'WART' magic · scene id (= state) · town ·
+#     cursor · checksum fold of the 32x32 baked cells · bg-enable flag ·
+#     fork-edge mirror (7 while a fork is live here) · rebake count.
+#   0x04000000 DISPCNT: 0xF840 — bit 11 (0x0800) = the road bg (BG3) enabled.
+#   0x050001E0 BG palette RAM (bank 15): 0x08640000 = the committed parchment
+#     color 0x0864 (= (36,28,20) BGR555, wr_palette index 1) over the
+#     transparent index-0 slot — the authored art's own palette, in RAM.
+#   0x06000800 bg map screenblock: 0xF001F001 = two bank-15 sky cells (tile
+#     1) — the baked scene sitting in the map's VRAM.
+# The route walks the title -> EMBERTON -> the spine -> the junction DUNWICK
+# -> (L+R chord) the branch WYRMHOLLOW, with a settle gap after each move so
+# the DEFERRED bake catches up (it never runs on a committed edge frame). The
+# checksum word is pinned DISTINCT at every scene, and the fork-edge word
+# lights ONLY at the junction and the branch — the art provably tracks the
+# sim, without spending one sim-telemetry word.
+# ---------------------------------------------------------------------------
+
+ART_W='--elf games/wickroad/wickroad.elf --watch art:wr_art:8 --watch io:0x04000000:1 --watch bgpal:0x050001E0:1 --watch vmap:0x06000800:1'
+
+# START held to frame 30 so the title scene can be pinned first; then R x4
+# down the spine to the junction (each move followed by a ~18-frame settle),
+# then the L+R chord (both shoulders on frames 140-142) onto the branch.
+ART_ROUTE='--keys 30-32:START --keys 60-62:R --keys 80-82:R --keys 100-102:R --keys 120-122:R --keys 140-142:L --keys 140-142:R'
+
+P10_ART_ASSERTS=(
+  # title (frame 20, before START): the bg is up (enable bit set, palette +
+  # cells in RAM/VRAM), scene id 0, only the boot bake has run (rebakes 1)
+  --assert-watch 20:art:0:eq:0x57415254
+  --assert-watch 20:art:1:eq:0
+  --assert-watch 20:art:2:eq:0
+  --assert-watch 20:art:4:eq:1441315868
+  --assert-watch 20:art:5:eq:1
+  --assert-watch 20:art:6:eq:0
+  --assert-watch 20:art:7:eq:1
+  --assert-watch 20:io:0:eq:0xF840
+  --assert-watch 20:bgpal:0:eq:0x08640000
+  --assert-watch 20:vmap:0:eq:0xF001F001
+  # EMBERTON trading (frame 55): the market scene is baked (rebakes 2), its
+  # checksum DISTINCT from the title's — the art changed with the state
+  --assert-watch 55:art:1:eq:1
+  --assert-watch 55:art:2:eq:0
+  --assert-watch 55:art:4:eq:1310683781
+  --assert-watch 55:art:4:ne:1441315868
+  --assert-watch 55:art:6:eq:0
+  --assert-watch 55:art:7:eq:2
+  # GLASSMERE (frame 75): the next spine town — a distinct skyline, a
+  # distinct checksum, still no fork (word 6 = 0)
+  --assert-watch 75:art:2:eq:1
+  --assert-watch 75:art:4:eq:3181228502
+  --assert-watch 75:art:4:ne:1310683781
+  --assert-watch 75:art:6:eq:0
+  # THE JUNCTION DUNWICK (frame 138, town 4): the fork-edge word lights to 7
+  # — the junction gets its signpost face; checksum distinct again
+  --assert-watch 138:art:2:eq:4
+  --assert-watch 138:art:4:eq:1370743854
+  --assert-watch 138:art:6:eq:7
+  --assert-watch 138:art:7:eq:6
+  # THE BRANCH WYRMHOLLOW (frame 165, town 7): reached by the L+R chord, its
+  # own face (checksum distinct from the junction's), fork-edge still 7, and
+  # the hardware still live — the bg follows the road onto the branch
+  --assert-watch 165:art:1:eq:1
+  --assert-watch 165:art:2:eq:7
+  --assert-watch 165:art:4:eq:353901482
+  --assert-watch 165:art:4:ne:1370743854
+  --assert-watch 165:art:6:eq:7
+  --assert-watch 165:art:7:eq:7
+  --assert-watch 165:io:0:eq:0xF840
+  --assert-watch 165:bgpal:0:eq:0x08640000
+  --assert-watch 165:vmap:0:eq:0xF001F001
+)
+
+echo "== P10: THE ART PASS — the authored bg read off the hardware (run 1) =="
+# (No --require-distinct: the checksum-word `ne` asserts below prove the art
+# changes scene-to-scene far more strongly than a pixel diff — the junction
+# and branch faces settle and hold, so the final frame equals the branch by
+# design.)
+H "$OUT/p10.png" --frames 176 $ART_W $ART_ROUTE \
+  --watch-log "$OUT/p10-run1.csv" \
+  --shot "138:$OUT/p10-junction.png" --shot "165:$OUT/p10-branch.png" \
+  "${P10_ART_ASSERTS[@]}"
+
+echo "== P10: run 2 (must be byte-identical) =="
+H "$OUT/p10b.png" --frames 176 $ART_W $ART_ROUTE \
+  --watch-log "$OUT/p10-run2.csv" \
+  "${P10_ART_ASSERTS[@]}"
+cmp "$OUT/p10-run1.csv" "$OUT/p10-run2.csv"
+echo "P10 run-twice: byte-identical"
 
 echo "ALL WICKROAD PROOFS PASS"

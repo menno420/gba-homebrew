@@ -17,6 +17,18 @@
 > Row-level reconcile 2026-07-16 against the live GitHub PR list at
 > HEAD `d38887c` (post-#151): In-flight row resolved, ledger carried
 > through #151.
+>
+> **Fresh-start reconcile 2026-07-17** (post-#153, main HEAD `2a34653`):
+> the read-path gate is green on main again — the owner (menno420) merged
+> **#153** (the Doc-index reachability fix) on 2026-07-17. The In-flight
+> section below is rewritten to the real open-PR state (four finished game
+> arcs + #154 + #171, all held open by design), and the autonomy / merge
+> apparatus is being **wound down** for the owner-driven relaunch. The
+> ordered landing mission + owner-console checklist live in
+> [`NEXT-TASKS.md`](NEXT-TASKS.md). **Context:** the Claude Code Projects EAP
+> goes **read-only Tue 2026-07-21**; after that the owner **recreates** the
+> projects and drives sessions directly (no self-arming routines; the owner
+> reviews and merges).
 
 ## Stability baseline
 
@@ -59,6 +71,11 @@
 Six GBA ROMs, two NDS ROMs, two browser games, one mobile PWA — all
 original IP. Shipped builds and hashes: [`dist/README.md`](../dist/README.md).
 
+> Game-count note: this table reads **eleven** games at HEAD. Underroot
+> (game **#12**, the marquee) and the four in-flight arcs below are **not yet
+> reflected** — the table is rewritten to twelve once those arcs land (see
+> [`NEXT-TASKS.md`](NEXT-TASKS.md)).
+
 | # | Game | Platform | State at HEAD |
 |---|---|---|---|
 | 1 | **Lumen Drift** (gravity cave drifter) | GBA | v1.3, scope-complete + 3 polish passes (PRs #2–#29; endless cave, graze, pause/mute) |
@@ -80,21 +97,42 @@ complete titles is new-concept material or owner-gated.
 
 ## In flight
 
-- Nothing at HEAD apart from this reconcile slice's own PR (#152): the
-  live open-PR list (fetched 2026-07-16) is otherwise empty.
-  [NEXT-MENU-2026-07-15.md](NEXT-MENU-2026-07-15.md) — the owner
-  decision menu previously listed here as an open slice — **merged as
-  #150** (`588aa4e`, 2026-07-15T21:42:05Z) and now awaits the owner's
-  letter (in-doc recommendation: B1). (The Tiltstone growth stack
-  #92–#97 landed and was packaged by the ORDER 006 repin #134; PR #85
-  was closed unmerged on 2026-07-14, long superseded on main by #109 →
-  the #130 arcade-refresh → #134.)
+**24 PRs are open and DELIBERATELY held open** — finished,
+**ROM-builds-green** content that needs one coordinated
+**rebase-onto-current-`main`** landing pass. Do **not** bulk-merge and do
+**not** merge out of order: the arc children are stacked on their parents.
+The full ordered landing mission + conflict recipe + owner-console checklist
+live in [`NEXT-TASKS.md`](NEXT-TASKS.md). The open set:
+
+- **Underroot** (new game **#12**, the marquee) — arc slices **#155 → #165**
+  (v1.0 at slice 11).
+- **Tiltstone arc 2** — **#166 → #170** (share-a-line replay → solver hints →
+  deception curation → mechanic-fingerprint deltas → monotone difficulty ramp).
+- **Wickroad crossroads arc** — **#172 → #175**.
+- **Brineward bestiary arc** — **#176 → #179**.
+- **#154** — standalone denial-triage docs (two dated classifier-denial
+  entries for the capabilities/walls ledger).
+- **#171** — the overnight veto-menu
+  (`docs/planning/OVERNIGHT-MENU-2026-07-16.md`, 84 proposals; lives only on
+  #171's branch). Owner-curated into a small next set, then closed (see
+  NEXT-TASKS.md).
+
+The **only** required check is the GBA **"ROM builds"** job, green on every
+open PR (NDS builds green too). `substrate-gate` red on these is **by design**
+(born-red session cards + the now-retired auto-merge machinery) and
+**non-blocking** — #152 merged with it red. The real merge blockers are draft
+state + stacked bases, not the gate.
 
 ## Recently shipped (newest first)
 
 Arc summaries with their PR trails; per-slice narrative lives in the
 PR bodies and `.sessions/` cards.
 
+- **Read-path gate fix** (2026-07-17, PR #153): a "Doc index" section in this
+  ledger relinked the 5 docs orphaned when #151 condensed
+  `control/status.md`, turning `python3 bootstrap.py check --strict` green on
+  main again. Owner-merged 2026-07-17 (docs-only). #152 (`478bf16`) carried
+  the ledger through #151 just before it.
 - **Ops + decision-surface day** (2026-07-15 → 16, PRs #142–#151):
   Wickroad growth cuts 1–5 #142–#146 (v0.6 — table row 11) and the
   current-state reconcile #147 (`0048a5d`), then: merge-automation
@@ -147,7 +185,12 @@ PR bodies and `.sessions/` cards.
 
 ## Review rhythm
 
-Review is post-merge (conventions rule 3): merge on green, add a row to docs/review-queue.md and/or mention Codex on the PR; veto = revert. Nothing waits for pre-merge review
+Review was post-merge during the EAP autonomy epoch (merge on green, add a row
+to [`review-queue.md`](review-queue.md), veto = revert). **For the owner-driven
+relaunch this is wound down:** the owner reviews and merges PRs directly
+(server-side, in the GitHub UI); agents open plain, mergeable PRs and stop. See
+the rewritten merge doctrine in [`conventions.md`](conventions.md) and
+[`PLATFORM-LIMITS.md`](PLATFORM-LIMITS.md).
 
 ## Doc index
 
@@ -156,6 +199,16 @@ Read-path anchors for docs whose only inbound links previously lived in
 this ledger is a reachability root (`substrate.config.json`
 `readpath_docs`), so these rows keep them on the read path:
 
+- [NEXT-TASKS.md](NEXT-TASKS.md) — the fresh-start landing mission (land the
+  four finished game arcs, in order) + the owner-console checklist (Pages
+  go-live, branch-protection required checks, #171 menu curation) + the
+  autonomy wind-down context.
+- [Next-menu (2026-07-15)](NEXT-MENU-2026-07-15.md) — the prior 7-option owner
+  decision menu (merged as #150, in-doc rec B1); superseded by the #171
+  overnight menu but kept on the read path.
+- [Routines & wake-chain doctrine](ROUTINES.md) — **DEPRECATED** EAP-era
+  autonomy machinery (self-arming wake chains / failsafe cron); retired for
+  the owner-driven relaunch, kept for history.
 - [EAP close-out walkthrough (2026-07-14)](eap-closeout-walkthrough-2026-07-14.md)
   — what the seat did during the EAP, owner-actions checklist, handoff notes
   (landed per ORDER 006, PR #133 `2cbeb7b`).

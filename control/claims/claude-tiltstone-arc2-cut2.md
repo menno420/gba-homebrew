@@ -1,0 +1,1 @@
+- `claude/tiltstone-arc2-cut2` · **Tiltstone arc 2, cut 2 — «Hints from the solver»** — pure `hintFrom`/`hintedGrade` in engine.js (opt-in, spend-gated next-rotation hint re-solved from the current board), shell Hint button + hint counter, §15 smoke proof · games/web-tiltstone/{engine.js,app.js,index.html,smoke.mjs}, docs/arcs/TILTSTONE.md · 2026-07-16

@@ -31,15 +31,24 @@
   repo settings/rulesets** — no API surface for the agent → **owner clicks**
   in the claude.ai / GitHub UI. Queue click-level under ⚑ needs-owner.
 - **Direct self-merge of own PRs in established repos** — blocked by the
-  classifier (**"[Self-Approval]…Merge Without Review"**). **Arming auto-merge
-  while checks are pending is the sanctioned path** — the wall blocks the
-  direct merge call, not the arm (fleet playbook R12). On a born-red or no-CI
-  repo, arming is structurally impossible — **REST merge-on-green is PRIMARY**
-  there (fleet playbook R21).
-- **GraphQL quota exhausts at fleet scale (~hourly)** — REST merge-on-green is
-  the fallback; ready-flips (draft→ready) are GraphQL-only, so wait for quota
-  reset for those. (Fleet playbook R8.) Moot here if you never draft — see
-  [`conventions.md`](conventions.md): READY, never draft.
+  classifier (**"[Self-Approval]…Merge Without Review"**).
+  **SUPERSEDED 2026-07-16 — the whole agent-landing path is now walled.** The
+  mid-2026-07-16 classifier change ALSO denies the workarounds that used to
+  route around this wall: **arming auto-merge, flipping draft→ready, and PR
+  writes on coordinator-relayed authorization** all now trip the guard
+  (observed across the 2026-07-16 overnight run; dated denial entries in
+  [`capabilities.md`](capabilities.md), #154's denial-triage, and #180's
+  body). So the earlier guidance — "arming auto-merge while checks are pending
+  is the sanctioned path" and "REST merge-on-green is PRIMARY" — **no longer
+  works; do not attempt it.** Landing path now: **the owner reviews and merges
+  server-side in the GitHub UI** (the owner-driven relaunch; Projects EAP
+  read-only 2026-07-21). Agents open a plain, mergeable, ROM-builds-green PR
+  and stop. `enable-auto-merge` is observed `skipped` on every recent PR.
+- **GraphQL quota exhausts at fleet scale (~hourly)** — a historical fleet
+  note (fleet playbook R8) from the auto-merge epoch; **moot now** that agents
+  no longer arm auto-merge or ready-flip their own PRs (see the superseded
+  self-merge wall above and [`conventions.md`](conventions.md) — the owner
+  reviews and merges).
 - **Auto-merge can fire BEFORE the `nds-rom-build` job completes** — this
   repo's required-check set is the GBA **"ROM builds"** job only, so an armed
   auto-merge merges the moment that job goes green (surfaced during the

@@ -148,3 +148,21 @@ PR bodies and `.sessions/` cards.
 ## Review rhythm
 
 Review is post-merge (conventions rule 3): merge on green, add a row to docs/review-queue.md and/or mention Codex on the PR; veto = revert. Nothing waits for pre-merge review
+
+## Doc index
+
+Read-path anchors for docs whose only inbound links previously lived in
+`control/status.md` and were dropped by the #151 condensing (`d38887c`);
+this ledger is a reachability root (`substrate.config.json`
+`readpath_docs`), so these rows keep them on the read path:
+
+- [EAP close-out walkthrough (2026-07-14)](eap-closeout-walkthrough-2026-07-14.md)
+  — what the seat did during the EAP, owner-actions checklist, handoff notes
+  (landed per ORDER 006, PR #133 `2cbeb7b`).
+- [Session-1 game concepts](concepts/session-1-concepts.md) — the original
+  ORDER-001 three-concept menu.
+- [Gloamline concept](concepts/gloamline-concept.md) — the owner-picked NDS
+  horde-defense concept page (arc PRs #50–#75).
+- [Retro questions ledger](retro/QUESTIONS.md) — open/answered questions log.
+- [Archive-ready retro (2026-07-11)](retro/archive-ready-2026-07-11.md) —
+  Lumen Drift arc archive-readiness review.

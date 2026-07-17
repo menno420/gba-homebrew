@@ -56,6 +56,23 @@ kit: v1.17.0
   ACKNOWLEDGED (first rebooted dispatch)" landed in control/status.md
   at `df55299` (#142, 2026-07-15); no re-ack needed here.
 
+## Dispatched slice 2026-07-16 — gate-red orphan fix (append-only)
+
+- updated: 2026-07-16T01:31:56Z (`date -u`); session card
+  `.sessions/2026-07-16-gate-orphan-fix.md`, branch
+  `claude/gate-orphan-fix` (DRAFT PR for owner review).
+- What: `python3 bootstrap.py check --strict` was red on main since
+  #151 (`d38887c`) — condensing this file dropped the only links into
+  docs/eap-closeout-walkthrough-2026-07-14.md and
+  docs/concepts/session-1-concepts.md, transitively orphaning 3 more
+  docs (5 `[reachable]` findings; the check passed at `588aa4e`).
+  Fix: a "Doc index" section in docs/current-state.md (a
+  `readpath_docs` reachability root per substrate.config.json) linking
+  the 5 docs — this file was NOT rewritten. Also retired the served
+  claim control/claims/claude-current-state-rows.md (its work merged
+  as #152, `478bf16`, 2026-07-16T01:20:02Z). Docs-only; no dist/, no
+  workflows, no routines, no merge automation touched.
+
 ## Dispatched slice 2026-07-16 — denial-triage ledger append (append-only)
 
 - updated: 2026-07-16T09:31:28Z (`date -u`); session card

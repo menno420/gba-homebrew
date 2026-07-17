@@ -1,0 +1,1 @@
+- `claude/tiltstone-arc2-cut1` · **Tiltstone arc 2, cut 1 — «Share your line»** — pure share encode/decode + spectate playback in engine.js, shell spectate mode + Share button, arc-2 plan doc · games/web-tiltstone/{engine.js,app.js,index.html,smoke.mjs,CONCEPT.md}, docs/arcs/TILTSTONE.md · 2026-07-16

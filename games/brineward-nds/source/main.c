@@ -163,8 +163,14 @@
 #define BW_T_SAVEWR 47  // ledger writes to the backup this power-on
 #define BW_T_SAVEVER 48 // save format version (build-flag visibility)
 #define BW_T_SPARE0 49  // reserved, always 0
+// bestiary cut 1 (extension; words 0-49 stay pinned)
+#define BW_T_GRASPSTATE 50 // Grasper state, BW_GRASPER_* (0 down/1 reach/2 hold)
+#define BW_T_GRASPX 51  // Grasper x, 8.8 fixed (meaningful while not down)
+#define BW_T_GRASPY 52  // Grasper y
+#define BW_T_GRASPHULL 53 // Grasper hull, 0..BW_GRASPER_HULL (0 = slain)
+#define BW_T_GRASPW 54  // 1 = this water holds a Grasper (not a Maw)
 
-volatile uint32_t bw_telemetry[50];
+volatile uint32_t bw_telemetry[56];
 
 enum
 {
@@ -611,6 +617,12 @@ static void draw_salvage_hud(const BwDuel *d, const Score *sc)
     else if (d->maw.state != BW_MAW_DOWN)
         printf("\x1b[1;1HTHE MAW %3d  FIRE OR FLY\x1b[K",
                (int)d->maw.hull);
+    else if (d->grasper.state == BW_GRASPER_HOLD)
+        printf("\x1b[1;1HHELD FAST!  RAKE THE ARMS %3d\x1b[K",
+               (int)d->grasper.hull);
+    else if (d->grasper.state != BW_GRASPER_DOWN)
+        printf("\x1b[1;1HTHE GRASPER %3d  KEEP CLEAR\x1b[K",
+               (int)d->grasper.hull);
     else
         printf("\x1b[1;1HSALVAGE hold %d/%d %3dg >PIER\x1b[K",
                (int)d->hold, BW_HOLD_CAP, (int)d->hold_gold);
@@ -743,6 +755,13 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
                (int)d->maw.hull);
     else if (d->maw.slain)
         printf("\x1b[21;1Hthe maw is dead planking\x1b[K");
+    else if (d->grasper.state == BW_GRASPER_HOLD)
+        printf("\x1b[21;1HTHE ARMS HAVE YOU  hull %3d\x1b[K",
+               (int)d->grasper.hull);
+    else if (d->grasper.state != BW_GRASPER_DOWN)
+        printf("\x1b[21;1Harms reach from the deep\x1b[K");
+    else if (d->grasper.slain)
+        printf("\x1b[21;1Hthe grasper drifts, still\x1b[K");
     else
         printf("\x1b[21;1H\x1b[K");
 }
@@ -754,6 +773,7 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
 #define OAM_LOOT0 (OAM_BALL0 + BW_MAX_BALLS)
 #define OAM_MAW (OAM_LOOT0 + BW_MAX_LOOT)
 #define OAM_REEF0 (OAM_MAW + 1)
+#define OAM_GRASPER (OAM_REEF0 + BW_MAX_REEFS)
 
 static void draw_ships_and_balls(const BwDuel *d,
                                  u16 *player_gfx, u16 *enemy_gfx,
@@ -828,6 +848,16 @@ static void draw_ships_and_balls(const BwDuel *d,
                reef_gfx, -1, false,
                !(r->live && water_live), false, false, false);
     }
+    // The Grasper (bestiary cut 1): the risen arms while it reaches or
+    // holds. A grasper water shows this INSTEAD of the Maw (never both),
+    // so it reuses the Maw's risen 32x32 gfx — a big dark shape breaking
+    // the swell. REGULAR sprite (the affine no-hide-bit trap does not
+    // apply — plain hide works, the session-20 rule).
+    bool grasper_shown = water_live && d->grasper.state != BW_GRASPER_DOWN;
+    oamSet(&oamMain, OAM_GRASPER,
+           d->grasper.x / BW_ONE - 16, d->grasper.y / BW_ONE - 16,
+           2, 0, SpriteSize_32x32, SpriteColorFormat_16Color,
+           maw_risen_gfx, -1, false, !grasper_shown, false, false, false);
 }
 
 // Begin a duel: latch the frame-counter seed, reset the sim, and re-inject
@@ -1367,6 +1397,11 @@ int main(void)
         bw_telemetry[BW_T_SAVEWR] = save_writes;
         bw_telemetry[BW_T_SAVEVER] = BW_SAVE_VERSION;
         bw_telemetry[BW_T_SPARE0] = 0;
+        bw_telemetry[BW_T_GRASPSTATE] = (uint32_t)duel.grasper.state;
+        bw_telemetry[BW_T_GRASPX] = (uint32_t)duel.grasper.x;
+        bw_telemetry[BW_T_GRASPY] = (uint32_t)duel.grasper.y;
+        bw_telemetry[BW_T_GRASPHULL] = (uint32_t)duel.grasper.hull;
+        bw_telemetry[BW_T_GRASPW] = (uint32_t)duel.grasper_water;
     }
 
     return 0;

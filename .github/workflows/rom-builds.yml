@@ -1306,6 +1306,15 @@ jobs:
       # scrape latch frame-exact (player-only; groundings can sink),
       # band duels converge both ways (band-2 tier-0 losses flip to
       # wins with cannons II), and the band-2 rock water stays
+      # contained under adversarial input — PLUS the bestiary cut-1
+      # Grasper rails: the pin-carry rule (every committed anchor and
+      # host-checked salvage seed is a Maw water, so every route/pin is
+      # bit-identical), the seize-and-hold contract frame-exact (bide ->
+      # reach -> SEIZE for exactly one grab-bite -> PIN the sloop still
+      # for the whole hold -> release), the escapability rail (full sail
+      # outruns the reach, a battle-sail scooper does not), pier
+      # sanctuary (a berthed sloop is never seized), the arms slain by a
+      # rake break up richer and stay down, and the grasper water stays
       # contained under adversarial input.
       - name: Brineward host proof (bw_sim mirror)
         run: python3 tools/check-brine.py
@@ -1337,6 +1346,10 @@ jobs:
           diff /tmp/bands/bands-bank-keys.txt games/brineward-nds/proof/bands-bank-keys.txt
           diff /tmp/bands/bands-reef-deep-keys.txt games/brineward-nds/proof/bands-reef-deep-keys.txt
           diff /tmp/bands/bands-reef-keys.txt games/brineward-nds/proof/bands-reef-keys.txt
+          mkdir -p /tmp/grasper
+          python3 games/brineward-nds/tools/record-grasper.py --outdir /tmp/grasper
+          diff /tmp/grasper/grasper-duel-keys.txt games/brineward-nds/proof/grasper-duel-keys.txt
+          diff /tmp/grasper/grasper-seize-keys.txt games/brineward-nds/proof/grasper-seize-keys.txt
       - name: make /opt/wonderful runner-writable
         run: sudo mkdir -p /opt/wonderful && sudo chown "$(id -u):$(id -g)" /opt/wonderful
       - name: cache NDS toolchain (BlocksDS 1.21.1 + Wonderful GCC pins)
@@ -2509,6 +2522,39 @@ jobs:
             --assert-watch 250:t:18:eq:0 \
             --assert-watch 250:t:47:eq:0 \
             --assert-watch 250:t:2:ge:200
+      # Proof 23 — the Grasper (bestiary cut 1): the committed grasper
+      # route (games/brineward-nds/proof/grasper-*-keys.txt, seed 174 —
+      # a GRASPER water, t:54 == 1) plays the recorded duel win, then the
+      # victor LINGERS over the wreck (pure idle: no salvage input) and
+      # the arms rise, reach, and SEIZE her — the frame-exact seize/hold
+      # contract is proven for whole input families in check-brine.py
+      # (check_grasper_holds); this ROM pin confirms the ROM surfaces it.
+      # Additive at the ROM level too: the Grasper stays DOWN (t:50 == 0)
+      # all through the duel phase (t:3 == 1). Every frame below is the
+      # recorder's step<->frame map (step j at frame j+seed+3), the same
+      # calibrated convention as proof 2; the mirror predicts the pins and
+      # the ROM build is byte-deterministic, so drift == regression.
+      - name: 'proof 23 — the Grasper seizes and holds (bestiary cut 1)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-grasper.png \
+            --frames 1100 \
+            $(cat games/brineward-nds/proof/grasper-duel-keys.txt) \
+            --shot 970:bw-grasper-held.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:56 \
+            --assert-watch 190:t:0:eq:0x4252494E \
+            --assert-watch 190:t:13:eq:174 \
+            --assert-watch 190:t:54:eq:1 \
+            --assert-watch 250:t:3:eq:1 \
+            --assert-watch 250:t:50:eq:0 \
+            --assert-watch 970:t:3:eq:3 \
+            --assert-watch 970:t:50:eq:2 \
+            --assert-watch 970:t:7:eq:53 \
+            --assert-watch 1020:t:50:eq:2 \
+            --assert-watch 1020:t:7:eq:53 \
+            --assert-watch 1080:t:50:eq:0 \
+            --assert-watch 1080:t:53:eq:90
       - name: upload Brineward ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:

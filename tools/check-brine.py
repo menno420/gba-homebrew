@@ -186,6 +186,26 @@ BW_MAW_LOOT_DROPS = 3
 BW_MAW_LOOT_VALUE = 15
 BW_MAW_DOWN, BW_MAW_SHADOW, BW_MAW_SURFACE, BW_MAW_LUNGE = 0, 1, 2, 3
 
+# the Grasper (bestiary cut 1) — the SECOND sea monster: reach -> seize
+# -> HOLD (pins the sloop still). Salvage water only; a water holds a
+# Grasper OR the Maw, never both, bucketed off the seed. BW_GRASPER_SALT
+# is pinned so every committed anchor and host-checked salvage seed is a
+# NON-grasper (Maw) water — check_grasper_pincarry asserts it loudly.
+BW_GRASPER_SALT = 0x10000042
+BW_GRASPER_BUCKET = 15
+BW_GRASPER_PATIENCE = 480
+BW_GRASPER_RESTIR = 240
+BW_GRASPER_REACH_FRAMES = 150
+BW_GRASPER_REACH_SPEED = 120
+BW_GRASPER_GRAB_RANGE = 12 * BW_ONE
+BW_GRASPER_HOLD_FRAMES = 90
+BW_GRASPER_GRAB_BITE = 20
+BW_GRASPER_HULL = 90
+BW_GRASPER_HIT_RANGE = 14 * BW_ONE
+BW_GRASPER_HARBOR = 40 * BW_ONE
+BW_GRASPER_LOOT_DROPS = 3
+BW_GRASPER_DOWN, BW_GRASPER_REACH, BW_GRASPER_HOLD = 0, 1, 2
+
 # danger bands + reefs (slice 7) — band tables whose band-0 row is the
 # legacy constants (check_band_tables asserts the identities: the
 # pin-carry rule, this slice's edition), plus the reef hazard laid at
@@ -343,6 +363,13 @@ class Maw:
                  'stirs', 'slain', 'bit')
 
 
+class Grasper:
+    """Mirror of BwGrasper (bestiary cut 1)."""
+
+    __slots__ = ('x', 'y', 'gx', 'gy', 'state', 'hull', 'timer', 'wake',
+                 'stirs', 'slain')
+
+
 class Reef:
     """Mirror of BwReef."""
 
@@ -355,10 +382,10 @@ class Reef:
 class Duel:
     """Mirror of BwDuel."""
 
-    __slots__ = ('player', 'enemy', 'balls', 'loot', 'maw', 'reefs',
-                 'hold', 'hold_gold', 'up_hull', 'up_cannon', 'up_sail',
-                 'wind_level', 'wind_base', 'band', 'groundings',
-                 'frame', 'over')
+    __slots__ = ('player', 'enemy', 'balls', 'loot', 'maw', 'grasper',
+                 'reefs', 'hold', 'hold_gold', 'up_hull', 'up_cannon',
+                 'up_sail', 'wind_level', 'wind_base', 'band',
+                 'grasper_water', 'groundings', 'frame', 'over')
 
     def __init__(self):
         self.player = Ship()
@@ -366,6 +393,7 @@ class Duel:
         self.balls = [Ball() for _ in range(BW_MAX_BALLS)]
         self.loot = [Loot() for _ in range(BW_MAX_LOOT)]
         self.maw = Maw()
+        self.grasper = Grasper()
         self.reefs = [Reef() for _ in range(BW_MAX_REEFS)]
 
 
@@ -471,6 +499,25 @@ def bw_balls_step(d):
                 d.maw.state = BW_MAW_DOWN
                 bw_loot_spawn_at(d, d.maw.x, d.maw.y,
                                  BW_MAW_LOOT_DROPS,
+                                 BW_BAND_MAW_VALUE_OF[d.band])
+            ball.live = 0
+            continue
+        # bestiary cut 1: a player ball wounds the Grasper while its arms
+        # are up (reach/hold) — guarded on grasper_water, so in a Maw
+        # water and every duel it never runs (bit-identical)
+        if (ball.owner == 0
+                and d.grasper_water
+                and d.grasper.state in (BW_GRASPER_REACH, BW_GRASPER_HOLD)
+                and bw_chebyshev(ball.x, ball.y,
+                                 d.grasper.x, d.grasper.y)
+                < BW_GRASPER_HIT_RANGE):
+            d.grasper.hull -= dmg
+            if d.grasper.hull <= 0:
+                d.grasper.hull = 0
+                d.grasper.slain = 1
+                d.grasper.state = BW_GRASPER_DOWN
+                bw_loot_spawn_at(d, d.grasper.x, d.grasper.y,
+                                 BW_GRASPER_LOOT_DROPS,
                                  BW_BAND_MAW_VALUE_OF[d.band])
             ball.live = 0
             continue
@@ -581,10 +628,16 @@ def bw_maw_sound(m, frame):
     m.wake = frame + BW_MAW_RESTIR
 
 
+def bw_has_grasper(seed):
+    """Mirror of bw_has_grasper() — 1 in a grasper water, else 0."""
+    return 1 if (bw_hash(seed & U32, BW_GRASPER_SALT)
+                 & BW_GRASPER_BUCKET) == 0 else 0
+
+
 def bw_maw_step(d):
     """Mirror of bw_maw_step() — salvage water only."""
     m = d.maw
-    if m.slain:
+    if m.slain or d.grasper_water:       # a grasper water has no Maw (cut 1)
         return
 
     if m.state == BW_MAW_DOWN:
@@ -661,6 +714,75 @@ def bw_maw_step(d):
             bw_maw_sound(m, d.frame)         # it got its bite
         elif m.timer >= BW_MAW_LUNGE_FRAMES:
             bw_maw_sound(m, d.frame)         # missed: stalk again
+
+
+def bw_grasper_sound(g, frame):
+    """Mirror of bw_grasper_sound()."""
+    g.state = BW_GRASPER_DOWN
+    g.timer = 0
+    g.wake = frame + BW_GRASPER_RESTIR
+
+
+def bw_grasper_step(d):
+    """Mirror of bw_grasper_step() — salvage water only; a no-op in a
+    Maw water (grasper_water == 0), so committed routes are bit-exact."""
+    if not d.grasper_water:
+        return
+    g = d.grasper
+    if g.slain:
+        return
+
+    if g.state == BW_GRASPER_DOWN:
+        if d.frame >= g.wake:
+            g.state = BW_GRASPER_REACH
+            g.timer = 0
+            g.stirs += 1
+            g.x = d.enemy.x
+            g.y = d.enemy.y
+            if bw_chebyshev(g.x, g.y,
+                            BW_PIER_X, BW_PIER_Y) < BW_GRASPER_HARBOR:
+                g.y = BW_PIER_Y - BW_GRASPER_HARBOR
+
+    elif g.state == BW_GRASPER_REACH:
+        g.timer += 1
+        g.x = _clamp(g.x + _clamp(d.player.x - g.x,
+                                  -BW_GRASPER_REACH_SPEED,
+                                  BW_GRASPER_REACH_SPEED),
+                     BW_SEA_X_MIN, BW_SEA_X_MAX)
+        g.y = _clamp(g.y + _clamp(d.player.y - g.y,
+                                  -BW_GRASPER_REACH_SPEED,
+                                  BW_GRASPER_REACH_SPEED),
+                     BW_SEA_Y_MIN, BW_SEA_Y_MAX)
+        if g.timer >= BW_GRASPER_REACH_FRAMES:
+            # sanctuary: never seize a berthed player, never reach in
+            if (bw_chebyshev(d.player.x, d.player.y,
+                             BW_PIER_X, BW_PIER_Y) < BW_GRASPER_HARBOR
+                    or bw_chebyshev(g.x, g.y,
+                                    BW_PIER_X, BW_PIER_Y)
+                    < BW_GRASPER_HARBOR):
+                bw_grasper_sound(g, d.frame)
+            elif bw_chebyshev(g.x, g.y, d.player.x, d.player.y) \
+                    < BW_GRASPER_GRAB_RANGE:
+                # SEIZE: pin the sloop where it lies, one seize's hull
+                g.state = BW_GRASPER_HOLD
+                g.timer = 0
+                g.gx = d.player.x
+                g.gy = d.player.y
+                d.player.hull -= BW_GRASPER_GRAB_BITE
+                if d.player.hull < 0:
+                    d.player.hull = 0
+            else:
+                bw_grasper_sound(g, d.frame)   # closed on empty water
+
+    elif g.state == BW_GRASPER_HOLD:
+        g.timer += 1
+        d.player.x = g.gx                # held still: no way, no helm
+        d.player.y = g.gy
+        d.player.speed = 0
+        g.x = g.gx
+        g.y = g.gy
+        if g.timer >= BW_GRASPER_HOLD_FRAMES:
+            bw_grasper_sound(g, d.frame)       # the arms slip: released
 
 
 def bw_up_hull_max(tier):
@@ -962,6 +1084,18 @@ def bw_duel_init(d, seed):
     m.stirs = 0
     m.slain = 0
     m.bit = 0
+    # bestiary cut 1: this seed's deep holds a Grasper OR the Maw. In a
+    # Maw water grasper_water is 0 and the Grasper is a pure no-op, so
+    # every committed route/pin is bit-identical.
+    d.grasper_water = bw_has_grasper(seed)
+    g = d.grasper
+    g.x = g.y = g.gx = g.gy = 0
+    g.state = BW_GRASPER_DOWN
+    g.hull = BW_GRASPER_HULL
+    g.timer = 0
+    g.wake = 0
+    g.stirs = 0
+    g.slain = 0
     for r in d.reefs:                    # slice 7: the band-0 water is
         r.x = r.y = 0                    #   open sea — no rocks; deeper
         r.live = 0                       #   waters lay theirs in
@@ -1032,8 +1166,13 @@ def bw_duel_step(d, inputs):
     elif d.enemy.hull <= 0:
         d.over = BW_DUEL_ENEMY_SUNK
         bw_loot_spawn(d)                 # the wreck breaks up into flotsam
-        d.maw.wake = d.frame + BW_MAW_PATIENCE   # the blood is in the
-        # water: the Maw's clock starts
+        # the blood is in the water: a grasper water arms the arms, a Maw
+        # water arms the Maw (never both). In a Maw water this is the
+        # legacy line exactly (bit-identical).
+        if d.grasper_water:
+            d.grasper.wake = d.frame + BW_GRASPER_PATIENCE
+        else:
+            d.maw.wake = d.frame + BW_MAW_PATIENCE
 
     d.frame += 1
 
@@ -1047,9 +1186,13 @@ def bw_salvage_step(d, inputs):
                  bw_wind_heading(d), bw_wind_push(d))
     bw_reefs_step(d)                     # slice 7: rocks scrape salvage
     bw_maw_step(d)                       # slice 5: the water is not empty
+    bw_grasper_step(d)                   # bestiary cut 1: the OTHER terror
+    #   (a no-op in a Maw water)
 
-    # the batteries WAKE while the Maw is up; cold on quiet water
-    if d.maw.state != BW_MAW_DOWN:
+    # the batteries WAKE while a monster is up; cold on quiet water. In a
+    # Maw water grasper_water is 0, so this is the legacy condition.
+    if (d.maw.state != BW_MAW_DOWN
+            or (d.grasper_water and d.grasper.state != BW_GRASPER_DOWN)):
         if inputs.fire_l and d.player.reload_l == 0:
             bw_fire(d, d.player, 0, -1)
             d.player.reload_l = BW_UP_RELOAD_OF[d.up_cannon]
@@ -1901,6 +2044,239 @@ def check_maw_slain():
           f'{worst_frames}; a slain Maw never stirs again')
 
 
+# --- the Grasper (bestiary cut 1) -----------------------------------------------
+# committed anchors + every host-checked salvage seed + every recorder
+# scan prefix through its winner: ALL must stay Maw waters, so every
+# slice-2..9 route and pin carries bit-identical (the pin-carry rule).
+BW_GRASPER_PINCARRY_SEEDS = (
+    tuple(range(0, 16))                  # salvage/maw/band/wind/upgraded checks
+    + tuple(range(116, 162))             # every recorder scan prefix -> winner
+    + (0x5A1, 0xBEA7, 0x6A1E, 0xC0FFEE, 7, 11, 118, 126, 127, 161)
+)
+
+
+def _grasper_seeds(n):
+    """The first n grasper waters — proof that bw_has_grasper is a real
+    f(seed) with grasper waters to find."""
+    out = []
+    for s in range(4096):
+        if bw_has_grasper(s):
+            out.append(s)
+            if len(out) >= n:
+                break
+    return out
+
+
+def check_grasper_pincarry():
+    # The pin-carry rule (the wind/band/Maw sibling): BW_GRASPER_SALT is
+    # pinned so every committed anchor and every host-checked salvage
+    # seed is a NON-grasper (Maw) water — bit-identity of every route
+    # and pin rides on it.
+    for seed in BW_GRASPER_PINCARRY_SEEDS:
+        assert bw_has_grasper(seed) == 0, seed
+        d = Duel()
+        bw_duel_init(d, seed & U32)
+        assert d.grasper_water == 0, seed
+    # a Maw water runs the Grasper as a pure no-op: through a whole
+    # salvage the arms never leave DOWN and touch nothing
+    d = _win_state(0)
+    for _ in range(2000):
+        bw_salvage_step(d, Inputs())
+    assert d.grasper.state == BW_GRASPER_DOWN and d.grasper.stirs == 0
+    # escapability rails (the Maw-shadow sibling), asserted in the mirror:
+    # full sail outruns the reach even on its worst (diagonal) axis; a
+    # battle-sail scooper does not
+    full_diag = BW_SPEED_OF[BW_TRIM_FULL] * 181 >> 8
+    assert BW_SPEED_OF[BW_TRIM_FULL] > BW_GRASPER_REACH_SPEED
+    assert full_diag > BW_GRASPER_REACH_SPEED
+    assert BW_SPEED_OF[BW_TRIM_BATTLE] < BW_GRASPER_REACH_SPEED
+    gwaters = sum(bw_has_grasper(s) for s in range(4096))
+    print(f'grasper pin-carry: all {len(BW_GRASPER_PINCARRY_SEEDS)} committed/'
+          f'checked salvage seeds are Maw waters (0 graspers), a Maw water '
+          f'runs the Grasper as a pure no-op, full sail (even diagonal '
+          f'{full_diag}) outruns the reach ({BW_GRASPER_REACH_SPEED}) and a '
+          f'battle-sail scooper ({BW_SPEED_OF[BW_TRIM_BATTLE]}) does not; '
+          f'{gwaters}/4096 waters hold a Grasper')
+
+
+def check_grasper_holds():
+    # The seize-and-hold contract, frame-exact, in real grasper waters:
+    # the arms bide BW_GRASPER_PATIENCE quiet frames from the sink, rise
+    # at the wreck, home BW_GRASPER_REACH_FRAMES, then SEIZE the sloop for
+    # exactly BW_GRASPER_GRAB_BITE hull and PIN it STILL (position frozen,
+    # no way) for exactly BW_GRASPER_HOLD_FRAMES, then release and reach
+    # again BW_GRASPER_RESTIR later. Manufactured salvage states (the
+    # containment/hold-cap probe idiom): the arms rise at a fixed open-
+    # water wreck with the idle sloop a few px off, so the reach closes.
+    seeds = _grasper_seeds(6)
+    for seed in seeds:
+        d = Duel()
+        bw_duel_init(d, seed)
+        assert d.grasper_water == 1 and d.band == 0, seed
+        d.over = BW_DUEL_ENEMY_SUNK
+        d.enemy.x, d.enemy.y = 128 * BW_ONE, 90 * BW_ONE
+        d.player.x, d.player.y = 128 * BW_ONE, 96 * BW_ONE
+        d.player.hull = BW_HULL_MAX
+        d.player.speed = 0
+        base = 1000
+        d.frame = base
+        d.grasper.wake = base + BW_GRASPER_PATIENCE
+        idle = Inputs()
+        # bide: DOWN until the wake frame
+        while d.frame < d.grasper.wake:
+            assert d.grasper.state == BW_GRASPER_DOWN, (seed, d.frame)
+            bw_salvage_step(d, idle)
+        assert d.grasper.state == BW_GRASPER_DOWN, seed
+        bw_salvage_step(d, idle)                  # the step at frame == wake stirs
+        assert d.grasper.state == BW_GRASPER_REACH and d.grasper.stirs == 1, seed
+        reach_start = d.frame
+        # REACH for exactly BW_GRASPER_REACH_FRAMES, arms held in the sea
+        while d.grasper.state == BW_GRASPER_REACH:
+            assert BW_SEA_X_MIN <= d.grasper.x <= BW_SEA_X_MAX, seed
+            assert BW_SEA_Y_MIN <= d.grasper.y <= BW_SEA_Y_MAX, seed
+            bw_salvage_step(d, idle)
+        assert d.frame - reach_start == BW_GRASPER_REACH_FRAMES, \
+            (seed, d.frame - reach_start)
+        # SEIZE: HOLD, exactly one grab-bite, latch == the sloop
+        assert d.grasper.state == BW_GRASPER_HOLD, seed
+        assert d.player.hull == BW_HULL_MAX - BW_GRASPER_GRAB_BITE, \
+            (seed, d.player.hull)
+        gx, gy = d.grasper.gx, d.grasper.gy
+        assert (gx, gy) == (d.player.x, d.player.y), seed
+        held_hull = d.player.hull
+        hold_start = d.frame
+        # HOLD: pinned STILL at the latch for exactly BW_GRASPER_HOLD_FRAMES,
+        # no way, no further hull loss
+        while d.grasper.state == BW_GRASPER_HOLD:
+            assert d.player.x == gx and d.player.y == gy, (seed, d.frame)
+            assert d.player.hull == held_hull, seed
+            bw_salvage_step(d, idle)
+        assert d.frame - hold_start == BW_GRASPER_HOLD_FRAMES, \
+            (seed, d.frame - hold_start)
+        # RELEASE: down, reaching again RESTIR later, stirs held, not slain
+        assert d.grasper.state == BW_GRASPER_DOWN, seed
+        assert d.grasper.slain == 0 and d.grasper.stirs == 1, seed
+        assert d.grasper.wake == (d.frame - 1) + BW_GRASPER_RESTIR, \
+            (seed, d.grasper.wake, d.frame)
+    print(f'the Grasper holds: {len(seeds)} grasper waters — the arms bide '
+          f'{BW_GRASPER_PATIENCE} frames from the sink, reach '
+          f'{BW_GRASPER_REACH_FRAMES}, then SEIZE for exactly '
+          f'{BW_GRASPER_GRAB_BITE} hull and PIN the sloop still (position '
+          f'frozen) for exactly {BW_GRASPER_HOLD_FRAMES} frames, then '
+          f'release and reach again {BW_GRASPER_RESTIR} later')
+
+
+def check_grasper_sanctuary():
+    # A berthed sloop is never seized: the arms never seize a player
+    # inside the pier harbor ring, and the pier still banks mid-prowl
+    # (the Maw-sanctuary sibling). The per-frame reberth caps the idle
+    # sloop's drift at ~1 px, so she stays squarely in the sanctuary.
+    d = Duel()
+    bw_duel_init(d, _grasper_seeds(1)[0])
+    assert d.grasper_water == 1
+    d.over = BW_DUEL_ENEMY_SUNK
+    d.enemy.x, d.enemy.y = 128 * BW_ONE, 150 * BW_ONE     # wreck near the pier
+    d.grasper.wake = d.frame
+    idle = Inputs()
+    banked_any = 0
+    frames = BW_GRASPER_PATIENCE + 5 * (BW_GRASPER_REACH_FRAMES
+                                        + BW_GRASPER_RESTIR)
+    for _ in range(frames):
+        d.player.x, d.player.y = BW_PIER_X, BW_PIER_Y     # keep her berthed
+        d.player.hull = BW_HULL_MAX
+        bw_salvage_step(d, idle)
+        assert d.grasper.state != BW_GRASPER_HOLD         # never seized at berth
+        assert d.player.hull == BW_HULL_MAX               # never a scratch
+        d.hold, d.hold_gold = 2, 30
+        banked_any += bw_dock_step(d)
+    assert banked_any > 0
+    print(f'grasper sanctuary: a berthed sloop is never seized across '
+          f'{d.grasper.stirs} prowls (the arms never close inside the '
+          f'{BW_GRASPER_HARBOR // BW_ONE} px harbor ring), and the pier '
+          f'still banks mid-prowl')
+
+
+def check_grasper_slain():
+    # The arms are woundable while up: a beam rake on the risen Grasper
+    # slays it, it breaks up into exactly BW_GRASPER_LOOT_DROPS crates of
+    # richer monster gold, the seize releases, and a slain Grasper never
+    # reaches again. (Balls injected onto the arms — the damage-proof
+    # idiom; the aiming is the recorder's job, not this invariant's.)
+    d = Duel()
+    bw_duel_init(d, _grasper_seeds(1)[0])
+    assert d.grasper_water == 1
+    d.over = BW_DUEL_ENEMY_SUNK
+    d.enemy.x, d.enemy.y = 128 * BW_ONE, 90 * BW_ONE
+    d.player.x, d.player.y = 60 * BW_ONE, 90 * BW_ONE     # far: not seized
+    d.player.hull = BW_HULL_MAX
+    d.grasper.wake = d.frame
+    bw_salvage_step(d, Inputs())                          # -> REACH
+    assert d.grasper.state == BW_GRASPER_REACH
+    hits = 0
+    while not d.grasper.slain and hits < 8:
+        for b in d.balls:                                 # a rake on the arms
+            if not b.live:
+                b.x, b.y = d.grasper.x, d.grasper.y
+                b.vx = b.vy = 0
+                b.age = 0
+                b.owner = 0
+                b.live = 1
+                break
+        bw_salvage_step(d, Inputs())
+        hits += 1
+    assert d.grasper.slain == 1 and d.grasper.hull == 0
+    assert d.grasper.state == BW_GRASPER_DOWN
+    crates = [c for c in d.loot if c.live]
+    assert len(crates) == BW_GRASPER_LOOT_DROPS
+    assert all(c.value == BW_BAND_MAW_VALUE_OF[0] for c in crates)
+    stirs = d.grasper.stirs
+    for _ in range(BW_GRASPER_PATIENCE + BW_GRASPER_RESTIR + 100):
+        bw_salvage_step(d, Inputs())
+    assert d.grasper.stirs == stirs and d.grasper.state == BW_GRASPER_DOWN
+    print(f'the Grasper slain: a beam rake on the risen arms slays it in '
+          f'{hits} hits, it sheds {BW_GRASPER_LOOT_DROPS} crates of '
+          f'{BW_BAND_MAW_VALUE_OF[0]}g monster salvage and lets go, and a '
+          f'slain Grasper never reaches again')
+
+
+def check_grasper_containment():
+    # Adversarial salvage frames in a grasper water keep the arms, the
+    # sloop and every crate in the sea, the hulls bounded, and a slain
+    # Grasper down for good (the salvage-containment sibling).
+    d = Duel()
+    bw_duel_init(d, _grasper_seeds(1)[0])
+    assert d.grasper_water == 1
+    d.over = BW_DUEL_ENEMY_SUNK
+    d.grasper.wake = d.frame
+    frames = 8000
+    for f in range(frames):
+        h = bw_hash(0x6A5, f)
+        inp = Inputs(turn=(h & 3) - 1 if (h & 3) < 3 else 0,
+                     trim_delta=((h >> 2) & 3) - 1 if ((h >> 2) & 3) < 3
+                     else 0,
+                     fire_l=(h >> 4) & 1, fire_r=(h >> 5) & 1)
+        d.over = BW_DUEL_ENEMY_SUNK           # adversarial: keep salvage live
+        bw_salvage_step(d, inp)
+        g = d.grasper
+        assert BW_SEA_X_MIN <= g.x <= BW_SEA_X_MAX, f
+        assert BW_SEA_Y_MIN <= g.y <= BW_SEA_Y_MAX, f
+        assert BW_SEA_X_MIN <= d.player.x <= BW_SEA_X_MAX, f
+        assert BW_SEA_Y_MIN <= d.player.y <= BW_SEA_Y_MAX, f
+        assert 0 <= d.player.hull <= BW_HULL_MAX, f
+        assert 0 <= g.hull <= BW_GRASPER_HULL, f
+        assert g.state in (BW_GRASPER_DOWN, BW_GRASPER_REACH,
+                           BW_GRASPER_HOLD), f
+        for c in d.loot:
+            if c.live:
+                assert BW_SEA_X_MIN <= c.x <= BW_SEA_X_MAX, f
+                assert BW_SEA_Y_MIN <= c.y <= BW_SEA_Y_MAX, f
+        if g.slain:
+            assert g.state == BW_GRASPER_DOWN, f
+    print(f'grasper containment: {frames} adversarial salvage frames in a '
+          f'grasper water — the arms, the sloop and every crate stay in '
+          f'the sea, hulls stay bounded, a slain Grasper stays down')
+
+
 def check_wind_tables():
     # Calm identity (the pin-carry rule): the calm push is zero and the
     # wind term vanishes at EVERY point of sail and trim, so a calm
@@ -2720,6 +3096,11 @@ def main():
     check_maw_stalks()
     check_maw_sanctuary()
     check_maw_slain()
+    check_grasper_pincarry()
+    check_grasper_holds()
+    check_grasper_sanctuary()
+    check_grasper_slain()
+    check_grasper_containment()
     check_wind_tables()
     check_wind_pointofsail()
     check_wind_duels()

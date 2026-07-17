@@ -358,6 +358,57 @@
 // harmless by construction (the page data commits on chip-deselect).
 #define BW_SAVE_POLL_BOUND 4096u
 
+// --- the Grasper (arc B3 «bestiary» cut 1 — the SECOND sea monster) --------------
+// The concept doc promised a monster CLASS and shipped one member (the
+// Maw); the Grasper is the second — "arms that grapple and hold you
+// still while cutters close in" (docs/concepts/brineward-concept.md
+// § Core loop). Cut 1 builds the Grasper ITSELF: the grapple-and-HOLD
+// verb. (The reserved-B ram/brace break-free verb is cut 2; the cutters
+// closing on a held ship are cut 3; the hold-cap economy is cut 4 — see
+// games/brineward-nds/ARC-BESTIARY.md.)
+//
+// It is the Maw's sibling in the salvage water, with the OPPOSITE
+// break-the-geometry gimmick: where the Maw is a telegraphed one-shot
+// LUNGE you dodge, the Grasper REACHES up out of the deep and, if the
+// arms close on you, SEIZES the sloop and PINS it still — momentum,
+// helm and way all dead — for a fixed hold, taking one seize's worth of
+// hull. In cut 1 there is no break-free verb: the lesson is spatial,
+// exactly the Maw's — keep sea room off the reaching arms (a full-sail
+// beam clears the reach; a battle-sail scooper does not). While the
+// arms are up the salvage batteries wake and a rake can wound it; slay
+// it and it breaks up richer, like any monster (and the seize releases).
+//
+// THE GATE (the pin-carry rule, the Maw/wind/band sibling): a water
+// holds a Grasper OR a Maw, never both — bw_has_grasper(seed) buckets
+// the seed, and BW_GRASPER_SALT is pinned so EVERY committed anchor and
+// every host-checked salvage seed is a NON-grasper (Maw) water. In a
+// non-grasper water bw_grasper_step is a pure no-op and bw_maw_step is
+// unchanged, so every slice-2..9 recorded route and emulator pin is
+// bit-identical and carries verbatim (check-brine.py asserts the
+// no-grasper identity loudly). The Grasper lives only in the salvage
+// water: bw_duel_init resets it and bw_duel_step never steps it, so
+// every duel-phase route and pin is bit-identical too.
+#define BW_GRASPER_SALT 0x10000042u      // grasper-water bucket = f(seed); pinned
+                                         //   so every committed seed is a Maw water
+#define BW_GRASPER_BUCKET 15             // has-grasper when hash & BUCKET == 0 (~1/16)
+#define BW_GRASPER_PATIENCE 480          // quiet salvage frames before the arms stir
+#define BW_GRASPER_RESTIR 240            // frames until the arms reach again
+#define BW_GRASPER_REACH_FRAMES 150      // telegraph: the arms rise and home this long
+#define BW_GRASPER_REACH_SPEED 120       // units/frame — full sail (224, even on the
+                                         //   diagonal 158) outruns the reach; a
+                                         //   battle-sail scooper (96) does not
+#define BW_GRASPER_GRAB_RANGE (12 * BW_ONE)  // arms<->hull chebyshev at the seize test
+#define BW_GRASPER_HOLD_FRAMES 90        // frames the seized sloop is pinned still
+#define BW_GRASPER_GRAB_BITE 20          // hull the seize costs, ONCE
+#define BW_GRASPER_HULL 90               // ~ a rake and a half of the tier-0 battery
+#define BW_GRASPER_HIT_RANGE (14 * BW_ONE)   // a big, sprawling target (ball chebyshev)
+#define BW_GRASPER_HARBOR (40 * BW_ONE)  // pier sanctuary radius (chebyshev)
+#define BW_GRASPER_LOOT_DROPS 3          // crates the slain arms shed (monster-rich value)
+// Grasper lifecycle states
+#define BW_GRASPER_DOWN 0                // beneath the water, biding
+#define BW_GRASPER_REACH 1               // the telegraph: arms up, homing (vulnerable)
+#define BW_GRASPER_HOLD 2                // it has you: the sloop is pinned still (vulnerable)
+
 // --- state -----------------------------------------------------------------------
 typedef struct
 {
@@ -400,6 +451,18 @@ typedef struct
 
 typedef struct
 {
+    int32_t x, y;                        // 8.8 fixed (the reaching arms' point)
+    int32_t gx, gy;                      // latched hold point while it has you
+    int32_t state;                       // BW_GRASPER_*
+    int32_t hull;                        // 0..BW_GRASPER_HULL
+    int32_t timer;                       // frames in the current state
+    uint32_t wake;                       // d->frame at which the next reach fires
+    int32_t stirs;                       // times the arms have risen this water
+    int32_t slain;                       // 1: dead — never reaches again
+} BwGrasper;
+
+typedef struct
+{
     int32_t x, y;                        // 8.8 fixed, rock center (slice 7)
     int32_t live;
     int32_t scraped;                     // this contact already took its toll
@@ -412,6 +475,9 @@ typedef struct
     BwBall balls[BW_MAX_BALLS];
     BwLoot loot[BW_MAX_LOOT];            // flotsam afloat (slice 3)
     BwMaw maw;                           // the salvage-water stalker (slice 5)
+    BwGrasper grasper;                   // the OTHER salvage-water terror (bestiary
+                                         //   cut 1) — a grasper water has this OR
+                                         //   the Maw, never both
     BwReef reefs[BW_MAX_REEFS];          // this water's rocks (slice 7)
     int32_t hold;                        // crates aboard, 0..BW_HOLD_CAP
     int32_t hold_gold;                   // unbanked gold those crates are worth
@@ -421,6 +487,8 @@ typedef struct
     int32_t wind_level;                  // this water's weather, BW_WIND_*
     int32_t wind_base;                   //   (slice 6; both pure f(seed))
     int32_t band;                        // this water's danger band, 0..2
+    int32_t grasper_water;               // 1: this seed's deep holds a Grasper,
+                                         //   not a Maw (bestiary cut 1; f(seed))
     int32_t groundings;                  //   (slice 7) reef scrapes this water
     uint32_t frame;                      // duel frames stepped so far
     int32_t over;                        // BW_DUEL_*
@@ -469,6 +537,11 @@ void bw_duel_init(BwDuel *d, uint32_t seed);
 // gale), and the water's reefs laid at pure f(seed) positions.
 void bw_water_init(BwDuel *d, uint32_t seed, int32_t band);
 
+// Does this seed's deep hold a Grasper (bestiary cut 1)? Pure f(seed):
+// 1 in a grasper water, 0 in a Maw water. Pinned so every committed
+// anchor and host-checked salvage seed is 0 (the pin-carry rule).
+int32_t bw_has_grasper(uint32_t seed);
+
 // The rum-runner of a band: hull and battery reload (band 0 = the
 // slice-2 sloop; main.c scales the ledger bar off the hull).
 int32_t bw_band_enemy_hull(int32_t band);
@@ -488,10 +561,10 @@ void bw_duel_step(BwDuel *d, const BwInputs *in);
 // lingering balls fly out (a late rake can still strike — sinking during
 // salvage flips d->over to BW_DUEL_PLAYER_SUNK), the Maw stalks (slice
 // 5: shadow telegraph -> surface -> lunge; a bite or a lingering rake
-// can drag the salvage down), crates are scooped. Batteries stay cold
-// while the water is quiet — they WAKE while the Maw is up (fire_l/
-// fire_r reach the guns only in BW_MAW_SURFACE / BW_MAW_LUNGE /
-// BW_MAW_SHADOW states; no fire verb without a foe).
+// can drag the salvage down), crates are scooped. In a grasper water
+// (bestiary cut 1) the Grasper reaches instead of the Maw and can SEIZE
+// and pin the sloop. Batteries stay cold while the water is quiet —
+// they WAKE while a monster is up (no fire verb without a foe).
 void bw_salvage_step(BwDuel *d, const BwInputs *in);
 
 // Pier pass, run once per live-water frame by the caller: if the player

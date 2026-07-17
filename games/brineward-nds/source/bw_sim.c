@@ -111,6 +111,14 @@ static const int32_t BW_BAND_MAW_VALUE_OF[BW_BANDS] = {
 };
 static const int32_t BW_BAND_REEF_OF[BW_BANDS] = { 0, 3, 5 };
 
+// bestiary cut 1: a water's deep holds a Grasper OR the Maw (never both),
+// bucketed off the seed. BW_GRASPER_SALT is pinned so every committed
+// anchor and host-checked salvage seed buckets to a Maw water (0).
+int32_t bw_has_grasper(uint32_t seed)
+{
+    return (bw_hash(seed, BW_GRASPER_SALT) & BW_GRASPER_BUCKET) == 0 ? 1 : 0;
+}
+
 int32_t bw_band_enemy_hull(int32_t band)
 {
     return BW_BAND_EHULL_OF[band];
@@ -266,6 +274,31 @@ static void bw_balls_step(BwDuel *d)
                 d->maw.state = BW_MAW_DOWN;
                 bw_loot_spawn_at(d, d->maw.x, d->maw.y,
                                  BW_MAW_LOOT_DROPS,
+                                 BW_BAND_MAW_VALUE_OF[d->band]);
+            }
+            ball->live = 0;
+            continue;
+        }
+        // bestiary cut 1: a player ball can wound the Grasper while its
+        // arms are up (reach/hold). Guarded on grasper_water, so in a
+        // Maw water and in every duel this branch never runs — duel and
+        // Maw-water dynamics are bit-identical (routes and pins carry).
+        if (ball->owner == 0
+            && d->grasper_water
+            && (d->grasper.state == BW_GRASPER_REACH
+                || d->grasper.state == BW_GRASPER_HOLD)
+            && bw_chebyshev(ball->x, ball->y, d->grasper.x, d->grasper.y)
+                   < BW_GRASPER_HIT_RANGE)
+        {
+            d->grasper.hull -= dmg;
+            if (d->grasper.hull <= 0)
+            {
+                // Slain: the arms let go and break up richer than a wreck.
+                d->grasper.hull = 0;
+                d->grasper.slain = 1;
+                d->grasper.state = BW_GRASPER_DOWN;
+                bw_loot_spawn_at(d, d->grasper.x, d->grasper.y,
+                                 BW_GRASPER_LOOT_DROPS,
                                  BW_BAND_MAW_VALUE_OF[d->band]);
             }
             ball->live = 0;
@@ -443,8 +476,8 @@ static void bw_maw_sound(BwMaw *m, uint32_t frame)
 static void bw_maw_step(BwDuel *d)
 {
     BwMaw *m = &d->maw;
-    if (m->slain)
-        return;
+    if (m->slain || d->grasper_water)    // a grasper water has no Maw (cut 1);
+        return;                          //   0 in every committed/checked seed
 
     switch (m->state)
     {
@@ -560,6 +593,111 @@ static void bw_maw_step(BwDuel *d)
         }
         else if (m->timer >= BW_MAW_LUNGE_FRAMES)
             bw_maw_sound(m, d->frame);   // missed: sound and stalk again
+        break;
+    }
+}
+
+// --- the Grasper (bestiary cut 1) -----------------------------------------------
+
+static void bw_grasper_sound(BwGrasper *g, uint32_t frame)
+{
+    // The arms slip back beneath the swell; they reach again later.
+    g->state = BW_GRASPER_DOWN;
+    g->timer = 0;
+    g->wake = frame + BW_GRASPER_RESTIR;
+}
+
+// One Grasper frame, salvage water only (bw_duel_step never calls this,
+// and it is a pure no-op in a Maw water — so every committed route and
+// pin is bit-identical). The break-the-geometry SIBLING of the Maw: it
+// REACHES up at the wreck, homes under the player through a fixed
+// telegraph, and — if the arms close inside BW_GRASPER_GRAB_RANGE (and
+// not in the pier sanctuary) — SEIZES the sloop, taking BW_GRASPER_GRAB_
+// BITE hull once and PINNING it still for BW_GRASPER_HOLD_FRAMES (no
+// way, no helm, no momentum), then the arms slip and it reaches again.
+// A full-sail beam clears the reach; a battle-sail scooper cannot.
+static void bw_grasper_step(BwDuel *d)
+{
+    if (!d->grasper_water)               // a Maw water has no Grasper — the
+        return;                          //   pin-carry no-op (0 in every seed
+    BwGrasper *g = &d->grasper;          //   any committed route/check touches)
+    if (g->slain)
+        return;
+
+    switch (g->state)
+    {
+    case BW_GRASPER_DOWN:
+        if (d->frame >= g->wake)
+        {
+            // The stir: the arms rise at the wreck's blood (pure
+            // f(wreck position), same rationale as the Maw and the
+            // crate ring). The pier is sanctuary — a wreck inside the
+            // harbor pushes the rise north of it.
+            g->state = BW_GRASPER_REACH;
+            g->timer = 0;
+            g->stirs++;
+            g->x = d->enemy.x;
+            g->y = d->enemy.y;
+            if (bw_chebyshev(g->x, g->y, BW_PIER_X, BW_PIER_Y)
+                    < BW_GRASPER_HARBOR)
+                g->y = BW_PIER_Y - BW_GRASPER_HARBOR;
+        }
+        break;
+
+    case BW_GRASPER_REACH:
+        // The telegraph: the arms home under the player, one clamped
+        // step per axis (chebyshev homing, the lane's metric), held
+        // inside the sea — slower than full sail, so sea room escapes it.
+        g->timer++;
+        g->x = clamp32(g->x + clamp32(d->player.x - g->x,
+                                      -BW_GRASPER_REACH_SPEED,
+                                      BW_GRASPER_REACH_SPEED),
+                       BW_SEA_X_MIN, BW_SEA_X_MAX);
+        g->y = clamp32(g->y + clamp32(d->player.y - g->y,
+                                      -BW_GRASPER_REACH_SPEED,
+                                      BW_GRASPER_REACH_SPEED),
+                       BW_SEA_Y_MIN, BW_SEA_Y_MAX);
+        if (g->timer >= BW_GRASPER_REACH_FRAMES)
+        {
+            // Sanctuary: never seize a berthed player, and the arms
+            // never reach into the harbor ring — the port is reachable.
+            if (bw_chebyshev(d->player.x, d->player.y,
+                             BW_PIER_X, BW_PIER_Y) < BW_GRASPER_HARBOR
+                || bw_chebyshev(g->x, g->y,
+                                BW_PIER_X, BW_PIER_Y) < BW_GRASPER_HARBOR)
+                bw_grasper_sound(g, d->frame);
+            else if (bw_chebyshev(g->x, g->y, d->player.x, d->player.y)
+                         < BW_GRASPER_GRAB_RANGE)
+            {
+                // SEIZE: the arms close. Latch the hold point where the
+                // sloop lies, take one seize's hull, and pin it still.
+                g->state = BW_GRASPER_HOLD;
+                g->timer = 0;
+                g->gx = d->player.x;
+                g->gy = d->player.y;
+                d->player.hull -= BW_GRASPER_GRAB_BITE;
+                if (d->player.hull < 0)
+                    d->player.hull = 0;
+            }
+            else
+                bw_grasper_sound(g, d->frame);   // closed on empty water
+        }
+        break;
+
+    case BW_GRASPER_HOLD:
+        // Held still: the sloop makes no way while the arms hold it —
+        // momentum, helm and position all dead at the latched point.
+        // (Cut 2's ram/brace B verb will let you break free early; cut
+        // 3's cutters will make the pin lethal. Cut 1's escape is
+        // spatial: don't be there when the arms close.)
+        g->timer++;
+        d->player.x = g->gx;
+        d->player.y = g->gy;
+        d->player.speed = 0;
+        g->x = g->gx;
+        g->y = g->gy;
+        if (g->timer >= BW_GRASPER_HOLD_FRAMES)
+            bw_grasper_sound(g, d->frame);       // the arms slip: released
         break;
     }
 }
@@ -688,6 +826,21 @@ void bw_duel_init(BwDuel *d, uint32_t seed)
     d->maw.stirs = 0;
     d->maw.slain = 0;
     d->maw.bit = 0;
+    // bestiary cut 1: this seed's deep holds a Grasper OR the Maw. In a
+    // Maw water grasper_water is 0 and the Grasper is a pure no-op, so
+    // every committed route and pin is bit-identical. The arms bide
+    // down; their clock arms on the SINK frame (the wreck's blood).
+    d->grasper_water = bw_has_grasper(seed);
+    d->grasper.x = 0;
+    d->grasper.y = 0;
+    d->grasper.gx = 0;
+    d->grasper.gy = 0;
+    d->grasper.state = BW_GRASPER_DOWN;
+    d->grasper.hull = BW_GRASPER_HULL;
+    d->grasper.timer = 0;
+    d->grasper.wake = 0;
+    d->grasper.stirs = 0;
+    d->grasper.slain = 0;
     for (int32_t i = 0; i < BW_MAX_REEFS; i++)
     {
         d->reefs[i].x = 0;               // slice 7: the band-0 water is
@@ -778,8 +931,14 @@ void bw_duel_step(BwDuel *d, const BwInputs *in)
     {
         d->over = BW_DUEL_ENEMY_SUNK;
         bw_loot_spawn(d);                // the wreck breaks up into flotsam
-        d->maw.wake = d->frame + BW_MAW_PATIENCE;  // the blood is in the
-    }                                    // water: the Maw's clock starts
+        // the blood is in the water: the deep's clock starts — a grasper
+        // water arms the arms, a Maw water arms the Maw (never both). In
+        // a Maw water this is the legacy line exactly (bit-identical).
+        if (d->grasper_water)
+            d->grasper.wake = d->frame + BW_GRASPER_PATIENCE;
+        else
+            d->maw.wake = d->frame + BW_MAW_PATIENCE;
+    }
 
     d->frame++;
 }
@@ -793,12 +952,16 @@ void bw_salvage_step(BwDuel *d, const BwInputs *in)
                  bw_wind_heading(d), bw_wind_push(d));
     bw_reefs_step(d);                    // slice 7: rocks scrape salvage
     bw_maw_step(d);                      // slice 5: the water is not empty
+    bw_grasper_step(d);                  // bestiary cut 1: the OTHER terror
+                                         //   (a no-op in a Maw water)
 
-    // The batteries WAKE while the Maw is up (any awake state — firing
+    // The batteries WAKE while a monster is up (any awake state — firing
     // at a mere shadow wastes the rake over its back, which is the
     // player's lesson to learn); they stay cold on quiet water, so
-    // every slice-3/4 story (Maw dormant throughout) is untouched.
-    if (d->maw.state != BW_MAW_DOWN)
+    // every slice-3/4 story (Maw dormant throughout) is untouched. In a
+    // Maw water grasper_water is 0, so the condition is the legacy one.
+    if (d->maw.state != BW_MAW_DOWN
+        || (d->grasper_water && d->grasper.state != BW_GRASPER_DOWN))
     {
         if (in->fire_l && d->player.reload_l == 0)
         {

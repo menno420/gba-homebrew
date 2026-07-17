@@ -1,0 +1,1 @@
+- `claude/2026-07-17-overnight-hygiene` · **coordinator overnight hygiene wrap** — honest heartbeat: verify #153–#179 at live GitHub, refresh control/status.md coordinator section · control/status.md, .sessions/, control/claims/ · 2026-07-17

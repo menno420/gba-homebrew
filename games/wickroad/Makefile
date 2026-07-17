@@ -3,15 +3,18 @@
 # Game-specific identity only; all build glue is shared:
 # games/common/butano-game.mak.
 #
-# Text-only presentation (Butano common sprite fonts over a candlelit
-# backdrop): no local graphics or include dirs, so both paths are pinned to
-# the shared Butano common assets explicitly.
+# Presentation (crossroads cut 2, the sprite art pass): local graphics/ holds
+# the original procedurally-generated tile/palette BMPs (see
+# graphics/generate_assets.py) for the authored regular_bg baked from sim
+# state; headers/title/end text still uses Butano's common variable 8x8
+# sprite font (the one tools/headless-screenshot.py --assert-text can read),
+# so the shared common graphics dir stays on the path too.
 #---------------------------------------------------------------------------------------------------------------------
 ROMTITLE    	:=  WICKROAD
 ROMCODE     	:=  GLWR
 AUDIO       	:=  audio
 INCLUDES    	:=  ../../third_party/butano/common/include
-GRAPHICS    	:=  ../../third_party/butano/common/graphics
+GRAPHICS    	:=  graphics ../../third_party/butano/common/graphics
 
 # Growth cut 2 measured fact: with the pact line on screen, a dawn
 # redraw's regeneration peak (old line sprites not yet released + the

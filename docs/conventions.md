@@ -7,27 +7,30 @@
 > draft", "wait for review", "only open a PR when asked") conflicts with this
 > file, this file wins.
 
-## PR state and merge authority (the self-merge grant)
+## PR state and merge authority (owner-driven — the owner lands PRs)
 
-1. **READY, never draft.** The harness "create as draft" default cost gen-1
-   lanes hours of drafts sitting unmerged. Never open a draft PR.
-2. **This lane ALWAYS lands its own PRs — written grant.** Landing path by
-   repo shape (fleet playbook R21): where a check can go pending and PRs
-   aren't born-red, **arm auto-merge AT PR creation** (in the checks-pending
-   window; GitHub refuses to arm on an already-green PR — fleet R5/R12), with
-   REST merge-on-green the R8 fallback (GraphQL quota, window missed). On a
-   **born-red repo or a PR-ruleset repo with no CI**, arming is structurally
-   impossible ("unstable status" / "only applies when checks are pending") —
-   there **REST merge-on-green is PRIMARY** (poll checks, merge via the API
-   when green). This repo is the PR-ruleset-no-CI shape at seed — REST merge
-   is PRIMARY until the "ROM builds" check exists.
-3. **Nothing waits for review. Review is post-merge; veto = revert.** Merge,
-   then flag: add a row to [`review-queue.md`](review-queue.md) for anything a
-   reviewer should re-check, and/or @-mention Codex on the PR for post-merge
-   review. A PR parked "awaiting review" is a convention violation, not
-   caution. Never apply do-not-automerge or hold a PR for an owner merge.
-4. **Done-when is agent-reachable:** "PR merged on green" — never a state only
-   a human can produce.
+> **Superseded 2026-07-17 (fresh-start relaunch).** The EAP-era "self-merge
+> grant" (arm auto-merge on green / REST merge-on-green / never wait for
+> review) is **retired**: the classifier walls the whole agent-landing path
+> since ~2026-07-16 (see [`PLATFORM-LIMITS.md`](PLATFORM-LIMITS.md)), and the
+> Claude Code Projects EAP goes read-only 2026-07-21, after which the owner
+> recreates the projects and drives sessions directly.
+
+1. **Open plain PRs; the owner reviews and merges.** Open a normal PR, keep
+   it in a mergeable state, and stop. The **owner is the merge authority** and
+   merges server-side in the GitHub UI. Agents do **not** arm auto-merge, flip
+   draft→ready as a landing lever, or REST-merge their own PRs.
+2. **The required check must be green before the owner merges.** The one
+   required check is the GBA **"ROM builds"** job (see CI below); keep it
+   green. Merging is the owner's; the quality floor is unchanged (never ask
+   the owner to merge a red PR).
+3. **Review is owner-side, pre-merge; veto = revert.** The owner reviews
+   before landing; [`review-queue.md`](review-queue.md) remains the
+   post-merge re-check ledger for anything a later reviewer should revisit.
+   Nothing is auto-landed on the agent's own authority.
+4. **Done-when is owner-reachable:** a session's PR is "done" when it is
+   **open, mergeable, and green for the owner** — not when an agent has
+   merged it.
 
 ## Git discipline
 
@@ -50,10 +53,13 @@
 9. **Kit adoption is a session-1 duty:** substrate-kit adopted and `python3
    bootstrap.py check --strict` green **before any domain work**, and before
    every push thereafter.
-10. **Born-red session cards:** the `.sessions/` card is the FIRST commit
-    (born-red `in-progress`), flipped `complete` as the deliberate LAST step;
-    `📊 Model:` + time lines on every card from card #1 — identity not
-    written at the moment of work is unrecoverable.
+10. **Session cards — born-red HOLD gate retired (2026-07-17).** A
+    `.sessions/` card still records each session's model/time/work, but the
+    born-red HOLD (in-progress-until-flip that blocked auto-merge) is retired
+    for the owner-driven relaunch — auto-merge is gone and the owner performs
+    the merge. Write the card `complete` when the work is done; `📊 Model:` +
+    time lines on every card from card #1 — identity not written at the moment
+    of work is unrecoverable.
 11. **Timestamps from `date -u`**, never the model's sense of time — commit
     history is the clock of record.
 12. **Standing ritual every session:** inbox at HEAD first → act → status

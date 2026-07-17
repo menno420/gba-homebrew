@@ -37,6 +37,15 @@
  *      provably winnable by its own solver line, entries are sorted
  *      hardest-first, and the pinned pars show the packs are genuinely
  *      harder than the baseline caverns
+ *  14. shareable line (arc 2, cut 1): encodeShare/decodeShare round-trip
+ *      (level=0 omitted, non-zero level carried), line validation +
+ *      normalization (junk/glyphs stripped, 64 cap, illegal line throws on
+ *      encode / degrades on decode), decodeShare across all three input
+ *      shapes + null on junk, and the load-bearing proof — spectate()
+ *      reconstructs the sharer's OWN run byte-identically to a live replay
+ *      (every step's trace grid == the authoritative grid) across the
+ *      seed-42 line and the 12-seed sweep, freezes at a terminal win, and a
+ *      share carries only seed+line (the solver's line stays hidden)
  *
  * Exits nonzero on any failed assertion; prints one PASS/FAIL line each.
  */
@@ -540,6 +549,178 @@ check("daily seed is a pure date mapping", E.dailySeed("2026-07-13") === 2026071
   check("packById: resolves both shipped ids, unknown -> null",
     E.packById("granite-gauntlet") === E.PACKS[0] && E.packById("deep-cuts") === E.PACKS[1] &&
     E.packById("nope") === null);
+}
+
+// ----------------------------------- 14. shareable line (arc 2, cut 1)
+{
+  // encode/decode round-trip on a real cleared line (the seed-42 solver line)
+  const shareA = { seed: SEED, levelIndex: 0, line: g0.level.solution };
+  const encA = E.encodeShare(shareA);
+  const decA = E.decodeShare(encA);
+  check("encodeShare: canonical fragment, level=0 omitted",
+    encA === `seed=${SEED}&replay=${g0.level.solution}`, encA);
+  check("decodeShare(encodeShare(x)) round-trips seed/level/line",
+    decA && decA.seed === (SEED >>> 0) && decA.levelIndex === 0 && decA.line === g0.level.solution,
+    JSON.stringify(decA));
+
+  // level > 0 is carried; encode/decode round-trips it too
+  const encB = E.encodeShare({ seed: 7, levelIndex: 4, line: "LRRL" });
+  const decB = E.decodeShare(encB);
+  check("encodeShare/decodeShare carry a non-zero level",
+    encB === "seed=7&level=4&replay=LRRL" &&
+    decB.seed === 7 && decB.levelIndex === 4 && decB.line === "LRRL", encB);
+
+  // isReplayLine + normalizeLine: legal core kept, junk/glyphs stripped, cap held
+  check("isReplayLine: accepts LR-only, rejects junk / over-cap / non-strings",
+    E.isReplayLine("") && E.isReplayLine("LRRL") &&
+    !E.isReplayLine("LxR") && !E.isReplayLine("lr") &&
+    !E.isReplayLine("L".repeat(65)) && !E.isReplayLine(42) && !E.isReplayLine(null));
+  check("normalizeLine: uppercases, drops non-L/R, caps at 64",
+    E.normalizeLine("l r→R l") === "LRRL" &&
+    E.normalizeLine("♞RR♞L") === "RRL" &&
+    E.normalizeLine("R".repeat(100)).length === 64);
+  check("encodeShare throws on an illegal line (never silently corrupts a share)",
+    (() => { try { E.encodeShare({ seed: 1, line: "LXR" }); return false; } catch (e) { return true; } })());
+
+  // decodeShare accepts all three input shapes and returns null on junk
+  const fromParams = E.decodeShare(new URLSearchParams("seed=99&replay=RR&level=2"));
+  const fromBag = E.decodeShare({ seed: 99, level: 2, replay: "RR" });
+  const fromLead = E.decodeShare("?seed=99&level=2&replay=RR");
+  check("decodeShare: URLSearchParams, plain bag, and ?-led string all agree",
+    JSON.stringify(fromParams) === JSON.stringify(fromBag) &&
+    JSON.stringify(fromBag) === JSON.stringify(fromLead) &&
+    fromParams.seed === 99 && fromParams.levelIndex === 2 && fromParams.line === "RR",
+    JSON.stringify(fromParams));
+  check("decodeShare: null when seed or replay is missing, or on a malformed escape",
+    E.decodeShare("seed=5") === null && E.decodeShare("replay=RR") === null &&
+    E.decodeShare("") === null && E.decodeShare(123) === null &&
+    E.decodeShare("seed=%zz&replay=RR") === null);
+  check("decodeShare: a URL-junk replay degrades to its legal core, not a throw",
+    E.decodeShare("seed=1&replay=Rx-L").line === "RL");
+
+  // the load-bearing proof: spectate() reconstructs the sharer's OWN run
+  // byte-identically to a live replay, and every step's trace grid matches the
+  // authoritative post-rotation grid
+  const spec = E.spectate(SEED, 0, g0.level.solution);
+  const live = E.replay(E.newGame(SEED, 0), g0.level.solution);
+  const gridsAgree = spec.steps.every(s => E.gridString(s.trace.grid) === E.gridString(s.state.grid));
+  check("spectate: final state == live replay, every step trace grid == authoritative grid",
+    E.gridString(spec.final.grid) === E.gridString(live.grid) &&
+    spec.final.status === live.status && spec.final.collected === live.collected &&
+    spec.final.status === "won" && spec.clean && gridsAgree && spec.consumed === g0.level.solution.length,
+    `status=${spec.final.status} consumed=${spec.consumed}/${g0.level.solution.length}`);
+
+  // a won cavern freezes: extra rotations past the win are ignored (consumed
+  // stops at the winning line's length, not the padded line's)
+  const padded = g0.level.solution + "LRLR";
+  const specPad = E.spectate(SEED, 0, padded);
+  check("spectate: stops at terminal — trailing rotations after a win are ignored",
+    specPad.consumed === g0.level.solution.length &&
+    E.gridString(specPad.final.grid) === E.gridString(spec.final.grid));
+
+  // determinism + the OWN-line-only guarantee across the 12-seed sweep: every
+  // seed's solver line spectates identically to a live replay, and no share
+  // function ever emits the solver's hidden line for you
+  let sweepOk = 0;
+  for (let s = SEED; s < SEED + 12; s++) {
+    const lvl = E.newGame(s, 0).level;
+    const sp = E.spectate(s, 0, lvl.solution);
+    const lv = E.replay(E.newGame(s, 0), lvl.solution);
+    const enc = E.encodeShare({ seed: s, levelIndex: 0, line: lvl.solution });
+    // the encoded share contains ONLY what the sharer chose to send (seed +
+    // their line) — decoding it never reveals more than went in
+    const dec = E.decodeShare(enc);
+    if (E.gridString(sp.final.grid) === E.gridString(lv.grid) &&
+        sp.final.status === "won" && dec.line === lvl.solution &&
+        !enc.includes("solution")) sweepOk++;
+  }
+  check("spectate == live replay across the 12-seed sweep; a share carries only seed+line",
+    sweepOk === 12, `${sweepOk}/12`);
+}
+
+// ----------------------------------- 15. solver hints (arc 2, cut 2)
+{
+  const par0 = E.par(g0.level);
+
+  // the hint from a pristine board is exactly the solver's first stored move —
+  // hintFrom re-derives it via the SAME BFS `solve` uses, it doesn't read the line
+  check("hintFrom(pristine) == level.solution[0] (agrees with the stored solver line)",
+    E.hintFrom(E.newGame(SEED, 0)) === g0.level.solution.charAt(0),
+    `${E.hintFrom(E.newGame(SEED, 0))} vs ${g0.level.solution.charAt(0)}`);
+
+  // never reveal a hint for a terminal or malformed board
+  check("hintFrom: null on won / lost / gridless / junk states",
+    E.hintFrom({ status: "won" }) === null &&
+    E.hintFrom({ status: "lost" }) === null &&
+    E.hintFrom({ status: "playing" }) === null &&   // no grid/quota -> defensive null
+    E.hintFrom(null) === null && E.hintFrom(undefined) === null);
+
+  // following the hint move-by-move ALWAYS reaches 'won', within budget, in
+  // exactly par turns (each hint is the first step of a shortest winning
+  // continuation, so greedily following stays optimal)
+  function followHints(seed) {
+    let st = E.newGame(seed, 0), guard = 0, taken = "";
+    while (st.status === "playing") {
+      const h = E.hintFrom(st);
+      if (h !== "L" && h !== "R") return { ok: false, taken, st };
+      taken += h;
+      st = E.rotate(st, h === "R" ? "cw" : "ccw");
+      if (++guard > st.budget + 2) return { ok: false, taken, st };
+    }
+    return { ok: st.status === "won" && st.used <= st.budget, taken, st };
+  }
+  const f0 = followHints(SEED);
+  check("hintFrom: following hints from seed 42 wins within budget, in exactly par turns",
+    f0.ok && f0.st.used === par0 && f0.taken.length === par0 && E.hintFrom(f0.st) === null,
+    `used=${f0.st.used} par=${par0} taken=${f0.taken} terminalHint=${E.hintFrom(f0.st)}`);
+
+  let hintSweep = 0;
+  for (let s = SEED; s < SEED + 12; s++) {
+    const f = followHints(s);
+    const p = E.par(E.newGame(s, 0).level);
+    if (f.ok && f.st.used === p && f.taken.length === p && E.hintFrom(f.st) === null) hintSweep++;
+  }
+  check("hintFrom: hint-follow wins in exactly par across the 12-seed sweep",
+    hintSweep === 12, `${hintSweep}/12`);
+
+  // OFF-LINE HONESTY: after a deliberate NON-solver first move, hintFrom re-solves
+  // from the ACTUAL board — either pointing along a fresh shortest win (following
+  // it still wins in the remaining budget) or honestly returning null when the
+  // detour made the cavern unwinnable. It never parrots the stale stored line.
+  {
+    const start = E.newGame(SEED, 0);
+    const off = g0.level.solution.charAt(0) === "R" ? "ccw" : "cw";   // opposite of the solver
+    const s1 = E.rotate(start, off);
+    const offHint = E.hintFrom(s1);
+    const need1 = s1.quota - s1.collected;
+    const rec = E.search(s1.grid, s1.budget - s1.used).records.find(r => r.collected >= need1);
+    if (rec) {
+      let st = s1, guard = 0;
+      while (st.status === "playing") {
+        const h = E.hintFrom(st);
+        if (h !== "L" && h !== "R") break;
+        st = E.rotate(st, h === "R" ? "cw" : "ccw");
+        if (++guard > st.budget + 2) break;
+      }
+      check("hintFrom: after an off-line detour it re-solves the ACTUAL board and still wins in budget",
+        offHint === rec.path.charAt(0) && st.status === "won" && st.used <= st.budget,
+        `offHint=${offHint} used=${st.used} par=${par0}`);
+    } else {
+      check("hintFrom: an off-line detour that kills the cavern returns an honest null",
+        offHint === null, `offHint=${offHint}`);
+    }
+  }
+
+  // spend-gating: hintedGrade folds hints into `used` like over-par turns, so a
+  // par run leaning on 2 hints grades GOOD not PERFECT; 0 hints == plain grade
+  check("hintedGrade: pinned spend-gating truth table (a hint dings the card like an over-par turn)",
+    E.hintedGrade(par0, par0, 0).label === "PERFECT" && E.hintedGrade(par0, par0, 0).diff === 0 &&
+    E.hintedGrade(par0, par0, 1).label === "GREAT"   && E.hintedGrade(par0, par0, 1).diff === 1 &&
+    E.hintedGrade(par0, par0, 2).label === "GOOD"    && E.hintedGrade(par0, par0, 2).diff === 2 &&
+    E.hintedGrade(par0, par0, 3).label === "CLEARED" && E.hintedGrade(par0, par0, 3).diff === 3 &&
+    JSON.stringify(E.hintedGrade(par0 + 4, par0, 0)) === JSON.stringify(E.grade(par0 + 4, par0)) &&
+    JSON.stringify(E.hintedGrade(par0, par0, -5)) === JSON.stringify(E.grade(par0, par0)),
+    JSON.stringify(E.hintedGrade(par0, par0, 2)));
 }
 
 // ------------------------------------------------------------------- verdict

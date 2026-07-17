@@ -1,6 +1,6 @@
 # Session — Overnight planning menu (OVERNIGHT-MENU 2026-07-16)
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-16 (branch `claude/overnight-menu-2026-07-16`; started
   21:51Z, `date -u`)
@@ -14,10 +14,12 @@
   unlanded stack (#155–#165 Underroot v1.0, #166–#170 Tiltstone arc 2)
   read so dependent proposals are marked.
 - **📊 Model:** Opus 4.8 (Claude family) · medium · planning/docs — overnight veto-menu
-- landing posture: **DRAFT ONLY** under the STANDING 07-16 LANDING WALL
-  — draft PR, NO ready-flip, NO auto-merge, does not touch #153–#170;
-  awaiting owner ready-click. Card **stays `in-progress`** per the wall
-  (we are NOT landing), holding the PR red by design.
+- landing posture: opened DRAFT under the STANDING 07-16 LANDING WALL;
+  the **owner (menno420) ready-clicked #171 on 2026-07-17**, lifting the
+  wall for THIS PR — so the card is now flipped to `complete` LAST,
+  releasing the born-red HOLD so substrate-gate goes green and the PR
+  lands on green. No self-merge from this session; the merge-on-green
+  automation decides. #153–#170 untouched.
 
 ## What shipped
 

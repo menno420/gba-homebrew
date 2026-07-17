@@ -170,6 +170,10 @@
 #define BW_T_GRASPHULL 53 // Grasper hull, 0..BW_GRASPER_HULL (0 = slain)
 #define BW_T_GRASPW 54  // 1 = this water holds a Grasper (not a Maw)
 
+#define BW_T_CUTTERS 55 // cut 3: converging cutters alive right now (0 unless
+                        //   an ambush water's HOLD has sprung them; 0 again on
+                        //   disperse). A pure witness — the sim needs no word.
+
 volatile uint32_t bw_telemetry[56];
 
 enum
@@ -617,6 +621,8 @@ static void draw_salvage_hud(const BwDuel *d, const Score *sc)
     else if (d->maw.state != BW_MAW_DOWN)
         printf("\x1b[1;1HTHE MAW %3d  FIRE OR FLY\x1b[K",
                (int)d->maw.hull);
+    else if (d->grasper.state == BW_GRASPER_HOLD && d->ambush_water)
+        printf("\x1b[1;1HCUTTERS! B WRENCH FREE NOW\x1b[K");
     else if (d->grasper.state == BW_GRASPER_HOLD)
         printf("\x1b[1;1HHELD FAST! B WRENCH / RAKE %3d\x1b[K",
                (int)d->grasper.hull);
@@ -755,6 +761,8 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
                (int)d->maw.hull);
     else if (d->maw.slain)
         printf("\x1b[21;1Hthe maw is dead planking\x1b[K");
+    else if (d->grasper.state == BW_GRASPER_HOLD && d->ambush_water)
+        printf("\x1b[21;1Hcutters close on the held ship\x1b[K");
     else if (d->grasper.state == BW_GRASPER_HOLD)
         printf("\x1b[21;1HTHE ARMS HAVE YOU  hull %3d\x1b[K",
                (int)d->grasper.hull);
@@ -774,6 +782,7 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
 #define OAM_MAW (OAM_LOOT0 + BW_MAX_LOOT)
 #define OAM_REEF0 (OAM_MAW + 1)
 #define OAM_GRASPER (OAM_REEF0 + BW_MAX_REEFS)
+#define OAM_CUTTER0 (OAM_GRASPER + 1)   // cut 3: the converging ambush cutters
 
 static void draw_ships_and_balls(const BwDuel *d,
                                  u16 *player_gfx, u16 *enemy_gfx,
@@ -858,6 +867,22 @@ static void draw_ships_and_balls(const BwDuel *d,
            d->grasper.x / BW_ONE - 16, d->grasper.y / BW_ONE - 16,
            2, 0, SpriteSize_32x32, SpriteColorFormat_16Color,
            maw_risen_gfx, -1, false, !grasper_shown, false, false, false);
+    // The ambush cutters (bestiary cut 3): light enemy sloops converging on
+    // the pinned ship while the Grasper HOLDs it in an ambush water. They
+    // exist only during the hold — shown while the arms hold and the cutter
+    // has not yet bitten (a bitten cutter has stopped alongside; keep it
+    // drawn where it struck). They reuse the enemy sloop gfx (they ARE light
+    // sloops). REGULAR sprites (plain hide works — the session-20 rule).
+    bool holding = water_live && d->grasper.state == BW_GRASPER_HOLD;
+    for (int i = 0; i < BW_CUTTER_COUNT; i++)
+    {
+        const BwCutter *c = &d->grasper.cutters[i];
+        bool cutter_shown = holding && !(c->x == 0 && c->y == 0);
+        oamSet(&oamMain, OAM_CUTTER0 + i,
+               c->x / BW_ONE - 8, c->y / BW_ONE - 8,
+               1, 0, SpriteSize_16x16, SpriteColorFormat_16Color,
+               enemy_gfx, -1, false, !cutter_shown, false, false, false);
+    }
 }
 
 // Begin a duel: latch the frame-counter seed, reset the sim, and re-inject
@@ -1407,6 +1432,13 @@ int main(void)
         bw_telemetry[BW_T_GRASPY] = (uint32_t)duel.grasper.y;
         bw_telemetry[BW_T_GRASPHULL] = (uint32_t)duel.grasper.hull;
         bw_telemetry[BW_T_GRASPW] = (uint32_t)duel.grasper_water;
+        // cut 3: the converging cutters alive right now — a pure witness
+        // (0 in every non-ambush water; 0->N at a seize, N->0 on disperse).
+        int cutters_alive = 0;
+        for (int i = 0; i < BW_CUTTER_COUNT; i++)
+            if (duel.grasper.cutters[i].x != 0 || duel.grasper.cutters[i].y != 0)
+                cutters_alive++;
+        bw_telemetry[BW_T_CUTTERS] = (uint32_t)cutters_alive;
     }
 
     return 0;

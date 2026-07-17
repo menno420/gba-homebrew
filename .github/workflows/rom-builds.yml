@@ -1350,6 +1350,9 @@ jobs:
           python3 games/brineward-nds/tools/record-grasper.py --outdir /tmp/grasper
           diff /tmp/grasper/grasper-duel-keys.txt games/brineward-nds/proof/grasper-duel-keys.txt
           diff /tmp/grasper/grasper-seize-keys.txt games/brineward-nds/proof/grasper-seize-keys.txt
+          mkdir -p /tmp/breakfree
+          python3 games/brineward-nds/tools/record-breakfree.py --outdir /tmp/breakfree
+          diff /tmp/breakfree/grasper-breakfree-keys.txt games/brineward-nds/proof/grasper-breakfree-keys.txt
       - name: make /opt/wonderful runner-writable
         run: sudo mkdir -p /opt/wonderful && sudo chown "$(id -u):$(id -g)" /opt/wonderful
       - name: cache NDS toolchain (BlocksDS 1.21.1 + Wonderful GCC pins)
@@ -2555,6 +2558,42 @@ jobs:
             --assert-watch 1020:t:7:eq:53 \
             --assert-watch 1080:t:50:eq:0 \
             --assert-watch 1080:t:53:eq:90
+      # Proof 24 — the break-free B verb (bestiary cut 2 «Ram/brace»): the
+      # committed break-free route (games/brineward-nds/proof/grasper-
+      # breakfree-keys.txt) is the seize route's twin — the SAME seed-174
+      # duel and the SAME lingering seize — but a few frames into the hold
+      # the player BRACES (one B press at tool frame 956) and WRENCHES
+      # LOOSE. The wrench costs exactly BW_GRASPER_BRACE_HULL (10) hull and
+      # the arms slip BW_GRASPER_BRACE_FRAMES (12) frames later, a hold cut
+      # to 22 frames — well under the full 90 (proof 23's route was still
+      # held at frame 1020). The frame-exact break contract is proven for
+      # whole families in check-brine.py (check_grasper_breakfree); this
+      # ROM pin confirms the wiring surfaces it. Every frame is the
+      # recorder's step<->frame map (step j at frame j+177), mirror-
+      # predicted; the ROM build is byte-deterministic, so drift ==
+      # regression.
+      - name: 'proof 24 — the seized sloop wrenches free (bestiary cut 2)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-grasper-breakfree.png \
+            --frames 1080 \
+            $(cat games/brineward-nds/proof/grasper-breakfree-keys.txt) \
+            --shot 962:bw-grasper-wrench.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:56 \
+            --assert-watch 190:t:0:eq:0x4252494E \
+            --assert-watch 190:t:13:eq:174 \
+            --assert-watch 190:t:54:eq:1 \
+            --assert-watch 250:t:3:eq:1 \
+            --assert-watch 250:t:50:eq:0 \
+            --assert-watch 950:t:50:eq:2 \
+            --assert-watch 950:t:7:eq:53 \
+            --assert-watch 962:t:50:eq:2 \
+            --assert-watch 962:t:7:eq:43 \
+            --assert-watch 974:t:50:eq:0 \
+            --assert-watch 974:t:7:eq:43 \
+            --assert-watch 974:t:53:eq:90 \
+            --assert-watch 1030:t:7:eq:43
       - name: upload Brineward ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:

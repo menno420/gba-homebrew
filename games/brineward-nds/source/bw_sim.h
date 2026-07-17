@@ -409,6 +409,18 @@
 #define BW_GRASPER_REACH 1               // the telegraph: arms up, homing (vulnerable)
 #define BW_GRASPER_HOLD 2                // it has you: the sloop is pinned still (vulnerable)
 
+// Cut 2 «Ram/brace» — the concept's reserved B verb, built as the
+// BREAK-FREE wrench. A seized sloop can brace (edge-triggered B) to
+// wrench loose from the hold early, at a cost: the FIRST brace that would
+// actually shorten the hold pays BW_GRASPER_BRACE_HULL hull ONCE and the
+// arms slip BW_GRASPER_BRACE_FRAMES frames later (a real tempo cost, not
+// a teleport). A brace with nothing left to shorten (already inside the
+// last BRACE_FRAMES) does nothing, and a Maw water / B-silent route never
+// reaches the branch — so every slice-2..9 and cut-1 route carries
+// verbatim (the input-verb gate, the SELECT precedent).
+#define BW_GRASPER_BRACE_HULL 10         // hull the wrench-loose costs, ONCE
+#define BW_GRASPER_BRACE_FRAMES 12       // the arms slip this many frames after a brace
+
 // --- state -----------------------------------------------------------------------
 typedef struct
 {
@@ -496,12 +508,16 @@ typedef struct
 
 // Player inputs for one duel frame. turn in {-1,0,+1}; trim_delta in
 // {-1,0,+1} (edge-triggered by the caller); fire_* edge-triggered.
+// brace edge-triggered (cut 2): the break-free B verb. Its zero value is
+// the legacy behaviour exactly, so a route that never presses B is
+// bit-identical — no slice-2..9 or cut-1 story presses it.
 typedef struct
 {
     int32_t turn;
     int32_t trim_delta;
     int32_t fire_l;                      // port battery
     int32_t fire_r;                      // starboard battery
+    int32_t brace;                       // cut 2: break-free wrench (0 = legacy)
 } BwInputs;
 
 // --- pure functions ----------------------------------------------------------------

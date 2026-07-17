@@ -618,7 +618,7 @@ static void draw_salvage_hud(const BwDuel *d, const Score *sc)
         printf("\x1b[1;1HTHE MAW %3d  FIRE OR FLY\x1b[K",
                (int)d->maw.hull);
     else if (d->grasper.state == BW_GRASPER_HOLD)
-        printf("\x1b[1;1HHELD FAST!  RAKE THE ARMS %3d\x1b[K",
+        printf("\x1b[1;1HHELD FAST! B WRENCH / RAKE %3d\x1b[K",
                (int)d->grasper.hull);
     else if (d->grasper.state != BW_GRASPER_DOWN)
         printf("\x1b[1;1HTHE GRASPER %3d  KEEP CLEAR\x1b[K",
@@ -1137,6 +1137,11 @@ int main(void)
                 // committed slice-3/4 stories are untouched
                 .fire_l = pad_seen_idle && (down & KEY_L),
                 .fire_r = pad_seen_idle && (down & KEY_R),
+                // cut 2: B is the break-free wrench. Edge-triggered
+                // (keysDown), it only bites while the Grasper HOLDs the
+                // sloop; on any other frame bw_grasper_step ignores it, so
+                // no committed story that never presses B is disturbed.
+                .brace = pad_seen_idle && (down & KEY_B),
             };
             bw_salvage_step(&duel, &in);
             uint32_t banked = (uint32_t)bw_dock_step(&duel);

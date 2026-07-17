@@ -205,6 +205,12 @@ BW_GRASPER_HIT_RANGE = 14 * BW_ONE
 BW_GRASPER_HARBOR = 40 * BW_ONE
 BW_GRASPER_LOOT_DROPS = 3
 BW_GRASPER_DOWN, BW_GRASPER_REACH, BW_GRASPER_HOLD = 0, 1, 2
+# Cut 2 «Ram/brace» — the break-free B verb. A seized sloop braces to
+# wrench loose early: the first brace that would shorten the hold pays
+# BW_GRASPER_BRACE_HULL hull ONCE and slips the arms BW_GRASPER_BRACE_
+# FRAMES frames later. A B-silent route (brace == 0) is bit-identical.
+BW_GRASPER_BRACE_HULL = 10
+BW_GRASPER_BRACE_FRAMES = 12
 
 # danger bands + reefs (slice 7) — band tables whose band-0 row is the
 # legacy constants (check_band_tables asserts the identities: the
@@ -400,13 +406,14 @@ class Duel:
 class Inputs:
     """Mirror of BwInputs."""
 
-    __slots__ = ('turn', 'trim_delta', 'fire_l', 'fire_r')
+    __slots__ = ('turn', 'trim_delta', 'fire_l', 'fire_r', 'brace')
 
-    def __init__(self, turn=0, trim_delta=0, fire_l=0, fire_r=0):
+    def __init__(self, turn=0, trim_delta=0, fire_l=0, fire_r=0, brace=0):
         self.turn = turn
         self.trim_delta = trim_delta
         self.fire_l = fire_l
         self.fire_r = fire_r
+        self.brace = brace              # cut 2: break-free wrench (0 = legacy)
 
 
 def bw_wind_heading(d):
@@ -723,9 +730,10 @@ def bw_grasper_sound(g, frame):
     g.wake = frame + BW_GRASPER_RESTIR
 
 
-def bw_grasper_step(d):
+def bw_grasper_step(d, inputs):
     """Mirror of bw_grasper_step() — salvage water only; a no-op in a
-    Maw water (grasper_water == 0), so committed routes are bit-exact."""
+    Maw water (grasper_water == 0), so committed routes are bit-exact.
+    Cut 2 reads inputs.brace to break a seized sloop free (see HOLD)."""
     if not d.grasper_water:
         return
     g = d.grasper
@@ -776,6 +784,18 @@ def bw_grasper_step(d):
 
     elif g.state == BW_GRASPER_HOLD:
         g.timer += 1
+        # cut 2: the break-free wrench. The first brace that would shorten
+        # the hold pays BW_GRASPER_BRACE_HULL hull ONCE and slips the arms
+        # BW_GRASPER_BRACE_FRAMES frames later; a brace with nothing left
+        # to shorten (or brace == 0) does nothing, so a B-silent route is
+        # bit-identical. Self-limiting: once fast-forwarded the guard is
+        # false, so the cost lands exactly once even if B is held.
+        if (inputs.brace
+                and g.timer < BW_GRASPER_HOLD_FRAMES - BW_GRASPER_BRACE_FRAMES):
+            d.player.hull -= BW_GRASPER_BRACE_HULL
+            if d.player.hull < 0:
+                d.player.hull = 0
+            g.timer = BW_GRASPER_HOLD_FRAMES - BW_GRASPER_BRACE_FRAMES
         d.player.x = g.gx                # held still: no way, no helm
         d.player.y = g.gy
         d.player.speed = 0
@@ -1186,8 +1206,8 @@ def bw_salvage_step(d, inputs):
                  bw_wind_heading(d), bw_wind_push(d))
     bw_reefs_step(d)                     # slice 7: rocks scrape salvage
     bw_maw_step(d)                       # slice 5: the water is not empty
-    bw_grasper_step(d)                   # bestiary cut 1: the OTHER terror
-    #   (a no-op in a Maw water)
+    bw_grasper_step(d, inputs)           # bestiary cut 1: the OTHER terror
+    #   (a no-op in a Maw water); cut 2 reads inputs.brace to break free
 
     # the batteries WAKE while a monster is up; cold on quiet water. In a
     # Maw water grasper_water is 0, so this is the legacy condition.
@@ -2277,6 +2297,121 @@ def check_grasper_containment():
           f'the sea, hulls stay bounded, a slain Grasper stays down')
 
 
+def _grasper_to_seize(seed):
+    """Manufacture a seize (the check_grasper_holds idiom): a full-hull
+    idle sloop a few px off a fixed open-water wreck, the arms armed to
+    reach at once; drive IDLE salvage until the HOLD. Returns the duel
+    the instant the sloop is pinned (grasper.timer == 0, hull docked one
+    grab-bite)."""
+    d = Duel()
+    bw_duel_init(d, seed)
+    assert d.grasper_water == 1 and d.band == 0, seed
+    d.over = BW_DUEL_ENEMY_SUNK
+    d.enemy.x, d.enemy.y = 128 * BW_ONE, 90 * BW_ONE
+    d.player.x, d.player.y = 128 * BW_ONE, 96 * BW_ONE
+    d.player.hull = BW_HULL_MAX
+    d.player.speed = 0
+    d.frame = 1000
+    d.grasper.wake = d.frame
+    idle = Inputs()
+    while d.grasper.state != BW_GRASPER_HOLD:
+        bw_salvage_step(d, idle)
+        assert d.over == BW_DUEL_ENEMY_SUNK, seed
+    assert d.grasper.timer == 0 and d.player.hull == BW_HULL_MAX \
+        - BW_GRASPER_GRAB_BITE, seed
+    return d
+
+
+def check_grasper_breakfree():
+    # Cut 2 «Ram/brace» — the reserved B verb built as the BREAK-FREE
+    # wrench. In a real grasper water, manufacture a seize (the
+    # check_grasper_holds idiom), then prove the braced break:
+    #   (a) a B-silent hold still runs the FULL BW_GRASPER_HOLD_FRAMES
+    #       (the input-verb carry identity — brace == 0 is legacy);
+    #   (b) an early brace shortens the hold to its cost frames — the arms
+    #       slip exactly BW_GRASPER_BRACE_FRAMES after the wrench — and it
+    #       costs exactly BW_GRASPER_BRACE_HULL hull, ONCE (a second brace
+    #       is inert), the sloop pinned STILL until it slips;
+    #   (c) a LATE brace (already inside the last BRACE_FRAMES) buys
+    #       nothing: no hull cost, the full-length release stands;
+    #   (d) a Maw water ignores B entirely (the grasper-water gate).
+    seed = _grasper_seeds(1)[0]
+
+    # (a) baseline: a B-silent hold runs the FULL hold (the carry identity)
+    d = _grasper_to_seize(seed)
+    seize_frame = d.frame
+    seize_hull = d.player.hull
+    idle = Inputs()
+    while d.grasper.state == BW_GRASPER_HOLD:
+        bw_salvage_step(d, idle)
+    assert d.frame - seize_frame == BW_GRASPER_HOLD_FRAMES, d.frame - seize_frame
+
+    # (b) early brace: press B a few frames into the hold — the arms slip
+    #     exactly BW_GRASPER_BRACE_FRAMES later, at one BRACE_HULL's cost
+    d = _grasper_to_seize(seed)
+    seize_frame = d.frame
+    gx, gy = d.grasper.gx, d.grasper.gy
+    lead = 8                             # idle hold frames before the wrench
+    for _ in range(lead):
+        assert d.grasper.state == BW_GRASPER_HOLD
+        assert d.player.x == gx and d.player.y == gy   # pinned at the latch
+        bw_salvage_step(d, idle)
+    hull_before = d.player.hull
+    assert hull_before == seize_hull     # holding alone costs no hull
+    bw_salvage_step(d, Inputs(brace=1))  # THE WRENCH
+    brace_done = d.frame
+    assert d.player.hull == hull_before - BW_GRASPER_BRACE_HULL, d.player.hull
+    assert d.grasper.timer == BW_GRASPER_HOLD_FRAMES - BW_GRASPER_BRACE_FRAMES
+    assert d.grasper.state == BW_GRASPER_HOLD    # not free yet — still pinned
+    wrenched_hull = d.player.hull
+    while d.grasper.state == BW_GRASPER_HOLD:     # ride out the slip
+        assert d.player.x == gx and d.player.y == gy   # still pinned still
+        bw_salvage_step(d, Inputs(brace=1))       # a 2nd brace is inert
+        if d.grasper.state == BW_GRASPER_HOLD:
+            assert d.player.hull == wrenched_hull  # cost lands exactly once
+    assert d.grasper.state == BW_GRASPER_DOWN
+    assert d.frame - brace_done == BW_GRASPER_BRACE_FRAMES, d.frame - brace_done
+    braced_hold = d.frame - seize_frame
+    assert braced_hold == lead + 1 + BW_GRASPER_BRACE_FRAMES
+    assert braced_hold < BW_GRASPER_HOLD_FRAMES  # the wrench really is faster
+    assert d.grasper.wake == (d.frame - 1) + BW_GRASPER_RESTIR  # reaches again
+
+    # (c) late brace: inside the last BRACE_FRAMES the wrench buys nothing
+    d = _grasper_to_seize(seed)
+    seize_frame = d.frame
+    late_hull = d.player.hull
+    while d.grasper.timer < BW_GRASPER_HOLD_FRAMES - BW_GRASPER_BRACE_FRAMES:
+        bw_salvage_step(d, idle)         # advance into the last-slip window
+    assert d.grasper.state == BW_GRASPER_HOLD
+    while d.grasper.state == BW_GRASPER_HOLD:
+        bw_salvage_step(d, Inputs(brace=1))   # brace pressed, but too late
+    assert d.player.hull == late_hull    # no cost paid
+    assert d.frame - seize_frame == BW_GRASPER_HOLD_FRAMES  # full length stood
+
+    # (d) a Maw water ignores B entirely — brace never reaches the branch
+    mseed = BW_GRASPER_PINCARRY_SEEDS[0]
+
+    def _maw_trail(brace):
+        dd = Duel()
+        bw_duel_init(dd, mseed)
+        assert dd.grasper_water == 0, mseed
+        dd.over = BW_DUEL_ENEMY_SUNK
+        inp = Inputs(brace=brace)
+        trail = []
+        for _ in range(300):
+            bw_salvage_step(dd, inp)
+            trail.append((dd.player.x, dd.player.y, dd.player.hull,
+                          dd.grasper.state, dd.maw.state))
+        return trail
+
+    assert _maw_trail(0) == _maw_trail(1)
+    print(f'the break-free wrench (cut 2): a B-silent hold runs the full '
+          f'{BW_GRASPER_HOLD_FRAMES} frames; an early brace slips the arms '
+          f'in {BW_GRASPER_BRACE_FRAMES} (hold {braced_hold} < '
+          f'{BW_GRASPER_HOLD_FRAMES}) for exactly {BW_GRASPER_BRACE_HULL} '
+          f'hull ONCE; a late brace buys nothing; a Maw water ignores B')
+
+
 def check_wind_tables():
     # Calm identity (the pin-carry rule): the calm push is zero and the
     # wind term vanishes at EVERY point of sail and trim, so a calm
@@ -3101,6 +3236,7 @@ def main():
     check_grasper_sanctuary()
     check_grasper_slain()
     check_grasper_containment()
+    check_grasper_breakfree()
     check_wind_tables()
     check_wind_pointofsail()
     check_wind_duels()

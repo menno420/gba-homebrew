@@ -616,7 +616,9 @@ static void bw_grasper_sound(BwGrasper *g, uint32_t frame)
 // BITE hull once and PINNING it still for BW_GRASPER_HOLD_FRAMES (no
 // way, no helm, no momentum), then the arms slip and it reaches again.
 // A full-sail beam clears the reach; a battle-sail scooper cannot.
-static void bw_grasper_step(BwDuel *d)
+// Cut 2: the seized sloop can BRACE (in->brace, the break-free B verb) to
+// wrench loose early, at a cost — see the BW_GRASPER_HOLD branch.
+static void bw_grasper_step(BwDuel *d, const BwInputs *in)
 {
     if (!d->grasper_water)               // a Maw water has no Grasper — the
         return;                          //   pin-carry no-op (0 in every seed
@@ -687,10 +689,26 @@ static void bw_grasper_step(BwDuel *d)
     case BW_GRASPER_HOLD:
         // Held still: the sloop makes no way while the arms hold it —
         // momentum, helm and position all dead at the latched point.
-        // (Cut 2's ram/brace B verb will let you break free early; cut
-        // 3's cutters will make the pin lethal. Cut 1's escape is
+        // (Cut 3's cutters will make the pin lethal. Cut 1's escape is
         // spatial: don't be there when the arms close.)
         g->timer++;
+        // Cut 2 «Ram/brace» — the break-free wrench. The FIRST brace that
+        // would actually shorten the hold pays BW_GRASPER_BRACE_HULL hull
+        // ONCE and slips the arms BW_GRASPER_BRACE_FRAMES frames later (it
+        // fast-forwards the hold clock to its last stretch). A brace with
+        // nothing left to shorten (timer already in the last BRACE_FRAMES)
+        // and every B-silent frame (in->brace == 0) do nothing, so the
+        // legacy hold carries verbatim. Self-limiting even if B is held:
+        // once the timer is fast-forwarded the guard is false, so the cost
+        // lands exactly once.
+        if (in->brace
+            && g->timer < BW_GRASPER_HOLD_FRAMES - BW_GRASPER_BRACE_FRAMES)
+        {
+            d->player.hull -= BW_GRASPER_BRACE_HULL;
+            if (d->player.hull < 0)
+                d->player.hull = 0;
+            g->timer = BW_GRASPER_HOLD_FRAMES - BW_GRASPER_BRACE_FRAMES;
+        }
         d->player.x = g->gx;
         d->player.y = g->gy;
         d->player.speed = 0;
@@ -952,8 +970,9 @@ void bw_salvage_step(BwDuel *d, const BwInputs *in)
                  bw_wind_heading(d), bw_wind_push(d));
     bw_reefs_step(d);                    // slice 7: rocks scrape salvage
     bw_maw_step(d);                      // slice 5: the water is not empty
-    bw_grasper_step(d);                  // bestiary cut 1: the OTHER terror
-                                         //   (a no-op in a Maw water)
+    bw_grasper_step(d, in);              // bestiary cut 1: the OTHER terror
+                                         //   (a no-op in a Maw water); cut 2
+                                         //   reads in->brace to break free
 
     // The batteries WAKE while a monster is up (any awake state — firing
     // at a mere shadow wastes the rake over its back, which is the

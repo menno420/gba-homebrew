@@ -132,7 +132,31 @@
 #define BW_PORT_ROW_CANNON 1
 #define BW_PORT_ROW_SAIL 2
 #define BW_PORT_ROW_REPAIR 3
-#define BW_PORT_ROWS 4
+#define BW_PORT_ROW_HOLD 4               // bestiary cut 4: the hold track —
+                                         //   APPENDED (rows 0..3 unchanged so
+                                         //   every prior port proof/route holds)
+#define BW_PORT_ROWS 5
+
+// --- the hold track (bestiary cut 4: the crate-cap economy) -------------------
+// The concept doc's PROGRESSION beat, verbatim: "Hold cap starts at 8
+// crates." Cut 4 builds it as a FOURTH port upgrade line (the port-ledger
+// pattern of slice 4): banked gold buys a bigger hold in tiers, so the
+// sloop can carry a deeper, richer haul home before she must run for the
+// pier. tier 0 IS the legacy BW_HOLD_CAP (8) EXACTLY — the pin-carry
+// identity: at tier 0 bw_loot_step's cap is the slice-3 constant, so every
+// recorded route and carried proof pin stays bit-valid (check-brine.py
+// asserts BW_UP_HOLD_OF[0] == BW_HOLD_CAP). Tiers strictly RAISE the cap;
+// prices TRIPLE per step (the doc rule, same ladder shape as the other
+// three tracks). The ENEMY has no hold — the table applies to the player
+// only. tier 0 = 0 packs into the save's reserved high byte, so a stock
+// ledger serializes byte-identical (the slice-9 save carries). One-
+// constant owner-tunable (the table lives in bw_sim.c by the other tier
+// tables). NOTE (honest scope): the crate SUPPLY is untouched — a natural
+// water still sheds at most BW_LOOT_DROPS + a monster's drops; the bigger
+// hold's PAYOFF over the stock hold is host-proven on a deep manufactured
+// haul (check_hold_track) and awaits a future loot-scaling beat to bind in
+// ordinary play. This cut ships the ECONOMY (buy it, keep it, carry it).
+#define BW_HOLD_TIERS 3
 
 // --- the Maw (arc slice 5: roadmap item 3 — first sea monster) ----------------
 // The break-the-geometry enemy class (concept doc: "a maw that surfaces
@@ -331,7 +355,8 @@
 // main.c save_* helpers, which main.c here ports verbatim in shape).
 // The persisted record is ONE fixed 32-byte blob: 8 little-endian u32
 // words { magic, version, banked gold, packed upgrade tiers
-// (hull | cannon<<8 | sail<<16), charted best band, 2 spares (0),
+// (hull | cannon<<8 | sail<<16 | hold<<24, the hold byte cut 4 claims
+// from the reserved 0), charted best band, 2 spares (0),
 // checksum-of-words-0..6 } — deterministic serialization, one type-2
 // EEPROM page write. SAFETY BY CONSTRUCTION: bw_save_decode returns 0
 // (and the caller keeps the fresh ledger) on ANY bad blob — wrong
@@ -532,11 +557,15 @@ typedef struct
                                          //   cut 1) — a grasper water has this OR
                                          //   the Maw, never both
     BwReef reefs[BW_MAX_REEFS];          // this water's rocks (slice 7)
-    int32_t hold;                        // crates aboard, 0..BW_HOLD_CAP
+    int32_t hold;                        // crates aboard, 0..BW_UP_HOLD_OF[up_hold]
     int32_t hold_gold;                   // unbanked gold those crates are worth
     int32_t up_hull;                     // player upgrade tiers, 0..2
     int32_t up_cannon;                   //   (slice 4; enemy never upgrades;
     int32_t up_sail;                     //    caller re-injects, like hold)
+    int32_t up_hold;                     // hold-cap tier, 0..BW_HOLD_TIERS-1
+                                         //   (bestiary cut 4; tier 0 = the
+                                         //    legacy BW_HOLD_CAP; caller
+                                         //    re-injects, like the others)
     int32_t wind_level;                  // this water's weather, BW_WIND_*
     int32_t wind_base;                   //   (slice 6; both pure f(seed))
     int32_t band;                        // this water's danger band, 0..2
@@ -646,6 +675,11 @@ int32_t bw_up_hull_max(int32_t tier);
 int32_t bw_up_reload(int32_t tier);
 int32_t bw_up_price(int32_t tier);
 
+// The hold-cap crates / gold price at a hold-track tier (bestiary cut 4;
+// tier 0 = the legacy BW_HOLD_CAP, price 0 — the hold you start with).
+int32_t bw_up_hold_max(int32_t tier);
+int32_t bw_up_hold_price(int32_t tier);
+
 // Gold to repair the player hull to its tier max (0 = already sound).
 // Prices BW_REPAIR_PER_GOLD missing points per gold, rounded UP.
 int32_t bw_repair_cost(const BwDuel *d);
@@ -690,18 +724,21 @@ uint32_t bw_cue_freq2(uint32_t cue);
 uint32_t bw_save_checksum(const uint32_t words[BW_SAVE_WORDS]);
 
 // Serialize the ledger into a BW_SAVE_BYTES blob: { BW_SAVE_MAGIC,
-// BW_SAVE_VERSION, gold, hull|cannon<<8|sail<<16, best_band, 0, 0,
-// checksum }, little-endian words. Deterministic byte-for-byte.
+// BW_SAVE_VERSION, gold, hull|cannon<<8|sail<<16|hold<<24, best_band, 0,
+// 0, checksum }, little-endian words. Deterministic byte-for-byte. The
+// hold-track tier (bestiary cut 4) packs into the word's high byte that
+// was reserved 0 — a stock hold (tier 0) serializes byte-identical to the
+// slice-9 record, so the save carries.
 void bw_save_encode(uint32_t gold, int32_t up_hull, int32_t up_cannon,
-                    int32_t up_sail, uint32_t best_band,
+                    int32_t up_sail, int32_t up_hold, uint32_t best_band,
                     uint8_t out[BW_SAVE_BYTES]);
 
 // Deserialize a blob. Returns 1 and fills the outputs only for a
-// well-formed record (magic, version, checksum, every tier < BW_UP_TIERS
-// and band < BW_BANDS); returns 0 untouched on ANYTHING else — the
-// caller keeps its fresh ledger.
+// well-formed record (magic, version, checksum, every tier < BW_UP_TIERS,
+// hold tier < BW_HOLD_TIERS, band < BW_BANDS); returns 0 untouched on
+// ANYTHING else — the caller keeps its fresh ledger.
 int bw_save_decode(const uint8_t in[BW_SAVE_BYTES], uint32_t *gold,
                    int32_t *up_hull, int32_t *up_cannon,
-                   int32_t *up_sail, uint32_t *best_band);
+                   int32_t *up_sail, int32_t *up_hold, uint32_t *best_band);
 
 #endif // BW_SIM_H

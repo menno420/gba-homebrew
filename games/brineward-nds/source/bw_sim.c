@@ -170,6 +170,23 @@ int32_t bw_up_price(int32_t tier)
     return BW_UP_COST[tier];
 }
 
+// --- the hold track (bestiary cut 4; player only) -----------------------------
+// tier 0 = the legacy BW_HOLD_CAP EXACTLY (the pin-carry identity —
+// check_hold_track asserts it), tiers strictly RAISE the cap, prices
+// TRIPLE per step (the concept-doc ladder, same shape as BW_UP_COST).
+static const int32_t BW_UP_HOLD_OF[BW_HOLD_TIERS] = { BW_HOLD_CAP, 12, 16 };
+static const int32_t BW_UP_HOLD_COST[BW_HOLD_TIERS] = { 0, 15, 45 };
+
+int32_t bw_up_hold_max(int32_t tier)
+{
+    return BW_UP_HOLD_OF[tier];
+}
+
+int32_t bw_up_hold_price(int32_t tier)
+{
+    return BW_UP_HOLD_COST[tier];
+}
+
 // sail_tier: the SAIL upgrade tier of this ship (enemy always 0).
 // wind_hdg/wind_push: the water's wind this frame (slice 6) — BOTH
 // ships sail the same weather; a calm water (push 0) is bit-identical
@@ -377,8 +394,8 @@ static void bw_loot_step(BwDuel *d)
         BwLoot *c = &d->loot[i];
         if (!c->live)
             continue;
-        if (d->hold >= BW_HOLD_CAP)
-            return;
+        if (d->hold >= BW_UP_HOLD_OF[d->up_hold])   // cut 4: tiered cap
+            return;                                 //   (tier 0 = BW_HOLD_CAP)
         if (bw_chebyshev(c->x, c->y, d->player.x, d->player.y)
                 < BW_SCOOP_RANGE)
         {
@@ -819,6 +836,17 @@ int32_t bw_port_buy(BwDuel *d, int32_t row, int32_t gold)
         return cost;
     }
 
+    if (row == BW_PORT_ROW_HOLD)         // cut 4: the hold track (its own
+    {                                    //   table + tier ceiling)
+        if (d->up_hold >= BW_HOLD_TIERS - 1)
+            return 0;
+        int32_t hcost = BW_UP_HOLD_COST[d->up_hold + 1];
+        if (gold < hcost)
+            return 0;
+        d->up_hold++;                    // a deeper hold; the crates aboard
+        return hcost;                    //   are untouched (buying != scooping)
+    }
+
     int32_t *tier = row == BW_PORT_ROW_HULL ? &d->up_hull
                     : row == BW_PORT_ROW_CANNON ? &d->up_cannon
                     : row == BW_PORT_ROW_SAIL ? &d->up_sail
@@ -953,6 +981,7 @@ void bw_duel_init(BwDuel *d, uint32_t seed)
     d->up_hull = 0;                      // caller re-injects the bought
     d->up_cannon = 0;                    //   tiers (upgrades are NEVER
     d->up_sail = 0;                      //   lost — main.c's Score owns them)
+    d->up_hold = 0;                      // cut 4: the hold track, same rule
     // Slice 6: this water's weather, pure f(seed) like the spawn ring —
     // printed on the HUD (the seed rule: any run reproducible).
     d->wind_level = BW_WIND_LEVEL_OF[bw_hash(seed, BW_WIND_SALT) & 3u];
@@ -1179,13 +1208,15 @@ uint32_t bw_save_checksum(const uint32_t words[BW_SAVE_WORDS])
 }
 
 void bw_save_encode(uint32_t gold, int32_t up_hull, int32_t up_cannon,
-                    int32_t up_sail, uint32_t best_band,
+                    int32_t up_sail, int32_t up_hold, uint32_t best_band,
                     uint8_t out[BW_SAVE_BYTES])
 {
     uint32_t w[BW_SAVE_WORDS] = {
         BW_SAVE_MAGIC, BW_SAVE_VERSION, gold,
         (uint32_t)up_hull | ((uint32_t)up_cannon << 8)
-                          | ((uint32_t)up_sail << 16),
+                          | ((uint32_t)up_sail << 16)
+                          | ((uint32_t)up_hold << 24),   // cut 4: the hold
+                                                         //   byte (0 = stock)
         best_band, 0, 0, 0,
     };
     w[BW_SAVE_WORDS - 1] = bw_save_checksum(w);
@@ -1200,7 +1231,7 @@ void bw_save_encode(uint32_t gold, int32_t up_hull, int32_t up_cannon,
 
 int bw_save_decode(const uint8_t in[BW_SAVE_BYTES], uint32_t *gold,
                    int32_t *up_hull, int32_t *up_cannon,
-                   int32_t *up_sail, uint32_t *best_band)
+                   int32_t *up_sail, int32_t *up_hold, uint32_t *best_band)
 {
     uint32_t w[BW_SAVE_WORDS];
     for (int i = 0; i < BW_SAVE_WORDS; i++)
@@ -1217,8 +1248,9 @@ int bw_save_decode(const uint8_t in[BW_SAVE_BYTES], uint32_t *gold,
     uint32_t hull = w[3] & 0xFFu;
     uint32_t cannon = (w[3] >> 8) & 0xFFu;
     uint32_t sail = (w[3] >> 16) & 0xFFu;
+    uint32_t hold = (w[3] >> 24) & 0xFFu;            // cut 4: the hold byte
     if (hull >= BW_UP_TIERS || cannon >= BW_UP_TIERS
-        || sail >= BW_UP_TIERS || (w[3] >> 24) != 0)
+        || sail >= BW_UP_TIERS || hold >= BW_HOLD_TIERS)
         return 0;                                    // impossible tiers: reset
     if (w[4] >= BW_BANDS)
         return 0;                                    // impossible chart: reset
@@ -1226,6 +1258,7 @@ int bw_save_decode(const uint8_t in[BW_SAVE_BYTES], uint32_t *gold,
     *up_hull = (int32_t)hull;
     *up_cannon = (int32_t)cannon;
     *up_sail = (int32_t)sail;
+    *up_hold = (int32_t)hold;
     *best_band = w[4];
     return 1;
 }

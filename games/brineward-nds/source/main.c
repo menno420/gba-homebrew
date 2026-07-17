@@ -122,7 +122,7 @@
 #define BW_T_DIST 14    // chebyshev player<->enemy, 8.8 fixed
 #define BW_T_TRIM 15    // player sail trim, 0..2
 // slice 3 (extension; words 0-15 stay pinned)
-#define BW_T_HOLD 16    // crates aboard, 0..BW_HOLD_CAP
+#define BW_T_HOLD 16    // crates aboard, 0..BW_T_HOLDCAP (the tiered cap)
 #define BW_T_HOLDGOLD 17 // unbanked gold the hold is worth
 #define BW_T_GOLD 18    // gold banked at Graywake (safe forever)
 #define BW_T_LOOT 19    // crates afloat right now
@@ -174,7 +174,11 @@
                         //   an ambush water's HOLD has sprung them; 0 again on
                         //   disperse). A pure witness — the sim needs no word.
 
-volatile uint32_t bw_telemetry[56];
+#define BW_T_HOLDCAP 56 // cut 4: the crate cap at the current hold tier —
+                        //   BW_HOLD_CAP (8) at tier 0 (bit-identical), the
+                        //   bought ceiling above it (the hold-track witness)
+
+volatile uint32_t bw_telemetry[57];
 
 enum
 {
@@ -407,6 +411,7 @@ typedef struct
     int32_t up_hull;                     // upgrade tiers — bought with
     int32_t up_cannon;                   //   banked gold, NEVER lost
     int32_t up_sail;                     //   (concept-doc rule)
+    int32_t up_hold;                     // hold-track tier (bestiary cut 4)
 } Score;
 
 // --- slice-9 backup I/O (bounded card-SPI EEPROM read + page program) ----------
@@ -631,7 +636,8 @@ static void draw_salvage_hud(const BwDuel *d, const Score *sc)
                (int)d->grasper.hull);
     else
         printf("\x1b[1;1HSALVAGE hold %d/%d %3dg >PIER\x1b[K",
-               (int)d->hold, BW_HOLD_CAP, (int)d->hold_gold);
+               (int)d->hold, (int)bw_up_hold_max(d->up_hold),
+               (int)d->hold_gold);
 }
 
 // --- the Graywake port menu (slice 4) ----------------------------------------
@@ -654,7 +660,7 @@ static void draw_port_row(int row, int cursor, const char *label,
 
 static void draw_port(const BwDuel *d, const Score *sc, int row)
 {
-    static char fx[3][10];
+    static char fx[4][10];
     consoleSelect(&top_console);
     printf("\x1b[3;9HGRAYWAKE PORT");
     printf("\x1b[5;7HGOLD BANKED %lug\x1b[K", (unsigned long)sc->gold);
@@ -662,11 +668,14 @@ static void draw_port(const BwDuel *d, const Score *sc, int row)
     int hull_maxed = d->up_hull >= BW_UP_TIERS - 1;
     int can_maxed = d->up_cannon >= BW_UP_TIERS - 1;
     int sail_maxed = d->up_sail >= BW_UP_TIERS - 1;
+    int hold_maxed = d->up_hold >= BW_HOLD_TIERS - 1;   // cut 4
     snprintf(fx[0], sizeof fx[0], "%d hp",
              (int)bw_up_hull_max(hull_maxed ? d->up_hull : d->up_hull + 1));
     snprintf(fx[1], sizeof fx[1], "rld %d",
              (int)bw_up_reload(can_maxed ? d->up_cannon : d->up_cannon + 1));
     snprintf(fx[2], sizeof fx[2], "swifter");
+    snprintf(fx[3], sizeof fx[3], "%d crt",     // cut 4: the hold-track effect
+             (int)bw_up_hold_max(hold_maxed ? d->up_hold : d->up_hold + 1));
     draw_port_row(BW_PORT_ROW_HULL, row, "HULL   ", d->up_hull,
                   fx[0], bw_up_price(hull_maxed ? d->up_hull
                                                 : d->up_hull + 1),
@@ -689,8 +698,16 @@ static void draw_port(const BwDuel *d, const Score *sc, int row)
     else
         printf("hull sound\x1b[K");
 
-    printf("\x1b[18;3HUP/DOWN pick   A buy");
-    printf("\x1b[19;3HSTART: back to the water");
+    // cut 4: the hold track — the fourth line, APPENDED at row 4 so the
+    // three upgrade rows and REPAIR keep their positions (every prior port
+    // proof/route holds).
+    draw_port_row(BW_PORT_ROW_HOLD, row, "HOLD   ", d->up_hold,
+                  fx[3], bw_up_hold_price(hold_maxed ? d->up_hold
+                                                     : d->up_hold + 1),
+                  hold_maxed);
+
+    printf("\x1b[19;3HUP/DOWN pick   A buy");
+    printf("\x1b[20;3HSTART: back to the water");
 }
 
 // --- bottom-screen ship status v0 ------------------------------------------------
@@ -738,7 +755,7 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
            (unsigned long)sc->wins, (unsigned long)sc->sinks,
            (unsigned long)sc->maws);
     printf("\x1b[13;1Hhold %d/%d crates %3dg\x1b[K",
-           (int)d->hold, BW_HOLD_CAP, (int)d->hold_gold);
+           (int)d->hold, (int)bw_up_hold_max(d->up_hold), (int)d->hold_gold);
     printf("\x1b[14;1HGOLD BANKED %lug\x1b[K", (unsigned long)sc->gold);
     draw_bar(17, "HULL", d->enemy.hull, bw_band_enemy_hull(d->band));
     printf("\x1b[19;1Hrange %3d yd\x1b[K",
@@ -906,6 +923,7 @@ static void begin_duel(BwDuel *duel, Score *sc, uint32_t frame,
     duel->up_hull = sc->up_hull;
     duel->up_cannon = sc->up_cannon;
     duel->up_sail = sc->up_sail;
+    duel->up_hold = sc->up_hold;         // cut 4: the bought hold ceiling
     duel->player.hull = carry_hull > 0 ? carry_hull
                                        : bw_up_hull_max(sc->up_hull);
     consoleSelect(&top_console);
@@ -977,6 +995,7 @@ int main(void)
                                            &score.up_hull,
                                            &score.up_cannon,
                                            &score.up_sail,
+                                           &score.up_hold,
                                            &score.best_band);
     }
     // The wear gate: the ledger AS LAST PERSISTED (what the chip
@@ -988,6 +1007,7 @@ int main(void)
     int32_t sv_hull = score.up_hull;
     int32_t sv_cannon = score.up_cannon;
     int32_t sv_sail = score.up_sail;
+    int32_t sv_hold = score.up_hold;         // cut 4: the hold tier persists
     uint32_t sv_band = score.best_band;
 
     int state = STATE_TITLE;
@@ -1217,6 +1237,7 @@ int main(void)
                     score.up_hull = duel.up_hull;      // tiers are score:
                     score.up_cannon = duel.up_cannon;  // bought once,
                     score.up_sail = duel.up_sail;      // kept forever
+                    score.up_hold = duel.up_hold;      // cut 4: the hold too
                 }
             }
             if (start || (pad_seen_idle && (down & KEY_B)))
@@ -1348,16 +1369,18 @@ int main(void)
         // changes nothing banked and writes nothing) ------------------
         if (score.gold != sv_gold || score.up_hull != sv_hull
             || score.up_cannon != sv_cannon || score.up_sail != sv_sail
-            || score.best_band != sv_band)
+            || score.up_hold != sv_hold || score.best_band != sv_band)
         {
             uint8_t blob[BW_SAVE_BYTES];
             bw_save_encode(score.gold, score.up_hull, score.up_cannon,
-                           score.up_sail, score.best_band, blob);
+                           score.up_sail, score.up_hold, score.best_band,
+                           blob);
             save_write_backup(blob);
             sv_gold = score.gold;
             sv_hull = score.up_hull;
             sv_cannon = score.up_cannon;
             sv_sail = score.up_sail;
+            sv_hold = score.up_hold;
             sv_band = score.best_band;
             save_writes++;
         }
@@ -1387,6 +1410,8 @@ int main(void)
         bw_telemetry[BW_T_TRIM] = (uint32_t)duel.player.trim;
         bw_telemetry[BW_T_HOLD] = (uint32_t)duel.hold;
         bw_telemetry[BW_T_HOLDGOLD] = (uint32_t)duel.hold_gold;
+        bw_telemetry[BW_T_HOLDCAP] =                 // cut 4: the hold-track
+            (uint32_t)bw_up_hold_max(duel.up_hold);  //   witness (8 at tier 0)
         bw_telemetry[BW_T_GOLD] = score.gold;
         uint32_t afloat = 0;
         for (int i = 0; i < BW_MAX_LOOT; i++)

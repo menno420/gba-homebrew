@@ -722,15 +722,17 @@ static void bw_grasper_step(BwDuel *d, const BwInputs *in)
                     d->player.hull = 0;
                 // Cut 3 «The ambush»: in an ambush water the seize springs
                 // the trap — BW_CUTTER_COUNT light sloops appear at fixed
-                // offsets around the latched pin and start closing. A
-                // non-ambush water spawns none (cut 1/2 carry).
+                // offsets around the latched pin and close in. The offsets
+                // are NOT sea-clamped (a cutter may start off the pin's
+                // ring, even off-screen, and converge inward) so the closing
+                // time is the same wherever the sloop is pinned — a corner
+                // seize is no safer than a mid-sea one. A non-ambush water
+                // spawns none (cut 1/2 carry).
                 if (d->ambush_water)
                     for (int32_t i = 0; i < BW_CUTTER_COUNT; i++)
                     {
-                        g->cutters[i].x = clamp32(g->gx + BW_CUTTER_DX[i] * BW_ONE,
-                                                  BW_SEA_X_MIN, BW_SEA_X_MAX);
-                        g->cutters[i].y = clamp32(g->gy + BW_CUTTER_DY[i] * BW_ONE,
-                                                  BW_SEA_Y_MIN, BW_SEA_Y_MAX);
+                        g->cutters[i].x = g->gx + BW_CUTTER_DX[i] * BW_ONE;
+                        g->cutters[i].y = g->gy + BW_CUTTER_DY[i] * BW_ONE;
                         g->cutters[i].bit = 0;
                     }
             }

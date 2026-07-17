@@ -827,13 +827,12 @@ def bw_grasper_step(d, inputs):
                 if d.player.hull < 0:
                     d.player.hull = 0
                 # cut 3: in an ambush water the seize springs the trap —
-                # the cutters appear at fixed offsets and start closing.
+                # the cutters appear at fixed offsets (NOT sea-clamped, so
+                # the closing time is pin-position-independent) and close in.
                 if d.ambush_water:
                     for i in range(BW_CUTTER_COUNT):
-                        g.cutters[i].x = _clamp(g.gx + BW_CUTTER_DX[i] * BW_ONE,
-                                                BW_SEA_X_MIN, BW_SEA_X_MAX)
-                        g.cutters[i].y = _clamp(g.gy + BW_CUTTER_DY[i] * BW_ONE,
-                                                BW_SEA_Y_MIN, BW_SEA_Y_MAX)
+                        g.cutters[i].x = g.gx + BW_CUTTER_DX[i] * BW_ONE
+                        g.cutters[i].y = g.gy + BW_CUTTER_DY[i] * BW_ONE
                         g.cutters[i].bit = 0
             else:
                 bw_grasper_sound(g, d.frame)   # closed on empty water
@@ -2553,10 +2552,8 @@ def check_grasper_ambush():
     for i in range(BW_CUTTER_COUNT):
         c = d.grasper.cutters[i]
         assert c.bit == 0
-        assert c.x == _clamp(gx + BW_CUTTER_DX[i] * BW_ONE,
-                             BW_SEA_X_MIN, BW_SEA_X_MAX)
-        assert c.y == _clamp(gy + BW_CUTTER_DY[i] * BW_ONE,
-                             BW_SEA_Y_MIN, BW_SEA_Y_MAX)
+        assert c.x == gx + BW_CUTTER_DX[i] * BW_ONE
+        assert c.y == gy + BW_CUTTER_DY[i] * BW_ONE
     idle = Inputs()
     first_bite = None
     while d.grasper.state == BW_GRASPER_HOLD:

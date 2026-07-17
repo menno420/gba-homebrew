@@ -1,6 +1,6 @@
 # OVERNIGHT MENU — 2026-07-16: the veto-ready proposal menu
 
-> **Status:** `owner-veto-menu` — a wide, deliberately-unfiltered planning
+> **Status:** `owner-guidance` — a wide, deliberately-unfiltered planning
 > menu. **Nothing here is built.** Every row is a proposal the owner
 > *vetoes by id* (strike what you don't want; the veto is the filter, not a
 > pre-filter by the seat). Grounded against main HEAD

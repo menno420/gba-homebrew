@@ -13,7 +13,7 @@
   `478bf167892751f907b02d26b59ec07596f602e2` (#152), with today's
   unlanded stack (#155–#165 Underroot v1.0, #166–#170 Tiltstone arc 2)
   read so dependent proposals are marked.
-- **📊 Model:** Opus 4.8 (Claude family) · medium · planning/docs — overnight veto-menu
+- **📊 Model:** Opus 4.8 (Claude family) · medium · idea/planning
 - landing posture: opened DRAFT under the STANDING 07-16 LANDING WALL;
   the **owner (menno420) ready-clicked #171 on 2026-07-17**, lifting the
   wall for THIS PR — so the card is now flipped to `complete` LAST,

@@ -145,13 +145,21 @@ BW_PORT_ROW_HULL = 0
 BW_PORT_ROW_CANNON = 1
 BW_PORT_ROW_SAIL = 2
 BW_PORT_ROW_REPAIR = 3
-BW_PORT_ROWS = 4
+BW_PORT_ROW_HOLD = 4                     # bestiary cut 4: the hold track,
+BW_PORT_ROWS = 5                         #   APPENDED (rows 0..3 unchanged)
 BW_UP_HULL_OF = (BW_HULL_MAX, 150, 220)
 BW_UP_RELOAD_OF = (BW_RELOAD_PLAYER, 70, 55)
 BW_UP_BALLS_OF = (BW_BALLS_PER_SIDE, BW_BALLS_PER_SIDE, 4)
 BW_UP_SPEED_OF = (0, 24, 48)
 BW_UP_TURN_OF = (0, 1, 2)
 BW_UP_COST = (0, 15, 45)
+
+# the hold track (bestiary cut 4) — a fourth port line raising the crate
+# cap in tiers; tier 0 = the legacy BW_HOLD_CAP exactly (check_hold_track
+# asserts the identity), tiers strictly raise it, prices triple
+BW_HOLD_TIERS = 3
+BW_UP_HOLD_OF = (BW_HOLD_CAP, 12, 16)
+BW_UP_HOLD_COST = (0, 15, 45)
 
 # wind + sailing feel (slice 6) — a slow-rotating seeded wind vector;
 # the point of sail scales the trim target speed, canvas quarters per
@@ -416,7 +424,7 @@ class Duel:
 
     __slots__ = ('player', 'enemy', 'balls', 'loot', 'maw', 'grasper',
                  'reefs', 'hold', 'hold_gold', 'up_hull', 'up_cannon',
-                 'up_sail', 'wind_level', 'wind_base', 'band',
+                 'up_sail', 'up_hold', 'wind_level', 'wind_base', 'band',
                  'grasper_water', 'ambush_water', 'groundings', 'frame',
                  'over')
 
@@ -595,8 +603,8 @@ def bw_loot_step(d):
     for c in d.loot:
         if not c.live:
             continue
-        if d.hold >= BW_HOLD_CAP:
-            return
+        if d.hold >= BW_UP_HOLD_OF[d.up_hold]:   # cut 4: tiered cap
+            return                               #   (tier 0 = BW_HOLD_CAP)
         if bw_chebyshev(c.x, c.y, d.player.x, d.player.y) < BW_SCOOP_RANGE:
             c.live = 0
             d.hold += 1
@@ -890,6 +898,16 @@ def bw_up_price(tier):
     return BW_UP_COST[tier]
 
 
+def bw_up_hold_max(tier):
+    """Mirror of bw_up_hold_max() (bestiary cut 4)."""
+    return BW_UP_HOLD_OF[tier]
+
+
+def bw_up_hold_price(tier):
+    """Mirror of bw_up_hold_price() (bestiary cut 4)."""
+    return BW_UP_HOLD_COST[tier]
+
+
 def bw_repair_cost(d):
     """Mirror of bw_repair_cost()."""
     missing = BW_UP_HULL_OF[d.up_hull] - d.player.hull
@@ -906,6 +924,15 @@ def bw_port_buy(d, row, gold):
         if cost <= 0 or gold < cost:
             return 0
         d.player.hull = BW_UP_HULL_OF[d.up_hull]
+        return cost
+
+    if row == BW_PORT_ROW_HOLD:          # cut 4: the hold track (own table)
+        if d.up_hold >= BW_HOLD_TIERS - 1:
+            return 0
+        cost = BW_UP_HOLD_COST[d.up_hold + 1]
+        if gold < cost:
+            return 0
+        d.up_hold += 1                   # a deeper hold; crates aboard untouched
         return cost
 
     attr = {BW_PORT_ROW_HULL: 'up_hull',
@@ -979,21 +1006,22 @@ def bw_save_checksum(words):
     return h
 
 
-def bw_save_encode(gold, up_hull, up_cannon, up_sail, best_band):
+def bw_save_encode(gold, up_hull, up_cannon, up_sail, up_hold, best_band):
     """Mirror of bw_save_encode() -> BW_SAVE_BYTES bytes."""
     w = [BW_SAVE_MAGIC, BW_SAVE_VERSION, gold & U32,
-         (up_hull | (up_cannon << 8) | (up_sail << 16)) & U32,
+         (up_hull | (up_cannon << 8) | (up_sail << 16)
+          | (up_hold << 24)) & U32,      # cut 4: the hold byte (0 = stock)
          best_band & U32, 0, 0, 0]
     w[BW_SAVE_WORDS - 1] = bw_save_checksum(w)
     return b''.join(x.to_bytes(4, 'little') for x in w)
 
 
 def bw_save_decode(blob):
-    """Mirror of bw_save_decode() -> (ok, gold, hull, cannon, sail,
+    """Mirror of bw_save_decode() -> (ok, gold, hull, cannon, sail, hold,
     band); ok = 0 leaves the fresh ledger standing."""
     w = [int.from_bytes(blob[4 * i:4 * i + 4], 'little')
          for i in range(BW_SAVE_WORDS)]
-    fresh = (0, 0, 0, 0, 0, 0)
+    fresh = (0, 0, 0, 0, 0, 0, 0)
     if w[0] != BW_SAVE_MAGIC:
         return fresh                         # blank/garbage chip
     if w[1] != BW_SAVE_VERSION:
@@ -1003,12 +1031,13 @@ def bw_save_decode(blob):
     hull = w[3] & 0xFF
     cannon = (w[3] >> 8) & 0xFF
     sail = (w[3] >> 16) & 0xFF
+    hold = (w[3] >> 24) & 0xFF                # cut 4: the hold byte
     if (hull >= BW_UP_TIERS or cannon >= BW_UP_TIERS
-            or sail >= BW_UP_TIERS or (w[3] >> 24) != 0):
+            or sail >= BW_UP_TIERS or hold >= BW_HOLD_TIERS):
         return fresh                         # impossible tiers: reset
     if w[4] >= BW_BANDS:
         return fresh                         # impossible chart: reset
-    return (1, w[2], hull, cannon, sail, w[4])
+    return (1, w[2], hull, cannon, sail, hold, w[4])
 
 
 class AudioGlue:
@@ -1199,6 +1228,7 @@ def bw_duel_init(d, seed):
     d.up_hull = 0                        # caller re-injects the bought
     d.up_cannon = 0                      #   tiers (upgrades are NEVER
     d.up_sail = 0                        #   lost — main.c's Score owns them)
+    d.up_hold = 0                        # cut 4: the hold track, same rule
     # slice 6: this water's weather, pure f(seed) like the spawn ring
     d.wind_level = BW_WIND_LEVEL_OF[bw_hash(seed, BW_WIND_SALT) & 3]
     d.wind_base = bw_hash(seed, BW_WIND_DIR_SALT) & (BW_CIRCLE - 1)
@@ -1835,6 +1865,17 @@ def check_upgrade_tables():
         assert BW_UP_TURN_OF[t] >= BW_UP_TURN_OF[t - 1], t
         assert BW_UP_COST[t] >= 3 * BW_UP_COST[t - 1], t   # doc: ~triple
     assert BW_UP_COST[1] > 0
+    # the hold track (bestiary cut 4): tier 0 = the legacy BW_HOLD_CAP
+    # EXACTLY (the pin-carry identity — the whole cut rests on it), tiers
+    # strictly RAISE the cap, prices triple, and tier 0 is free
+    assert BW_UP_HOLD_OF[0] == BW_HOLD_CAP
+    assert BW_UP_HOLD_COST[0] == 0
+    assert len(BW_UP_HOLD_OF) == BW_HOLD_TIERS
+    assert len(BW_UP_HOLD_COST) == BW_HOLD_TIERS
+    for t in range(1, BW_HOLD_TIERS):
+        assert BW_UP_HOLD_OF[t] > BW_UP_HOLD_OF[t - 1], t
+        assert BW_UP_HOLD_COST[t] >= 3 * BW_UP_HOLD_COST[t - 1], t
+    assert BW_UP_HOLD_COST[1] > 0
     # a max-tier player rake + a full enemy rake still fit the ball pool
     assert BW_UP_BALLS_OF[-1] + BW_BALLS_PER_SIDE <= BW_MAX_BALLS
     # the player can always outshoot the enemy crew at any tier
@@ -1842,13 +1883,14 @@ def check_upgrade_tables():
     assert BW_UP_RELOAD_OF[0] < BW_RELOAD_ENEMY
     print('upgrade tables: tier 0 = the slice-2 sloop exactly (route '
           'guard), tiers strictly improve, prices triple, hull ladder '
-          f'{BW_UP_HULL_OF} per the concept doc')
+          f'{BW_UP_HULL_OF}, hold ladder {BW_UP_HOLD_OF} per the concept doc')
 
 
-def _fresh_port_duel(hull=None, tiers=(0, 0, 0)):
+def _fresh_port_duel(hull=None, tiers=(0, 0, 0), hold_tier=0):
     d = Duel()
     bw_duel_init(d, 7)
     d.up_hull, d.up_cannon, d.up_sail = tiers
+    d.up_hold = hold_tier
     d.player.hull = BW_UP_HULL_OF[tiers[0]] if hull is None else hull
     return d
 
@@ -1869,14 +1911,18 @@ def _duel_fingerprint(d):
 
 
 def check_port_buy():
-    tracks = ((BW_PORT_ROW_HULL, 'up_hull'),
-              (BW_PORT_ROW_CANNON, 'up_cannon'),
-              (BW_PORT_ROW_SAIL, 'up_sail'))
-    for row, attr in tracks:
+    # (row, attr, cost table, tier count) — the hold track (cut 4) is a
+    # fourth line with its OWN table + ceiling; the loop is table-aware so
+    # it proves the same ledger contract over all four.
+    tracks = ((BW_PORT_ROW_HULL, 'up_hull', BW_UP_COST, BW_UP_TIERS),
+              (BW_PORT_ROW_CANNON, 'up_cannon', BW_UP_COST, BW_UP_TIERS),
+              (BW_PORT_ROW_SAIL, 'up_sail', BW_UP_COST, BW_UP_TIERS),
+              (BW_PORT_ROW_HOLD, 'up_hold', BW_UP_HOLD_COST, BW_HOLD_TIERS))
+    for row, attr, costtab, ntiers in tracks:
         d = _fresh_port_duel()
         fp = _duel_fingerprint(d)
-        for t in (1, 2):
-            cost = BW_UP_COST[t]
+        for t in range(1, ntiers):
+            cost = costtab[t]
             # one gold short: refused, NOTHING changes
             assert bw_port_buy(d, row, cost - 1) == 0, (row, t)
             assert getattr(d, attr) == t - 1, (row, t)
@@ -1885,15 +1931,18 @@ def check_port_buy():
             assert getattr(d, attr) == t, (row, t)
         # maxed: refused no matter the purse
         assert bw_port_buy(d, row, 10 ** 6) == 0, row
-        assert getattr(d, attr) == BW_UP_TIERS - 1, row
+        assert getattr(d, attr) == ntiers - 1, row
         # no cross-talk and no side effects on the water
-        for other_row, other in tracks:
+        for other_row, other, _ct, _nt in tracks:
             if other != attr:
                 assert getattr(d, other) == 0, (row, other)
         assert _duel_fingerprint(d) == fp, row
         # buying a hull tier raises the ceiling, never heals (row HULL)
         if row == BW_PORT_ROW_HULL:
             assert d.player.hull == BW_HULL_MAX
+        # buying a hold tier raises the cap, never scoops: the crates
+        # aboard (d.hold / d.hold_gold) are in the fingerprint asserted
+        # unchanged just above — the deeper hold is empty until you fill it
     # unknown rows are refused
     d = _fresh_port_duel()
     for row in (-1, BW_PORT_ROWS, 99):
@@ -1915,11 +1964,76 @@ def check_port_buy():
             assert bw_port_buy(d, BW_PORT_ROW_REPAIR, cost) == cost
             assert d.player.hull == hull_max, (tier, hull)
             assert bw_repair_cost(d) == 0
-    print('port ledger: every buy spends exactly the price; one gold '
-          'short / max tier / sound hull / unknown row all refused '
-          'changing nothing; repair = ceil(missing/'
-          f'{BW_REPAIR_PER_GOLD}) exact for every hull value at every '
-          'tier; no cross-talk; the water untouched')
+    print('port ledger: every buy (all 4 tracks incl. the hold line) '
+          'spends exactly the price; one gold short / max tier / sound '
+          'hull / unknown row all refused changing nothing; repair = '
+          f'ceil(missing/{BW_REPAIR_PER_GOLD}) exact for every hull value '
+          'at every tier; no cross-talk; the water untouched')
+
+
+def check_hold_track():
+    # Cut 4 «The hold track» — the crate-cap economy. Proven the
+    # port-ledger way (like check_port_buy): tier 0 IS the legacy cap
+    # exactly (the pin-carry identity every prior salvage route rests on),
+    # each tier fills to its own ceiling, and the payoff — a deep haul the
+    # STOCK hold could not carry home, that a bought hold banks whole.
+
+    # (a) the tiered cap: at tier t a hold from empty fills to EXACTLY
+    #     min(pool, BW_UP_HOLD_OF[t]); tier 0's cap is BW_HOLD_CAP, so a
+    #     stock hold scoops byte-identical to the slice-3 loop.
+    for t in range(BW_HOLD_TIERS):
+        cap = BW_UP_HOLD_OF[t]
+        d = Duel()
+        bw_duel_init(d, 3)
+        d.up_hold = t
+        d.hold = 0
+        d.hold_gold = 0
+        for c in d.loot:                 # every slot live, right on the hull
+            c.x, c.y = d.player.x, d.player.y
+            c.value = BW_LOOT_VALUE
+            c.live = 1
+        bw_loot_step(d)
+        scooped = min(BW_MAX_LOOT, cap)
+        assert d.hold == scooped, (t, d.hold)
+        assert d.hold_gold == scooped * BW_LOOT_VALUE, t
+        left = sum(1 for c in d.loot if c.live)
+        assert left == BW_MAX_LOOT - scooped, (t, left)
+    assert BW_UP_HOLD_OF[0] == BW_HOLD_CAP    # the identity, stated loud
+
+    # (b) THE PAYOFF — «bigger hold». A sloop already carrying a running
+    #     haul meets a full pool: total demand exceeds the stock cap. The
+    #     stock hold (tier 0) fills to BW_HOLD_CAP and must ABANDON the
+    #     rest afloat; a bought hold (tier 1) carries strictly more home
+    #     and banks strictly more gold — the concept's "deeper, richer
+    #     water is worth the hold to carry it home".
+    carried = BW_HOLD_CAP - 3            # crates already aboard (a running haul)
+    banked, left_afloat = {}, {}
+    for t in (0, 1):
+        d = Duel()
+        bw_duel_init(d, 3)
+        d.up_hold = t
+        d.player.x, d.player.y = BW_PIER_X, BW_PIER_Y   # bank where we stand
+        d.hold = carried
+        d.hold_gold = carried * BW_LOOT_VALUE
+        for c in d.loot:
+            c.x, c.y = d.player.x, d.player.y
+            c.value = BW_LOOT_VALUE
+            c.live = 1
+        bw_loot_step(d)
+        assert d.hold == min(carried + BW_MAX_LOOT, BW_UP_HOLD_OF[t]), t
+        left_afloat[t] = sum(1 for c in d.loot if c.live)
+        banked[t] = bw_dock_step(d)
+        assert d.hold == 0 and d.hold_gold == 0, t   # banked clean at the pier
+    assert banked[0] == BW_HOLD_CAP * BW_LOOT_VALUE
+    assert banked[1] == BW_UP_HOLD_OF[1] * BW_LOOT_VALUE
+    assert banked[1] > banked[0]                 # the bigger hold is worth it
+    assert left_afloat[0] > left_afloat[1]       # stock leaves crates behind
+    print(f'the hold track (cut 4): tier 0 = the legacy cap '
+          f'{BW_HOLD_CAP} EXACTLY (route guard), tiers fill to '
+          f'{BW_UP_HOLD_OF} crates, prices {BW_UP_HOLD_COST} triple; a '
+          f'deep haul the stock hold banks {banked[0]}g of (leaving '
+          f'{left_afloat[0]} crates) a bought hold banks {banked[1]}g of '
+          f'(leaving {left_afloat[1]}) — worth the hold to carry it home')
 
 
 def check_upgraded_duels():
@@ -2827,7 +2941,7 @@ def check_band_tables():
                  m.stirs, m.slain, m.bit),
                 tuple((r.x, r.y, r.live, r.scraped) for r in d.reefs),
                 d.hold, d.hold_gold, d.up_hull, d.up_cannon, d.up_sail,
-                d.wind_level, d.wind_base, d.band, d.groundings,
+                d.up_hold, d.wind_level, d.wind_base, d.band, d.groundings,
                 d.frame, d.over)
 
     for seed in range(512):
@@ -3365,19 +3479,20 @@ def check_save_roundtrip():
         for hull in range(BW_UP_TIERS):
             for cannon in range(BW_UP_TIERS):
                 for sail in range(BW_UP_TIERS):
-                    for band in range(BW_BANDS):
-                        blob = bw_save_encode(gold, hull, cannon, sail,
-                                              band)
-                        assert len(blob) == BW_SAVE_BYTES
-                        assert blob == bw_save_encode(gold, hull,
-                                                      cannon, sail, band)
-                        got = bw_save_decode(blob)
-                        assert got == (1, gold, hull, cannon, sail,
-                                       band), got
-                        count += 1
+                    for hold in range(BW_HOLD_TIERS):   # cut 4: the hold byte
+                        for band in range(BW_BANDS):
+                            blob = bw_save_encode(gold, hull, cannon, sail,
+                                                  hold, band)
+                            assert len(blob) == BW_SAVE_BYTES
+                            assert blob == bw_save_encode(gold, hull, cannon,
+                                                          sail, hold, band)
+                            got = bw_save_decode(blob)
+                            assert got == (1, gold, hull, cannon, sail,
+                                           hold, band), got
+                            count += 1
     print(f'save roundtrip: {count} ledgers (gold ladder x every tier '
-          'combo x every band) encode/decode losslessly, '
-          'deterministically, 32 bytes each')
+          'combo incl. the hold byte x every band) encode/decode '
+          'losslessly, deterministically, 32 bytes each')
 
 
 def check_save_rejects():
@@ -3388,7 +3503,7 @@ def check_save_rejects():
     # reject on their own), and EVERY single-bit flip of a valid blob
     # (256 flips — any one bit of damage anywhere is caught; the
     # record can reset, never lie).
-    good = bw_save_encode(15, 1, 0, 0, 1)
+    good = bw_save_encode(15, 1, 0, 0, 0, 1)
     assert bw_save_decode(good)[0] == 1
     assert bw_save_decode(b'\xff' * BW_SAVE_BYTES)[0] == 0
     assert bw_save_decode(b'\x00' * BW_SAVE_BYTES)[0] == 0
@@ -3410,7 +3525,7 @@ def check_save_rejects():
     assert bw_save_decode(crafted(setw(3, BW_UP_TIERS)))[0] == 0
     assert bw_save_decode(crafted(setw(3, BW_UP_TIERS << 8)))[0] == 0
     assert bw_save_decode(crafted(setw(3, BW_UP_TIERS << 16)))[0] == 0
-    assert bw_save_decode(crafted(setw(3, 1 << 24)))[0] == 0
+    assert bw_save_decode(crafted(setw(3, BW_HOLD_TIERS << 24)))[0] == 0
     assert bw_save_decode(crafted(setw(4, BW_BANDS)))[0] == 0
 
     flips = 0
@@ -3439,6 +3554,7 @@ def main():
     check_salvage_containment()
     check_upgrade_tables()
     check_port_buy()
+    check_hold_track()
     check_upgraded_duels()
     check_upgraded_containment()
     check_maw_stalks()

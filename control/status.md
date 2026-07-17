@@ -55,3 +55,25 @@ kit: v1.17.0
 - ORDER 007 ack check: the done-when ack IS on record — "ORDER 007
   ACKNOWLEDGED (first rebooted dispatch)" landed in control/status.md
   at `df55299` (#142, 2026-07-15); no re-ack needed here.
+
+## Session 2026-07-17 — brineward bestiary cut 1 «The Grasper» (append-only)
+
+- updated: 2026-07-17T01:25:13Z (`date -u`); branch
+  `claude/brineward-bestiary-cut1`, session card
+  `.sessions/2026-07-17-brineward-bestiary-cut1.md`; DRAFT PR (held draft
+  per the standing 07-16 landing wall).
+- phase: owner menu **B3** (`docs/NEXT-MENU-2026-07-15.md`) — Brineward
+  arc 2 «the bestiary», cut 1 of 4. Plan doc:
+  `games/brineward-nds/ARC-BESTIARY.md`.
+- health: green where measurable. Host proof `tools/check-brine.py` ALL
+  GREEN with 5 new Grasper checks; existing host output byte-identical
+  (additive-only), all 6 route recorders re-derive byte-identical, the new
+  `record-grasper.py` route is deterministic. `bw_sim.c` gcc-clean.
+- honest limit: the NDS ROM is NOT built in this worker env (no BlocksDS
+  toolchain) — `main.c` telemetry/render/HUD wiring mirrors the Maw 1:1
+  but is compiled/pinned only by CI (`nds-brineward-build`, proof 23).
+- blockers: standing 07-16 landing wall (draft-park); substrate-gate red
+  by design (#151 doc orphans on main + the born-red HOLD card).
+- not touched: no pre-existing PR (#153–#175), no `docs/current-state.md`
+  (an active claim `claude/current-state-rows` owns its rows), no
+  routines, no other lane's status section.

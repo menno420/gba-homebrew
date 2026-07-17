@@ -1,1 +1,0 @@
-- `claude/wickroad-crossroads-cut3` · **Wickroad crossroads cut 3: SEED DIAL — title-screen world-seed dial (dial 0 == the pinned WICK stream); additive telemetry word 56, proof P11** · games/wickroad/src/main.cpp, games/wickroad/proofs.sh, ARC-CROSSROADS.md, CONCEPT.md · 2026-07-16

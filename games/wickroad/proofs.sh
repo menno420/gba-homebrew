@@ -9,7 +9,9 @@
 #     bash games/wickroad/proofs.sh
 # Artifacts land in $WICKROAD_PROOF_OUT (default /tmp/wickroad-proofs).
 #
-# The eight proofs (asserts inline below):
+# The eleven proofs (asserts inline below; P11 is crossroads cut 3, the seed
+# dial — appended behind P1-P10, which are UNTOUCHED and carry verbatim; P10
+# is crossroads cut 2, the sprite art pass, behind P1-P9):
 #   P1 boot/title            — magics, title state, every title line incl.
 #                              the hook line ("BUT THE INK AGES") and the
 #                              full verb help; witness words zero on title.
@@ -180,13 +182,96 @@
 #                              DAC) is not headlessly provable and is
 #                              named owner-playtest territory in the PR.
 #
-# Mailbox: wr_telemetry[52] since v0.6 (layout in games/wickroad/src/main.cpp;
+#   P9 THE JUNCTION (crossroads cut 1) — the road forks: walk the spine
+#                              EAST to the junction DUNWICK (day 5, gold
+#                              52 — the four spine tolls, no hazard, all
+#                              windows open day 15+), where the fork-edge
+#                              witness word 53 reads 7 and the on-branch
+#                              flag word 52 is still 0; the L+R CHORD
+#                              ("take the fork") rides onto WYRMHOLLOW
+#                              (town 7, day 6, gold 50 — word 52 -> 1,
+#                              visited mask 0x9f: bit 7 set, the branch
+#                              stood in); the branch MARKET obeys the same
+#                              impact law (UP to RESIN at the mirror's 18,
+#                              two buys climb the cursor word 18->19->20 as
+#                              gold falls 50->32->13, two sells walk it
+#                              back to gold 50), and plain L returns to
+#                              DUNWICK (day 7, gold 48, word 52 -> 0). The
+#                              fork-edge word 53 reads 7 ONLY at the two
+#                              ends of the fork road (junction + branch)
+#                              and 0 at a mid-spine town (GLASSMERE) — the
+#                              branch is reachable ONLY by the chord, never
+#                              by a spine R. Word 54 pins the branch RESIN
+#                              price against the host mirror even from
+#                              across the spine. RUN TWICE — byte-identical
+#                              watch-logs. Every value derived on the mirror
+#                              FIRST; the ROM matched on the first probe.
+#
+#   P10 THE ART PASS (crossroads cut 2) — the towns/market/junction get a
+#                              real face: an authored regular_bg baked from
+#                              the SAME sim state (town, price[], cargo[],
+#                              cursor, the fork/junction words) at BACKMOST
+#                              priority, so every glyph still draws on top and
+#                              P1-P9 carry BYTE-IDENTICAL. Presentation-only —
+#                              proven off the hardware exactly like the
+#                              Cindervault art proof (P8): a SECOND mailbox
+#                              wr_art (8 words: 'WART' magic, scene id, town,
+#                              cursor, a checksum fold of the 32x32 baked
+#                              cells, the bg-enable flag, the fork-edge
+#                              mirror, the rebake count) is pinned across a
+#                              walk from the title, through EMBERTON and the
+#                              spine, to the junction DUNWICK and — by the L+R
+#                              chord — the branch WYRMHOLLOW. The checksum
+#                              word is DISTINCT at every scene (title vs each
+#                              town vs the branch), and the fork-edge word
+#                              lights to 7 ONLY at the junction and the branch
+#                              — the art tracks the sim. The art is read
+#                              straight off the machine: DISPCNT 0xF840 (bit
+#                              11 = the road bg enabled on BG3), BG palette
+#                              RAM bank 15 at 0x050001E0 holds 0x08640000 (the
+#                              committed parchment color 0x0864 in BGR555 =
+#                              (36,28,20), a nonzero authored palette), and
+#                              the map's VRAM screenblock at 0x06000800 holds
+#                              0xF001F001 (two bank-15 sky cells baked in).
+#                              RUN TWICE — watch-log byte-identical. The bake
+#                              is deferred off every committed edge frame (it
+#                              runs only once the scene falls calm), so the 56
+#                              sim words and the 27 variable-font text lines
+#                              are untouched — P1-P9 pass verbatim.
+#   P11 THE SEED DIAL (crossroads cut 3) — the single fixed 'WICK' world
+#                              becomes a family of daily/challenge worlds via a
+#                              title-screen dial (LEFT/RIGHT, edge-triggered,
+#                              title ONLY). dial 0 IS seed_constant, so P1-P10
+#                              carry BYTE-IDENTICAL. P11a: on the title, RIGHT
+#                              x3 climbs the dial 0->3 and LEFT x3 walks it back
+#                              to 0, the live dialed seed pinned in the appended
+#                              word 56 at every step against the host mirror
+#                              (0x5749434B -> 002FC1A3 -> 003B0B8A -> 00405452
+#                              and back), the SEED digits glyph-exact on the
+#                              title, state/gold staying 0 (the dial never
+#                              leaves the title); run twice byte-identical.
+#                              P11b: dial 0 START dives the pinned world — day 1
+#                              EMBERTON cursor word 13 = 9 (the P2 pin), word 56
+#                              carrying the seed into the run. P11c: dial 1
+#                              START dives a DIFFERENT world — the same day-1
+#                              cursor now reads 12, not 9, word 56 = the dial-1
+#                              seed; run twice byte-identical. Word 56 is
+#                              APPENDED behind the frozen 0-55, so P1-P10 (which
+#                              watch only :56) never see it.
+#
+# Mailbox: wr_telemetry[57] since crossroads cut 3 (layout in
+# games/wickroad/src/main.cpp;
 # P1-P3 keep watching the first 16 words, unchanged from v0.1; P4 the first
 # 24, unchanged from v0.2; P5 the first 32, unchanged from v0.3; P6 the
 # first 40, unchanged from v0.4; P7 asserts nothing past word 47, unchanged
 # from v0.5 — the audio counter words 48-51 are new in v0.6 and words 0-47
 # stayed byte-identical: P1-P7 passed verbatim on the first post-audio run,
-# zero re-pins).
+# zero re-pins. Crossroads cut 1 appended words 52-55 behind the frozen
+# 0-51 and +8 RNG draws behind town 6's: P1-P8 passed verbatim again,
+# zero re-pins. Crossroads cut 3 appended word 56 (the live dialed seed)
+# behind the frozen 0-55: P1-P10 watch only :56 (words 0-55), so they never
+# see it and carry byte-identical — the same append-only wire-format
+# discipline, and dial 0 == seed_constant keeps the world itself identical.)
 # Word 15 encodes the THORNBY/SALT ledger entry as (ink price << 8) | age:
 # 6912 = 27 @ age 0 · 6913 = 27 @ 1 · 6915 = 27 @ 3 · 6937 = 27 @ 25.
 # Turn-based determinism: the same script replays bit-identically by
@@ -207,6 +292,7 @@ mkdir -p "$OUT"
 H() { python3 tools/headless-screenshot.py "$ROM" "$@"; }
 W='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:16'
 W52='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:52'
+W56='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:56'
 # Audio voicing evidence (growth cut 5, the Shoal/Courier house method):
 # count of nonzero u32 words in the maxmod mixing buffer — 0 exactly when
 # the mixer is silent.
@@ -927,5 +1013,311 @@ H "$OUT/p8b.png" --frames 310 $W52 $WMIX $AUDIO_ROUTE \
   "${AUDIO_ASSERTS[@]}"
 cmp "$OUT/p8-run1.csv" "$OUT/p8-run2.csv"
 echo "P8 run-twice: byte-identical"
+
+# The junction route (crossroads cut 1): START, R x4 EAST along the spine
+# to the junction DUNWICK (day 5, gold 52 — four 2-gold tolls, every
+# hazard window opens day 15+ so the road is quiet), the L+R CHORD onto
+# the branch WYRMHOLLOW (day 6, gold 50), UP parks the cursor on RESIN
+# (the branch's cheap produce, town 7 % 4 = good 3), two buys on the
+# impact ladder (18 then 19) and two sells back (20-1 then 19-1) — a
+# clean round trip through the branch market that ends where it began
+# (gold 50), then plain L back to DUNWICK (day 7, gold 48). The two
+# shoulder keys on the SAME frame span (54-56:L + 54-56:R) are the chord;
+# no committed route ever presses both, so the verb is purely additive.
+# Route gold ledger, every step on the host mirror: 60 - 2*4 spine tolls
+# = 52 at DUNWICK d5; -2 fork = 50 at WYRMHOLLOW d6; -18 -19 buys = 13;
+# +19 +18 sells = 50; -2 L = 48 at DUNWICK d7.
+JUNCTION_ROUTE='--keys 10-12:START --keys 30-32:R --keys 36-38:R --keys 42-44:R --keys 48-50:R --keys 54-56:L --keys 54-56:R --keys 60-62:UP --keys 66-68:A --keys 72-74:A --keys 78-80:B --keys 84-86:B --keys 90-92:L'
+
+JUNCTION_ASSERTS=(
+  # day 1 EMBERTON: trading, on the spine — the on-branch flag word 52
+  # and the fork-edge word 53 are both 0 (EMBERTON is a plain spine end,
+  # no fork), and word 54 already pins the branch RESIN price from across
+  # the whole spine (the mirror's day-1 WYRMHOLLOW RESIN = 24)
+  --assert-watch 24:wr:2:eq:1
+  --assert-watch 24:wr:4:eq:1
+  --assert-watch 24:wr:5:eq:60
+  --assert-watch 24:wr:6:eq:0
+  --assert-watch 24:wr:13:eq:9
+  --assert-watch 24:wr:52:eq:0
+  --assert-watch 24:wr:53:eq:0
+  --assert-watch 24:wr:54:eq:24
+  --assert-watch 24:wr:55:eq:0
+  # R to GLASSMERE day 2: a mid-spine town — NO fork here (word 53 = 0),
+  # so the branch is provably unreachable from anywhere but the junction
+  --assert-watch 34:wr:4:eq:2
+  --assert-watch 34:wr:5:eq:58
+  --assert-watch 34:wr:6:eq:1
+  --assert-watch 34:wr:52:eq:0
+  --assert-watch 34:wr:53:eq:0
+  # R R to DUNWICK day 5, gold 52 — THE JUNCTION: the fork-edge word 53
+  # lights to 7 (a fork is live from here) while word 52 is still 0 (not
+  # yet on the branch); word 54 = the mirror's day-5 branch RESIN 16;
+  # visited mask 0x1f = the five spine towns 0..4
+  --assert-watch 52:wr:4:eq:5
+  --assert-watch 52:wr:5:eq:52
+  --assert-watch 52:wr:6:eq:4
+  --assert-watch 52:wr:46:eq:31
+  --assert-watch 52:wr:52:eq:0
+  --assert-watch 52:wr:53:eq:7
+  --assert-watch 52:wr:54:eq:16
+  --assert-text "52:AT DUNWICK  PACK 0/8"
+  # THE FORK: the L+R chord rides onto WYRMHOLLOW (town 7) day 6, gold 50
+  # — word 52 flips 0 -> 1, the fork-edge word 53 still 7 (now the branch
+  # end of the same road), the visited mask sets bit 7 (0x1f | 0x80 =
+  # 0x9f = 159), and the header names the branch town (variable font)
+  --assert-watch 58:wr:4:eq:6
+  --assert-watch 58:wr:5:eq:50
+  --assert-watch 58:wr:6:eq:7
+  --assert-watch 58:wr:8:eq:0
+  --assert-watch 58:wr:46:eq:159
+  --assert-watch 58:wr:52:eq:1
+  --assert-watch 58:wr:53:eq:7
+  --assert-watch 58:wr:54:eq:18
+  --assert-text "58:AT WYRMHOLLOW  PACK 0/8"
+  # UP parks the cursor on RESIN (good 3): the visible market word 13 =
+  # the mirror's branch RESIN 18, impact-free — the branch is a real
+  # market read from the same price law
+  --assert-watch 64:wr:7:eq:3
+  --assert-watch 64:wr:13:eq:18
+  # two buys climb the impact ladder (18 then 19): gold 50 -> 32 -> 13,
+  # pack used 0 -> 1 -> 2, RESIN cargo (word 12) 2, the cursor word
+  # walking 18 -> 19 -> 20 exactly as any spine market
+  --assert-watch 70:wr:5:eq:32
+  --assert-watch 70:wr:8:eq:1
+  --assert-watch 70:wr:12:eq:1
+  --assert-watch 70:wr:13:eq:19
+  --assert-watch 76:wr:5:eq:13
+  --assert-watch 76:wr:8:eq:2
+  --assert-watch 76:wr:12:eq:2
+  --assert-watch 76:wr:13:eq:20
+  # two sells walk it back down (20-1 then 19-1): gold 13 -> 32 -> 50,
+  # pack empties — the branch market's impact decays symmetrically, the
+  # round trip nets zero, the law is the same one
+  --assert-watch 82:wr:5:eq:32
+  --assert-watch 82:wr:8:eq:1
+  --assert-watch 88:wr:5:eq:50
+  --assert-watch 88:wr:8:eq:0
+  # plain L rides back to the junction DUNWICK (day 7, gold 48): word 52
+  # -> 0 (off the branch), word 6 = 4, the fork-edge word 53 still 7
+  # (standing at the junction again); mask keeps bit 7 (WYRMHOLLOW stays
+  # a visited town), word 55 reserved and 0 all route
+  --assert-watch 94:wr:4:eq:7
+  --assert-watch 94:wr:5:eq:48
+  --assert-watch 94:wr:6:eq:4
+  --assert-watch 94:wr:46:eq:159
+  --assert-watch 94:wr:52:eq:0
+  --assert-watch 94:wr:53:eq:7
+  --assert-watch 94:wr:55:eq:0
+)
+
+echo "== P9: THE JUNCTION — the road forks, reached by the L+R chord (run 1) =="
+H "$OUT/p9.png" --frames 100 $W56 $JUNCTION_ROUTE \
+  --watch-log "$OUT/p9-run1.csv" --shot "58:$OUT/p9-branch.png" \
+  "${JUNCTION_ASSERTS[@]}"
+
+echo "== P9: run 2 (must be byte-identical) =="
+H "$OUT/p9b.png" --frames 100 $W56 $JUNCTION_ROUTE \
+  --watch-log "$OUT/p9-run2.csv" \
+  "${JUNCTION_ASSERTS[@]}"
+cmp "$OUT/p9-run1.csv" "$OUT/p9-run2.csv"
+echo "P9 run-twice: byte-identical"
+
+# ---------------------------------------------------------------------------
+# P10 — THE ART PASS (crossroads cut 2, the sprite art pass; presentation
+# ONLY — P1-P9 above carried VERBATIM). The proof reads the authored
+# background back off the hardware, the Cindervault art-proof method:
+#   wr_art (ELF symbol, 8 words): 'WART' magic · scene id (= state) · town ·
+#     cursor · checksum fold of the 32x32 baked cells · bg-enable flag ·
+#     fork-edge mirror (7 while a fork is live here) · rebake count.
+#   0x04000000 DISPCNT: 0xF840 — bit 11 (0x0800) = the road bg (BG3) enabled.
+#   0x050001E0 BG palette RAM (bank 15): 0x08640000 = the committed parchment
+#     color 0x0864 (= (36,28,20) BGR555, wr_palette index 1) over the
+#     transparent index-0 slot — the authored art's own palette, in RAM.
+#   0x06000800 bg map screenblock: 0xF001F001 = two bank-15 sky cells (tile
+#     1) — the baked scene sitting in the map's VRAM.
+# The route walks the title -> EMBERTON -> the spine -> the junction DUNWICK
+# -> (L+R chord) the branch WYRMHOLLOW, with a settle gap after each move so
+# the DEFERRED bake catches up (it never runs on a committed edge frame). The
+# checksum word is pinned DISTINCT at every scene, and the fork-edge word
+# lights ONLY at the junction and the branch — the art provably tracks the
+# sim, without spending one sim-telemetry word.
+# ---------------------------------------------------------------------------
+
+ART_W='--elf games/wickroad/wickroad.elf --watch art:wr_art:8 --watch io:0x04000000:1 --watch bgpal:0x050001E0:1 --watch vmap:0x06000800:1'
+
+# START held to frame 30 so the title scene can be pinned first; then R x4
+# down the spine to the junction (each move followed by a ~18-frame settle),
+# then the L+R chord (both shoulders on frames 140-142) onto the branch.
+ART_ROUTE='--keys 30-32:START --keys 60-62:R --keys 80-82:R --keys 100-102:R --keys 120-122:R --keys 140-142:L --keys 140-142:R'
+
+P10_ART_ASSERTS=(
+  # title (frame 20, before START): the bg is up (enable bit set, palette +
+  # cells in RAM/VRAM), scene id 0, only the boot bake has run (rebakes 1)
+  --assert-watch 20:art:0:eq:0x57415254
+  --assert-watch 20:art:1:eq:0
+  --assert-watch 20:art:2:eq:0
+  --assert-watch 20:art:4:eq:1441315868
+  --assert-watch 20:art:5:eq:1
+  --assert-watch 20:art:6:eq:0
+  --assert-watch 20:art:7:eq:1
+  --assert-watch 20:io:0:eq:0xF840
+  --assert-watch 20:bgpal:0:eq:0x08640000
+  --assert-watch 20:vmap:0:eq:0xF001F001
+  # EMBERTON trading (frame 55): the market scene is baked (rebakes 2), its
+  # checksum DISTINCT from the title's — the art changed with the state
+  --assert-watch 55:art:1:eq:1
+  --assert-watch 55:art:2:eq:0
+  --assert-watch 55:art:4:eq:1310683781
+  --assert-watch 55:art:4:ne:1441315868
+  --assert-watch 55:art:6:eq:0
+  --assert-watch 55:art:7:eq:2
+  # GLASSMERE (frame 75): the next spine town — a distinct skyline, a
+  # distinct checksum, still no fork (word 6 = 0)
+  --assert-watch 75:art:2:eq:1
+  --assert-watch 75:art:4:eq:3181228502
+  --assert-watch 75:art:4:ne:1310683781
+  --assert-watch 75:art:6:eq:0
+  # THE JUNCTION DUNWICK (frame 138, town 4): the fork-edge word lights to 7
+  # — the junction gets its signpost face; checksum distinct again
+  --assert-watch 138:art:2:eq:4
+  --assert-watch 138:art:4:eq:1370743854
+  --assert-watch 138:art:6:eq:7
+  --assert-watch 138:art:7:eq:6
+  # THE BRANCH WYRMHOLLOW (frame 165, town 7): reached by the L+R chord, its
+  # own face (checksum distinct from the junction's), fork-edge still 7, and
+  # the hardware still live — the bg follows the road onto the branch
+  --assert-watch 165:art:1:eq:1
+  --assert-watch 165:art:2:eq:7
+  --assert-watch 165:art:4:eq:353901482
+  --assert-watch 165:art:4:ne:1370743854
+  --assert-watch 165:art:6:eq:7
+  --assert-watch 165:art:7:eq:7
+  --assert-watch 165:io:0:eq:0xF840
+  --assert-watch 165:bgpal:0:eq:0x08640000
+  --assert-watch 165:vmap:0:eq:0xF001F001
+)
+
+echo "== P10: THE ART PASS — the authored bg read off the hardware (run 1) =="
+# (No --require-distinct: the checksum-word `ne` asserts below prove the art
+# changes scene-to-scene far more strongly than a pixel diff — the junction
+# and branch faces settle and hold, so the final frame equals the branch by
+# design.)
+H "$OUT/p10.png" --frames 176 $ART_W $ART_ROUTE \
+  --watch-log "$OUT/p10-run1.csv" \
+  --shot "138:$OUT/p10-junction.png" --shot "165:$OUT/p10-branch.png" \
+  "${P10_ART_ASSERTS[@]}"
+
+echo "== P10: run 2 (must be byte-identical) =="
+H "$OUT/p10b.png" --frames 176 $ART_W $ART_ROUTE \
+  --watch-log "$OUT/p10-run2.csv" \
+  "${P10_ART_ASSERTS[@]}"
+cmp "$OUT/p10-run1.csv" "$OUT/p10-run2.csv"
+echo "P10 run-twice: byte-identical"
+
+# ---------------------------------------------------------------------------
+# P11 — THE SEED DIAL (crossroads cut 3; ADDITIVE — P1-P10 above carried
+# BYTE-IDENTICAL). Wickroad's single fixed 'WICK' world becomes a family of
+# daily/challenge worlds via a title-screen dial (LEFT/RIGHT, edge-triggered,
+# title ONLY). THE CONTRACT (Underroot slice-10 / Cindervault-seed): dial 0 IS
+# seed_constant, so the default world — and every proof P1-P10 — is
+# bit-identical. The live dialed seed is published in the APPENDED telemetry
+# word [56] (the mailbox grows [56] -> [57]; words 0-55 stay byte-unchanged,
+# so P1-P10 never see it). Every dialed seed below was derived on a host-side
+# Python mirror of reset_run + the price law FIRST, then matched by the ROM:
+#   dial 0 = 0x5749434B = 1464419147   (seed_constant, the pinned world)
+#   dial 1 = 0x002FC1A3 =    3129763
+#   dial 2 = 0x003B0B8A =    3869578
+#   dial 3 = 0x00405452 =    4215890
+# The default world's day-1 EMBERTON TALLOW price (cursor word 13) is 9 (the
+# P2 pin); the dial-1 world's is 12 — the dial provably changes the world.
+# ---------------------------------------------------------------------------
+W57='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:57'
+
+# P11a THE DIAL SCANS + REVERSES — on the title, RIGHT x3 climbs the dial 0->3
+# (word 56 stepping through each host-mirrored seed) then LEFT x3 walks it back
+# to 0: the dial is fully reversible and NEVER leaves the title (state word 2
+# and gold word 5 stay 0 the whole scan — no run is started). The SEED digits
+# render live on the title once dialed off 0 ("PRESS START" prefix carries).
+DIAL_SCAN='--keys 20-22:RIGHT --keys 30-32:RIGHT --keys 40-42:RIGHT --keys 50-52:LEFT --keys 60-62:LEFT --keys 70-72:LEFT'
+
+DIAL_SCAN_ASSERTS=(
+  # boot title: dial 0, word 56 = seed_constant, state/gold 0, plain START line
+  --assert-watch 18:wr:2:eq:0
+  --assert-watch 18:wr:5:eq:0
+  --assert-watch 18:wr:56:eq:1464419147
+  --assert-text "18:PRESS START"
+  # R x3 climbs 0 -> 1 -> 2 -> 3, each dialed seed pinned from the mirror; the
+  # title stays the title (state/gold 0) and the SEED digits render live
+  --assert-watch 25:wr:2:eq:0
+  --assert-watch 25:wr:5:eq:0
+  --assert-watch 25:wr:56:eq:3129763
+  --assert-text "25:PRESS START"
+  --assert-text "25:SEED 002FC1A3"
+  --assert-watch 35:wr:56:eq:3869578
+  --assert-text "35:SEED 003B0B8A"
+  --assert-watch 45:wr:2:eq:0
+  --assert-watch 45:wr:56:eq:4215890
+  --assert-text "45:SEED 00405452"
+  # L x3 walks it back 3 -> 2 -> 1 -> 0 (fully reversible): word 56 returns to
+  # each mirror seed and ends EXACTLY on seed_constant, the pinned world
+  --assert-watch 55:wr:56:eq:3869578
+  --assert-watch 65:wr:56:eq:3129763
+  --assert-watch 78:wr:2:eq:0
+  --assert-watch 78:wr:5:eq:0
+  --assert-watch 78:wr:56:eq:1464419147
+  --assert-text "78:PRESS START"
+)
+
+echo "== P11a: THE SEED DIAL — the title dial scans + reverses (run 1) =="
+H "$OUT/p11a.png" --frames 85 $W57 $DIAL_SCAN \
+  --watch-log "$OUT/p11a-run1.csv" --shot "45:$OUT/p11a-dial3.png" \
+  "${DIAL_SCAN_ASSERTS[@]}"
+
+echo "== P11a: run 2 (must be byte-identical) =="
+H "$OUT/p11ab.png" --frames 85 $W57 $DIAL_SCAN \
+  --watch-log "$OUT/p11a-run2.csv" \
+  "${DIAL_SCAN_ASSERTS[@]}"
+cmp "$OUT/p11a-run1.csv" "$OUT/p11a-run2.csv"
+echo "P11a run-twice: byte-identical"
+
+# P11b DIAL 0 START == THE PINNED WORLD — with the dial untouched (position 0),
+# START dives the committed 'WICK' world: day 1 EMBERTON, gold 60, and the
+# cursor word 13 = 9 (the exact P2 day-1 pin), while word 56 carries the seed
+# into the run — dial 0 reproduces the pinned stream bit-for-bit.
+echo "== P11b: dial 0 START == the pinned WICK world =="
+H "$OUT/p11b.png" --frames 36 $W57 --keys 20-22:START \
+  --assert-watch 30:wr:2:eq:1 \
+  --assert-watch 30:wr:4:eq:1 \
+  --assert-watch 30:wr:5:eq:60 \
+  --assert-watch 30:wr:6:eq:0 \
+  --assert-watch 30:wr:13:eq:9 \
+  --assert-watch 30:wr:56:eq:1464419147
+
+# P11c A DIALED WORLD DIFFERS — dial to 1 (RIGHT) then START: the SAME day-1
+# EMBERTON cursor now reads 12, NOT the pinned 9, and word 56 = the dial-1 seed
+# carried into the run — the dial provably feeds a different, repeatable world.
+DIAL1_RUN='--keys 10-12:RIGHT --keys 20-22:START'
+DIAL1_ASSERTS=(
+  --assert-watch 30:wr:2:eq:1
+  --assert-watch 30:wr:4:eq:1
+  --assert-watch 30:wr:5:eq:60
+  --assert-watch 30:wr:6:eq:0
+  --assert-watch 30:wr:13:eq:12
+  --assert-watch 30:wr:13:ne:9
+  --assert-watch 30:wr:56:eq:3129763
+)
+
+echo "== P11c: a dialed world DIFFERS + the seed carries into the run (run 1) =="
+H "$OUT/p11c.png" --frames 36 $W57 $DIAL1_RUN \
+  --watch-log "$OUT/p11c-run1.csv" \
+  "${DIAL1_ASSERTS[@]}"
+
+echo "== P11c: run 2 (must be byte-identical) =="
+H "$OUT/p11cb.png" --frames 36 $W57 $DIAL1_RUN \
+  --watch-log "$OUT/p11c-run2.csv" \
+  "${DIAL1_ASSERTS[@]}"
+cmp "$OUT/p11c-run1.csv" "$OUT/p11c-run2.csv"
+echo "P11c run-twice: byte-identical"
 
 echo "ALL WICKROAD PROOFS PASS"

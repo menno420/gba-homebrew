@@ -144,3 +144,16 @@ kit: v1.17.0
   order: #176 -> #177 -> #178 -> this.
 - not touched: no pre-existing PR (#153–#178), no routines, no other lane's
   status section, the inbox untouched.
+- CI follow-up (2026-07-17T03:2x Z): the NDS Brineward build (run
+  29552097669) went red NOT on the ROM (it booted, dual-screen, and every
+  proof-26 watch pin matched — mirror prediction held) but on the host
+  save-tool `tools/brine-save.py`: cut 4 grew `bw_save_encode` to 6 args /
+  `bw_save_decode` to a 7-tuple (the hold byte) in `check-brine.py`, but
+  the lockstep caller was not re-synced → `TypeError: bw_save_encode()
+  missing 1 required positional argument: 'best_band'`. Fix = additive
+  brine-save.py sync only: `--tiers` takes an OPTIONAL 4th hold value
+  (defaults 0 = stock, so the checked-in `--tiers 0,0,0` stays byte-
+  identical), decode unpacks hold, prints add the hold tier. No
+  route/seed/salt/C touched; `check-brine.py` still ALL GREEN (incl. the
+  1458-ledger hold-byte roundtrip), ambush salt 0x10000045 intact, all 8
+  recorders byte-identical.

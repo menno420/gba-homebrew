@@ -14,7 +14,7 @@ Subcommands:
   inspect SAV                 decode + print the ledger; exit 1 if the
                               blob does not decode (what the ROM's boot
                               would treat as the fresh ledger)
-  expect SAV --gold N --tiers H,C,S --band B
+  expect SAV --gold N --tiers H,C,S[,Hold] --band B
                               assert the blob is BYTE-IDENTICAL to the
                               mirror's bw_save_encode(...) — the
                               write-side roundtrip check
@@ -63,7 +63,8 @@ def main():
     p.add_argument('sav')
     p.add_argument('--gold', type=int, required=True)
     p.add_argument('--tiers', required=True,
-                   help='hull,cannon,sail (e.g. 1,0,0)')
+                   help='hull,cannon,sail[,hold] (e.g. 1,0,0 or 1,0,0,2; '
+                        'hold defaults to 0 when omitted)')
     p.add_argument('--band', type=int, required=True)
 
     p = sub.add_parser('blank')
@@ -89,27 +90,38 @@ def main():
     data, blob = read_blob(args.sav)
 
     if args.cmd == 'inspect':
-        ok, gold, hull, cannon, sail, band = cb.bw_save_decode(blob)
+        ok, gold, hull, cannon, sail, hold, band = cb.bw_save_decode(blob)
         print(f'{args.sav}: blob {blob.hex()}')
         if not ok:
             sys.exit('FAIL: blob does not decode — the ROM would boot on '
                      'the fresh ledger')
         print(f'valid ledger: {gold}g banked, tiers {hull}/{cannon}/'
-              f'{sail}, charted band {band} '
+              f'{sail}/{hold}, charted band {band} '
               f'(version {cb.BW_SAVE_VERSION})')
         return
 
     if args.cmd == 'expect':
-        hull, cannon, sail = (int(t) for t in args.tiers.split(','))
-        want = cb.bw_save_encode(args.gold, hull, cannon, sail, args.band)
+        # cut 4 added the hold tier: --tiers takes hull,cannon,sail and
+        # an OPTIONAL 4th hold value (defaults to 0 = stock hold), so a
+        # 3-value --tiers stays byte-for-byte what it encoded pre-cut-4.
+        tiers = [int(t) for t in args.tiers.split(',')]
+        if len(tiers) == 3:
+            hull, cannon, sail = tiers
+            hold = 0
+        elif len(tiers) == 4:
+            hull, cannon, sail, hold = tiers
+        else:
+            sys.exit('FAIL: --tiers wants hull,cannon,sail[,hold]')
+        want = cb.bw_save_encode(args.gold, hull, cannon, sail, hold,
+                                 args.band)
         if blob != want:
             print(f'  got  {blob.hex()}')
             print(f'  want {want.hex()}')
             sys.exit(f'FAIL: ledger is not byte-identical to '
-                     f'encode({args.gold}g, {hull}/{cannon}/{sail}, '
-                     f'band {args.band})')
+                     f'encode({args.gold}g, {hull}/{cannon}/{sail}/'
+                     f'{hold}, band {args.band})')
         print(f'PASS: ledger == bw_save_encode({args.gold}g, '
-              f'{hull}/{cannon}/{sail}, band {args.band}) '
+              f'{hull}/{cannon}/{sail}/{hold}, band {args.band}) '
               'byte-identically')
         return
 

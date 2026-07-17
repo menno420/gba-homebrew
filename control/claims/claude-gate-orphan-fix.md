@@ -1,0 +1,1 @@
+- `claude/gate-orphan-fix` · **gate-red orphan fix (docs read-path reachability)** · docs/current-state.md, control/status.md, control/claims/ · 2026-07-16

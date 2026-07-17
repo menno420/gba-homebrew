@@ -86,9 +86,21 @@
     else reset(seed, levelIndex);
   }
 
+  // arc2 cut4: the cavern's mechanic-fingerprint tag ("NEEDS grate", …). fingerprint()
+  // re-runs the solver BFS, too heavy for the per-frame render, so cache it once per
+  // (seed, levelIndex); a base cavern ("no-mechanic") adds nothing to the grade line.
+  var _fpTag = {};
+  function mechTag() {
+    var key = seed + ":" + levelIndex;
+    if (!(key in _fpTag)) _fpTag[key] = E.fingerprintTag(state.level);
+    return _fpTag[key] === "no-mechanic" ? "" : " {" + _fpTag[key] + "}";
+  }
+
   function gradeLine() {
     var p = E.par(state.level), g = E.hintedGrade(state.used, p, hints);   // arc2 cut2: hints ding the grade
     return "PAR " + p + " — YOU " + state.used + " — " + g.label +
+      " [" + E.deceptionLabel(undos, state.used, p) + "]" +   // arc2 cut3: undo×par deceptiveness read
+      mechTag() +                                             // arc2 cut4: mechanic fingerprint
       (hints ? " (" + hints + " hint" + (hints === 1 ? "" : "s") + ")" : "") +
       (undos ? " (" + undos + " undo" + (undos === 1 ? "" : "s") + ")" : "");
   }
@@ -107,6 +119,7 @@
       setMsg("+" + got + " gem" + (got === 1 ? "" : "s") + (chains > 1 ? " (chain x" + chains + "!)" : ""));
     } else setMsg("");
     if (state.status === "won") {
+      saveDeception();                    // arc2 cut3: record undo×par deceptiveness of this clear
       if (pack) {
         savePackStage();
         var last = stage + 1 >= pack.entries.length;
@@ -355,6 +368,14 @@
       var k = "tiltstone-best-" + seed;
       var prev = parseInt(window.localStorage.getItem(k) || "-1", 10);
       if (levelIndex > prev) window.localStorage.setItem(k, String(levelIndex));
+    } catch (e) { /* private mode etc. */ }
+  }
+  function saveDeception() { // arc2 cut3: persist the (undos, overshoot) pair + label for a clear, guarded
+    try {
+      var p = E.par(state.level);
+      var overshoot = Math.max(0, state.used - p);
+      var rec = { undos: undos, overshoot: overshoot, label: E.deceptionLabel(undos, state.used, p) };
+      window.localStorage.setItem("tiltstone-deception-" + seed + "-" + levelIndex, JSON.stringify(rec));
     } catch (e) { /* private mode etc. */ }
   }
   function savePackStage() { // slice 5: highest pack stage cleared, per pack id

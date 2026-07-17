@@ -50,6 +50,28 @@ int32_t ur_hawk_y(uint32_t seed, uint32_t season, uint32_t frame)
     return (int32_t)(UR_MEADOW_Y0 + (h % span));
 }
 
+// --- food patches -----------------------------------------------------------
+ur_patch_t ur_patch(uint32_t seed, uint32_t season, uint32_t index)
+{
+    uint32_t h = ur_hash(ur_hash(seed ^ UR_PATCH_SALT, season), index);
+    ur_patch_t p;
+    uint32_t xspan = (uint32_t)(UR_APRON_X1 - UR_APRON_X0);
+    uint32_t yspan = (uint32_t)(UR_APRON_Y1 - UR_APRON_Y0);
+    uint32_t aspan = (uint32_t)(UR_PATCH_MAX - UR_PATCH_MIN + 1);
+    p.x = UR_APRON_X0 + (int32_t)((h >> 8) % xspan);
+    p.y = UR_APRON_Y0 + (int32_t)((h >> 20) % yspan);
+    p.amount = UR_PATCH_MIN + (int32_t)(h % aspan);
+    return p;
+}
+
+uint32_t ur_patch_total(uint32_t seed, uint32_t season)
+{
+    uint32_t total = 0;
+    for (uint32_t i = 0; i < UR_PATCH_COUNT; i++)
+        total += (uint32_t)ur_patch(seed, season, i).amount;
+    return total;
+}
+
 // --- dig grid ---------------------------------------------------------------
 int ur_cell_of_touch(int32_t tx, int32_t ty, int32_t *col, int32_t *row)
 {

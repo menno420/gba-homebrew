@@ -61,6 +61,20 @@ UR_CELLS = UR_GRID_W * UR_GRID_H
 UR_ENTRANCE_COL = 8           # the surface mouth column
 UR_ENTRANCE_ROW = 0           # top row (the meadow<->burrow seam)
 
+# --- food patches (top screen; slice 2; mirror ur_sim.h) -------------------
+UR_SCREEN_W = 256             # meadow width (px)
+UR_SCREEN_H = 192             # meadow height (px)
+UR_PATCH_COUNT = 6            # food patches per (seed, season)
+UR_PATCH_R = 4                # patch render half-extent (px)
+UR_PATCH_MARGIN = 8           # keep whole patches off the edges
+UR_PATCH_MIN = 3              # min food amount (units)
+UR_PATCH_MAX = 9              # max food amount (units, inclusive)
+UR_PATCH_SALT = 0x46454544    # 'FEED' — patch hash stream independent
+UR_APRON_X0 = UR_PATCH_MARGIN + UR_PATCH_R                # 12
+UR_APRON_X1 = UR_SCREEN_W - UR_PATCH_MARGIN - UR_PATCH_R  # 244
+UR_APRON_Y0 = UR_MEADOW_Y1 + UR_PATCH_R                   # 124: below the lanes
+UR_APRON_Y1 = UR_SCREEN_H - UR_PATCH_MARGIN - UR_PATCH_R  # 180
+
 
 # --- pure hash (mirror ur_hash; identical to gl_hash) ----------------------
 def ur_hash(a, b):
@@ -100,6 +114,20 @@ def ur_hawk_y(seed, season, frame):
     idx = ur_hawk_pass(frame)
     span = UR_MEADOW_Y1 - UR_MEADOW_Y0
     return UR_MEADOW_Y0 + (ur_hash(ur_hash(seed ^ UR_HAWK_SALT, season), idx) % span)
+
+
+# --- food patches (top screen; mirror ur_patch / ur_patch_total) -----------
+def ur_patch(seed, season, index):
+    # (x, y, amount) — pure f(seed, season, index) on the foraging apron.
+    h = ur_hash(ur_hash(seed ^ UR_PATCH_SALT, season), index)
+    x = UR_APRON_X0 + ((h >> 8) % (UR_APRON_X1 - UR_APRON_X0))
+    y = UR_APRON_Y0 + ((h >> 20) % (UR_APRON_Y1 - UR_APRON_Y0))
+    amount = UR_PATCH_MIN + (h % (UR_PATCH_MAX - UR_PATCH_MIN + 1))
+    return (x, y, amount)
+
+
+def ur_patch_total(seed, season):
+    return sum(ur_patch(seed, season, i)[2] for i in range(UR_PATCH_COUNT))
 
 
 # --- dig grid (bottom screen; the drawn tunnel graph) ----------------------
@@ -259,9 +287,41 @@ def prove_dig():
     return px_checks + graph_checks
 
 
+def prove_patches():
+    # Every seed 0..255 x season 0..3 x patch index: ur_patch is a pure
+    # deterministic f(seed, season, index), its whole rendered extent
+    # (centre +/- UR_PATCH_R) sits ON the meadow and OFF the hawk lanes
+    # (below the band bottom UR_MEADOW_Y1), and its amount is in
+    # [UR_PATCH_MIN, UR_PATCH_MAX]. The arc doc's slice-2 invariant.
+    checks = 0
+    for seed in range(256):
+        for season in range(4):
+            for index in range(UR_PATCH_COUNT):
+                p1 = ur_patch(seed, season, index)
+                assert ur_patch(seed, season, index) == p1, \
+                    "ur_patch not deterministic"
+                x, y, amt = p1
+                assert 0 <= x - UR_PATCH_R and x + UR_PATCH_R <= UR_SCREEN_W, \
+                    f"patch x {x} off-screen"
+                assert 0 <= y - UR_PATCH_R and y + UR_PATCH_R <= UR_SCREEN_H, \
+                    f"patch y {y} off-screen"
+                assert y - UR_PATCH_R >= UR_MEADOW_Y1, \
+                    f"patch y {y} intrudes the hawk lane band"
+                assert UR_PATCH_MIN <= amt <= UR_PATCH_MAX, \
+                    f"patch amount {amt} out of range"
+                checks += 1
+    # the patch COUNT the ROM reports (UR_T_PATCHN) is exactly UR_PATCH_COUNT
+    assert UR_PATCH_COUNT == 6
+    # the layer is not degenerate: the pinned meadow spreads its amounts
+    amounts = {ur_patch(UR_SEED, 0, i)[2] for i in range(UR_PATCH_COUNT)}
+    assert len(amounts) >= 2, "patch amounts degenerate (all identical)"
+    return checks
+
+
 def main():
     hawk_checks = prove_hawk()
     dig_checks = prove_dig()
+    patch_checks = prove_patches()
     dug_total, connected = ci_fixture()
 
     # The lockstep anchor: these are the numbers rom-builds.yml asserts
@@ -276,9 +336,15 @@ def main():
         300: (ur_hawk_active(300), ur_hawk_x(UR_SEED, 0, 300)),
         600: (ur_hawk_active(600), ur_hawk_x(UR_SEED, 0, 600)),
     }
+    patch_sum = ur_patch_total(UR_SEED, 0)
     print("check-underroot: OK —")
     print(f"  hawk schedule: {hawk_checks} (seed,season,frame) cases "
           "pure/bounded/monotone/on-band, schedule keyed on the pass index")
+    print(f"  food patches: {patch_checks} (seed,season,index) cases "
+          f"pure/on-meadow/off-the-hawk-lanes, amount in "
+          f"[{UR_PATCH_MIN},{UR_PATCH_MAX}]")
+    print(f"  slice-2 lockstep: patch_n={UR_PATCH_COUNT} patch_sum={patch_sum} "
+          "(== the rom-builds.yml ur_telemetry[15]/[16] asserts)")
     print(f"  dig grid: {dig_checks} pixel+graph cases — touch->cell total, "
           "dig idempotent/monotone, burrow BFS connected<=total, "
           "corridor grows by one, isolated pocket never counted")

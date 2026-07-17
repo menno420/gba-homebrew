@@ -2806,14 +2806,14 @@ jobs:
       # exhaustively host-side by check-underroot.py (the ROM shares that
       # very ur_sim.c). --watch-log emits the mailbox trace so a follow-up
       # can pin exact hawk values off the observed boot offset.
-      - name: 'proof 1/2 — dual-screen boot + telemetry mailbox'
+      - name: 'proof 1/2 — dual-screen boot + telemetry mailbox + food patches'
         run: |
           python3 tools/nds-headless-check.py \
             games/underroot-nds/underroot-nds.nds ur-boot-300.png \
             --frames 300 --shot 120:ur-boot-120.png --shot 240:ur-boot-240.png \
             --require-distinct \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:16 \
+            --watch t:ur_telemetry:18 \
             --watch-log ur-boot-trace.csv \
             --assert-watch 250:t:0:eq:0x554E4452 \
             --assert-watch 250:t:1:eq:0x524F4F54 \
@@ -2821,7 +2821,9 @@ jobs:
             --assert-watch 250:t:3:eq:0 \
             --assert-watch 250:t:6:le:255 \
             --assert-watch 250:t:13:eq:16 \
-            --assert-watch 250:t:14:eq:12
+            --assert-watch 250:t:14:eq:12 \
+            --assert-watch 250:t:15:eq:6 \
+            --assert-watch 250:t:16:eq:34
       # Proof 2 — the stylus digs a drawn tunnel (the exact host<->ROM
       # lockstep, offset-free): --touch replays CI_DIG_PIXELS from
       # check-underroot.py — a shaft down from the mouth, an east branch,
@@ -2842,12 +2844,14 @@ jobs:
             --touch 135-145:168,56 \
             --touch 150-160:8,184 \
             --elf games/underroot-nds/build/underroot-nds.elf \
-            --watch t:ur_telemetry:16 \
+            --watch t:ur_telemetry:18 \
             --assert-watch 190:t:0:eq:0x554E4452 \
             --assert-watch 190:t:8:eq:7 \
             --assert-watch 190:t:9:eq:6 \
             --assert-watch 190:t:13:eq:16 \
-            --assert-watch 190:t:14:eq:12
+            --assert-watch 190:t:14:eq:12 \
+            --assert-watch 190:t:15:eq:6 \
+            --assert-watch 190:t:16:eq:34
       - name: upload Underroot ROM + proof screenshots
         uses: actions/upload-artifact@v4
         with:

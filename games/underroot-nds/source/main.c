@@ -33,7 +33,8 @@ static PrintConsole bottom_console;
 
 // --- meadow (top screen): grass + the deterministic hawk shadow ------------
 static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
-                        int32_t hawk_y, uint32_t dug, uint32_t con)
+                        int32_t hawk_y, uint32_t dug, uint32_t con,
+                        const ur_patch_t *patches, uint32_t food_total)
 {
     consoleSelect(&top_console);
     consoleClear();
@@ -46,6 +47,18 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
         printf("\x1b[%d;0H", row);
         for (int col = 0; col < 32; col++)
             printf(",");
+    }
+
+    // Food patches (slice 2): a '*' at each patch's meadow cell, drawn on the
+    // foraging apron BELOW the hawk lane band (console rows 15+). Positions
+    // are the pure f(seed, season, index) ur_patch schedule.
+    for (int i = 0; i < UR_PATCH_COUNT; i++)
+    {
+        int pc = patches[i].x / 8;       // px -> 8px console column
+        int pr = patches[i].y / 8;       // px -> 8px console row
+        if (pc < 0) pc = 0; else if (pc > 31) pc = 31;
+        if (pr < 15) pr = 15; else if (pr > 23) pr = 23;
+        printf("\x1b[%d;%dH*", pr, pc);
     }
 
     // The hawk shadow: one glyph at its pure-scheduled meadow cell.
@@ -63,6 +76,8 @@ static void draw_meadow(uint32_t frame, int hawk_on, int32_t hawk_x,
         printf("\x1b[17;0Hsky clear");
     }
 
+    printf("\x1b[18;0Hfood patches %d  store %lu",
+           UR_PATCH_COUNT, (unsigned long)food_total);
     printf("\x1b[19;0Hdig below: hold stylus");
     printf("\x1b[20;0Hburrow  dug %lu  con %lu",
            (unsigned long)dug, (unsigned long)con);
@@ -115,6 +130,14 @@ int main(void)
     uint8_t grid[UR_CELLS];
     ur_fresh_grid(grid);
 
+    // The meadow's food patches: pure f(seed, season, index), fixed for the
+    // slice-2 pinned meadow (UR_SEED, spring). Rendered each frame; the count
+    // and total food are reported in the telemetry mailbox.
+    ur_patch_t patches[UR_PATCH_COUNT];
+    for (int i = 0; i < UR_PATCH_COUNT; i++)
+        patches[i] = ur_patch(UR_SEED, 0, (uint32_t)i);
+    uint32_t food_total = ur_patch_total(UR_SEED, 0);
+
     uint32_t frame = 0;
     int32_t last_col = -1;
     int32_t last_row = -1;
@@ -125,6 +148,8 @@ int main(void)
     ur_telemetry[UR_T_MAGIC1] = 0x524F4F54u;   // 'ROOT'
     ur_telemetry[UR_T_GW] = UR_GRID_W;
     ur_telemetry[UR_T_GH] = UR_GRID_H;
+    ur_telemetry[UR_T_PATCHN] = UR_PATCH_COUNT;
+    ur_telemetry[UR_T_PATCHSUM] = food_total;
     ur_telemetry[UR_T_SPARE] = 0;
 
     draw_burrow(grid);
@@ -166,7 +191,7 @@ int main(void)
 
         // Top screen animates every frame (the hawk sweeps); the burrow is
         // redrawn only when a dig changed it (frame-budget discipline).
-        draw_meadow(frame, hawk_on, hawk_x, hawk_y, dug, con);
+        draw_meadow(frame, hawk_on, hawk_x, hawk_y, dug, con, patches, food_total);
         if (burrow_dirty)
         {
             draw_burrow(grid);

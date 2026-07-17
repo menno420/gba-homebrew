@@ -55,3 +55,26 @@ kit: v1.17.0
 - ORDER 007 ack check: the done-when ack IS on record — "ORDER 007
   ACKNOWLEDGED (first rebooted dispatch)" landed in control/status.md
   at `df55299` (#142, 2026-07-15); no re-ack needed here.
+
+## Wickroad crossroads cut 4 — the best ledger (append-only) 2026-07-17
+
+- updated: 2026-07-17T00:39:10Z (`date -u`); session card
+  `.sessions/2026-07-17-wickroad-crossroads-cut4.md`, branch
+  `claude/wickroad-crossroads-cut4`, PR **#175** (DRAFT/held).
+- What: THE ARC CLOSER of the Wickroad crossroads arc. SRAM-persisted
+  best runs via the house save header `games/common/include/gl_save.h`
+  (POD `{best_gold, best_day_reached, best_seed, runs}` behind magic
+  `WLDGR1`; loaded at boot, written on run-end, survives power-off).
+  Zero new RNG draws; `wr_telemetry` UNCHANGED at 57 words — the ledger
+  lives in a THIRD witness mailbox `wr_ledger[6]`, end-card best line
+  gated on `ledger_loaded` so the no-save default path is byte-identical
+  and P1-P11 carry VERBATIM. Additive proof P12 (Deepcast SRAM
+  power-cycle pattern; `ALL WICKROAD PROOFS PASS`, exit 0).
+  `dist/wickroad.gba` v1.0, 180,008 bytes, sha256 `d740b738…c14cb4`.
+- Stack: stacked on `claude/wickroad-crossroads-cut3` (#174), NOT main.
+  Land order: #172 → #173 → #174 → #175. DRAFT hold per the standing
+  2026-07-16 landing wall (no ready-flip / merge / auto-merge from this
+  session); substrate-gate red BY DESIGN, required gate is "ROM builds".
+- Claim retired: `control/claims/claude-wickroad-crossroads-cut4.md`
+  deleted in this heartbeat commit (the PR is the durable record).
+- Audio deliberately untouched — owner playtest still outstanding.

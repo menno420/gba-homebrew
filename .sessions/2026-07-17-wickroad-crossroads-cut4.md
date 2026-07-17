@@ -1,12 +1,12 @@
 # Session — Wickroad crossroads cut 4: THE BEST LEDGER
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-17 (branch `claude/wickroad-crossroads-cut4`, PR
-  **[[fill:PR]]**; started 00:33:43Z — from `date -u` at write time).
-  Held DRAFT — Status stays `in-progress` at the born-red gate; flips to
-  `complete` in the heartbeat commit once code + proofs are green (the
-  PR alone carries the DRAFT hold, mirroring the cut-3 card convention).
+  **#175**; started 00:33:43Z, card resolved 00:39:10Z — both from
+  `date -u` at write time). PR held DRAFT per the landing wall; the card
+  records the work as done (the PR alone carries the DRAFT hold,
+  mirroring the cut-3 card convention).
 - mission: **Wickroad crossroads cut 4 — "THE BEST LEDGER"** per
   `games/wickroad/ARC-CROSSROADS.md` cut 4, the ARC CLOSER. Wickroad was
   the ONLY GBA title in the lab with zero SRAM persistence; now that the
@@ -29,7 +29,7 @@
   assets only (PUBLIC repo).
 - **📊 Model:** Claude (Opus family) · high · feature build — wickroad
   crossroads cut 4, the best ledger (arc closer).
-- landing posture: PR **[[fill:PR]]** opened DRAFT and held draft per
+- landing posture: PR **#175** opened DRAFT and held draft per
   the standing 2026-07-16 landing wall — no ready-flip, no merge/
   approve/auto-merge calls from this session. Stacked on
   `claude/wickroad-crossroads-cut3` (#174), NOT on main. substrate-gate
@@ -39,8 +39,8 @@
 
 ## What shipped
 
-1. Born-red gate (commit **[[fill:C1]]**): this card `in-progress` +
-   `control/claims/claude-wickroad-crossroads-cut4.md`, PR **[[fill:PR]]**
+1. Born-red gate (commit **`e4952dc`**): this card `in-progress` +
+   `control/claims/claude-wickroad-crossroads-cut4.md`, PR **#175**
    opened DRAFT immediately and held draft.
 2. **The cut** (`games/wickroad/src/main.cpp`): `#include "gl_save.h"`
    (+ `../common/include` restored to the Makefile INCLUDES so the house
@@ -59,7 +59,7 @@
    byte-identical. The ledger publishes every frame in the new witness
    mailbox `wr_ledger[6]` (`'WLDG'` magic, best_gold, best_day_reached,
    best_seed, runs, loaded flag) — a THIRD symbol, so `wr_telemetry` and
-   `wr_art` are byte-unchanged. (Commit **[[fill:C2]]**.)
+   `wr_art` are byte-unchanged. (Commit **`0c1596d`**.)
 3. **The proof** (`games/wickroad/proofs.sh`, additive — P1-P11
    UNTOUCHED, byte-identical): **P12 THE BEST LEDGER**, mirroring the
    Deepcast SRAM power-cycle proof. **P12a** fresh-cart baseline (no
@@ -77,7 +77,7 @@
    count bumped 1 → 2 and re-persisted. Every pin host-mirrored from
    EXISTING proofs (gold 328 / day 13 from P2, seed 1464419147 from
    P11). RUN TWICE — watch-logs AND `.sav` byte-identical.
-   (Commit **[[fill:C2]]**.)
+   (Commit **`0c1596d`**.)
 4. **Build + proofs**: Makefile INCLUDES gains `../common/include`;
    `make -C games/wickroad` builds `wickroad.gba` + `.elf`; `bash
    games/wickroad/proofs.sh` prints **`ALL WICKROAD PROOFS PASS`**, exit

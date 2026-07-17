@@ -1,7 +1,8 @@
 # Wickroad — the CROSSROADS arc (second arc plan)
 
-> **Status:** `cuts 1-3 in-progress` (2026-07-16, DRAFT/held; cut 2
-> stacked on cut 1, cut 3 stacked on cut 2) — cut 4 planned.
+> **Status:** `cuts 1-4 built, arc growth-complete pending owner clicks
+> + audio playtest` (2026-07-17, DRAFT/held; cut 2 stacked on cut 1, cut
+> 3 on cut 2, cut 4 on cut 3 — land order #172 → #173 → #174 → this).
 
 The named *growth path* (`CONCEPT.md` § Growth cuts, cuts 1-5) is
 **complete** as of 2026-07-15 (v0.6, PRs #142-#146). Its biggest idea,
@@ -64,11 +65,31 @@ pass», «Seed dial», «The best ledger»").
    score-attack GBA title with a fixed seed and no dial — this closes
    that gap.
 
-4. **THE BEST LEDGER** — *planned.* SRAM-persisted best runs via
-   `gl_save.h` (the house save header). Wickroad is currently the ONLY
-   GBA title with zero SRAM persistence; the best-gold-by-day-N ledger
-   is the natural score-attack hook once the seed dial gives runs a
-   fair, repeatable world to be best in.
+4. **THE BEST LEDGER** — *SERVED — v1.0 (in-progress, DRAFT/held,
+   stacked on cut 3) — THE ARC CLOSER.* SRAM-persisted best runs via
+   `gl_save.h` (the house save header). Wickroad was the ONLY GBA title
+   with zero SRAM persistence; the best-gold ledger is the natural
+   score-attack hook now that the seed dial gives runs a fair,
+   repeatable world to be best in. A POD `wr_ledger_save {best_gold,
+   best_day_reached, best_seed, runs}` behind magic tag `"WLDGR1"` loads
+   ONCE at boot (fresh / foreign / erased cart → a zero ledger, NOT
+   reset by `reset_run()`), is written to SRAM the instant a run ENDS
+   (win `st_balanced` or loss `st_closed`), and survives a power cycle
+   (the Deepcast `meta_slot` / Lumen-Drift two-boot precedent). THE
+   CONTRACT: the default no-save path is render-cost + timing
+   BYTE-IDENTICAL to cut 3 — the persisted best line renders on the end
+   cards ONLY when a prior save was restored (`ledger_loaded`), which
+   never happens on a fresh cart, so every proof P1-P11 (all run WITHOUT
+   `--savefile`) carries VERBATIM. RNG/telemetry delta: **zero new RNG
+   draws** (persistence reads the sim's existing end-of-run state, never
+   the stream) and **`wr_telemetry` UNCHANGED at 57** — the ledger lives
+   in a THIRD committed mailbox `wr_ledger[6]` (`'WLDG'` magic +
+   best_gold, best_day_reached, best_seed, runs, loaded flag), exactly
+   as cut 2 kept the art in a separate `wr_art` rather than widening the
+   sim mailbox. Proven by new proof **P12** (four sub-proofs, the
+   Deepcast SRAM power-cycle pattern: fresh-cart baseline · write +
+   persist · power-cycle restore · the restored best line renders — run
+   twice byte-identical, watch-logs AND the written `.sav` files).
 
 **Slice budget:** 4-5 (the junction likely 2 — this cut being the
 first, self-contained core; a sprite/polish follow could split off).

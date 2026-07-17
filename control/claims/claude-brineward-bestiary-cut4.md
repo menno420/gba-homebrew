@@ -1,0 +1,1 @@
+- `claude/brineward-bestiary-cut4` · **Brineward bestiary cut 4 — the hold track (crate-cap economy)** · games/brineward-nds/, tools/check-brine.py, .github/workflows/rom-builds.yml · 2026-07-17

@@ -88,7 +88,7 @@ original IP. Shipped builds and hashes: [`dist/README.md`](../dist/README.md).
 | 8 | **Cindervault** (turn-based dungeon dive) | GBA | v0.6 — named growth path COMPLETE: prototype #86, items #112, species #116, endless depth #120, seed-select #122, art pass #127 |
 | 9 | **Clockwork Courier** (rewind-ghost platformer) | GBA | v1.0 CONCEPT COMPLETE: prototype #96, ghost platform #105, timed chutes #106, three floors #107, audio #108 |
 | 10 | **Shoal** (flock-herding action puzzler) | GBA | v1.0 CONCEPT COMPLETE: prototype #98, predators #99, gates #100, star ratings #101, tuned levels #102, audio #103 |
-| 11 | **Wickroad** (market-route trading, aging ledger) | GBA | v0.6 — named growth path COMPLETE: prototype #129 (2026-07-14, the generative rung), rumors (cut 1) #142, contracts (cut 2) #143, road hazards (cut 3) #144, wider map + mules (cut 4) #145, audio (cut 5) #146 (2026-07-15); growth cuts: none open |
+| 11 | **Wickroad** (market-route trading, aging ledger) | GBA | v0.7 — named growth path COMPLETE (cuts 1–5 #142–#146); **crossroads arc** (2nd arc, `games/wickroad/ARC-CROSSROADS.md`) cut 1 THE JUNCTION in-progress PR #172 (2026-07-16, DRAFT/held): branch roads + the L+R fork verb, WYRMHOLLOW off the DUNWICK junction, +8 appended RNG draws, telemetry 52→56, proof P9; crossroads cuts 2–4 (sprite art / seed dial / best ledger) planned |
 
 All four games that had named growth paths (Undertow, Drift Garden,
 Cindervault, Deepcast) completed them across PRs #110–#128 on the

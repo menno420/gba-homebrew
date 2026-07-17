@@ -9,7 +9,7 @@
 #     bash games/wickroad/proofs.sh
 # Artifacts land in $WICKROAD_PROOF_OUT (default /tmp/wickroad-proofs).
 #
-# The eight proofs (asserts inline below):
+# The nine proofs (asserts inline below):
 #   P1 boot/title            — magics, title state, every title line incl.
 #                              the hook line ("BUT THE INK AGES") and the
 #                              full verb help; witness words zero on title.
@@ -180,13 +180,41 @@
 #                              DAC) is not headlessly provable and is
 #                              named owner-playtest territory in the PR.
 #
-# Mailbox: wr_telemetry[52] since v0.6 (layout in games/wickroad/src/main.cpp;
+#   P9 THE JUNCTION (crossroads cut 1) — the road forks: walk the spine
+#                              EAST to the junction DUNWICK (day 5, gold
+#                              52 — the four spine tolls, no hazard, all
+#                              windows open day 15+), where the fork-edge
+#                              witness word 53 reads 7 and the on-branch
+#                              flag word 52 is still 0; the L+R CHORD
+#                              ("take the fork") rides onto WYRMHOLLOW
+#                              (town 7, day 6, gold 50 — word 52 -> 1,
+#                              visited mask 0x9f: bit 7 set, the branch
+#                              stood in); the branch MARKET obeys the same
+#                              impact law (UP to RESIN at the mirror's 18,
+#                              two buys climb the cursor word 18->19->20 as
+#                              gold falls 50->32->13, two sells walk it
+#                              back to gold 50), and plain L returns to
+#                              DUNWICK (day 7, gold 48, word 52 -> 0). The
+#                              fork-edge word 53 reads 7 ONLY at the two
+#                              ends of the fork road (junction + branch)
+#                              and 0 at a mid-spine town (GLASSMERE) — the
+#                              branch is reachable ONLY by the chord, never
+#                              by a spine R. Word 54 pins the branch RESIN
+#                              price against the host mirror even from
+#                              across the spine. RUN TWICE — byte-identical
+#                              watch-logs. Every value derived on the mirror
+#                              FIRST; the ROM matched on the first probe.
+#
+# Mailbox: wr_telemetry[56] since the crossroads cut (layout in
+# games/wickroad/src/main.cpp;
 # P1-P3 keep watching the first 16 words, unchanged from v0.1; P4 the first
 # 24, unchanged from v0.2; P5 the first 32, unchanged from v0.3; P6 the
 # first 40, unchanged from v0.4; P7 asserts nothing past word 47, unchanged
 # from v0.5 — the audio counter words 48-51 are new in v0.6 and words 0-47
 # stayed byte-identical: P1-P7 passed verbatim on the first post-audio run,
-# zero re-pins).
+# zero re-pins. Crossroads cut 1 appended words 52-55 behind the frozen
+# 0-51 and +8 RNG draws behind town 6's: P1-P8 passed verbatim again,
+# zero re-pins — the same append-only wire-format discipline.)
 # Word 15 encodes the THORNBY/SALT ledger entry as (ink price << 8) | age:
 # 6912 = 27 @ age 0 · 6913 = 27 @ 1 · 6915 = 27 @ 3 · 6937 = 27 @ 25.
 # Turn-based determinism: the same script replays bit-identically by
@@ -207,6 +235,7 @@ mkdir -p "$OUT"
 H() { python3 tools/headless-screenshot.py "$ROM" "$@"; }
 W='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:16'
 W52='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:52'
+W56='--elf games/wickroad/wickroad.elf --watch wr:wr_telemetry:56'
 # Audio voicing evidence (growth cut 5, the Shoal/Courier house method):
 # count of nonzero u32 words in the maxmod mixing buffer — 0 exactly when
 # the mixer is silent.
@@ -927,5 +956,114 @@ H "$OUT/p8b.png" --frames 310 $W52 $WMIX $AUDIO_ROUTE \
   "${AUDIO_ASSERTS[@]}"
 cmp "$OUT/p8-run1.csv" "$OUT/p8-run2.csv"
 echo "P8 run-twice: byte-identical"
+
+# The junction route (crossroads cut 1): START, R x4 EAST along the spine
+# to the junction DUNWICK (day 5, gold 52 — four 2-gold tolls, every
+# hazard window opens day 15+ so the road is quiet), the L+R CHORD onto
+# the branch WYRMHOLLOW (day 6, gold 50), UP parks the cursor on RESIN
+# (the branch's cheap produce, town 7 % 4 = good 3), two buys on the
+# impact ladder (18 then 19) and two sells back (20-1 then 19-1) — a
+# clean round trip through the branch market that ends where it began
+# (gold 50), then plain L back to DUNWICK (day 7, gold 48). The two
+# shoulder keys on the SAME frame span (54-56:L + 54-56:R) are the chord;
+# no committed route ever presses both, so the verb is purely additive.
+# Route gold ledger, every step on the host mirror: 60 - 2*4 spine tolls
+# = 52 at DUNWICK d5; -2 fork = 50 at WYRMHOLLOW d6; -18 -19 buys = 13;
+# +19 +18 sells = 50; -2 L = 48 at DUNWICK d7.
+JUNCTION_ROUTE='--keys 10-12:START --keys 30-32:R --keys 36-38:R --keys 42-44:R --keys 48-50:R --keys 54-56:L --keys 54-56:R --keys 60-62:UP --keys 66-68:A --keys 72-74:A --keys 78-80:B --keys 84-86:B --keys 90-92:L'
+
+JUNCTION_ASSERTS=(
+  # day 1 EMBERTON: trading, on the spine — the on-branch flag word 52
+  # and the fork-edge word 53 are both 0 (EMBERTON is a plain spine end,
+  # no fork), and word 54 already pins the branch RESIN price from across
+  # the whole spine (the mirror's day-1 WYRMHOLLOW RESIN = 24)
+  --assert-watch 24:wr:2:eq:1
+  --assert-watch 24:wr:4:eq:1
+  --assert-watch 24:wr:5:eq:60
+  --assert-watch 24:wr:6:eq:0
+  --assert-watch 24:wr:13:eq:9
+  --assert-watch 24:wr:52:eq:0
+  --assert-watch 24:wr:53:eq:0
+  --assert-watch 24:wr:54:eq:24
+  --assert-watch 24:wr:55:eq:0
+  # R to GLASSMERE day 2: a mid-spine town — NO fork here (word 53 = 0),
+  # so the branch is provably unreachable from anywhere but the junction
+  --assert-watch 34:wr:4:eq:2
+  --assert-watch 34:wr:5:eq:58
+  --assert-watch 34:wr:6:eq:1
+  --assert-watch 34:wr:52:eq:0
+  --assert-watch 34:wr:53:eq:0
+  # R R to DUNWICK day 5, gold 52 — THE JUNCTION: the fork-edge word 53
+  # lights to 7 (a fork is live from here) while word 52 is still 0 (not
+  # yet on the branch); word 54 = the mirror's day-5 branch RESIN 16;
+  # visited mask 0x1f = the five spine towns 0..4
+  --assert-watch 52:wr:4:eq:5
+  --assert-watch 52:wr:5:eq:52
+  --assert-watch 52:wr:6:eq:4
+  --assert-watch 52:wr:46:eq:31
+  --assert-watch 52:wr:52:eq:0
+  --assert-watch 52:wr:53:eq:7
+  --assert-watch 52:wr:54:eq:16
+  --assert-text "52:AT DUNWICK  PACK 0/8"
+  # THE FORK: the L+R chord rides onto WYRMHOLLOW (town 7) day 6, gold 50
+  # — word 52 flips 0 -> 1, the fork-edge word 53 still 7 (now the branch
+  # end of the same road), the visited mask sets bit 7 (0x1f | 0x80 =
+  # 0x9f = 159), and the header names the branch town (variable font)
+  --assert-watch 58:wr:4:eq:6
+  --assert-watch 58:wr:5:eq:50
+  --assert-watch 58:wr:6:eq:7
+  --assert-watch 58:wr:8:eq:0
+  --assert-watch 58:wr:46:eq:159
+  --assert-watch 58:wr:52:eq:1
+  --assert-watch 58:wr:53:eq:7
+  --assert-watch 58:wr:54:eq:18
+  --assert-text "58:AT WYRMHOLLOW  PACK 0/8"
+  # UP parks the cursor on RESIN (good 3): the visible market word 13 =
+  # the mirror's branch RESIN 18, impact-free — the branch is a real
+  # market read from the same price law
+  --assert-watch 64:wr:7:eq:3
+  --assert-watch 64:wr:13:eq:18
+  # two buys climb the impact ladder (18 then 19): gold 50 -> 32 -> 13,
+  # pack used 0 -> 1 -> 2, RESIN cargo (word 12) 2, the cursor word
+  # walking 18 -> 19 -> 20 exactly as any spine market
+  --assert-watch 70:wr:5:eq:32
+  --assert-watch 70:wr:8:eq:1
+  --assert-watch 70:wr:12:eq:1
+  --assert-watch 70:wr:13:eq:19
+  --assert-watch 76:wr:5:eq:13
+  --assert-watch 76:wr:8:eq:2
+  --assert-watch 76:wr:12:eq:2
+  --assert-watch 76:wr:13:eq:20
+  # two sells walk it back down (20-1 then 19-1): gold 13 -> 32 -> 50,
+  # pack empties — the branch market's impact decays symmetrically, the
+  # round trip nets zero, the law is the same one
+  --assert-watch 82:wr:5:eq:32
+  --assert-watch 82:wr:8:eq:1
+  --assert-watch 88:wr:5:eq:50
+  --assert-watch 88:wr:8:eq:0
+  # plain L rides back to the junction DUNWICK (day 7, gold 48): word 52
+  # -> 0 (off the branch), word 6 = 4, the fork-edge word 53 still 7
+  # (standing at the junction again); mask keeps bit 7 (WYRMHOLLOW stays
+  # a visited town), word 55 reserved and 0 all route
+  --assert-watch 94:wr:4:eq:7
+  --assert-watch 94:wr:5:eq:48
+  --assert-watch 94:wr:6:eq:4
+  --assert-watch 94:wr:46:eq:159
+  --assert-watch 94:wr:52:eq:0
+  --assert-watch 94:wr:53:eq:7
+  --assert-watch 94:wr:55:eq:0
+)
+
+echo "== P9: THE JUNCTION — the road forks, reached by the L+R chord (run 1) =="
+H "$OUT/p9.png" --frames 100 $W56 $JUNCTION_ROUTE \
+  --watch-log "$OUT/p9-run1.csv" --shot "58:$OUT/p9-branch.png" \
+  "${JUNCTION_ASSERTS[@]}"
+
+echo "== P9: run 2 (must be byte-identical) =="
+H "$OUT/p9b.png" --frames 100 $W56 $JUNCTION_ROUTE \
+  --watch-log "$OUT/p9-run2.csv" \
+  "${JUNCTION_ASSERTS[@]}"
+cmp "$OUT/p9-run1.csv" "$OUT/p9-run2.csv"
+echo "P9 run-twice: byte-identical"
 
 echo "ALL WICKROAD PROOFS PASS"

@@ -712,6 +712,44 @@
     return { start: start, steps: steps, final: state, consumed: steps.length, clean: clean };
   }
 
+  // ------------------------------------------- solver hints (arc 2, cut 2) --
+
+  // The solver already stores each cavern's shortest winning line (level.solution);
+  // that line "doubles as a free hint system". hintFrom() surfaces the ONE next
+  // rotation of a shortest winning continuation FROM THE CURRENT board — not the
+  // whole solution, a single nudge. It re-runs the same BFS `search` from
+  // state.grid against the REMAINING budget for the REMAINING quota, so it stays
+  // honest after the player has wandered off the solver's pristine line (a detour
+  // or an undo): the hint always points along a shortest win from where you
+  // actually are, never a stale parrot of the stored line. Spend-gated — a hint is
+  // meant to cost, so hintedGrade() folds the hint count into `used`, dinging the
+  // card exactly like the same number of over-par turns. Never reveals a hint for
+  // a terminal (won/lost) board. Pure — reuses search/resolve, no DOM, no clock,
+  // no generator change. All ADDITIVE: nothing above is edited.
+
+  // The next rotation ('L'=ccw / 'R'=cw) of a shortest winning line from THIS
+  // board, or null when the board is terminal OR no line still reaches quota from
+  // here within the remaining budget. Deterministic: it selects the first shortest
+  // quota-meeting continuation in the same BFS order `solve` uses, so from a
+  // pristine board it agrees with level.solution[0].
+  function hintFrom(state) {
+    if (!state || state.status !== "playing") return null;
+    var need = (state.quota | 0) - (state.collected | 0);
+    if (need <= 0) return null;                         // quota already met
+    var left = (state.budget | 0) - (state.used | 0);
+    if (left <= 0) return null;                         // no turns remain
+    var found = search(state.grid, left);
+    for (var i = 0; i < found.records.length; i++)
+      if (found.records[i].collected >= need) return found.records[i].path.charAt(0);
+    return null;                                        // unwinnable from here
+  }
+
+  // Spend-gated grade: each hint taken counts like one extra (over-par) turn, so
+  // leaning on the solver dings your card. hints<=0 reproduces plain grade(). Pure.
+  function hintedGrade(used, parTurns, hints) {
+    return grade((used | 0) + Math.max(0, hints | 0), parTurns);
+  }
+
   return {
     VERSION: VERSION, SIZE: SIZE,
     EMPTY: EMPTY, WALL: WALL, STONE: STONE, GEM0: GEM0, MERGE_MIN: MERGE_MIN,
@@ -727,6 +765,7 @@
     paramsFor: paramsFor, generateLevel: generateLevel,
     newGame: newGame, rotate: rotate, replay: replay,
     isReplayLine: isReplayLine, normalizeLine: normalizeLine,
-    encodeShare: encodeShare, decodeShare: decodeShare, spectate: spectate
+    encodeShare: encodeShare, decodeShare: decodeShare, spectate: spectate,
+    hintFrom: hintFrom, hintedGrade: hintedGrade
   };
 });

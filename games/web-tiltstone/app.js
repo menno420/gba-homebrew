@@ -38,6 +38,7 @@
   var pack = null;    // slice 5: the active curated pack object, or null (free play)
   var stage = 0;      // slice 5: 0-based index into pack.entries
   var line = "";      // arc2 cut1: the player's OWN rotation line ('R'=cw, 'L'=ccw)
+  var hints = 0;      // arc2 cut2: opt-in solver hints taken this attempt (spend-gates the grade)
   var spectating = false;   // arc2 cut1: a shared line is auto-playing
   var spectQueue = "";      // remaining shared-line chars during a spectate
   var spectTok = 0;         // bumps to abort an in-flight spectate pump
@@ -55,6 +56,7 @@
     history = [];
     undos = 0;
     line = "";
+    hints = 0;
     setMsg("");
     render();
   }
@@ -73,6 +75,7 @@
     history = [];
     undos = 0;
     line = "";
+    hints = 0;
     setMsg(p.name + " — stage " + (stage + 1) + "/" + p.entries.length);
     render();
   }
@@ -84,8 +87,9 @@
   }
 
   function gradeLine() {
-    var p = E.par(state.level), g = E.grade(state.used, p);
+    var p = E.par(state.level), g = E.hintedGrade(state.used, p, hints);   // arc2 cut2: hints ding the grade
     return "PAR " + p + " — YOU " + state.used + " — " + g.label +
+      (hints ? " (" + hints + " hint" + (hints === 1 ? "" : "s") + ")" : "") +
       (undos ? " (" + undos + " undo" + (undos === 1 ? "" : "s") + ")" : "");
   }
 
@@ -161,6 +165,19 @@
       }
     } catch (e) { /* guarded — insecure context, etc. */ }
     setMsg(url);                                // no clipboard API — show the URL
+  }
+
+  // --- solver hint (arc 2, cut 2) --------------------------------------------
+  // One opt-in nudge: the NEXT rotation of a shortest winning line from the board
+  // as it stands now. Spend-gated — every hint dings the win card like an over-par
+  // turn (E.hintedGrade folds the count into `used`). Does NOT auto-rotate.
+  function doHint() {
+    if (state.status !== "playing") { setMsg("No hint — this cavern is already " + state.status); return; }
+    var h = E.hintFrom(state);
+    if (h !== "L" && h !== "R") { setMsg("No hint — no winning line left from here"); return; }
+    hints++;
+    var dir = h === "R" ? "clockwise ↻ (D / →)" : "counter-clockwise ↺ (A / ←)";
+    setMsg("Hint: rotate " + dir + " — costs 1 on your grade (" + hints + " used)");
   }
 
   // Load a decoded ?replay= share and auto-play its line, move by move, on the
@@ -513,10 +530,12 @@
     else if (k === "u") undo();
     else if (k === "m") toggleMute();
     else if (k === "s") doShare();
+    else if (k === "h") doHint();
   });
   document.getElementById("btn-ccw").addEventListener("click", function () { cancelSpectate(); act("ccw"); });
   document.getElementById("btn-cw").addEventListener("click", function () { cancelSpectate(); act("cw"); });
   document.getElementById("btn-share").addEventListener("click", doShare);
+  document.getElementById("btn-hint").addEventListener("click", doHint);
   document.getElementById("btn-undo").addEventListener("click", undo);
   document.getElementById("btn-restart").addEventListener("click", restart);
   document.getElementById("btn-next").addEventListener("click", nextLevel);
@@ -557,6 +576,8 @@
     getShareURL: function () { return shareURL(); },             // arc2 cut1
     isSpectating: function () { return spectating; },            // arc2 cut1
     spectate: function (share) { beginSpectate(share); return state; }, // arc2 cut1
+    getHints: function () { return hints; },                     // arc2 cut2
+    hint: function () { return E.hintFrom(state); },             // arc2 cut2
     loadPack: function (id, i) { var p = E.packById(id); if (p) startPackStage(p, i || 0); return state; },
     getPack: function () { return pack ? { id: pack.id, name: pack.name, stage: stage, size: pack.entries.length } : null; },
     dailySeed: DAILY

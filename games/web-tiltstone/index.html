@@ -74,6 +74,7 @@
     <input id="seedbox" type="number" placeholder="seed" inputmode="numeric">
     <button id="btn-load">Load seed</button>
     <button id="btn-share" title="copy a share link of your line (S)">Share line</button>
+    <button id="btn-hint" title="reveal the next move — costs 1 on your grade (H)">Hint</button>
     <button id="btn-mute" title="toggle synth sound (M)">Sound: on</button>
   </div>
   <div class="row">
@@ -81,8 +82,9 @@
     <button id="btn-pack" title="play the selected pack from stage 1">Play pack</button>
   </div>
   <div id="hint">
-    &larr;/A rotate left &middot; &rarr;/D rotate right &middot; U undo &middot; R restart &middot; N next level &middot; M sound &middot; S share<br>
+    &larr;/A rotate left &middot; &rarr;/D rotate right &middot; U undo &middot; R restart &middot; N next level &middot; M sound &middot; S share &middot; H hint<br>
     Share line copies a <code>?seed&amp;replay=</code> link of YOUR line &middot; opening one plays it back as a spectated run<br>
+    Hint (H) reveals the next move of a shortest winning line from where you stand &mdash; each hint costs 1 on your grade, like an over-par turn<br>
     hit the gem quota before your rotations run out &middot; every seed is provably winnable<br>
     PAR is the solver's shortest line &mdash; match it for a PERFECT<br>
     deeper caverns (LV 5+): caged gems free when you pop beside them &middot; ice slides off piles &middot; grates pass one way (arrow down)<br>

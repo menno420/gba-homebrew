@@ -1,6 +1,6 @@
 # Tiltstone — arc 2 design doc (the shareable daily)
 
-> **Status:** cut **1 of 5 BUILT** — arc opened 2026-07-16. Source code and
+> **Status:** cut **2 of 5 BUILT** — arc opened 2026-07-16. Source code and
 > merged PRs always win over this file; it states the plan and the
 > decide-and-flag design calls, updated as cuts land. Kicked off from the owner
 > decision menu (docs/NEXT-MENU-2026-07-15.md § B1, the in-doc recommendation)
@@ -67,18 +67,25 @@ one). Provenance is the arc-1 ender card whose deduped 💡 seeded it.
   trace grid equals the authoritative post-rotation grid, across the seed-42
   line and the 12-seed sweep; a share carries only seed+line.
 
-### CUT 2 — «Hints from the solver»
+### CUT 2 — «Hints from the solver» — BUILT (this PR)
 
 - **Provenance:** `.sessions/2026-07-13-web-tiltstone.md` § idea (the stored
   winning line "doubles as a free hint system").
-- **What:** an opt-in hint that surfaces the NEXT rotation of the solver's stored
+- **What:** an opt-in hint that surfaces the NEXT rotation of a shortest winning
   line from the current board — not the whole solution, one nudge, spend-gated so
   it dings the grade (a hint used counts like an over-par turn on the win card).
-- **Proof strategy:** pure `hintFrom(state)` returns the solver's next rotation
-  for the current grid (re-run the BFS from `state.grid`, take the first move of
-  the shortest winning continuation); assert in the smoke that following the hint
-  repeatedly always reaches `won` within budget, and that the hint is never
-  revealed for a lost/won terminal state. No generator change.
+  Honest after detours/undos: `hintFrom` re-solves from the board as it stands, so
+  it is never a stale parrot of the stored line.
+- **Proof strategy (shipped):** pure `hintFrom(state)` returns the next rotation
+  for the current grid (re-run the BFS `search` from `state.grid` against the
+  remaining budget/quota, take the first move of the shortest winning
+  continuation) and `hintedGrade(used, par, hints)` folds the hint count into
+  `used`; `smoke.mjs` § 15 asserts a pristine hint equals `level.solution[0]`,
+  following hints wins in exactly par (seed 42 + 12-seed sweep), an off-line detour
+  re-solves the actual board (or returns an honest null), the hint is never revealed
+  for a won/lost/malformed terminal state, and the `hintedGrade` spend-gating truth
+  table is pinned. No generator change; arc-1 pins and cut-1 § 14 re-pass
+  byte-identical.
 
 ### CUT 3 — «Undo×par curation»
 
@@ -129,7 +136,7 @@ tracked there, not here; it is polish, not a determinism feature.)*
 | Cut | Title | Provenance card | Status | PR |
 |-----|-------|-----------------|--------|----|
 | 1 | Share your line | tiltstone-juice | **BUILT** | this |
-| 2 | Hints from the solver | web-tiltstone | planned | — |
+| 2 | Hints from the solver | web-tiltstone | **BUILT** | #167 |
 | 3 | Undo×par curation | tiltstone-par | planned | — |
 | 4 | Mechanic fingerprints | tiltstone-cells | planned | — |
 | 5 | The monotone ramp | tiltstone-packs | planned | — |

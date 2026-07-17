@@ -72,3 +72,24 @@ kit: v1.17.0
   claim control/claims/claude-current-state-rows.md (its work merged
   as #152, `478bf16`, 2026-07-16T01:20:02Z). Docs-only; no dist/, no
   workflows, no routines, no merge automation touched.
+
+## Dispatched slice 2026-07-16 — overnight planning menu (append-only)
+
+- updated: 2026-07-17 (`date -u` at grounding: Thu Jul 16 21:51:45 UTC
+  2026); session card `.sessions/2026-07-16-overnight-menu.md`, branch
+  `claude/overnight-menu-2026-07-16`, work claim
+  `control/claims/claude-overnight-menu-2026-07-16.md`, PR #171.
+- What: `docs/planning/OVERNIGHT-MENU-2026-07-16.md` — an owner
+  veto-ready planning menu, **84 distinct proposals** (44 per-game
+  across all 12 games incl. Underroot + Tiltstone, plus engine,
+  tooling/CI, web arcade, release, new-game, cross-game), grounded
+  against main HEAD `478bf16` (#152). Planning docs only; no game
+  sources, no dist/, no workflows, no routines touched. Proposals that
+  build on today's stack (#155–#165 Underroot v1.0, #166–#170 Tiltstone
+  arc 2) are marked as depending on it landing.
+- Landing posture: opened DRAFT under the STANDING 07-16 LANDING WALL;
+  the owner (menno420) **ready-clicked #171 on 2026-07-17**, lifting the
+  wall for this PR. Card flipped `in-progress` → `complete` LAST to
+  release the born-red HOLD; merged origin/main (`8da00cd`, #153) to
+  clear a `control/status.md` append conflict. No self-merge — the
+  merge-on-green automation decides. #153–#170 untouched.

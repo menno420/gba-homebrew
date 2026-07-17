@@ -107,3 +107,40 @@ kit: v1.17.0
   by design (#151 doc orphans on main + the born-red HOLD card).
 - not touched: no pre-existing PR (#153–#177), no `docs/current-state.md`,
   no routines, no other lane's status section, the inbox untouched.
+
+## Session 2026-07-17 — brineward bestiary cut 4 «The hold track» (append-only)
+
+- updated: 2026-07-17T03:15:29Z (`date -u`); branch
+  `claude/brineward-bestiary-cut4` (stacked on `claude/brineward-bestiary-cut3`
+  @ `02f0e57`), session card
+  `.sessions/2026-07-17-brineward-bestiary-cut4.md`; DRAFT PR (held draft
+  per the standing 07-16 landing wall).
+- phase: owner menu **B3** (`docs/NEXT-MENU-2026-07-15.md`) — Brineward
+  arc 2 «the bestiary», cut 4 of 4, the **ARC CLOSER**. Plan doc:
+  `games/brineward-nds/ARC-BESTIARY.md` (status flipped to arc-built,
+  growth-complete pending owner clicks).
+- health: green where measurable. Host proof `tools/check-brine.py` ALL
+  GREEN with 1 new check (`check_hold_track`) + the port-ledger/upgrade-
+  table checks extended to the 4th (hold) track; existing host output
+  byte-identical (additive-only); all 8 route recorders re-derive
+  byte-identical (duel/salvage/maw/wind/bands/grasper/breakfree/ambush),
+  the new `record-bighold.py` route is deterministic. `bw_sim.c` gcc-clean.
+- what: the concept's "Hold cap starts at 8 crates" built as a fourth
+  Graywake port upgrade line — `BW_UP_HOLD_OF={8,12,16}` (tier 0 = the
+  legacy `BW_HOLD_CAP` EXACTLY, the pin-carry identity), prices triple
+  `{0,15,45}`; `bw_loot_step` caps at the tiered value, the port buys it,
+  the save carries it (the record word's reserved high byte). Gated by the
+  legacy-constant tier-0 row so every prior route/pin carries bit-identical.
+- honest limit: the NDS ROM is NOT built in this worker env (no BlocksDS
+  toolchain) — `main.c` port/HUD/save wiring + the one new witness word
+  `BW_T_HOLDCAP=56` and ROM proof 26 are compiled/pinned only by CI
+  (`nds-brineward-build`); proof 26's frame pins are mirror-predicted
+  (reusing proof 7's proven berth window). The >8-crate deep-haul bank is
+  host-proven (`check_hold_track`/`record-bighold`) — the crate SUPPLY is
+  untouched, so an ordinary water does not yet overflow the stock hold; the
+  ROM pins the ECONOMY (buy it, cap 8->12, it persists). A clean follow-up.
+- blockers: standing 07-16 landing wall (draft-park); substrate-gate red
+  by design (#151 doc orphans on main + the born-red HOLD card). Arc land
+  order: #176 -> #177 -> #178 -> this.
+- not touched: no pre-existing PR (#153–#178), no routines, no other lane's
+  status section, the inbox untouched.

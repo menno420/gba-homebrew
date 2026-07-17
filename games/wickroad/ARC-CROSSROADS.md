@@ -1,7 +1,7 @@
 # Wickroad — the CROSSROADS arc (second arc plan)
 
-> **Status:** `cuts 1-2 in-progress` (2026-07-16, DRAFT/held; cut 2
-> stacked on cut 1) — cuts 3-4 planned.
+> **Status:** `cuts 1-3 in-progress` (2026-07-16, DRAFT/held; cut 2
+> stacked on cut 1, cut 3 stacked on cut 2) — cut 4 planned.
 
 The named *growth path* (`CONCEPT.md` § Growth cuts, cuts 1-5) is
 **complete** as of 2026-07-15 (v0.6, PRs #142-#146). Its biggest idea,
@@ -48,12 +48,21 @@ pass», «Seed dial», «The best ledger»").
    carried BYTE-IDENTICAL; the art itself is proven in a second `wr_art`
    mailbox + DISPCNT/palette-RAM/VRAM hardware pins in new proof P10.
 
-3. **SEED DIAL** — *planned.* A title-screen dial that picks the world
-   seed (`.sessions/2026-07-14-cindervault-seed.md` precedent), turning
-   the single fixed `0x5749434B` world into a family of daily/challenge
-   worlds while keeping every committed proof runnable at the default
-   seed. Wickroad is currently the ONLY score-attack GBA title with a
-   fixed seed and no dial — this closes that gap.
+3. **SEED DIAL** — *SERVED — v0.9 (in-progress, DRAFT/held, stacked on
+   cut 2).* A title-screen dial picks the world seed
+   (`.sessions/2026-07-14-cindervault-seed.md` + Underroot slice-10
+   `ur_dial_seed` precedent), turning the single fixed `0x5749434B`
+   world into a family of daily/challenge worlds while keeping every
+   committed proof runnable at the default seed. LEFT/RIGHT scan the
+   dial (edge-triggered, TITLE ONLY); `dial_seed(0) == seed_constant`,
+   so the default world — and P1-P10 — is BIT-IDENTICAL (zero
+   behavioural change at default). `reset_run()` seeds `run_seed`, so
+   START from a card reruns the SAME dialed world. The live seed is
+   published in the APPENDED telemetry word `[56]` (mailbox `[56] →
+   [57]`, the append-only wire-format discipline; words 0-55 stay
+   byte-identical). Proven by new proof **P11**. Wickroad was the ONLY
+   score-attack GBA title with a fixed seed and no dial — this closes
+   that gap.
 
 4. **THE BEST LEDGER** — *planned.* SRAM-persisted best runs via
    `gl_save.h` (the house save header). Wickroad is currently the ONLY

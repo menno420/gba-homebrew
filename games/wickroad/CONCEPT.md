@@ -140,15 +140,18 @@ twice byte-identical.
 
 ## Determinism
 
-One xorshift32 at fixed seed `0x5749434B`, consumed only at world
-init in a fixed order; integer math only; prices are pure functions
-of (day, impact). Same input script = identical run (proven run-twice
-byte-identical). Telemetry mailbox `wr_telemetry[56]` every frame
-(grown 16 → 24 → 32 → 40 → 48 → 52 → 56 across the growth cuts and the
-crossroads arc; each cut appended words only, earlier words byte-
-unchanged). The RNG draw ORDER is a committed wire format: the branch
-town (crossroads cut 1) appends its 8 draws strictly after town 6's —
-the freeze point named in `reset_run()`.
+One xorshift32 at the DIALED seed (crossroads cut 3; dial 0 ==
+`0x5749434B`, the pinned default world), consumed only at world init
+in a fixed order; integer math only; prices are pure functions of
+(day, impact). Same input script + same dial = identical run (proven
+run-twice byte-identical). Telemetry mailbox `wr_telemetry[57]` every
+frame (grown 16 → 24 → 32 → 40 → 48 → 52 → 56 → 57 across the growth
+cuts and the crossroads arc; each cut appended words only, earlier
+words byte-unchanged — the seed dial appended word 56, the live dialed
+seed, and dial 0 keeps the world itself identical). The RNG draw ORDER
+is a committed wire format: the branch town (crossroads cut 1) appends
+its 8 draws strictly after town 6's — the freeze point named in
+`reset_run()`.
 
 ## Sellability guess
 

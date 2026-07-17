@@ -121,8 +121,12 @@
  *     world.
  *
  * DETERMINISM CONTRACT (headless proof relies on all of this):
- *   - One xorshift32 PRNG at fixed seed 0x5749434B ('WICK'), consumed
- *     ONLY at world init, in a fixed order (base prices then phases).
+ *   - One xorshift32 PRNG at the DIALED seed (crossroads cut 3; dial 0
+ *     == 0x5749434B 'WICK', the pinned default world), consumed ONLY at
+ *     world init, in a fixed order (base prices then phases). The
+ *     title-screen seed dial (LEFT/RIGHT) picks the seed; dial 0 draws
+ *     the exact committed stream, so every proof at the default seed is
+ *     bit-identical. The live seed is published in telemetry word [56].
  *   - Integer math only. Prices are a CLOSED FORM of (day, impact):
  *     price = clamp(base + tri12(day + phase) * step + impact),
  *     where tri12 is a triangle wave over a 12-day period — no
@@ -131,8 +135,9 @@
  *     input script replays bit-identically.
  *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
- * --elf --watch wr:wr_telemetry:56; the v0.1/v0.2/v0.3/v0.4/v0.5/v0.6 proofs
- * keep watching the first 16/24/32/40/48/52 words unchanged), volatile,
+ * --elf --watch wr:wr_telemetry:57; the v0.1/v0.2/v0.3/v0.4/v0.5/v0.6 proofs
+ * keep watching the first 16/24/32/40/48/52 words unchanged, and cut 1's P9
+ * the first 56 — the seed word [56] is appended behind them, cut 3), volatile,
  * C-linkage, every frame:
  *   [0] 0x5749434B 'WICK' magic     [8]  pack used (0..8)
  *   [1] 0x524F4144 'ROAD' magic     [9]  cargo TALLOW
@@ -262,6 +267,19 @@
  * reachable ONLY by the chord, never by a spine R. Word 54 pins the
  * branch market against the host mirror. Words 0-51 are byte-unchanged.
  *
+ * Seed-dial witness word (crossroads cut 3; APPENDED — telemetry grows
+ * [56] -> [57], the append-only wire-format discipline):
+ *   [56] the live dialed world seed (dial 0 == seed_constant
+ *        0x5749434B, the pinned 'WICK' world). Unlike the 0-on-title
+ *        witnesses this is published on EVERY frame incl. the title, so
+ *        each LEFT/RIGHT dial step is watchable as its own literal. The
+ *        run draws its whole world from exactly this seed; word 56 makes
+ *        THE DIAL assertable — the harness pins it stepping on each dial
+ *        edge, returning to seed_constant on the reverse (fully
+ *        reversible), and carrying unchanged into the run a START begins.
+ *        At dial 0 it is seed_constant on every frame, so words 0-55 are
+ *        byte-unchanged and P1-P10 carry verbatim.
+ *
  * PRESENTATION MAILBOX (crossroads cut 2, the sprite art pass) — a SECOND
  * committed symbol, volatile unsigned wr_art[8], separate from
  * wr_telemetry so the 56 sim words stay byte-identical by contract. The
@@ -323,7 +341,7 @@
 extern "C"
 {
     // Headless telemetry mailbox — layout in the header comment.
-    volatile unsigned wr_telemetry[56];
+    volatile unsigned wr_telemetry[57];
 
     // Presentation telemetry (crossroads cut 2, the sprite art pass) — the
     // authored regular_bg's OWN mailbox, so wr_telemetry's 56 simulation
@@ -342,7 +360,8 @@ namespace
         st_closed = 3,               //   balances / the pass closed
     };
 
-    constexpr unsigned seed_constant = 0x5749434Bu;  // 'WICK'; init-only
+    constexpr unsigned seed_constant = 0x5749434Bu;  // 'WICK'; init-only,
+                                                     //   the dial-0 world
 
     struct rng_t
     {
@@ -363,6 +382,39 @@ namespace
             return int(next() % unsigned(n));
         }
     };
+
+    // --- the SEED DIAL (crossroads cut 3) -----------------------------------
+    // A title-screen dial picks the world seed, turning the single fixed
+    // 'WICK' world into a family of daily/challenge worlds (the
+    // Cindervault-seed / Underroot slice-10 precedent). THE CONTRACT: dial 0
+    // IS seed_constant, so the default boot world — and every committed proof
+    // P1-P10 — is BIT-IDENTICAL (zero behavioural change at default). Higher
+    // positions hash off the constant down a DIAL-salted xorshift into the
+    // bounded seed space [1, dial_seed_mask+1], never 0 (the xorshift dead
+    // state), so each is its own repeatable world. LEFT/RIGHT scan the dial
+    // on the TITLE ONLY (its keys are trading verbs everywhere else); the
+    // live seed is published in the APPENDED telemetry word [56] so each step
+    // is watchable, and reset_run() seeds from it, so START from a win/lose
+    // card reruns the SAME dialed world.
+    constexpr int dial_count = 16;                   // positions 0..15
+    constexpr unsigned dial_salt = 0x9E3779B9u;      // golden-ratio odd salt
+    constexpr unsigned dial_seed_mask = 0x00FFFFFFu; // seed space [1, 2^24]
+
+    inline unsigned dial_seed(int dial)
+    {
+        int d = ((dial % dial_count) + dial_count) % dial_count;
+
+        if(d == 0)
+        {
+            return seed_constant;     // dial 0 == the pinned 'WICK' stream
+        }
+
+        unsigned h = seed_constant ^ (dial_salt * unsigned(d));
+        h ^= h << 13;
+        h ^= h >> 17;
+        h ^= h << 5;
+        return (h & dial_seed_mask) + 1u;
+    }
 
     // --- the road (all owner-tunable integers) ------------------------------
     constexpr int town_count = 8;        // widened to 8 (crossroads cut 1:
@@ -658,6 +710,10 @@ int main()
     // --- world + run state (reset_run() restores the exact boot world) -----
     unsigned state = st_title;
     unsigned frames = 0;                 // monotonic since boot
+    int seed_dial = 0;                   // title dial position (0..dial_count-1;
+                                         //   0 == the pinned 'WICK' world)
+    unsigned run_seed = seed_constant;   // the dialed world seed (dial 0 ==
+                                         //   seed_constant; reset_run seeds it)
     unsigned head_quiet = 0;             // frames since the head line
                                          // last changed (regen stagger)
     int base[town_count][good_count];
@@ -871,8 +927,9 @@ int main()
 
     auto reset_run = [&]()
     {
-        // The SAME world every run: the PRNG restarts at the fixed
-        // seed and is consumed only here, in a fixed order. THE ORDER
+        // The SAME world every run for a given seed: the PRNG restarts at
+        // the DIALED seed (run_seed; dial 0 == seed_constant, the pinned
+        // 'WICK' world) and is consumed only here, in a fixed order. THE ORDER
         // IS A COMMITTED INTERFACE (growth cut 4, extended crossroads
         // cut 1): the five legacy towns draw base then phase EXACTLY
         // as in v0.1-v0.4 (40 draws), the two wider-map towns (5-6)
@@ -881,7 +938,7 @@ int main()
         // mirroring town 6's pattern) APPENDED strictly after town 6 —
         // each delta counted, the old stream order frozen, so towns
         // 0-6's world is bit-identical and P1-P8 carry verbatim.
-        rng_t rng(seed_constant);
+        rng_t rng(run_seed);
 
         for(int t = 0; t < legacy_town_count; ++t)
         {
@@ -1310,6 +1367,27 @@ int main()
         case st_title:
         case st_balanced:
         case st_closed:
+            // The seed dial (crossroads cut 3): LEFT/RIGHT scan the world
+            // seed on the TITLE ONLY — edge-triggered (one press = one step,
+            // so a challenge code is a repeatable press sequence), wrapping
+            // over dial_count. Dial 0 is the pinned 'WICK' world; run_seed
+            // (and the published word [56]) follow the dial live. The end
+            // cards do NOT dial — START there reruns the current dialed world.
+            if(state == st_title)
+            {
+                if(bn::keypad::left_pressed())
+                {
+                    seed_dial = (seed_dial + dial_count - 1) % dial_count;
+                    run_seed = dial_seed(seed_dial);
+                }
+
+                if(bn::keypad::right_pressed())
+                {
+                    seed_dial = (seed_dial + 1) % dial_count;
+                    run_seed = dial_seed(seed_dial);
+                }
+            }
+
             if(start)
             {
                 reset_run();
@@ -1510,7 +1588,32 @@ int main()
             ui_lines[3].set(ui_gen, ui_x, -30, "300 GOLD BEFORE DAY 30");
             title_lines[0].set(ui_gen, ui_x, -14, "YOUR LEDGER REMEMBERS");
             title_lines[1].set(ui_gen, ui_x, -2, "BUT THE INK AGES");
-            title_lines[2].set(ui_gen, ui_x, 12, "PRESS START");
+            // The seed dial (crossroads cut 3): once dialed OFF 0, the START
+            // line carries the live dialed world seed as SEED xxxxxxxx (the
+            // pinned "PRESS START" prefix carries, so the P1 text pin holds)
+            // plus the L/R dial hint — two players who dial the same 8 hex
+            // digits trade the SAME world. At dial 0 (the default) the title
+            // renders EXACTLY the committed line, byte-for-byte identical
+            // sprite work — "zero behavioural change at default", so the
+            // frame-alignment the START-window pins own (P2-P10) is untouched
+            // and the enrichment only ever runs once a human has dialed.
+            if(seed_dial == 0)
+            {
+                title_lines[2].set(ui_gen, ui_x, 12, "PRESS START");
+            }
+            else
+            {
+                bn::string<40> start_line("PRESS START  L/R SEED ");
+
+                for(int i = 7; i >= 0; --i)
+                {
+                    unsigned nib = (run_seed >> (i * 4)) & 0xFu;
+                    start_line.append(char(nib < 10u ? '0' + int(nib)
+                                                     : 'A' + int(nib) - 10));
+                }
+
+                title_lines[2].set(ui_gen, ui_x, 12, start_line);
+            }
             title_lines[3].set(ui_gen, ui_x, 26,
                                "A BUY  B SELL  L/R GO  SEL WAIT");
             pact_line.set(ui_gen, ui_x, 40, "RIGHT TAKES A PACT");
@@ -1899,6 +2002,15 @@ int main()
                                                       branch_town % good_count));
             wr_telemetry[55] = 0u;       // reserved
         }
+
+        // Seed-dial witness word (crossroads cut 3) — APPENDED behind the
+        // frozen 0-55 (the append-only wire-format discipline: telemetry
+        // grows [56] -> [57]). Published on EVERY frame incl. the title
+        // (unlike the 0-on-title witnesses) so each dial step is watchable;
+        // at dial 0 it is seed_constant = 0x5749434B on every frame, so the
+        // 56 committed sim words 0-55 stay byte-identical and P1-P10 carry
+        // verbatim. The run draws its world from exactly this seed.
+        wr_telemetry[56] = run_seed;     // the live dialed world seed
 
         // --- the authored background: rebake only when the scene changed,
         // and ONLY on a calm frame (crossroads cut 2). A frame is BUSY while

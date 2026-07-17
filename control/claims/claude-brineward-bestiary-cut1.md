@@ -1,0 +1,1 @@
+- `claude/brineward-bestiary-cut1` · **Brineward bestiary cut 1 — the Grasper** · games/brineward-nds/, tools/check-brine.py, .github/workflows/rom-builds.yml · 2026-07-17

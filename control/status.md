@@ -1,6 +1,6 @@
 # COORDINATOR HEARTBEAT (rebooted seat, 2026-07-17)
 
-updated: Fri Jul 17 23:36:40 UTC 2026 (`date -u`; coordinator heartbeat, rebooted 2026-07-17 coordinator session)
+updated: 2026-07-17T23:36:40Z (`date -u`; coordinator heartbeat, rebooted 2026-07-17 coordinator session)
 
 kit: v1.17.0
 

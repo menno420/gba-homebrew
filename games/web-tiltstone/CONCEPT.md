@@ -94,3 +94,22 @@ if the daily hook shows organic pull.
    links, guarded per-pack progress persistence.
 6. **Daily leaderboard** needs a backend — out of static-hosting scope;
    local streak tracking works today.
+
+## Arc 2 — the shareable daily
+
+The five arc-1 ender cards left a *designed* second arc: turn total determinism
+into the daily/social hook § Sellability names as the real value. Five deduped,
+backend-free cuts (full plan + proof strategies: `docs/arcs/TILTSTONE.md`):
+
+1. **Share your line** — ✅ SHIPPED (arc 2, cut 1): `?seed=N&level=L&replay=RRLR`
+   — a share URL of the player's OWN rotation line. `(seed, levelIndex, line)`
+   fully describes a run (determinism is total), so the existing `resolveTrace`
+   replays it as a spectated run for free; the solver's line stays hidden.
+   Pure `encodeShare`/`decodeShare`/`spectate` in the engine (additive), a Share
+   button + `?replay=` spectate mode in the shell, proven in `smoke.mjs` § 14.
+2. **Hints from the solver** — the stored winning line's next move, spend-gated.
+3. **Undo×par curation** — `(undos, used − par)` as a deceptiveness rating.
+4. **Mechanic fingerprints** — neutralized-BFS par deltas → which cell class
+   carries a seed ("this daily NEEDS the grate").
+5. **The monotone ramp** — an optional difficulty floor on `generateLevel` so the
+   daily chain is a provably non-decreasing ramp.

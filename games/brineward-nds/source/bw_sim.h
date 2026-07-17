@@ -421,6 +421,36 @@
 #define BW_GRASPER_BRACE_HULL 10         // hull the wrench-loose costs, ONCE
 #define BW_GRASPER_BRACE_FRAMES 12       // the arms slip this many frames after a brace
 
+// Cut 3 «The ambush» — the concept's full sentence finished: "arms that
+// grapple and hold you still WHILE CUTTERS CLOSE IN". While the Grasper
+// HOLDs the sloop, BW_CUTTER_COUNT light enemy sloops converge on the
+// latched hold point and BITE — the pin made lethal (the tempo loss cut 1
+// only hinted at). The counter is cut 2: a braced break-out ends the hold
+// (fast-forwards the clock to BW_GRASPER_HOLD_FRAMES - BW_GRASPER_BRACE_
+// FRAMES = 78, released 12 frames on) BEFORE the cutters reach the pin, so
+// they never bite and disperse — «ambush survived».
+//
+// THE AMBUSH GATE (a NEW seed sub-bucket over cut 1's grasper bucket): an
+// ambush water is a grasper water that ALSO passes a fresh salt hash —
+// bw_grasper_ambush(seed) = bw_has_grasper(seed) && ((bw_hash(seed,
+// BW_AMBUSH_SALT) & BW_AMBUSH_BUCKET) == 0). BW_AMBUSH_SALT/BUCKET are
+// pinned so NONE of the committed/host-checked grasper seeds (the seize +
+// break-free anchor seed 174, the first-six grasper waters the host checks
+// drive) fall into the ambush bucket. Cutters spawn/step ONLY in an ambush
+// water (d->ambush_water), so every prior grasper route keeps zero cutters
+// and stays bit-identical (check-brine.py asserts the identity loudly), and
+// bw_grasper_step is still a pure no-op in a Maw water. The cutters live
+// only in the HOLD branch — a REACH miss, a slay, a berthed sloop never
+// spawn them.
+#define BW_AMBUSH_SALT 0x10000045u       // ambush sub-bucket = f(seed); pinned
+                                         //   so no committed grasper seed ambushes
+#define BW_AMBUSH_BUCKET 3               // ambush when has-grasper && hash & 3 == 0
+#define BW_CUTTER_COUNT 3                // light sloops that converge on the pin
+#define BW_CUTTER_SPEED 256              // units/frame (1 px) — quick, closes the
+                                         //   pin from its spawn ring in ~40+ frames
+#define BW_CUTTER_HIT_RANGE (6 * BW_ONE) // chebyshev cutter<->pin at the bite
+#define BW_CUTTER_BITE 8                 // hull each cutter's bite docks, ONCE
+
 // --- state -----------------------------------------------------------------------
 typedef struct
 {
@@ -461,6 +491,15 @@ typedef struct
     int32_t bit;                         // this lunge already landed its bite
 } BwMaw;
 
+// Cut 3 «The ambush»: one converging cutter — a light enemy sloop that
+// homes on the pinned ship's hold point and bites once. All-zero unless
+// spawned at a seize in an ambush water; dispersed (re-zeroed) at release.
+typedef struct
+{
+    int32_t x, y;                        // 8.8 fixed, cutter center
+    int32_t bit;                         // 1: already bit the pin (stopped)
+} BwCutter;
+
 typedef struct
 {
     int32_t x, y;                        // 8.8 fixed (the reaching arms' point)
@@ -471,6 +510,8 @@ typedef struct
     uint32_t wake;                       // d->frame at which the next reach fires
     int32_t stirs;                       // times the arms have risen this water
     int32_t slain;                       // 1: dead — never reaches again
+    BwCutter cutters[BW_CUTTER_COUNT];   // cut 3: the ambush (0 in a non-
+                                         //   ambush water — cut 1/2 carry)
 } BwGrasper;
 
 typedef struct
@@ -501,6 +542,9 @@ typedef struct
     int32_t band;                        // this water's danger band, 0..2
     int32_t grasper_water;               // 1: this seed's deep holds a Grasper,
                                          //   not a Maw (bestiary cut 1; f(seed))
+    int32_t ambush_water;                // 1: a grasper water whose HOLDs draw
+                                         //   converging cutters (bestiary cut 3;
+                                         //   f(seed) sub-bucket of grasper_water)
     int32_t groundings;                  //   (slice 7) reef scrapes this water
     uint32_t frame;                      // duel frames stepped so far
     int32_t over;                        // BW_DUEL_*
@@ -557,6 +601,12 @@ void bw_water_init(BwDuel *d, uint32_t seed, int32_t band);
 // 1 in a grasper water, 0 in a Maw water. Pinned so every committed
 // anchor and host-checked salvage seed is 0 (the pin-carry rule).
 int32_t bw_has_grasper(uint32_t seed);
+
+// Does this grasper water AMBUSH — draw converging cutters onto a HELD
+// sloop (bestiary cut 3)? Pure f(seed): a grasper water that ALSO passes
+// the ambush salt sub-bucket. Pinned so every committed/host-checked
+// grasper seed is 0 (the ambush pin-carry rule — cut 1/2 routes carry).
+int32_t bw_grasper_ambush(uint32_t seed);
 
 // The rum-runner of a band: hull and battery reload (band 0 = the
 // slice-2 sloop; main.c scales the ledger bar off the hull).

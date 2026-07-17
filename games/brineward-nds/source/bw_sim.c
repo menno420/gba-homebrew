@@ -119,6 +119,16 @@ int32_t bw_has_grasper(uint32_t seed)
     return (bw_hash(seed, BW_GRASPER_SALT) & BW_GRASPER_BUCKET) == 0 ? 1 : 0;
 }
 
+// bestiary cut 3: a grasper water whose HOLDs draw converging cutters — a
+// fresh salt sub-bucket over the grasper bucket. BW_AMBUSH_SALT/BUCKET are
+// pinned so every committed/host-checked grasper seed buckets to 0 (a
+// non-ambush grasper water), so cut 1/2 routes keep zero cutters and carry.
+int32_t bw_grasper_ambush(uint32_t seed)
+{
+    return bw_has_grasper(seed)
+           && (bw_hash(seed, BW_AMBUSH_SALT) & BW_AMBUSH_BUCKET) == 0 ? 1 : 0;
+}
+
 int32_t bw_band_enemy_hull(int32_t band)
 {
     return BW_BAND_EHULL_OF[band];
@@ -233,6 +243,7 @@ static void bw_fire(BwDuel *d, const BwShip *s, int32_t owner, int32_t side)
 // loot code below)
 static void bw_loot_spawn_at(BwDuel *d, int32_t wx, int32_t wy,
                              int32_t drops, int32_t value);
+static void bw_cutters_clear(BwGrasper *g);  // cut 3: disperse the ambush
 
 static void bw_balls_step(BwDuel *d)
 {
@@ -294,9 +305,12 @@ static void bw_balls_step(BwDuel *d)
             if (d->grasper.hull <= 0)
             {
                 // Slain: the arms let go and break up richer than a wreck.
+                // Cut 3: a slain hold disperses too — the cutters scatter
+                // (no-op in a non-ambush water, its cutters already zero).
                 d->grasper.hull = 0;
                 d->grasper.slain = 1;
                 d->grasper.state = BW_GRASPER_DOWN;
+                bw_cutters_clear(&d->grasper);
                 bw_loot_spawn_at(d, d->grasper.x, d->grasper.y,
                                  BW_GRASPER_LOOT_DROPS,
                                  BW_BAND_MAW_VALUE_OF[d->band]);
@@ -599,12 +613,38 @@ static void bw_maw_step(BwDuel *d)
 
 // --- the Grasper (bestiary cut 1) -----------------------------------------------
 
+// Cut 3 «The ambush»: the fixed integer (px) spawn offsets from the seize
+// point for the BW_CUTTER_COUNT converging cutters — three light sloops
+// closing from three quarters. Chosen so each homes to the pin's
+// BW_CUTTER_HIT_RANGE in ~43/47/51 frames (all < BW_GRASPER_HOLD_FRAMES=90,
+// so an unbraced hold takes all three bites; all > a braced hold's ~20
+// frames, so an early wrench ends the hold before any cutter reaches).
+static const int32_t BW_CUTTER_DX[BW_CUTTER_COUNT] = { -48, 52, 8 };
+static const int32_t BW_CUTTER_DY[BW_CUTTER_COUNT] = { -36, -30, 56 };
+
+// Cut 3: disperse — the cutters scatter (all state re-zeroed) the instant
+// the hold ends. Zeroing a non-ambush water's already-zero cutters is a
+// no-op, so cut 1/2 routes carry bit-identical.
+static void bw_cutters_clear(BwGrasper *g)
+{
+    for (int32_t i = 0; i < BW_CUTTER_COUNT; i++)
+    {
+        g->cutters[i].x = 0;
+        g->cutters[i].y = 0;
+        g->cutters[i].bit = 0;
+    }
+}
+
 static void bw_grasper_sound(BwGrasper *g, uint32_t frame)
 {
-    // The arms slip back beneath the swell; they reach again later.
+    // The arms slip back beneath the swell; they reach again later. Cut 3:
+    // and the ambush disperses — this is the release path for a held sloop
+    // (a full hold OR a braced break), so clearing the cutters here covers
+    // both. (A REACH miss also lands here; its cutters are already zero.)
     g->state = BW_GRASPER_DOWN;
     g->timer = 0;
     g->wake = frame + BW_GRASPER_RESTIR;
+    bw_cutters_clear(g);
 }
 
 // One Grasper frame, salvage water only (bw_duel_step never calls this,
@@ -680,6 +720,19 @@ static void bw_grasper_step(BwDuel *d, const BwInputs *in)
                 d->player.hull -= BW_GRASPER_GRAB_BITE;
                 if (d->player.hull < 0)
                     d->player.hull = 0;
+                // Cut 3 «The ambush»: in an ambush water the seize springs
+                // the trap — BW_CUTTER_COUNT light sloops appear at fixed
+                // offsets around the latched pin and start closing. A
+                // non-ambush water spawns none (cut 1/2 carry).
+                if (d->ambush_water)
+                    for (int32_t i = 0; i < BW_CUTTER_COUNT; i++)
+                    {
+                        g->cutters[i].x = clamp32(g->gx + BW_CUTTER_DX[i] * BW_ONE,
+                                                  BW_SEA_X_MIN, BW_SEA_X_MAX);
+                        g->cutters[i].y = clamp32(g->gy + BW_CUTTER_DY[i] * BW_ONE,
+                                                  BW_SEA_Y_MIN, BW_SEA_Y_MAX);
+                        g->cutters[i].bit = 0;
+                    }
             }
             else
                 bw_grasper_sound(g, d->frame);   // closed on empty water
@@ -714,6 +767,28 @@ static void bw_grasper_step(BwDuel *d, const BwInputs *in)
         d->player.speed = 0;
         g->x = g->gx;
         g->y = g->gy;
+        // Cut 3 «The ambush»: the cutters close on the pinned sloop. Each
+        // live cutter homes one clamped step per axis toward the latched
+        // pin (the REACH homing idiom) and, once inside BW_CUTTER_HIT_RANGE,
+        // BITES once for BW_CUTTER_BITE hull and STOPS. Ambush water only —
+        // in a non-ambush water the cutters stay zero and are never stepped,
+        // so cut 1/2 holds carry bit-identical.
+        if (d->ambush_water)
+            for (int32_t i = 0; i < BW_CUTTER_COUNT; i++)
+            {
+                BwCutter *c = &g->cutters[i];
+                if (c->bit)
+                    continue;
+                c->x += clamp32(g->gx - c->x, -BW_CUTTER_SPEED, BW_CUTTER_SPEED);
+                c->y += clamp32(g->gy - c->y, -BW_CUTTER_SPEED, BW_CUTTER_SPEED);
+                if (bw_chebyshev(c->x, c->y, g->gx, g->gy) < BW_CUTTER_HIT_RANGE)
+                {
+                    d->player.hull -= BW_CUTTER_BITE;
+                    if (d->player.hull < 0)
+                        d->player.hull = 0;
+                    c->bit = 1;
+                }
+            }
         if (g->timer >= BW_GRASPER_HOLD_FRAMES)
             bw_grasper_sound(g, d->frame);       // the arms slip: released
         break;
@@ -849,6 +924,10 @@ void bw_duel_init(BwDuel *d, uint32_t seed)
     // every committed route and pin is bit-identical. The arms bide
     // down; their clock arms on the SINK frame (the wreck's blood).
     d->grasper_water = bw_has_grasper(seed);
+    // bestiary cut 3: an ambush water is a grasper water whose HOLDs draw
+    // converging cutters. Pinned so every committed/host-checked grasper
+    // seed is 0 (non-ambush), so cut 1/2 routes keep zero cutters and carry.
+    d->ambush_water = bw_grasper_ambush(seed);
     d->grasper.x = 0;
     d->grasper.y = 0;
     d->grasper.gx = 0;
@@ -859,6 +938,7 @@ void bw_duel_init(BwDuel *d, uint32_t seed)
     d->grasper.wake = 0;
     d->grasper.stirs = 0;
     d->grasper.slain = 0;
+    bw_cutters_clear(&d->grasper);       // cut 3: no cutters until a seize
     for (int32_t i = 0; i < BW_MAX_REEFS; i++)
     {
         d->reefs[i].x = 0;               // slice 7: the band-0 water is

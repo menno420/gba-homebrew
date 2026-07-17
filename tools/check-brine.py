@@ -211,6 +211,20 @@ BW_GRASPER_DOWN, BW_GRASPER_REACH, BW_GRASPER_HOLD = 0, 1, 2
 # FRAMES frames later. A B-silent route (brace == 0) is bit-identical.
 BW_GRASPER_BRACE_HULL = 10
 BW_GRASPER_BRACE_FRAMES = 12
+# Cut 3 «The ambush» — while the Grasper HOLDs, BW_CUTTER_COUNT light
+# sloops converge on the pinned ship and bite. The ambush water is a fresh
+# salt sub-bucket over the grasper bucket (BW_AMBUSH_SALT/BUCKET), pinned so
+# no committed/host-checked grasper seed ambushes; the braced break (cut 2)
+# ends the hold before the cutters reach -> «ambush survived». Spawn offsets
+# tuned so each cutter bites at ~43/47/51 frames (< HOLD 90, > a braced ~20).
+BW_AMBUSH_SALT = 0x10000045
+BW_AMBUSH_BUCKET = 3
+BW_CUTTER_COUNT = 3
+BW_CUTTER_SPEED = 256
+BW_CUTTER_HIT_RANGE = 6 * BW_ONE
+BW_CUTTER_BITE = 8
+BW_CUTTER_DX = (-48, 52, 8)
+BW_CUTTER_DY = (-36, -30, 56)
 
 # danger bands + reefs (slice 7) — band tables whose band-0 row is the
 # legacy constants (check_band_tables asserts the identities: the
@@ -369,11 +383,23 @@ class Maw:
                  'stirs', 'slain', 'bit')
 
 
+class Cutter:
+    """Mirror of BwCutter (bestiary cut 3 — a converging cutter)."""
+
+    __slots__ = ('x', 'y', 'bit')
+
+    def __init__(self):
+        self.x = self.y = self.bit = 0
+
+
 class Grasper:
-    """Mirror of BwGrasper (bestiary cut 1)."""
+    """Mirror of BwGrasper (bestiary cut 1; cut 3 adds the ambush cutters)."""
 
     __slots__ = ('x', 'y', 'gx', 'gy', 'state', 'hull', 'timer', 'wake',
-                 'stirs', 'slain')
+                 'stirs', 'slain', 'cutters')
+
+    def __init__(self):
+        self.cutters = [Cutter() for _ in range(BW_CUTTER_COUNT)]
 
 
 class Reef:
@@ -391,7 +417,8 @@ class Duel:
     __slots__ = ('player', 'enemy', 'balls', 'loot', 'maw', 'grasper',
                  'reefs', 'hold', 'hold_gold', 'up_hull', 'up_cannon',
                  'up_sail', 'wind_level', 'wind_base', 'band',
-                 'grasper_water', 'groundings', 'frame', 'over')
+                 'grasper_water', 'ambush_water', 'groundings', 'frame',
+                 'over')
 
     def __init__(self):
         self.player = Ship()
@@ -523,6 +550,7 @@ def bw_balls_step(d):
                 d.grasper.hull = 0
                 d.grasper.slain = 1
                 d.grasper.state = BW_GRASPER_DOWN
+                bw_cutters_clear(d.grasper)  # cut 3: a slain hold disperses
                 bw_loot_spawn_at(d, d.grasper.x, d.grasper.y,
                                  BW_GRASPER_LOOT_DROPS,
                                  BW_BAND_MAW_VALUE_OF[d.band])
@@ -641,6 +669,14 @@ def bw_has_grasper(seed):
                  & BW_GRASPER_BUCKET) == 0 else 0
 
 
+def bw_grasper_ambush(seed):
+    """Mirror of bw_grasper_ambush() — 1 in an ambush water (a grasper
+    water that also passes the ambush salt sub-bucket), else 0."""
+    return 1 if (bw_has_grasper(seed)
+                 and (bw_hash(seed & U32, BW_AMBUSH_SALT)
+                      & BW_AMBUSH_BUCKET) == 0) else 0
+
+
 def bw_maw_step(d):
     """Mirror of bw_maw_step() — salvage water only."""
     m = d.maw
@@ -723,11 +759,22 @@ def bw_maw_step(d):
             bw_maw_sound(m, d.frame)         # missed: stalk again
 
 
+def bw_cutters_clear(g):
+    """Mirror of bw_cutters_clear() — cut 3: disperse the ambush (zero all
+    cutter state; a no-op on a non-ambush water's already-zero cutters)."""
+    for c in g.cutters:
+        c.x = 0
+        c.y = 0
+        c.bit = 0
+
+
 def bw_grasper_sound(g, frame):
-    """Mirror of bw_grasper_sound()."""
+    """Mirror of bw_grasper_sound() — cut 3 also disperses the cutters (the
+    release path for a held sloop: a full hold OR a braced break)."""
     g.state = BW_GRASPER_DOWN
     g.timer = 0
     g.wake = frame + BW_GRASPER_RESTIR
+    bw_cutters_clear(g)
 
 
 def bw_grasper_step(d, inputs):
@@ -779,6 +826,15 @@ def bw_grasper_step(d, inputs):
                 d.player.hull -= BW_GRASPER_GRAB_BITE
                 if d.player.hull < 0:
                     d.player.hull = 0
+                # cut 3: in an ambush water the seize springs the trap —
+                # the cutters appear at fixed offsets and start closing.
+                if d.ambush_water:
+                    for i in range(BW_CUTTER_COUNT):
+                        g.cutters[i].x = _clamp(g.gx + BW_CUTTER_DX[i] * BW_ONE,
+                                                BW_SEA_X_MIN, BW_SEA_X_MAX)
+                        g.cutters[i].y = _clamp(g.gy + BW_CUTTER_DY[i] * BW_ONE,
+                                                BW_SEA_Y_MIN, BW_SEA_Y_MAX)
+                        g.cutters[i].bit = 0
             else:
                 bw_grasper_sound(g, d.frame)   # closed on empty water
 
@@ -801,6 +857,21 @@ def bw_grasper_step(d, inputs):
         d.player.speed = 0
         g.x = g.gx
         g.y = g.gy
+        # cut 3: the cutters close on the pinned sloop. Each live cutter
+        # homes one clamped step per axis toward the pin (the REACH idiom)
+        # and, once inside BW_CUTTER_HIT_RANGE, BITES once and STOPS. Ambush
+        # water only — a non-ambush hold never steps them (cut 1/2 carry).
+        if d.ambush_water:
+            for c in g.cutters:
+                if c.bit:
+                    continue
+                c.x += _clamp(g.gx - c.x, -BW_CUTTER_SPEED, BW_CUTTER_SPEED)
+                c.y += _clamp(g.gy - c.y, -BW_CUTTER_SPEED, BW_CUTTER_SPEED)
+                if bw_chebyshev(c.x, c.y, g.gx, g.gy) < BW_CUTTER_HIT_RANGE:
+                    d.player.hull -= BW_CUTTER_BITE
+                    if d.player.hull < 0:
+                        d.player.hull = 0
+                    c.bit = 1
         if g.timer >= BW_GRASPER_HOLD_FRAMES:
             bw_grasper_sound(g, d.frame)       # the arms slip: released
 
@@ -1108,6 +1179,9 @@ def bw_duel_init(d, seed):
     # Maw water grasper_water is 0 and the Grasper is a pure no-op, so
     # every committed route/pin is bit-identical.
     d.grasper_water = bw_has_grasper(seed)
+    # cut 3: an ambush water is a grasper water whose HOLDs draw cutters;
+    # pinned so every committed/host-checked grasper seed is 0 (cut 1/2 carry).
+    d.ambush_water = bw_grasper_ambush(seed)
     g = d.grasper
     g.x = g.y = g.gx = g.gy = 0
     g.state = BW_GRASPER_DOWN
@@ -1116,6 +1190,7 @@ def bw_duel_init(d, seed):
     g.wake = 0
     g.stirs = 0
     g.slain = 0
+    bw_cutters_clear(g)                  # cut 3: no cutters until a seize
     for r in d.reefs:                    # slice 7: the band-0 water is
         r.x = r.y = 0                    #   open sea — no rocks; deeper
         r.live = 0                       #   waters lay theirs in
@@ -2412,6 +2487,147 @@ def check_grasper_breakfree():
           f'hull ONCE; a late brace buys nothing; a Maw water ignores B')
 
 
+def _ambush_seeds(n):
+    """The first n AMBUSH waters (grasper waters that also pass the ambush
+    salt) — proof that bw_grasper_ambush is a real f(seed) with ambush
+    waters to find, disjoint from the checked/committed grasper seeds."""
+    out = []
+    for s in range(4096):
+        if bw_grasper_ambush(s):
+            out.append(s)
+            if len(out) >= n:
+                break
+    return out
+
+
+def _ambush_to_seize(seed):
+    """Manufacture a seize in an AMBUSH water (the _grasper_to_seize idiom,
+    same fixed open-water pin): drive IDLE salvage until the HOLD. Returns
+    the duel the instant the sloop is pinned — cutters already spawned at
+    their offsets, none yet in bite range (grasper.timer == 0)."""
+    d = Duel()
+    bw_duel_init(d, seed)
+    assert d.ambush_water == 1 and d.band == 0, seed
+    d.over = BW_DUEL_ENEMY_SUNK
+    d.enemy.x, d.enemy.y = 128 * BW_ONE, 90 * BW_ONE
+    d.player.x, d.player.y = 128 * BW_ONE, 96 * BW_ONE
+    d.player.hull = BW_HULL_MAX
+    d.player.speed = 0
+    d.frame = 1000
+    d.grasper.wake = d.frame
+    idle = Inputs()
+    while d.grasper.state != BW_GRASPER_HOLD:
+        bw_salvage_step(d, idle)
+        assert d.over == BW_DUEL_ENEMY_SUNK, seed
+    assert d.grasper.timer == 0 and d.player.hull == BW_HULL_MAX \
+        - BW_GRASPER_GRAB_BITE, seed
+    return d
+
+
+def check_grasper_ambush():
+    # Cut 3 «The ambush» — the concept's full sentence: while the Grasper
+    # HOLDs, cutters close in. In a real AMBUSH water (disjoint from every
+    # checked/committed grasper seed by the ambush salt), manufacture a
+    # seize (the _grasper_to_seize idiom), then prove:
+    #   (a) an UNBRACED hold draws the cutters in — all BW_CUTTER_COUNT
+    #       converge and BITE (each exactly BW_CUTTER_BITE hull, ONCE), so
+    #       the full hold takes GRAB_BITE + COUNT*CUTTER_BITE hull, the pin
+    #       made lethal; the cutters bite BEFORE the hold ends and disperse
+    #       (all zeroed) at release;
+    #   (b) an EARLY brace (cut 2, the counter) ends the hold before ANY
+    #       cutter reaches — zero bites, hull only the seize + brace cost,
+    #       cutters dispersed: «ambush survived»;
+    #   (c) a NON-ambush grasper water spawns ZERO cutters through a whole
+    #       hold (the bit-identity spot-check — cut 1/2 carry verbatim).
+    aseed = _ambush_seeds(1)[0]
+    # ambush seeds are disjoint from the checked/committed grasper seeds
+    for s in _grasper_seeds(6) + [174]:
+        assert bw_grasper_ambush(s) == 0, s
+
+    # (a) UNBRACED: the trap springs, all three cutters bite, the pin lethal
+    d = _ambush_to_seize(aseed)
+    gx, gy = d.grasper.gx, d.grasper.gy
+    seize_hull = d.player.hull
+    assert seize_hull == BW_HULL_MAX - BW_GRASPER_GRAB_BITE
+    # every cutter spawned at its fixed offset from the pin, none yet biting
+    for i in range(BW_CUTTER_COUNT):
+        c = d.grasper.cutters[i]
+        assert c.bit == 0
+        assert c.x == _clamp(gx + BW_CUTTER_DX[i] * BW_ONE,
+                             BW_SEA_X_MIN, BW_SEA_X_MAX)
+        assert c.y == _clamp(gy + BW_CUTTER_DY[i] * BW_ONE,
+                             BW_SEA_Y_MIN, BW_SEA_Y_MAX)
+    idle = Inputs()
+    first_bite = None
+    while d.grasper.state == BW_GRASPER_HOLD:
+        before = d.player.hull
+        bw_salvage_step(d, idle)
+        if d.grasper.state == BW_GRASPER_HOLD and d.player.hull < before:
+            # a cutter bit this frame — exactly one BITE's worth
+            assert before - d.player.hull == BW_CUTTER_BITE
+            if first_bite is None:
+                first_bite = d.grasper.timer
+        # the pinned sloop never moves (the cutters bite, they do not shove)
+        if d.grasper.state == BW_GRASPER_HOLD:
+            assert d.player.x == gx and d.player.y == gy
+    # all three cutters bit, and the first bite landed inside the full hold
+    assert first_bite is not None and first_bite < BW_GRASPER_HOLD_FRAMES
+    unbraced_hull = d.player.hull
+    assert unbraced_hull == seize_hull - BW_CUTTER_COUNT * BW_CUTTER_BITE
+    # released and dispersed: the cutters are all zeroed again
+    assert d.grasper.state == BW_GRASPER_DOWN
+    for c in d.grasper.cutters:
+        assert c.x == 0 and c.y == 0 and c.bit == 0
+
+    # (b) EARLY brace (cut 2) — the counter: the hold ends before any cutter
+    #     reaches, so no cutter bites and the sloop survives the ambush
+    d = _ambush_to_seize(aseed)
+    seize_frame = d.frame
+    lead = 8                             # brace early, well before first_bite
+    for _ in range(lead):
+        assert d.grasper.state == BW_GRASPER_HOLD
+        bw_salvage_step(d, idle)
+    hull_before = d.player.hull
+    assert hull_before == seize_hull     # holding alone (no cutter reached) costs nothing
+    for c in d.grasper.cutters:          # cutters closing, none in range yet
+        assert c.bit == 0
+    bw_salvage_step(d, Inputs(brace=1))  # THE WRENCH
+    while d.grasper.state == BW_GRASPER_HOLD:
+        bw_salvage_step(d, idle)         # ride out the slip
+    braced_hold = d.frame - seize_frame
+    # survived: only the seize + the one brace cost, ZERO cutter bites
+    assert d.player.hull == seize_hull - BW_GRASPER_BRACE_HULL
+    assert braced_hold < first_bite      # the hold ended before the first bite
+    assert braced_hold < BW_GRASPER_HOLD_FRAMES
+    assert d.grasper.state == BW_GRASPER_DOWN
+    for c in d.grasper.cutters:          # dispersed
+        assert c.x == 0 and c.y == 0 and c.bit == 0
+
+    # (c) a NON-ambush grasper water spawns ZERO cutters (bit-identity):
+    #     the same manufactured seize on a non-ambush grasper seed holds
+    #     the FULL length with the cutters untouched all the way through
+    gseed = _grasper_seeds(1)[0]
+    assert bw_grasper_ambush(gseed) == 0
+    dg = _grasper_to_seize(gseed)
+    ghull = dg.player.hull
+    seize_frame = dg.frame
+    while dg.grasper.state == BW_GRASPER_HOLD:
+        bw_salvage_step(dg, idle)
+        for c in dg.grasper.cutters:
+            assert c.x == 0 and c.y == 0 and c.bit == 0
+    assert dg.player.hull == ghull       # no cutter ever bit
+    assert dg.frame - seize_frame == BW_GRASPER_HOLD_FRAMES  # full hold stood
+
+    print(f'the ambush (cut 3): seed {aseed} (ambush water) — an unbraced '
+          f'hold draws all {BW_CUTTER_COUNT} cutters in (first bite at hold '
+          f'frame {first_bite}), each {BW_CUTTER_BITE} hull, the pin lethal '
+          f'({BW_GRASPER_GRAB_BITE}+{BW_CUTTER_COUNT}x{BW_CUTTER_BITE}='
+          f'{BW_GRASPER_GRAB_BITE + BW_CUTTER_COUNT * BW_CUTTER_BITE} hull); '
+          f'an early brace ends the hold in {braced_hold} frames before any '
+          f'cutter reaches -> 0 bites, ambush SURVIVED; a non-ambush grasper '
+          f'water spawns 0 cutters (bit-identical)')
+
+
 def check_wind_tables():
     # Calm identity (the pin-carry rule): the calm push is zero and the
     # wind term vanishes at EVERY point of sail and trim, so a calm
@@ -3237,6 +3453,7 @@ def main():
     check_grasper_slain()
     check_grasper_containment()
     check_grasper_breakfree()
+    check_grasper_ambush()
     check_wind_tables()
     check_wind_pointofsail()
     check_wind_duels()

@@ -306,6 +306,30 @@
  * re-runs (and reload_cells_ref()) ONLY when the scene key changes, so
  * quiet frames and the committed dawn edges do no extra bg work.
  *
+ * PERSISTENCE MAILBOX (crossroads cut 4, the best ledger) — a THIRD
+ * committed symbol, volatile unsigned wr_ledger[6], separate from
+ * wr_telemetry AND wr_art so the 57 sim words stay byte-identical by
+ * contract (the same discipline cut 2 used for wr_art). The cut persists
+ * the best run across power cycles in SRAM behind gl_save.h's magic tag
+ * ("WLDGR1", POD {best_gold, best_day_reached, best_seed, runs}). The
+ * ledger loads ONCE at boot (a fresh / foreign / erased cart reads as NO
+ * save -> a zero ledger), is NOT reset by reset_run(), and is (re)written
+ * to SRAM the instant a run ENDS (win st_balanced or loss st_closed) — so
+ * a power-off right after the end card keeps the record. wr_ledger,
+ * published every frame:
+ *   [0] 0x574C4447 'WLDG' magic     [3] best_seed (the dialed world that
+ *   [1] best_gold (highest gold at      set the best; run_seed at record)
+ *       any run-end so far)         [4] runs (cumulative run-ends banked)
+ *   [2] best_day_reached (the day   [5] loaded flag (1 once a prior SRAM
+ *       the best-gold run ended)        save was restored at boot, else 0)
+ * Word [5] makes THE POWER-CYCLE assertable off the machine: a fresh cart
+ * reads 0 (no save), a reboot on a written save reads 1 with the restored
+ * best_gold in [1] on the title BEFORE any input. The best line is drawn
+ * on the end cards ONLY when the ledger loaded (so the default no-save
+ * path is byte-identical and P1-P11 carry verbatim); proofs.sh P12 pins
+ * exactly that — fresh-cart baseline, write+persist, power-cycle restore,
+ * run twice byte-identical (watch-logs AND the written .sav files).
+ *
  * Presentation was deliberately trivial through v0.7 (breadth-program
  * slice): the market table and the ledger are fixed-font glyph lines;
  * headers, title and end cards use the common variable 8x8 font (the one
@@ -335,6 +359,8 @@
 #include "bn_regular_bg_tiles_items_wr_tiles.h"
 #include "bn_bg_palette_items_wr_palette.h"
 
+#include "gl_save.h"
+
 #include "common_fixed_8x8_sprite_font.h"
 #include "common_variable_8x8_sprite_font.h"
 
@@ -348,6 +374,13 @@ extern "C"
     // words stay untouched by contract. volatile so every write lands on
     // the emulator bus. Layout in the header comment (search 'wr_art').
     volatile unsigned wr_art[8];
+
+    // Persistence witness (crossroads cut 4, the best ledger) — the SRAM
+    // best-run ledger's OWN mailbox (mirrors how cut 2 added wr_art), so
+    // wr_telemetry's 57 words stay byte-identical by contract. volatile so
+    // every write lands on the emulator bus. Layout in the header comment
+    // (search 'wr_ledger').
+    volatile unsigned wr_ledger[6];
 }
 
 namespace
@@ -415,6 +448,22 @@ namespace
         h ^= h << 5;
         return (h & dial_seed_mask) + 1u;
     }
+
+    // --- the best ledger (crossroads cut 4) ---------------------------------
+    // The persistent best-run record, stored behind gl_save.h's magic tag in
+    // SRAM. A small trivially-copyable POD: the highest gold banked at any
+    // run-end, the day that run ended, the dialed world seed that set it, and
+    // the count of run-ends. Bump the tag ("WLDGR1" -> "WLDGR2") to invalidate
+    // old saves if this layout ever changes.
+    constexpr const char* wr_save_magic = "WLDGR1";  // <=7 chars (gl_save.h)
+
+    struct wr_ledger_save
+    {
+        int best_gold = 0;
+        int best_day_reached = 0;
+        int best_seed = 0;
+        int runs = 0;
+    };
 
     // --- the road (all owner-tunable integers) ------------------------------
     constexpr int town_count = 8;        // widened to 8 (crossroads cut 1:
@@ -707,6 +756,23 @@ int main()
         road_line.clear();
     };
 
+    // --- the best ledger (crossroads cut 4): the persistent meta, restored
+    // from the magic-checked SRAM slot at boot. A fresh / foreign / erased
+    // cart loads as NO save -> a zero ledger, so the default cartridge boots
+    // exactly like v0.9. Deliberately declared OUTSIDE the run-state block and
+    // NOT reset by reset_run(): the best run is the run-to-run meta (the
+    // Deepcast meta_slot pattern). ledger_loaded records whether a prior save
+    // was restored — it gates the end-card best line so the no-save path stays
+    // byte-identical (P1-P11 carry verbatim).
+    gl::save_slot<wr_ledger_save> ledger_slot(wr_save_magic);
+    wr_ledger_save best;
+    bool ledger_loaded = ledger_slot.load(best);
+
+    if(! ledger_loaded)
+    {
+        best = wr_ledger_save{};
+    }
+
     // --- world + run state (reset_run() restores the exact boot world) -----
     unsigned state = st_title;
     unsigned frames = 0;                 // monotonic since boot
@@ -925,6 +991,25 @@ int main()
         ledger_day[town] = int(day);
     };
 
+    // A run ended (win st_balanced or loss st_closed): fold this run into the
+    // best ledger and land it in SRAM immediately (power-off safe — a pull
+    // right after the end card keeps the record). Best = highest gold at any
+    // run-end; the day + dialed seed that set it ride along, and every end
+    // bumps the run counter. Called EXACTLY once per run-end transition — the
+    // three end sites (dawn's st_closed, the sell win, the pact win).
+    auto record_run = [&]()
+    {
+        if(gold > best.best_gold)
+        {
+            best.best_gold = gold;
+            best.best_day_reached = int(day);
+            best.best_seed = int(run_seed);
+        }
+
+        ++best.runs;
+        ledger_slot.save(best);
+    };
+
     auto reset_run = [&]()
     {
         // The SAME world every run for a given seed: the PRNG restarts at
@@ -1064,6 +1149,7 @@ int main()
             bn::sound_items::wr_wind.play(bn::fixed(0.8));
             ++audio_wind;
 
+            record_run();          // the run ended: bank it (crossroads cut 4)
             clear_lines();
             return;
         }
@@ -1446,6 +1532,7 @@ int main()
                     if(gold >= gold_target)
                     {
                         state = st_balanced;
+                        record_run();        // the run won: bank it (cut 4)
                         clear_lines();
                     }
                 }
@@ -1540,6 +1627,7 @@ int main()
                         if(gold >= gold_target)
                         {
                             state = st_balanced;
+                            record_run();    // the run won: bank it (cut 4)
                             clear_lines();
                         }
                     }
@@ -1866,6 +1954,17 @@ int main()
             ui_lines[2].set(ui_gen, ui_x, -28, line2);
             ui_lines[3].set(ui_gen, ui_x, -16, "THE ROAD MADE YOU");
             title_lines[0].set(ui_gen, ui_x, 8, "PRESS START");
+
+            // The best ledger (crossroads cut 4): the persisted record, drawn
+            // ONLY when a prior SRAM save was restored — so the default no-save
+            // path leaves this line clear and P1-P11 carry byte-identical.
+            if(ledger_loaded)
+            {
+                bn::string<40> bestline("BEST GOLD ");
+                bestline.append(bn::to_string<8>(best.best_gold));
+                title_lines[1].set(ui_gen, ui_x, 24, bestline);
+            }
+
             break;
         }
 
@@ -1879,6 +1978,17 @@ int main()
             ui_lines[2].set(ui_gen, ui_x, -28, "30 DAYS SPENT");
             ui_lines[3].set(ui_gen, ui_x, -16, "WINTER TAKES THE ROAD");
             title_lines[0].set(ui_gen, ui_x, 8, "PRESS START");
+
+            // The best ledger (crossroads cut 4): see st_balanced above — the
+            // persisted best gold, drawn ONLY when a save was restored, so the
+            // default no-save closed card is byte-identical to v0.9.
+            if(ledger_loaded)
+            {
+                bn::string<40> bestline("BEST GOLD ");
+                bestline.append(bn::to_string<8>(best.best_gold));
+                title_lines[1].set(ui_gen, ui_x, 24, bestline);
+            }
+
             break;
         }
 
@@ -2046,6 +2156,18 @@ int main()
             wr_art[6] = adjacency[town].fork >= 0 ? unsigned(branch_leg) : 0u;
             wr_art[7] = art_rebakes;
         }
+
+        // Persistence mailbox (crossroads cut 4, the best ledger) — a THIRD
+        // committed symbol, published every frame from the restored/updated
+        // ledger, so the harness reads a stable record at any watched frame.
+        // A pure witness: nothing here feeds back into the sim, and it never
+        // touches wr_telemetry / wr_art, so both stay byte-identical to v0.9.
+        wr_ledger[0] = 0x574C4447u;          // 'WLDG'
+        wr_ledger[1] = unsigned(best.best_gold);
+        wr_ledger[2] = unsigned(best.best_day_reached);
+        wr_ledger[3] = unsigned(best.best_seed);
+        wr_ledger[4] = unsigned(best.runs);
+        wr_ledger[5] = ledger_loaded ? 1u : 0u;
 
         bn::core::update();
     }

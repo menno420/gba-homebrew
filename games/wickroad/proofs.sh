@@ -1320,4 +1320,150 @@ H "$OUT/p11cb.png" --frames 36 $W57 $DIAL1_RUN \
 cmp "$OUT/p11c-run1.csv" "$OUT/p11c-run2.csv"
 echo "P11c run-twice: byte-identical"
 
+# ---------------------------------------------------------------------------
+# P12 — THE BEST LEDGER (crossroads cut 4; ADDITIVE — P1-P11 above carried
+# BYTE-IDENTICAL). Wickroad was the ONLY GBA title with zero SRAM persistence;
+# cut 4 banks the best run across power cycles in SRAM behind gl_save.h's magic
+# tag (POD {best_gold, best_day_reached, best_seed, runs}, tag "WLDGR1"). THE
+# CONTRACT (the Deepcast P7 / Lumen-Drift two-boot pattern): the ledger loads
+# ONCE at boot (fresh / foreign / erased cart -> a zero ledger), is written to
+# SRAM the instant a run ENDS, and survives a power cycle. Presentation stays
+# byte-identical on the DEFAULT no-save path: the end-card best line is drawn
+# ONLY when a prior save was restored (ledger_loaded), which never happens on a
+# fresh cart — so P1-P11 (all run WITHOUT --savefile) never see it and carried
+# verbatim above. The ledger publishes in a THIRD mailbox, wr_ledger (ELF
+# symbol, 6 words), so wr_telemetry (57) AND wr_art (8) stay byte-unchanged:
+#   [0] 'WLDG' magic = 0x574C4447 = 1464616007
+#   [1] best_gold  [2] best_day_reached  [3] best_seed  [4] runs  [5] loaded
+# HOST-MIRROR-FIRST — every pin below is derived on the host from EXISTING
+# proofs, not re-probed: the write route is P2's WIN_ROUTE (the committed WICK
+# run), whose end is already pinned by P2 as gold 328 on day 13 (wr:5:eq:328 /
+# "DAY 13 OF 30" at the win frame); best_seed is the dial-0 world seed, already
+# pinned by P11 as 1464419147 (= seed_constant 0x5749434B). mGBA wall
+# (docs/PLATFORM-LIMITS.md, quoted not re-probed): --savefile is the bus-copy
+# path (core.load_save() segfaults the binding); the restored ledger becomes
+# CPU-visible on the title by frame 10, so the restore witness is pinned at
+# frame 20, before any input.
+# ---------------------------------------------------------------------------
+WLG='--elf games/wickroad/wickroad.elf --watch wl:wr_ledger:6'
+
+# P12a FRESH-CART BASELINE — boot with NO savefile: a factory-erased cart reads
+# as NO save, so the loaded flag [5] is 0 and the ledger is all zeros. The best
+# line is NOT drawn (ledger_loaded false) — the default path, byte-identical to
+# v0.9. Run twice, cmp the watch-log.
+P12A_ASSERTS=(
+  --assert-watch 20:wl:0:eq:1464616007   # 'WLDG' magic present
+  --assert-watch 20:wl:1:eq:0            # best_gold 0 (no save)
+  --assert-watch 20:wl:4:eq:0            # runs 0
+  --assert-watch 20:wl:5:eq:0            # loaded flag 0 = fresh cart
+)
+
+echo "== P12a: fresh-cart baseline — no save, zero ledger (run 1) =="
+H "$OUT/p12a.png" --frames 40 $WLG \
+  --watch-log "$OUT/p12a-run1.csv" \
+  "${P12A_ASSERTS[@]}"
+
+echo "== P12a: run 2 (must be byte-identical) =="
+H "$OUT/p12ab.png" --frames 40 $WLG \
+  --watch-log "$OUT/p12a-run2.csv" \
+  "${P12A_ASSERTS[@]}"
+cmp "$OUT/p12a-run1.csv" "$OUT/p12a-run2.csv"
+echo "P12a run-twice: byte-identical"
+
+# P12b WRITE + PERSIST — boot on a factory-fresh savefile and drive P2's
+# WIN_ROUTE to the win (gold 328, day 13): the run-end banks the record and
+# lands it in SRAM immediately. The loaded flag stays 0 (THIS boot was fresh);
+# the best fields come from the in-run record. --frames 468 stops before the
+# route's 470 restart. Run twice into two FRESH savefiles; cmp BOTH the
+# watch-logs AND the two written .sav files (power-off-safe, deterministic).
+P12B_ASSERTS=(
+  --assert-watch 466:wl:0:eq:1464616007
+  --assert-watch 466:wl:1:eq:328         # best_gold = the P2 win gold
+  --assert-watch 466:wl:2:eq:13          # best_day_reached = the P2 win day
+  --assert-watch 466:wl:3:eq:1464419147  # best_seed = seed_constant (P11 pin)
+  --assert-watch 466:wl:4:eq:1           # one run-end banked
+  --assert-watch 466:wl:5:eq:0           # this boot was fresh (no save loaded)
+)
+
+rm -f "$OUT/p12-boot1a.sav" "$OUT/p12-boot1b.sav"
+
+echo "== P12b: write + persist — the WICK win banks the record (run 1) =="
+H "$OUT/p12b.png" --frames 468 $WLG $WIN_ROUTE \
+  --savefile "$OUT/p12-boot1a.sav" \
+  --watch-log "$OUT/p12b-run1.csv" \
+  "${P12B_ASSERTS[@]}"
+
+echo "== P12b: run 2 from a second factory-fresh savefile (watch-log AND .sav byte-identical) =="
+H "$OUT/p12b2.png" --frames 468 $WLG $WIN_ROUTE \
+  --savefile "$OUT/p12-boot1b.sav" \
+  --watch-log "$OUT/p12b-run2.csv" \
+  "${P12B_ASSERTS[@]}"
+cmp "$OUT/p12b-run1.csv" "$OUT/p12b-run2.csv"
+cmp "$OUT/p12-boot1a.sav" "$OUT/p12-boot1b.sav"
+echo "P12b run-twice: watch-logs AND written savefiles byte-identical"
+
+# P12c POWER-CYCLE RESTORE — a SEPARATE boot reusing P12b's .sav (the Lumen
+# Drift two-boot pattern), NO input: the banked best is restored from SRAM and
+# is present in wr_ledger on the TITLE before any key. No run ends, so no SRAM
+# write — the .sav is UNTOUCHED (asserted by cmp against boot1a). Run twice
+# from fresh copies; cmp the watch-logs.
+P12C_ASSERTS=(
+  # restored from SRAM on a separate boot, on the title BEFORE any input
+  --assert-watch 20:wl:1:eq:328
+  --assert-watch 20:wl:2:eq:13
+  --assert-watch 20:wl:3:eq:1464419147
+  --assert-watch 20:wl:4:eq:1
+  --assert-watch 20:wl:5:eq:1            # loaded flag 1 = the save was restored
+)
+
+cp "$OUT/p12-boot1a.sav" "$OUT/p12-restore1.sav"
+echo "== P12c: power-cycle restore — the best survives the pull (run 1) =="
+H "$OUT/p12c.png" --frames 60 $WLG \
+  --savefile "$OUT/p12-restore1.sav" \
+  --watch-log "$OUT/p12c-run1.csv" \
+  "${P12C_ASSERTS[@]}"
+
+cp "$OUT/p12-boot1a.sav" "$OUT/p12-restore2.sav"
+echo "== P12c: run 2 (must be byte-identical; no input = no write, .sav untouched) =="
+H "$OUT/p12cb.png" --frames 60 $WLG \
+  --savefile "$OUT/p12-restore2.sav" \
+  --watch-log "$OUT/p12c-run2.csv" \
+  "${P12C_ASSERTS[@]}"
+cmp "$OUT/p12c-run1.csv" "$OUT/p12c-run2.csv"
+cmp "$OUT/p12-restore1.sav" "$OUT/p12-boot1a.sav"
+cmp "$OUT/p12-restore2.sav" "$OUT/p12-boot1a.sav"
+echo "P12c run-twice: byte-identical; the restore boot left the .sav untouched"
+
+# P12d THE RESTORED BEST LINE RENDERS — reboot on P12b's .sav and RE-RUN the
+# WIN_ROUTE: with a save restored (ledger_loaded), the win card now draws the
+# persisted "BEST GOLD 328" in the VARIABLE font (--assert-text readable) — the
+# player-visible payoff of the ledger. The re-win re-banks (runs 1 -> 2) and
+# re-persists, so each of the two runs starts from a FRESH copy of the .sav
+# (both load runs 1, both end runs 2); cmp the watch-logs AND the two resulting
+# .sav files.
+P12D_ASSERTS=(
+  --assert-watch 20:wl:5:eq:1            # the save loaded (title, before the win)
+  --assert-watch 466:wl:1:eq:328         # best_gold still 328 (a re-win ties)
+  --assert-watch 466:wl:4:eq:2           # the restored run count bumped 1 -> 2
+  --assert-text "466:THE LEDGER BALANCES"
+  --assert-text "466:BEST GOLD 328"      # THE VISIBLE LEDGER, restored on-card
+)
+
+cp "$OUT/p12-boot1a.sav" "$OUT/p12-render1.sav"
+echo "== P12d: the restored best line renders on the win card (run 1) =="
+H "$OUT/p12d.png" --frames 468 $WLG $WIN_ROUTE \
+  --savefile "$OUT/p12-render1.sav" \
+  --watch-log "$OUT/p12d-run1.csv" --shot "466:$OUT/p12-best-card.png" \
+  "${P12D_ASSERTS[@]}"
+
+cp "$OUT/p12-boot1a.sav" "$OUT/p12-render2.sav"
+echo "== P12d: run 2 (must be byte-identical; watch-log AND .sav) =="
+H "$OUT/p12db.png" --frames 468 $WLG $WIN_ROUTE \
+  --savefile "$OUT/p12-render2.sav" \
+  --watch-log "$OUT/p12d-run2.csv" \
+  "${P12D_ASSERTS[@]}"
+cmp "$OUT/p12d-run1.csv" "$OUT/p12d-run2.csv"
+cmp "$OUT/p12-render1.sav" "$OUT/p12-render2.sav"
+echo "P12d run-twice: watch-logs AND re-persisted savefiles byte-identical"
+
 echo "ALL WICKROAD PROOFS PASS"

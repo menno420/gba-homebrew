@@ -1356,6 +1356,9 @@ jobs:
           mkdir -p /tmp/ambush
           python3 games/brineward-nds/tools/record-ambush.py --outdir /tmp/ambush
           diff /tmp/ambush/ambush-survived-keys.txt games/brineward-nds/proof/ambush-survived-keys.txt
+          mkdir -p /tmp/bighold
+          python3 games/brineward-nds/tools/record-bighold.py --outdir /tmp/bighold
+          diff /tmp/bighold/bighold-keys.txt games/brineward-nds/proof/bighold-keys.txt
       - name: make /opt/wonderful runner-writable
         run: sudo mkdir -p /opt/wonderful && sudo chown "$(id -u):$(id -g)" /opt/wonderful
       - name: cache NDS toolchain (BlocksDS 1.21.1 + Wonderful GCC pins)
@@ -2639,6 +2642,55 @@ jobs:
             --assert-watch 1254:t:7:eq:43 \
             --assert-watch 1254:t:53:eq:90 \
             --assert-watch 1254:t:55:eq:0
+      # Proof 26 — THE HOLD TRACK (bestiary cut 4): the crate-cap economy
+      # witnessed the ROM-honest way. Same proof-7 bank (seed 127 salvage,
+      # 15g at the pier) and the same berth window opens the Graywake port
+      # (state 4); the cursor walks DOWN to the APPENDED fourth line, HOLD
+      # (row 4, t[23]=4), and A buys hold tier I — gold 15 -> 0 (t[18]) and
+      # the crate cap BW_T_HOLDCAP 8 -> 12 (t[56], the hold-track witness).
+      # BEFORE the buy the cap reads 8 == BW_HOLD_CAP (the tier-0 pin-carry
+      # identity, live in the ROM); START walks back to the water and the
+      # next duel (seed 748) sails with the bigger hold PERSISTING. The
+      # >8-crate deep-haul bank is host-proven (check_hold_track /
+      # record-bighold) — a natural water does not yet overflow the stock
+      # hold — so the ROM pins the ECONOMY (buy it, cap rises, it persists),
+      # not a >8 bank. Mirror-predicted, reusing proof 7's proven berth
+      # window; the pins shift only in the navigation depth and the row.
+      - name: 'proof 26 — the hold track: buy a bigger hold, the cap rises 8->12 (bestiary cut 4)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-hold.png \
+            --frames 790 $(cat games/brineward-nds/proof/salvage-duel-keys.txt) \
+            $(cat games/brineward-nds/proof/salvage-scoop-keys.txt) \
+            $(cat games/brineward-nds/proof/salvage-bank-keys.txt) \
+            --keys 650-655:A --keys 670-672:DOWN --keys 674-676:DOWN \
+            --keys 678-680:DOWN --keys 682-684:DOWN --keys 690-695:A \
+            --keys 710-715:A --keys 730-735:START --keys 750-755:START \
+            --shot 660:bw-hold-menu.png --shot 705:bw-hold-bought.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:57 \
+            --assert-watch 145:t:3:eq:1 \
+            --assert-watch 145:t:13:eq:127 \
+            --assert-watch 640:t:3:eq:3 \
+            --assert-watch 640:t:18:eq:15 \
+            --assert-watch 655:t:3:eq:4 \
+            --assert-watch 655:t:18:eq:15 \
+            --assert-watch 655:t:23:eq:0 \
+            --assert-watch 655:t:56:eq:8 \
+            --assert-watch 672:t:23:eq:1 \
+            --assert-watch 676:t:23:eq:2 \
+            --assert-watch 680:t:23:eq:3 \
+            --assert-watch 684:t:23:eq:4 \
+            --assert-watch 700:t:3:eq:4 \
+            --assert-watch 700:t:18:eq:0 \
+            --assert-watch 700:t:56:eq:12 \
+            --assert-watch 725:t:18:eq:0 \
+            --assert-watch 725:t:56:eq:12 \
+            --assert-watch 740:t:3:eq:3 \
+            --assert-watch 770:t:3:eq:1 \
+            --assert-watch 770:t:13:eq:748 \
+            --assert-watch 770:t:16:eq:0 \
+            --assert-watch 770:t:56:eq:12
       - name: upload Brineward ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:

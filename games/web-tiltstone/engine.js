@@ -41,7 +41,7 @@
   else root.TiltstoneEngine = api;
 })(typeof self !== "undefined" ? self : this, function () {
 
-  var VERSION = "1.5.0";
+  var VERSION = "1.8.0";
   var SIZE = 8;          // grid is SIZE x SIZE (square — rotation-safe)
   var EMPTY = 0, WALL = 1, STONE = 2, GEM0 = 3;
   var ICE = 11;          // slice 4 — first code past the 8 reserved gem slots
@@ -437,9 +437,16 @@
   // Deterministic level from (seed, levelIndex). Internally tries salted
   // layouts until one (a) starts merge-free after the initial settle and
   // (b) the BFS solver proves >= MIN_BEST gems collectible within budget.
-  function generateLevel(seed, levelIndex) {
+  function generateLevel(seed, levelIndex, opts) {
     levelIndex = levelIndex | 0;
     var P = paramsFor(levelIndex);
+    // arc 2, cut 5: an OPTIONAL difficulty floor. When opts.floor is a finite
+    // number, generation re-salts until difficulty(candidate).score clears it.
+    // When absent, the accept path is byte-identical to before — the same RNG
+    // stream, the same first-valid salt returned — so every pinned level (and
+    // today's daily chain) survives unchanged. floor 0 is a no-op the first
+    // valid salt always clears, so a floor-on chain's opening level is identical.
+    var floor = opts && typeof opts.floor === "number" && isFinite(opts.floor) ? opts.floor : null;
     for (var salt = 0; salt < MAX_SALT; salt++) {
       var rng = mulberry32(mixSeed(seed, levelIndex, salt));
       var grid = emptyGrid(SIZE);
@@ -472,14 +479,20 @@
         if (found.records[i].collected >= quota) { solution = found.records[i].path; break; }
       if (!solution) continue;                  // defensive; cannot happen
 
-      return {
+      var level = {
         size: SIZE, grid: grid, colors: P.colors,
         quota: quota, budget: P.budget,
         seed: seed >>> 0, levelIndex: levelIndex, salt: salt,
         best: found.best, solution: solution
       };
+      // arc 2, cut 5: below the floor (if any) -> re-salt. Skipped entirely when
+      // no floor is set, so floor-off output is the pre-cut-5 first-valid salt.
+      if (floor !== null && difficulty(level).score < floor) continue;
+      return level;
     }
-    throw new Error("generateLevel: no solvable layout in " + MAX_SALT + " salts (seed=" + seed + ", level=" + levelIndex + ")");
+    throw new Error("generateLevel: no " +
+      (floor !== null ? "layout clearing difficulty floor " + floor : "solvable layout") +
+      " in " + MAX_SALT + " salts (seed=" + seed + ", level=" + levelIndex + ")");
   }
 
   // ------------------------------------------------ level packs (slice 5) --
@@ -750,6 +763,176 @@
     return grade((used | 0) + Math.max(0, hints | 0), parTurns);
   }
 
+  // ---- undo×par deception curation (arc 2, cut 3) -----------------------------
+  // Rate a cleared level's *deceptiveness* from the (undos, overshoot) pair.
+  //   overshoot = turns used beyond par  -> honest, visible forward effort
+  //   undos     = in-place backtracking  -> hidden effort; what makes a level deceptive
+  // A win at par that ate many undos is HARD-deceptive; par+2 with no undos is
+  // medium-honest. Pure integers, no I/O -- the shell persists the pair in guarded
+  // localStorage and renders deceptionLabel().
+  function deception(undos, used, parTurns) {
+    var u = undos > 0 ? (undos | 0) : 0;
+    var overshoot = used - parTurns;
+    if (overshoot < 0) overshoot = 0;
+    var d = u * 2 - overshoot;
+    return d > 0 ? d : 0;
+  }
+
+  function deceptionLabel(undos, used, parTurns) {
+    var u = undos > 0 ? (undos | 0) : 0;
+    var overshoot = used - parTurns;
+    if (overshoot < 0) overshoot = 0;
+    var effort = u + overshoot;
+    var tier = effort === 0 ? "clean" : (effort <= 3 ? "medium" : "HARD");
+    var d = deception(undos, used, parTurns);
+    var honesty = d === 0 ? "honest" : (d <= 3 ? "tricky" : "deceptive");
+    return tier + "-" + honesty;
+  }
+
+  // ---- mechanic fingerprint: per-class par deltas (arc 2, cut 4) --------------
+  // Which slice-4 cell CLASS actually carries a cavern? Re-run the solver's own BFS
+  // on the grid with ONE class NEUTRALIZED and read how par moves:
+  //   ice   -> slip disabled  (ICE becomes STONE: same dead-weight fall, no slide)
+  //   lock  -> pre-freed      (each locked gem becomes a normal gem of its color)
+  //   grate -> all-porous     (grate cells removed: no one-way barrier remains)
+  // Neutralization is a PURE grid transform fed to `search` as a parallel input --
+  // zero edits to settle/resolve/rotate, so every prior pin stays byte-identical.
+  // If neutralizing a class the cavern actually places moves par (delta != 0) OR
+  // kills the level (no winning line within budget -> dead), that mechanic is
+  // load-bearing: an honest per-seed tag ("this daily NEEDS the grate"). A class
+  // the cavern never places is a no-op (delta 0, not load-bearing). All ADDITIVE.
+
+  var FP_CLASSES = ["ice", "lock", "grate"];
+
+  function classAt(v, cls) {
+    return cls === "ice"   ? v === ICE
+         : cls === "lock"  ? isLocked(v)
+         : cls === "grate" ? isGrate(v)
+         : false;
+  }
+
+  // Grid with every cell of ONE class replaced by its neutral stand-in. Pure:
+  // returns a NEW grid, input untouched; cells of any other class pass through.
+  // On content with none of `cls` the result is byte-identical to the input.
+  function neutralizeClass(g, cls) {
+    var n = g.length, out = cloneGrid(g);
+    for (var r = 0; r < n; r++)
+      for (var c = 0; c < n; c++) {
+        var v = g[r][c];
+        if (cls === "ice"   && v === ICE)   out[r][c] = STONE;
+        else if (cls === "lock"  && isLocked(v)) out[r][c] = GEM0 + (v - LOCK0);
+        else if (cls === "grate" && isGrate(v)) out[r][c] = EMPTY;
+      }
+    return out;
+  }
+
+  function hasClass(g, cls) {
+    for (var r = 0; r < g.length; r++)
+      for (var c = 0; c < g.length; c++)
+        if (classAt(g[r][c], cls)) return true;
+    return false;
+  }
+
+  // Shortest winning depth for `quota` on `grid` within `budget`, or null when no
+  // rotation line up to `budget` deep reaches quota. `search` pushes records
+  // shortest-first, so the first quota-meeting record's depth IS the minimum. Pure.
+  function shortestWinDepth(grid, budget, quota) {
+    var found = search(grid, budget);
+    for (var i = 0; i < found.records.length; i++)
+      if (found.records[i].collected >= quota) return found.records[i].depth;
+    return null;
+  }
+
+  // Fingerprint a level: base par plus, per slice-4 class, the neutralized par and
+  // its signed delta from base. `dead` marks a class the level cannot win without;
+  // a class is `loadBearing` when it is PRESENT and neutralizing it moves par or
+  // kills the level. Deterministic — a pure function of the level's grid/budget/
+  // quota. The base equals par(level) for a generated level (both the BFS shortest
+  // line). Absent classes report present:false, delta:0, not load-bearing.
+  function fingerprint(level) {
+    var base = shortestWinDepth(level.grid, level.budget, level.quota);
+    var out = { base: base };
+    for (var i = 0; i < FP_CLASSES.length; i++) {
+      var cls = FP_CLASSES[i];
+      if (!hasClass(level.grid, cls)) {
+        out[cls] = { present: false, par: base, delta: 0, dead: false, loadBearing: false };
+        continue;
+      }
+      var np = shortestWinDepth(neutralizeClass(level.grid, cls), level.budget, level.quota);
+      var dead = np === null;
+      var delta = dead ? null : np - base;
+      out[cls] = { present: true, par: np, delta: delta, dead: dead,
+                   loadBearing: dead || delta !== 0 };
+    }
+    return out;
+  }
+
+  // How load-bearing a class is, as a sortable scalar: a level that DIES without it
+  // outranks any finite par shift; otherwise the size of the par move. Pure.
+  function fpLoad(entry) {
+    return entry.dead ? Infinity : Math.abs(entry.delta || 0);
+  }
+
+  // Honest per-seed tag: the load-bearing mechanics, heaviest carrier first
+  // ("NEEDS grate", "NEEDS lock+ice"), or "no-mechanic" when neutralizing every
+  // class leaves par unmoved (a base cavern, or a deep one its mechanics do not
+  // gate). Deterministic: equal loads break ties in FP_CLASSES order. Pure.
+  function fingerprintTag(level) {
+    var fp = fingerprint(level);
+    var carried = [];
+    for (var i = 0; i < FP_CLASSES.length; i++)
+      if (fp[FP_CLASSES[i]].loadBearing) carried.push(FP_CLASSES[i]);
+    if (!carried.length) return "no-mechanic";
+    carried.sort(function (a, b) {
+      var la = fpLoad(fp[a]), lb = fpLoad(fp[b]);
+      if (lb !== la) return lb - la;
+      return FP_CLASSES.indexOf(a) - FP_CLASSES.indexOf(b);
+    });
+    return "NEEDS " + carried.join("+");
+  }
+
+  // ---- monotone difficulty ramp (arc 2, cut 5) --------------------------------
+  // The daily chain today ramps by PARAMETER (paramsFor bumps colors/gems/cells
+  // with levelIndex) but not by MEASURED difficulty: a generated LV n+1 can rate
+  // EASIER than LV n (seed 42 dips par 7 at LV3 -> par 5 at LV4). Cut 5 adds an
+  // OPTIONAL monotone floor: build each level against a floor equal to the hardest
+  // difficulty().score seen so far, and generateLevel's cut-5 re-salt keeps
+  // drawing layouts until one clears it -> the chain is PROVABLY non-decreasing in
+  // difficulty. All ADDITIVE and behind an opt-in flag: floor-off generation (and
+  // today's daily chain) is byte-identical, so no pinned level moves.
+
+  // The floor the NEXT level must clear: the running max difficulty score across
+  // the levels built so far (0 for an empty prefix — a no-op floor the first valid
+  // salt always clears). Pure; non-decreasing in the prefix by construction, which
+  // is exactly what makes the ramp it drives monotone.
+  function rampFloor(scores) {
+    var m = 0;
+    for (var i = 0; i < scores.length; i++) if (scores[i] > m) m = scores[i];
+    return m;
+  }
+
+  // Build a `count`-level daily chain from one seed. With opts.monotone, level i>0
+  // is generated against rampFloor(scores[0..i-1]), so its difficulty score is >=
+  // every earlier level's and the chain is provably non-decreasing:
+  // scores[i] >= floor[i] = max(scores[0..i-1]) >= scores[i-1]. Without the flag
+  // (the default) the chain is plain generateLevel(seed, i) per level — the third
+  // arg is never passed, so it is byte-identical to today's daily chain. Pure;
+  // returns the levels plus their per-level difficulty scores and applied floors.
+  function generateRamp(seed, count, opts) {
+    var monotone = !!(opts && opts.monotone);
+    count = count | 0;
+    var levels = [], scores = [], floors = [];
+    for (var i = 0; i < count; i++) {
+      var floor = monotone ? rampFloor(scores) : null;
+      var level = generateLevel(seed, i, floor === null ? undefined : { floor: floor });
+      levels.push(level);
+      scores.push(difficulty(level).score);
+      floors.push(floor === null ? 0 : floor);
+    }
+    return { seed: seed >>> 0, count: count, monotone: monotone,
+             levels: levels, scores: scores, floors: floors };
+  }
+
   return {
     VERSION: VERSION, SIZE: SIZE,
     EMPTY: EMPTY, WALL: WALL, STONE: STONE, GEM0: GEM0, MERGE_MIN: MERGE_MIN,
@@ -766,6 +949,9 @@
     newGame: newGame, rotate: rotate, replay: replay,
     isReplayLine: isReplayLine, normalizeLine: normalizeLine,
     encodeShare: encodeShare, decodeShare: decodeShare, spectate: spectate,
-    hintFrom: hintFrom, hintedGrade: hintedGrade
+    hintFrom: hintFrom, hintedGrade: hintedGrade,
+    deception: deception, deceptionLabel: deceptionLabel,
+    neutralizeClass: neutralizeClass, fingerprint: fingerprint, fingerprintTag: fingerprintTag,
+    rampFloor: rampFloor, generateRamp: generateRamp
   };
 });

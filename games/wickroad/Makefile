@@ -13,7 +13,7 @@
 ROMTITLE    	:=  WICKROAD
 ROMCODE     	:=  GLWR
 AUDIO       	:=  audio
-INCLUDES    	:=  ../../third_party/butano/common/include
+INCLUDES    	:=  ../common/include ../../third_party/butano/common/include
 GRAPHICS    	:=  graphics ../../third_party/butano/common/graphics
 
 # Growth cut 2 measured fact: with the pact line on screen, a dawn

@@ -151,7 +151,17 @@ words byte-unchanged — the seed dial appended word 56, the live dialed
 seed, and dial 0 keeps the world itself identical). The RNG draw ORDER
 is a committed wire format: the branch town (crossroads cut 1) appends
 its 8 draws strictly after town 6's — the freeze point named in
-`reset_run()`.
+`reset_run()`. Persistence (crossroads cut 4, the best ledger) adds
+ZERO new RNG draws and does NOT widen `wr_telemetry`: the best run is
+banked in SRAM behind `gl_save.h`'s magic tag (`"WLDGR1"`, POD
+`{best_gold, best_day_reached, best_seed, runs}`) and mirrored in a
+THIRD witness mailbox `wr_ledger[6]`, so the sim stream and the 57
+committed words are byte-unchanged. A fresh / foreign / erased cart
+reads as NO save → the v0.9 world exactly, and the end-card best line is
+drawn ONLY when a prior save was restored — so the default no-save path
+is render-cost + timing byte-identical and every proof P1-P11 carries
+verbatim; the two-boot power-cycle (write in boot 1, restore in boot 2,
+`cmp` the battery file) is proven in `proofs.sh` P12.
 
 ## Sellability guess
 

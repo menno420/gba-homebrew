@@ -1675,7 +1675,30 @@ int main()
             ui_lines[2].set(ui_gen, ui_x, -42, "BUY LOW - SELL HIGH");
             ui_lines[3].set(ui_gen, ui_x, -30, "300 GOLD BEFORE DAY 30");
             title_lines[0].set(ui_gen, ui_x, -14, "YOUR LEDGER REMEMBERS");
-            title_lines[1].set(ui_gen, ui_x, -2, "BUT THE INK AGES");
+
+            // The best on the title (WIK-03): once a prior SRAM save has
+            // been restored, the second pitch line carries the record a
+            // score-attack player is chasing — BEST GOLD x DAY y, both the
+            // persisted best_gold AND best_day_reached (the latter banked
+            // since crossroads cut 4 but never shown anywhere until now).
+            // Gated on ledger_loaded, which is FALSE on every fresh /
+            // foreign / erased cart (and on every proof booted without
+            // --savefile), so the default no-save path renders EXACTLY the
+            // committed flavor line at the same slot/position — byte-
+            // identical, and P1-P12 carry verbatim. Render-only: no RNG
+            // draw, no telemetry word, no new sprite line.
+            if(ledger_loaded)
+            {
+                bn::string<40> best_line("BEST GOLD ");
+                best_line.append(bn::to_string<8>(best.best_gold));
+                best_line.append(" DAY ");
+                best_line.append(bn::to_string<8>(best.best_day_reached));
+                title_lines[1].set(ui_gen, ui_x, -2, best_line);
+            }
+            else
+            {
+                title_lines[1].set(ui_gen, ui_x, -2, "BUT THE INK AGES");
+            }
             // The seed dial (crossroads cut 3): once dialed OFF 0, the START
             // line carries the live dialed world seed as SEED xxxxxxxx (the
             // pinned "PRESS START" prefix carries, so the P1 text pin holds)

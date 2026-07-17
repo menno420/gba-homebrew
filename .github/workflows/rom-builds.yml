@@ -1353,6 +1353,9 @@ jobs:
           mkdir -p /tmp/breakfree
           python3 games/brineward-nds/tools/record-breakfree.py --outdir /tmp/breakfree
           diff /tmp/breakfree/grasper-breakfree-keys.txt games/brineward-nds/proof/grasper-breakfree-keys.txt
+          mkdir -p /tmp/ambush
+          python3 games/brineward-nds/tools/record-ambush.py --outdir /tmp/ambush
+          diff /tmp/ambush/ambush-survived-keys.txt games/brineward-nds/proof/ambush-survived-keys.txt
       - name: make /opt/wonderful runner-writable
         run: sudo mkdir -p /opt/wonderful && sudo chown "$(id -u):$(id -g)" /opt/wonderful
       - name: cache NDS toolchain (BlocksDS 1.21.1 + Wonderful GCC pins)
@@ -2594,6 +2597,48 @@ jobs:
             --assert-watch 974:t:7:eq:43 \
             --assert-watch 974:t:53:eq:90 \
             --assert-watch 1030:t:7:eq:43
+      # Proof 25 — the ambush (bestiary cut 3 «The ambush»): the committed
+      # ambush route (games/brineward-nds/proof/ambush-survived-keys.txt,
+      # seed 439 — an AMBUSH water, t:54 == 1) plays the recorded duel win,
+      # then the victor lingers and the arms SEIZE her — and the seize
+      # SPRINGS THE TRAP: BW_CUTTER_COUNT (3) converging cutters, witnessed
+      # by t:55 (cutters alive) going 0 -> 3. A few frames into the hold the
+      # player BRACES (one B press at tool frame 1236) and WRENCHES LOOSE —
+      # the hold ends (release tool frame 1248) BEFORE any cutter reaches the
+      # pin (the first unbraced bite would land ~1271), so ZERO cutters bite:
+      # the hull holds at the seize+brace cost (73 -> 53 -> 43, never the
+      # extra 3x8 the pin would have taken) and the cutters DISPERSE
+      # (t:55 -> 0). The ambush composition + the braced counter are proven
+      # for whole families in check-brine.py (check_grasper_ambush); this ROM
+      # pin confirms the wiring surfaces it. Every frame is the recorder's
+      # step<->frame map (step j at frame j+442), mirror-predicted; the ROM
+      # build is byte-deterministic, so drift == regression.
+      - name: 'proof 25 — the ambush: cutters close, a brace survives (bestiary cut 3)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-ambush.png \
+            --frames 1300 \
+            $(cat games/brineward-nds/proof/ambush-survived-keys.txt) \
+            --shot 1232:bw-ambush-cutters.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:56 \
+            --assert-watch 460:t:0:eq:0x4252494E \
+            --assert-watch 515:t:13:eq:439 \
+            --assert-watch 515:t:54:eq:1 \
+            --assert-watch 515:t:3:eq:1 \
+            --assert-watch 515:t:50:eq:0 \
+            --assert-watch 515:t:55:eq:0 \
+            --assert-watch 1232:t:3:eq:3 \
+            --assert-watch 1232:t:50:eq:2 \
+            --assert-watch 1232:t:7:eq:53 \
+            --assert-watch 1232:t:55:eq:3 \
+            --assert-watch 1242:t:50:eq:2 \
+            --assert-watch 1242:t:7:eq:43 \
+            --assert-watch 1242:t:55:eq:3 \
+            --assert-watch 1254:t:50:eq:0 \
+            --assert-watch 1254:t:7:eq:43 \
+            --assert-watch 1254:t:53:eq:90 \
+            --assert-watch 1254:t:55:eq:0
       - name: upload Brineward ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:

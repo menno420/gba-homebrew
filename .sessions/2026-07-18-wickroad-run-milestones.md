@@ -1,10 +1,10 @@
 # Session — Wickroad: run-count milestone flourish on the end card
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
-- date: 2026-07-18 (branch `claude/wickroad-run-milestones`, PR **#[[fill:pr]]**;
+- date: 2026-07-18 (branch `claude/wickroad-run-milestones`, PR **#189**;
   born-red card written at 2026-07-18T02:04:10Z, flipped to complete at
-  [[fill:flip-stamp]], both from `date -u`).
+  2026-07-18T02:12:00Z, both from `date -u`).
 - **📊 Model:** Opus 4.8 · high · new-logic gameplay slice — a deterministic
   run-count milestone callout on the Wickroad end card.
 - mission: **Wickroad — "THE MILESTONE FLOURISH"** (a follow-on to PR **#184**
@@ -39,7 +39,7 @@
 ## What shipped
 
 1. Born-red gate: this card `in-progress` +
-   `control/claims/2026-07-18-wickroad-run-milestones.md`, PR **#[[fill:pr]]**
+   `control/claims/2026-07-18-wickroad-run-milestones.md`, PR **#189**
    opened READY.
 2. **The pure helper** (`games/wickroad/src/wr_milestones.h`): a self-contained,
    Butano/GBA-free header with `wr::run_milestone_label(int completed_run_ordinal)
@@ -62,8 +62,35 @@
 
 ## 💡 Session idea
 
-[[fill:idea]]
+**This slice is the first DERIVED surfacing on the Wickroad ledger — a pure
+function OVER a persisted field, not a raw field readout — and that opens a
+cleaner follow-on than any remaining struct member.** #184/#185/#186 drained
+`wr_ledger_save`'s stored-but-unshown fields one by one (gold, day, runs); this
+slice instead computes something new (a threshold label) from `runs`. The
+milestone flourish has one honest limitation: it flashes ONCE, on the end card
+of the crossing run, then is gone — a player who powers off never re-sees that
+they hit 50. The natural next slice reuses THIS slice's pure helper verbatim:
+promote `run_milestone_label` to also return a persistent TIER
+(e.g. runs >= 50 → a "VETERAN" tag) and render that on the TITLE screen beside
+#186's existing `RUNS n` line, so the achievement persists instead of
+flashing. It stays render-only, ledger-gated, zero-RNG, and the host test
+extends by one column — the same shape as this slice, one surface up (transient
+end card → durable title). The remaining raw field, `best_seed`, is a
+different (bigger) slice: surfacing it usefully means a "REPLAY THIS WORLD"
+input verb on the end card, which crosses out of render-only, so it is
+deliberately not the cheap next step.
 
 ## Previous-session review
 
-[[fill:review]]
+Prior slice: `.sessions/2026-07-18-wickroad-lifetime-runs.md` (PR **#186**, the
+lifetime RUNS count on the title) — **holds up, and it literally specified this
+slice.** #186's own 💡 idea line named the exact next surface ("a milestone
+nudge ... at runs 10/25/50 ... deliberately left as a follow-up, not folded in
+here"), and its reasoning — `best.runs` is a monotone counter with no "record"
+beat, so it wants a milestone rather than #185's transition flash — set the
+scope precisely. This slice cashes that note in unchanged: same thresholds, and
+the compare-before-increment discipline #186 inherited from #185 is what makes
+"the 10th completed run shows 10TH RUN" line up with #186's own `RUNS 10`. One
+honest note: #186 called `wr_ledger_save` "fully drained" for display; that was
+true of raw fields, and this slice does not reopen it — it adds a *derived*
+readout, a category #186 didn't count, so the two claims coexist.

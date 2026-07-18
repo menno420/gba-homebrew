@@ -1016,10 +1016,22 @@ int main()
     // render gates it on ledger_loaded, so the no-save path never draws it.
     const char* milestone_label = nullptr;
 
+    // Tier-up flash (follow-on to #190/#195): the end-card announce for the
+    // run-end whose banked lifetime ordinal FIRST reaches a tier threshold
+    // (50 -> VETERAN, 100 -> MASTER), or nullptr. Same compare-before-increment
+    // capture as milestone_label above (this run's ordinal is best.runs + 1
+    // BEFORE ++best.runs), and the decision is the pure wr::run_tier_up_label
+    // (wr_milestones.h, derived from wr::run_tier_label so the thresholds have
+    // one source) — host-testable (tools/check-run-tier-up.py). Read-only; the
+    // end-card render gates it on ledger_loaded, so the no-save path never
+    // draws it.
+    const char* tier_up_label = nullptr;
+
     auto record_run = [&]()
     {
         new_record = gold > best.best_gold || int(day) > best.best_day_reached;
         milestone_label = wr::run_milestone_label(best.runs + 1);
+        tier_up_label = wr::run_tier_up_label(best.runs + 1);
 
         if(gold > best.best_gold)
         {
@@ -2060,6 +2072,22 @@ int main()
                 {
                     title_lines[3].set(ui_gen, ui_x, 56, milestone_label);
                 }
+
+                // Tier-up flash (follow-on to #190/#195): the run-end that
+                // FIRST reaches a lifetime tier (50 -> VETERAN, 100 -> MASTER,
+                // decided by the pure wr::run_tier_up_label captured in
+                // record_run before ++best.runs) announces the level-up once,
+                // on the free title_lines[4] slot one row below the milestone.
+                // Same no-save gate (ledger_loaded false -> unreachable) and
+                // same clear_lines() blank-per-transition, so title_lines[4]
+                // stays clear on a non-crossing run-end and the no-save card is
+                // byte-identical.
+                if(tier_up_label)
+                {
+                    bn::string<24> tierline("NEW TIER ");
+                    tierline.append(tier_up_label);
+                    title_lines[4].set(ui_gen, ui_x, 72, tierline);
+                }
             }
 
             break;
@@ -2101,6 +2129,17 @@ int main()
                 if(milestone_label)
                 {
                     title_lines[3].set(ui_gen, ui_x, 56, milestone_label);
+                }
+
+                // Tier-up flash (follow-on to #190/#195): a losing run still
+                // ends a run and can be the one that FIRST reaches a tier — the
+                // pass-closing card announces "NEW TIER <label>" too. Same
+                // no-save gate, same free title_lines[4] slot as st_balanced.
+                if(tier_up_label)
+                {
+                    bn::string<24> tierline("NEW TIER ");
+                    tierline.append(tier_up_label);
+                    title_lines[4].set(ui_gen, ui_x, 72, tierline);
                 }
             }
 

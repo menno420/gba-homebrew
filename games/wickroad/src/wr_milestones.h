@@ -73,6 +73,39 @@ namespace wr
 
         return nullptr;
     }
+
+    // Wickroad — the TIER-UP flash decision (follow-on to #190/#195).
+    //
+    // The end-card announce paired with run_tier_label's persistent TITLE tag:
+    // where run_tier_label is a >= LEVEL that re-shows every boot, this is an
+    // == CROSSING (the run_milestone_label shape) that fires ONCE, on the
+    // run-end whose banked lifetime ordinal FIRST reaches a tier — the
+    // "you just earned this" beat, the tier analog of #185's NEW RECORD.
+    //
+    // DERIVED, not a second table: the tier thresholds/labels live in exactly
+    // ONE place (run_tier_label above), so they cannot drift. This ordinal
+    // reaches a NEW tier iff the earned tier at this ordinal differs from the
+    // earned tier at the previous ordinal. run_tier_label returns a pointer
+    // into its own static tier table (or nullptr), so the SAME threshold
+    // always yields the SAME pointer and a different (higher) tier yields a
+    // different one — pointer inequality is therefore exactly the crossing
+    // test, and it returns the newly-earned tier's own label. Off a boundary,
+    // both ordinals share a tier (or both are below the first) -> nullptr.
+    //   run_tier_up_label(49)  -> nullptr   (49 and 48 both below the first tier)
+    //   run_tier_up_label(50)  -> "VETERAN" (50 reaches VETERAN, 49 had not)
+    //   run_tier_up_label(51)  -> nullptr   (51 and 50 both VETERAN)
+    //   run_tier_up_label(100) -> "MASTER"  (100 reaches MASTER, 99 was VETERAN)
+    //   run_tier_up_label(101) -> nullptr   (101 and 100 both MASTER)
+    // Pure and self-contained (no Butano/GBA/std includes, no state, no RNG);
+    // the stdlib mirror is tools/check-run-tier-up.py — keep the two in
+    // lockstep (any tier-table change lands in run_tier_label + BOTH mirrors in
+    // the same PR).
+    inline const char* run_tier_up_label(int completed_run_ordinal)
+    {
+        const char* now = run_tier_label(completed_run_ordinal);
+        const char* prev = run_tier_label(completed_run_ordinal - 1);
+        return now != prev ? now : nullptr;
+    }
 }
 
 #endif // WR_MILESTONES_H

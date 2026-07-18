@@ -1350,6 +1350,15 @@ jobs:
           python3 games/brineward-nds/tools/record-grasper.py --outdir /tmp/grasper
           diff /tmp/grasper/grasper-duel-keys.txt games/brineward-nds/proof/grasper-duel-keys.txt
           diff /tmp/grasper/grasper-seize-keys.txt games/brineward-nds/proof/grasper-seize-keys.txt
+          mkdir -p /tmp/breakfree
+          python3 games/brineward-nds/tools/record-breakfree.py --outdir /tmp/breakfree
+          diff /tmp/breakfree/grasper-breakfree-keys.txt games/brineward-nds/proof/grasper-breakfree-keys.txt
+          mkdir -p /tmp/ambush
+          python3 games/brineward-nds/tools/record-ambush.py --outdir /tmp/ambush
+          diff /tmp/ambush/ambush-survived-keys.txt games/brineward-nds/proof/ambush-survived-keys.txt
+          mkdir -p /tmp/bighold
+          python3 games/brineward-nds/tools/record-bighold.py --outdir /tmp/bighold
+          diff /tmp/bighold/bighold-keys.txt games/brineward-nds/proof/bighold-keys.txt
       - name: make /opt/wonderful runner-writable
         run: sudo mkdir -p /opt/wonderful && sudo chown "$(id -u):$(id -g)" /opt/wonderful
       - name: cache NDS toolchain (BlocksDS 1.21.1 + Wonderful GCC pins)
@@ -2555,6 +2564,133 @@ jobs:
             --assert-watch 1020:t:7:eq:53 \
             --assert-watch 1080:t:50:eq:0 \
             --assert-watch 1080:t:53:eq:90
+      # Proof 24 — the break-free B verb (bestiary cut 2 «Ram/brace»): the
+      # committed break-free route (games/brineward-nds/proof/grasper-
+      # breakfree-keys.txt) is the seize route's twin — the SAME seed-174
+      # duel and the SAME lingering seize — but a few frames into the hold
+      # the player BRACES (one B press at tool frame 956) and WRENCHES
+      # LOOSE. The wrench costs exactly BW_GRASPER_BRACE_HULL (10) hull and
+      # the arms slip BW_GRASPER_BRACE_FRAMES (12) frames later, a hold cut
+      # to 22 frames — well under the full 90 (proof 23's route was still
+      # held at frame 1020). The frame-exact break contract is proven for
+      # whole families in check-brine.py (check_grasper_breakfree); this
+      # ROM pin confirms the wiring surfaces it. Every frame is the
+      # recorder's step<->frame map (step j at frame j+177), mirror-
+      # predicted; the ROM build is byte-deterministic, so drift ==
+      # regression.
+      - name: 'proof 24 — the seized sloop wrenches free (bestiary cut 2)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-grasper-breakfree.png \
+            --frames 1080 \
+            $(cat games/brineward-nds/proof/grasper-breakfree-keys.txt) \
+            --shot 962:bw-grasper-wrench.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:56 \
+            --assert-watch 190:t:0:eq:0x4252494E \
+            --assert-watch 190:t:13:eq:174 \
+            --assert-watch 190:t:54:eq:1 \
+            --assert-watch 250:t:3:eq:1 \
+            --assert-watch 250:t:50:eq:0 \
+            --assert-watch 950:t:50:eq:2 \
+            --assert-watch 950:t:7:eq:53 \
+            --assert-watch 962:t:50:eq:2 \
+            --assert-watch 962:t:7:eq:43 \
+            --assert-watch 974:t:50:eq:0 \
+            --assert-watch 974:t:7:eq:43 \
+            --assert-watch 974:t:53:eq:90 \
+            --assert-watch 1030:t:7:eq:43
+      # Proof 25 — the ambush (bestiary cut 3 «The ambush»): the committed
+      # ambush route (games/brineward-nds/proof/ambush-survived-keys.txt,
+      # seed 439 — an AMBUSH water, t:54 == 1) plays the recorded duel win,
+      # then the victor lingers and the arms SEIZE her — and the seize
+      # SPRINGS THE TRAP: BW_CUTTER_COUNT (3) converging cutters, witnessed
+      # by t:55 (cutters alive) going 0 -> 3. A few frames into the hold the
+      # player BRACES (one B press at tool frame 1236) and WRENCHES LOOSE —
+      # the hold ends (release tool frame 1248) BEFORE any cutter reaches the
+      # pin (the first unbraced bite would land ~1271), so ZERO cutters bite:
+      # the hull holds at the seize+brace cost (73 -> 53 -> 43, never the
+      # extra 3x8 the pin would have taken) and the cutters DISPERSE
+      # (t:55 -> 0). The ambush composition + the braced counter are proven
+      # for whole families in check-brine.py (check_grasper_ambush); this ROM
+      # pin confirms the wiring surfaces it. Every frame is the recorder's
+      # step<->frame map (step j at frame j+442), mirror-predicted; the ROM
+      # build is byte-deterministic, so drift == regression.
+      - name: 'proof 25 — the ambush: cutters close, a brace survives (bestiary cut 3)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-ambush.png \
+            --frames 1300 \
+            $(cat games/brineward-nds/proof/ambush-survived-keys.txt) \
+            --shot 1232:bw-ambush-cutters.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:56 \
+            --assert-watch 460:t:0:eq:0x4252494E \
+            --assert-watch 515:t:13:eq:439 \
+            --assert-watch 515:t:54:eq:1 \
+            --assert-watch 515:t:3:eq:1 \
+            --assert-watch 515:t:50:eq:0 \
+            --assert-watch 515:t:55:eq:0 \
+            --assert-watch 1232:t:3:eq:3 \
+            --assert-watch 1232:t:50:eq:2 \
+            --assert-watch 1232:t:7:eq:53 \
+            --assert-watch 1232:t:55:eq:3 \
+            --assert-watch 1242:t:50:eq:2 \
+            --assert-watch 1242:t:7:eq:43 \
+            --assert-watch 1242:t:55:eq:3 \
+            --assert-watch 1254:t:50:eq:0 \
+            --assert-watch 1254:t:7:eq:43 \
+            --assert-watch 1254:t:53:eq:90 \
+            --assert-watch 1254:t:55:eq:0
+      # Proof 26 — THE HOLD TRACK (bestiary cut 4): the crate-cap economy
+      # witnessed the ROM-honest way. Same proof-7 bank (seed 127 salvage,
+      # 15g at the pier) and the same berth window opens the Graywake port
+      # (state 4); the cursor walks DOWN to the APPENDED fourth line, HOLD
+      # (row 4, t[23]=4), and A buys hold tier I — gold 15 -> 0 (t[18]) and
+      # the crate cap BW_T_HOLDCAP 8 -> 12 (t[56], the hold-track witness).
+      # BEFORE the buy the cap reads 8 == BW_HOLD_CAP (the tier-0 pin-carry
+      # identity, live in the ROM); START walks back to the water and the
+      # next duel (seed 748) sails with the bigger hold PERSISTING. The
+      # >8-crate deep-haul bank is host-proven (check_hold_track /
+      # record-bighold) — a natural water does not yet overflow the stock
+      # hold — so the ROM pins the ECONOMY (buy it, cap rises, it persists),
+      # not a >8 bank. Mirror-predicted, reusing proof 7's proven berth
+      # window; the pins shift only in the navigation depth and the row.
+      - name: 'proof 26 — the hold track: buy a bigger hold, the cap rises 8->12 (bestiary cut 4)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-hold.png \
+            --frames 790 $(cat games/brineward-nds/proof/salvage-duel-keys.txt) \
+            $(cat games/brineward-nds/proof/salvage-scoop-keys.txt) \
+            $(cat games/brineward-nds/proof/salvage-bank-keys.txt) \
+            --keys 650-655:A --keys 670-672:DOWN --keys 674-676:DOWN \
+            --keys 678-680:DOWN --keys 682-684:DOWN --keys 690-695:A \
+            --keys 710-715:A --keys 730-735:START --keys 750-755:START \
+            --shot 660:bw-hold-menu.png --shot 705:bw-hold-bought.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:57 \
+            --assert-watch 145:t:3:eq:1 \
+            --assert-watch 145:t:13:eq:127 \
+            --assert-watch 640:t:3:eq:3 \
+            --assert-watch 640:t:18:eq:15 \
+            --assert-watch 655:t:3:eq:4 \
+            --assert-watch 655:t:18:eq:15 \
+            --assert-watch 655:t:23:eq:0 \
+            --assert-watch 655:t:56:eq:8 \
+            --assert-watch 672:t:23:eq:1 \
+            --assert-watch 676:t:23:eq:2 \
+            --assert-watch 680:t:23:eq:3 \
+            --assert-watch 684:t:23:eq:4 \
+            --assert-watch 700:t:3:eq:4 \
+            --assert-watch 700:t:18:eq:0 \
+            --assert-watch 700:t:56:eq:12 \
+            --assert-watch 725:t:18:eq:0 \
+            --assert-watch 725:t:56:eq:12 \
+            --assert-watch 740:t:3:eq:3 \
+            --assert-watch 770:t:3:eq:1 \
+            --assert-watch 770:t:13:eq:748 \
+            --assert-watch 770:t:16:eq:0 \
+            --assert-watch 770:t:56:eq:12
       - name: upload Brineward ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -2619,5 +2755,638 @@ jobs:
             bw-save-vbump.png
             bw-save1.sav
             bw-save2.sav
+          if-no-files-found: error
+          retention-days: 14
+
+  # Parallel NDS job (Underroot arc — slice 1: dual-screen skeleton). A
+  # SEPARATE job so the required "ROM builds" GBA gate is untouched, mirroring
+  # nds-rom-build (Gloamline) and nds-brineward-build. BlocksDS 1.21.1 +
+  # Wonderful GCC, sha256-pinned by tools/setup-nds-toolchain.sh.
+  nds-underroot-build:
+    name: NDS Underroot build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Host-side proof first (stdlib-only, <1s): the check-underroot.py
+      # mirror of games/underroot-nds/source/ur_sim.c proves the hawk
+      # schedule pure/bounded/on-band for 150k (seed,season,frame) cases, the
+      # dig grid's touch->cell mapping, idempotent+monotone digging, and
+      # burrow-BFS connectivity (isolated pockets never counted), the food
+      # patches pure/on-meadow/off-the-lanes, and (slice 3) the forager route:
+      # ur_dig_dist is the true shortest dug path (== an independent BFS) and
+      # ur_forage picks the nearest reachable patch while a disconnected patch
+      # is NEVER visited — plus the exact dug-total/connected/route the ROM
+      # asserts below. Mirror rule: check-underroot.py moves in lockstep with
+      # ur_sim.c, same PR.
+      - name: Underroot host proof (ur_sim mirror)
+        run: python3 tools/check-underroot.py
+      - name: make /opt/wonderful runner-writable
+        run: sudo mkdir -p /opt/wonderful && sudo chown "$(id -u):$(id -g)" /opt/wonderful
+      - name: cache NDS toolchain (BlocksDS 1.21.1 + Wonderful GCC pins)
+        uses: actions/cache@v4
+        with:
+          path: /opt/wonderful
+          key: nds-toolchain-${{ runner.os }}-${{ hashFiles('tools/setup-nds-toolchain.sh') }}
+      - name: setup NDS toolchain (idempotent; skips on warm cache)
+        run: tools/setup-nds-toolchain.sh
+      - name: build underroot-nds ROM
+        run: |
+          make -C games/underroot-nds -j"$(nproc)"
+          test -f games/underroot-nds/underroot-nds.nds
+          ls -la games/underroot-nds/underroot-nds.nds
+      - name: log ROM sha256 (build provenance)
+        run: sha256sum games/underroot-nds/underroot-nds.nds | tee underroot-sha256.txt
+      - name: install headless DeSmuME (py-desmume)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libgl1
+          pip install py-desmume==0.0.9
+      # Proof 1 — dual-screen boot + telemetry mailbox live: the meadow
+      # (top) and burrow (bottom) both render, the mailbox magic words
+      # 'UNDR'/'ROOT' are present, the frame counter is running, the grid
+      # dims are visible, and the hawk shadow x is bounded to the meadow
+      # width. Boot latency into main() is deterministic-but-empirical (as
+      # gloamline's seed=118 was), so FRAME uses `ge` and the hawk uses a
+      # bound, not an exact frame pin; the EXACT hawk determinism is proven
+      # exhaustively host-side by check-underroot.py (the ROM shares that
+      # very ur_sim.c). --watch-log emits the mailbox trace so a follow-up
+      # can pin exact hawk values off the observed boot offset.
+      # Slice 3 also asserts here that with NOTHING dug (this proof drives no
+      # --touch, so the grid stays fresh) the forager has NO route: no patch's
+      # drop cell is dug/connected, so ur_telemetry[17] (nearest reachable
+      # patch index) is UR_ROUTE_NONE (0xFFFFFFFF) — the emergent "no route
+      # until you dig". The dig proof below shows the route appear.
+      # Slice 4 asserts the companion "no store until you dig+designate": with
+      # nothing dug OR designated, no granary is placed (t[20]=0), capacity is
+      # 0 (t[22]=0) and the banked store is 0 (t[23]=0). The dig proof below
+      # designates a granary and shows the store bank.
+      # Slice 5 asserts the companion "no population until you dig+designate a
+      # nursery": with nothing designated, no nursery is placed (t[24]=0) and
+      # the population is 0 (t[26]=0). The dig proof below designates a nursery
+      # and shows the population brood.
+      # Slice 6 asserts the companion "no predation until there is a route to
+      # predate": with nothing dug the forager has no route, so no route cell is
+      # exposed (t[28]=0), no forager is lost (t[29]=0) and survivors is 0
+      # (t[30]=0). The dig proof below drives the shallow shaft and shows the
+      # hawks catch the foragers on it.
+      # Slice 7 asserts the year clock at boot: frame 250 is still day 0
+      # (t[31]=0) of SPRING (t[3]=0), so the abundance scale is the spring UNIT
+      # (t[32]=UR_ABUND_SPRING=4) and spring runs 2 hawk passes (t[34]=2). With
+      # nothing dug the seasonal meadow haul is 0 (t[33]=0), and with no route +
+      # no population the season predation and survivors are 0 (t[35]=0,t[36]=0).
+      # Proof 3 below drives the clock across the whole year (summer/autumn/
+      # winter) and shows the season, day, abundance and pass count advance.
+      # Slice 10 asserts the seed dial's HOME defaults at boot: no dial input is
+      # driven here, so the dial rests at position 0 (t[49]=0) whose seed is
+      # UR_SEED itself (t[50]=1370) — the whole boot skeleton is the pinned
+      # meadow. The reference-plan fairness witness for that seed is present and
+      # positive (t[51]=1 fair, t[52]=38 reference winter score), the ROM-side
+      # confirmation of the host balance proof. The dial proof 6 below scans the
+      # dial and shows the seed + schedule follow.
+      - name: 'proof 1/2 — dual-screen boot + telemetry mailbox + food patches + no-route/store/pop/predation-yet + year-clock spring day 0 + seed-dial home'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-boot-300.png \
+            --frames 300 --shot 120:ur-boot-120.png --shot 240:ur-boot-240.png \
+            --require-distinct \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:54 \
+            --watch-log ur-boot-trace.csv \
+            --assert-watch 250:t:0:eq:0x554E4452 \
+            --assert-watch 250:t:1:eq:0x524F4F54 \
+            --assert-watch 250:t:2:ge:200 \
+            --assert-watch 250:t:3:eq:0 \
+            --assert-watch 250:t:6:le:255 \
+            --assert-watch 250:t:13:eq:16 \
+            --assert-watch 250:t:14:eq:12 \
+            --assert-watch 250:t:15:eq:6 \
+            --assert-watch 250:t:16:eq:34 \
+            --assert-watch 250:t:17:eq:0xFFFFFFFF \
+            --assert-watch 250:t:18:eq:0xFFFFFFFF \
+            --assert-watch 250:t:20:eq:0 \
+            --assert-watch 250:t:22:eq:0 \
+            --assert-watch 250:t:23:eq:0 \
+            --assert-watch 250:t:24:eq:0 \
+            --assert-watch 250:t:26:eq:0 \
+            --assert-watch 250:t:28:eq:0 \
+            --assert-watch 250:t:29:eq:0 \
+            --assert-watch 250:t:30:eq:0 \
+            --assert-watch 250:t:31:eq:0 \
+            --assert-watch 250:t:32:eq:4 \
+            --assert-watch 250:t:33:eq:0 \
+            --assert-watch 250:t:34:eq:2 \
+            --assert-watch 250:t:35:eq:0 \
+            --assert-watch 250:t:36:eq:0 \
+            --assert-watch 250:t:37:eq:0 \
+            --assert-watch 250:t:38:eq:0 \
+            --assert-watch 250:t:39:eq:0 \
+            --assert-watch 250:t:42:eq:0 \
+            --assert-watch 250:t:43:eq:0 \
+            --assert-watch 250:t:44:eq:0 \
+            --assert-watch 250:t:46:eq:0 \
+            --assert-watch 250:t:47:eq:0 \
+            --assert-watch 250:t:48:eq:1 \
+            --assert-watch 250:t:49:eq:0 \
+            --assert-watch 250:t:50:eq:1370 \
+            --assert-watch 250:t:51:eq:1 \
+            --assert-watch 250:t:52:eq:38
+      # Slice 9 asserts the companion "fresh chip = fresh table": nds-headless-
+      # check imports a factory-fresh 0xFF backup by default, so the power-on
+      # read decodes NOTHING (save-loaded t[46]=0), the record is the fresh
+      # all-zero table (best score t[43]=0, furthest season t[44]=0), no write
+      # has fired (t[47]=0) and the format version is visible (t[48]=1). The
+      # battery-roundtrip proof 5 below drives a real record through the
+      # emulated chip. No START is pressed in any pre-slice-9 proof, so the
+      # record never moves and every earlier pin is bit-identical.
+      # Slice 8 asserts the companion "no winter exam until there is a colony":
+      # with nothing dug there is no store and no forager, so the winter store is
+      # 0 (t[37]=0), no forager carries into winter (t[38]=0), winter demands
+      # nothing (t[39]=0) and the survival SCORE is 0 (t[42]=0) — a colony that
+      # never grew banks nothing forward. The marquee proof 4 below drives a
+      # survivor plan that clears winter with a positive score and a too-small
+      # plan that starves. (WSURV t[40] is a vacuous 1 for an empty colony —
+      # nothing to starve — so the meaningful zeros are asserted, not the flag.)
+      # Proof 2 — the stylus digs a drawn tunnel (the exact host<->ROM
+      # lockstep, offset-free): --touch replays CI_DIG_PIXELS from
+      # check-underroot.py — a shaft down from the mouth, an east branch,
+      # then one ISOLATED pocket. The mailbox must report exactly 7 dug
+      # cells and 6 connected to the entrance (the pocket is dug but NOT
+      # reachable) — the same numbers check-underroot.py's ci_fixture()
+      # asserts. The bottom-screen screenshot shows the drawn burrow.
+      #
+      # Slice 3 forager lockstep: under this exact dig plan the shaft opens
+      # patch 4's drop cell (8,1) (patch 4 sits in the mouth column 8), so the
+      # nearest reachable patch is index 4, one cell out (t:18==1), two round
+      # trip (t:19==2). The other five patches' columns are undug, so they are
+      # provably NEVER visited (the arc's connect-or-waste guarantee) — the
+      # same (patch 4, dist 1, route 2) check-underroot.py's ci_fixture()
+      # computes and prove_forage() proves for every reachable dig plan.
+      #
+      # Slice 4 granary lockstep: after digging, the SECOND stylus verb (hold R
+      # + tap) designates two DUG cells granary — cell (9,3) on the east branch
+      # (CONNECTED to the mouth) and the isolated pocket (0,11) (dug but NOT
+      # connected). So two granaries are placed (t:20==2) but only one banks
+      # (t:21==1) for a capacity of 4 (t:22==UR_GRAN_CAP); patch 4's haul (6
+      # units) banks up to that capacity, so the store is CAPPED at 4
+      # (t:23==4 < 6 reachable). The disconnected pocket granary banks nothing
+      # (t:21 < t:20) — the same (placed 2, connected 1, cap 4, banked 4)
+      # check-underroot.py's ci_fixture() computes and prove_granary() proves
+      # for every reachable dig+designate plan. Designation does not dig, so
+      # dug=7/con=6 are re-asserted unchanged at frame 230.
+      #
+      # Slice 5 population lockstep: after the granaries, the THIRD stylus verb
+      # (hold L + tap) designates two DUG cells nursery — cell (10,3) on the
+      # east branch (CONNECTED) and the isolated pocket (0,11) (dug but NOT
+      # connected). So two nurseries are placed (t:24==2) but only one broods
+      # (t:25==1). One connected nursery broods 3 (UR_NURS_BROOD), but the
+      # banked store (4) only buys 4//UR_FOOD_PER_ANT = 2 foragers, so the
+      # population is FOOD-BOUND at 2 (t:26==2) consuming 4 food (t:27==4). The
+      # disconnected pocket nursery broods nothing (t:25 < t:24) — the same
+      # (placed 2, connected 1, pop 2, popfood 4) check-underroot.py's
+      # ci_fixture() computes and prove_nursery() proves for every reachable
+      # dig+designate plan. Asserted settled at frame 260 (after input ends 225).
+      #
+      # Slice 6 predation lockstep: under this dig plan the forager route is the
+      # shallow shaft to patch 4 (drop (8,1), dist 1) — cells (8,0) row 0 and
+      # (8,1) row 1 are BOTH exposed (row < UR_SAFE_DEPTH=2), so t:28==2 exposed
+      # cells. The whole population (2) is caught on that surface-hugging route:
+      # t:29==2 lost (min(exposed 2, pop 2)), leaving t:30==0 survivors — a
+      # shallow route is hawk-food. The same (exposed 2, lost 2, surv 0)
+      # check-underroot.py's ci_fixture() computes and prove_predation() proves
+      # (with the buried-route contrast) for every reachable plan. Asserted
+      # settled at frame 260.
+      #
+      # Slice 7 year-clock lockstep: frame 260 is still SPRING (t:3==0), the
+      # abundance UNIT (t:32==4). The dug shaft reaches patch 4 (haul 6), so the
+      # seasonal meadow haul is 6*4/4 = 6 (t:33==6). Spring runs 2 hawk passes
+      # (t:34==2); the per-hawk-pass season predation on the shallow shaft is
+      # min(exposed 2 * passes 2, pop 2) = 2 (still pop-bound) so the whole
+      # colony is lost over the season (t:35==2) leaving t:36==0 survivors — the
+      # same (abund 4, sfood 6, passes 2, spred 2, ssurv 0) check-underroot.py's
+      # ci_fixture() computes. (The exact day t:31 is boot-latency-sensitive here
+      # so it is asserted across the year in proof 3, not pinned to a frame.)
+      - name: 'proof 2/2 — stylus dig (dug=7 con=6) + forager route (patch 4 route 2) + granary store (banked 4) + population (pop 2) + hawk predation (exposed 2 lost 2 surv 0) + year clock (spring abund 4 sfood 6 passes 2 spred 2)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-dig-280.png \
+            --frames 280 --shot 165:ur-dig-165.png --shot 195:ur-dig-195.png \
+            --touch 60-70:136,8 \
+            --touch 75-85:136,24 \
+            --touch 90-100:136,40 \
+            --touch 105-115:136,56 \
+            --touch 120-130:152,56 \
+            --touch 135-145:168,56 \
+            --touch 150-160:8,184 \
+            --keys 170-180:R --touch 170-180:152,56 \
+            --keys 185-195:R --touch 185-195:8,184 \
+            --keys 200-210:L --touch 200-210:168,56 \
+            --keys 215-225:L --touch 215-225:8,184 \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:54 \
+            --assert-watch 190:t:0:eq:0x554E4452 \
+            --assert-watch 190:t:8:eq:7 \
+            --assert-watch 190:t:9:eq:6 \
+            --assert-watch 190:t:13:eq:16 \
+            --assert-watch 190:t:14:eq:12 \
+            --assert-watch 190:t:15:eq:6 \
+            --assert-watch 190:t:16:eq:34 \
+            --assert-watch 190:t:17:eq:4 \
+            --assert-watch 190:t:18:eq:1 \
+            --assert-watch 190:t:19:eq:2 \
+            --assert-watch 230:t:8:eq:7 \
+            --assert-watch 230:t:9:eq:6 \
+            --assert-watch 230:t:17:eq:4 \
+            --assert-watch 230:t:20:eq:2 \
+            --assert-watch 230:t:21:eq:1 \
+            --assert-watch 230:t:22:eq:4 \
+            --assert-watch 230:t:23:eq:4 \
+            --assert-watch 260:t:8:eq:7 \
+            --assert-watch 260:t:9:eq:6 \
+            --assert-watch 260:t:20:eq:2 \
+            --assert-watch 260:t:21:eq:1 \
+            --assert-watch 260:t:23:eq:4 \
+            --assert-watch 260:t:24:eq:2 \
+            --assert-watch 260:t:25:eq:1 \
+            --assert-watch 260:t:26:eq:2 \
+            --assert-watch 260:t:27:eq:4 \
+            --assert-watch 260:t:28:eq:2 \
+            --assert-watch 260:t:29:eq:2 \
+            --assert-watch 260:t:30:eq:0 \
+            --assert-watch 260:t:3:eq:0 \
+            --assert-watch 260:t:32:eq:4 \
+            --assert-watch 260:t:33:eq:6 \
+            --assert-watch 260:t:34:eq:2 \
+            --assert-watch 260:t:35:eq:2 \
+            --assert-watch 260:t:36:eq:0 \
+            --assert-watch 260:t:37:eq:0 \
+            --assert-watch 260:t:38:eq:0 \
+            --assert-watch 260:t:39:eq:0 \
+            --assert-watch 260:t:42:eq:0
+      # Slice 8 winter lockstep on this shallow plan: the whole colony (pop 2) is
+      # caught by the hawks on the surface-hugging shaft (season survivors 0), so
+      # NO forager carries into winter (t[38]=0) and the store is fully drawn to
+      # brood (store 4 == popfood 4 -> winter store 0, t[37]=0). A colony already
+      # lost to the meadow demands no winter food (t[39]=0) and SCORES 0
+      # (t[42]=0) — the same (wstore 0, wpop 0, drain 0, score 0)
+      # check-underroot.py's ci_fixture() computes and prove_winter() proves. The
+      # marquee proof 4 below drives a DEEP-banked survivor that scores.
+      # Proof 3 — the year clock across a whole simulated year (slice 7). No
+      # --touch: the season/day counter is a pure function of the frame, so an
+      # undug run still marches SPRING -> SUMMER -> AUTUMN -> WINTER as the frame
+      # clock advances (UR_DAY_FRAMES=256 frames/day; spring 4, summer 6, autumn
+      # 4, winter 2 days). At four pins comfortably mid-season (so the ~50-frame
+      # boot latency into main() never straddles a season boundary) the mailbox
+      # must report the season (t:3), the day counter climbing (t:31, a >= bound
+      # since the exact day shifts with the boot offset), the abundance scale
+      # (t:32 — spring UNIT 4, summer plentiful 6, autumn thinning 2, WINTER ZERO
+      # 0) and the per-season hawk-pass count (t:34 — spring 2, summer 3, autumn
+      # 2, winter 1). These are the SAME pure ur_season_of_day / ur_abundance /
+      # ur_hawk_passes check-underroot.py's prove_clock() proves exhaustively
+      # (the year partition, the abundance curve, the one-pass-== -snapshot
+      # predation identity) — the ROM shares that very ur_sim.c. The winter
+      # abundance 0 is the arc's "no meadow food in winter", the slice-8 exam.
+      - name: 'proof 3 — year clock across the year (spring->summer->autumn->winter season/day/abundance/hawk-passes)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-year-3850.png \
+            --frames 3850 \
+            --shot 1800:ur-year-summer.png \
+            --shot 3072:ur-year-autumn.png \
+            --shot 3800:ur-year-winter.png \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:54 \
+            --assert-watch 400:t:0:eq:0x554E4452 \
+            --assert-watch 400:t:3:eq:0 \
+            --assert-watch 400:t:31:ge:1 \
+            --assert-watch 400:t:32:eq:4 \
+            --assert-watch 400:t:34:eq:2 \
+            --assert-watch 1800:t:3:eq:1 \
+            --assert-watch 1800:t:31:ge:6 \
+            --assert-watch 1800:t:32:eq:6 \
+            --assert-watch 1800:t:34:eq:3 \
+            --assert-watch 3072:t:3:eq:2 \
+            --assert-watch 3072:t:31:ge:11 \
+            --assert-watch 3072:t:32:eq:2 \
+            --assert-watch 3072:t:34:eq:2 \
+            --assert-watch 3800:t:3:eq:3 \
+            --assert-watch 3800:t:31:ge:14 \
+            --assert-watch 3800:t:32:eq:0 \
+            --assert-watch 3800:t:34:eq:1
+      # Proof 4 — THE MARQUEE (slice 8): a committed survivor dig plan clears
+      # winter and a deliberately-too-small plan STARVES, both predicted exactly
+      # host-side (check-underroot.py prove_winter + marquee_fixture) and
+      # confirmed here in ROM telemetry. ONE deterministic replay shows the SAME
+      # colony flip from starve to survive as the store grows: --touch digs a
+      # row-1 corridor (cols 4..13, opening all six spring patches -> reachable
+      # haul 34), designates two connected nurseries (cols 11,12 -> brood 6), then
+      # THREE granaries (cols 4,5,6). At that point (frame 310, settled) the
+      # colony is fully grown — pop 6 (t[26]), 2 survive the spring hawks
+      # (t[36]=2) — but under-granaried: store capped at 12 (t[23], cap 3*4), and
+      # after the nurseries drew their brood (pop_food 12) the winter store is 0
+      # (t[37]). Winter demands 2 survivors * 2 days * 1 = 4 (t[39]) > 0, so the
+      # colony STARVES: t[40]=0, SCORE t[42]=0. Then three MORE granaries (cols
+      # 7,9,13) are banked (monotone — digging/designating only adds): by frame
+      # 390 the store is 24 (t[23], cap 6*4), the winter store is 24-12 = 12
+      # (t[37]) which covers the drain 4 with 8 to spare (t[41]=8), so the SAME
+      # colony now SURVIVES: t[40]=1, SCORE = 2 survivors * 1000 + 8 leftover =
+      # 2008 (t[42]). The exact (grancon, store, wstore, drain, survive, score)
+      # at each frame are what check-underroot.py's marquee_fixture computes and
+      # prove_winter asserts — host and ROM agree on the winter verdict integer
+      # for integer. All within SPRING (t[3]=0), so the economy is the spring
+      # unit and the boot-latency offset never leaves the season.
+      - name: 'proof 4 — MARQUEE winter survival: too-small plan STARVES (score 0), +3 granaries and the same colony SURVIVES (score 2008)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-winter-410.png \
+            --frames 410 --shot 300:ur-winter-starve.png \
+            --shot 380:ur-winter-survive.png \
+            --touch 60-70:72,24 \
+            --touch 75-85:88,24 \
+            --touch 90-100:104,24 \
+            --touch 105-115:120,24 \
+            --touch 120-130:136,24 \
+            --touch 135-145:152,24 \
+            --touch 150-160:168,24 \
+            --touch 165-175:184,24 \
+            --touch 180-190:200,24 \
+            --touch 195-205:216,24 \
+            --keys 210-220:L --touch 210-220:184,24 \
+            --keys 225-235:L --touch 225-235:200,24 \
+            --keys 240-250:R --touch 240-250:72,24 \
+            --keys 255-265:R --touch 255-265:88,24 \
+            --keys 270-280:R --touch 270-280:104,24 \
+            --keys 320-330:R --touch 320-330:120,24 \
+            --keys 335-345:R --touch 335-345:152,24 \
+            --keys 350-360:R --touch 350-360:216,24 \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:54 \
+            --assert-watch 310:t:0:eq:0x554E4452 \
+            --assert-watch 310:t:3:eq:0 \
+            --assert-watch 310:t:8:eq:11 \
+            --assert-watch 310:t:9:eq:11 \
+            --assert-watch 310:t:21:eq:3 \
+            --assert-watch 310:t:23:eq:12 \
+            --assert-watch 310:t:25:eq:2 \
+            --assert-watch 310:t:26:eq:6 \
+            --assert-watch 310:t:36:eq:2 \
+            --assert-watch 310:t:37:eq:0 \
+            --assert-watch 310:t:38:eq:2 \
+            --assert-watch 310:t:39:eq:4 \
+            --assert-watch 310:t:40:eq:0 \
+            --assert-watch 310:t:41:eq:0 \
+            --assert-watch 310:t:42:eq:0 \
+            --assert-watch 390:t:3:eq:0 \
+            --assert-watch 390:t:8:eq:11 \
+            --assert-watch 390:t:9:eq:11 \
+            --assert-watch 390:t:21:eq:6 \
+            --assert-watch 390:t:23:eq:24 \
+            --assert-watch 390:t:25:eq:2 \
+            --assert-watch 390:t:26:eq:6 \
+            --assert-watch 390:t:36:eq:2 \
+            --assert-watch 390:t:37:eq:12 \
+            --assert-watch 390:t:38:eq:2 \
+            --assert-watch 390:t:39:eq:4 \
+            --assert-watch 390:t:40:eq:1 \
+            --assert-watch 390:t:41:eq:8 \
+            --assert-watch 390:t:42:eq:2008
+      # Proof 5 — BEST-SCORE SAVE roundtrip (slice 9) under the slice-10 WINTER
+      # GATE, on proof 4's committed survivor plan: the best SCORE / furthest
+      # season persist across power cycles on the emulated card backup (the
+      # gl_save pattern). ONE record blob — 8 little-endian u32 words { magic,
+      # version, best_score, furthest_season, run_seed, 0, 0, checksum } —
+      # round-trips through the DeSmuME battery BYTE-IDENTICAL to the host
+      # mirror's ur_save_encode(3003, WINTER, UR_SEED) (golden bytes pinned
+      # host-side in check-underroot.py prove_save). Slice 10 gates the commit on
+      # a REALIZED winter (season == UR_WINTER), so the persisted record is the
+      # survivor plan's actual winter score (3003, season 3) — NOT the spring
+      # forecast (2008) — an outcome the colony genuinely reached. Wear
+      # discipline: the record commits ONLY on a START press, ONLY in winter, and
+      # ONLY when it strictly improves, so a fresh chip stays fresh through the
+      # whole climb AND a spring START, and an equal run writes NOTHING.
+      #
+      # 5a — fresh chip, dig the survivor plan, a SPRING START is BLOCKED (the
+      # gate), then a WINTER START commits: a 0xFF chip boots to the fresh table
+      # (save-loaded t[46]=0, best t[43]=0, no write t[47]=0, version t[48]=1);
+      # the survivor plan climbs to its SPRING forecast SCORE 2008 (t[42] at
+      # frame 390) with no write (t[47]=0). START at 395 is in SPRING (t[3]=0), so
+      # the WINTER gate BLOCKS it — STILL no write (t[47]=0 at 405), best still 0.
+      # The year clock then runs to WINTER (t[3]=3 by frame 3800), where the SAME
+      # plan's REALIZED winter score is 3003 (store 21 -> wstore 9, wpop 3,
+      # SURVIVE) with still no write. START at 3810 is now in winter, so it
+      # commits the record ONCE (best t[43]=3003, furthest season t[44]=3, run
+      # seed t[45]=1370=UR_SEED, writes t[47]=1). The exported battery carries the
+      # record byte-identical to the mirror encode(3003, winter, UR_SEED).
+      - name: 'proof 5a — winter-gated save: spring START BLOCKED, winter START commits the REALIZED score 3003 (season 3), battery bytes == mirror encode'
+        run: |
+          python3 tools/underroot-save.py blank ur-blank.sav
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-save-commit.png \
+            --frames 3880 --shot 3850:ur-save-committed.png \
+            --shot 405:ur-save-spring-blocked.png \
+            --touch 60-70:72,24 --touch 75-85:88,24 --touch 90-100:104,24 \
+            --touch 105-115:120,24 --touch 120-130:136,24 \
+            --touch 135-145:152,24 --touch 150-160:168,24 \
+            --touch 165-175:184,24 --touch 180-190:200,24 \
+            --touch 195-205:216,24 \
+            --keys 210-220:L --touch 210-220:184,24 \
+            --keys 225-235:L --touch 225-235:200,24 \
+            --keys 240-250:R --touch 240-250:72,24 \
+            --keys 255-265:R --touch 255-265:88,24 \
+            --keys 270-280:R --touch 270-280:104,24 \
+            --keys 320-330:R --touch 320-330:120,24 \
+            --keys 335-345:R --touch 335-345:152,24 \
+            --keys 350-360:R --touch 350-360:216,24 \
+            --keys 395-400:START \
+            --keys 3810-3830:START \
+            --battery-in ur-blank.sav --battery-out ur-save1.sav \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:54 \
+            --assert-watch 250:t:46:eq:0 \
+            --assert-watch 250:t:43:eq:0 \
+            --assert-watch 250:t:44:eq:0 \
+            --assert-watch 250:t:47:eq:0 \
+            --assert-watch 250:t:48:eq:1 \
+            --assert-watch 390:t:3:eq:0 \
+            --assert-watch 390:t:42:eq:2008 \
+            --assert-watch 390:t:47:eq:0 \
+            --assert-watch 405:t:3:eq:0 \
+            --assert-watch 405:t:47:eq:0 \
+            --assert-watch 405:t:43:eq:0 \
+            --assert-watch 3800:t:3:eq:3 \
+            --assert-watch 3800:t:23:eq:21 \
+            --assert-watch 3800:t:38:eq:3 \
+            --assert-watch 3800:t:42:eq:3003 \
+            --assert-watch 3800:t:47:eq:0 \
+            --assert-watch 3850:t:43:eq:3003 \
+            --assert-watch 3850:t:44:eq:3 \
+            --assert-watch 3850:t:45:eq:1370 \
+            --assert-watch 3850:t:46:eq:0 \
+            --assert-watch 3850:t:47:eq:1
+          python3 tools/underroot-save.py expect ur-save1.sav --score 3003 --season 3 --seed 1370
+          python3 tools/underroot-save.py inspect ur-save1.sav
+      # 5b — power cycle loads the record + an equal WINTER run writes nothing: a
+      # fresh boot with 5a's battery loads the record (save-loaded t[46]=1, best
+      # 3003, furthest season 3, seed 1370 — on the title BEFORE any input); with
+      # the SAME record standing and NO colony dug, the clock runs to WINTER
+      # (t[3]=3) and a START at 3810 ties nothing (an empty colony scores 0 in
+      # winter, and season 3 == the record's season, so improves = 0), so the
+      # commit writes NOTHING (t[47] stays 0 — the wear discipline). The battery
+      # image is byte-identical after the run.
+      - name: 'proof 5b — save persistence: power cycle loads the record, an equal (empty) winter run writes nothing'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-save-reload.png \
+            --frames 3880 --keys 3810-3830:START \
+            --battery-in ur-save1.sav --battery-out ur-save2.sav \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:54 \
+            --assert-watch 250:t:46:eq:1 \
+            --assert-watch 250:t:43:eq:3003 \
+            --assert-watch 250:t:44:eq:3 \
+            --assert-watch 250:t:45:eq:1370 \
+            --assert-watch 250:t:47:eq:0 \
+            --assert-watch 3800:t:3:eq:3 \
+            --assert-watch 3850:t:43:eq:3003 \
+            --assert-watch 3850:t:47:eq:0
+          cmp ur-save1.sav ur-save2.sav
+          echo "battery image byte-identical after the equal winter run"
+      # 5c — corrupt save = fresh table + the game plays on; future version =
+      # reset (slice 9): a battery image with one flipped bit in the record's
+      # checksum word (data intact — only the checksum can reject it) boots to
+      # the fresh table with NO crash (magic t[0] alive, frame t[2] running,
+      # save-loaded t[46]=0, best t[43]=0); a crafted FUTURE-VERSION record
+      # carrying a VALID recomputed checksum (differing only in the version
+      # word) ALSO resets to the fresh table — the version gate rejects on its
+      # own. Both fixtures are built by tools/underroot-save.py through the
+      # check-underroot.py mirror, which asserts they must NOT decode.
+      - name: 'proof 5c — corrupt save = fresh table + the game plays on; future version = reset'
+        run: |
+          python3 tools/underroot-save.py corrupt ur-save1.sav --out ur-corrupt.sav
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-save-corrupt.png \
+            --frames 300 \
+            --battery-in ur-corrupt.sav \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:54 \
+            --assert-watch 250:t:0:eq:0x554E4452 \
+            --assert-watch 250:t:2:ge:200 \
+            --assert-watch 250:t:46:eq:0 \
+            --assert-watch 250:t:43:eq:0 \
+            --assert-watch 250:t:44:eq:0 \
+            --assert-watch 250:t:48:eq:1
+          python3 tools/underroot-save.py version-bump ur-save1.sav --out ur-vbump.sav
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-save-vbump.png \
+            --frames 300 \
+            --battery-in ur-vbump.sav \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:54 \
+            --assert-watch 250:t:0:eq:0x554E4452 \
+            --assert-watch 250:t:46:eq:0 \
+            --assert-watch 250:t:43:eq:0 \
+            --assert-watch 250:t:48:eq:1
+      # Proof 6 — THE SEED DIAL + balance (slice 10): scanning the dial picks a
+      # different year seed, and the dialed seed feeds the whole schedule. Two
+      # RIGHT presses step the dial 0 -> 1 -> 2 (no touch, so nothing is dug); by
+      # frame 250 (still SPRING day 0, t[3]=0) the dial rests at position 2
+      # (t[49]=2) whose seed is 2171 (t[50]=2171) — NOT the home UR_SEED — and the
+      # meadow's patch-sum has FOLLOWED the new seed to ur_patch_total(2171,
+      # spring)=32 (t[16]=32, vs the home seed's 34), the ROM-visible proof that
+      # the seed->schedule wiring is live. The reference-plan fairness witness
+      # tracks the dialed seed too (t[51]=1 fair, t[52]=35 = the reference winter
+      # score for seed 2171) — the ROM-side confirmation of check-underroot.py's
+      # prove_balance that every dialable seed is survivable. The distinctness,
+      # purity and fairness of ALL dial seeds are proven exhaustively host-side.
+      - name: 'proof 6 — seed dial: RIGHT scans to dial 2 (seed 2171), the patch schedule + fairness witness follow the dialed seed'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-dial-300.png \
+            --frames 300 --shot 240:ur-dial-240.png \
+            --keys 60-70:RIGHT \
+            --keys 120-130:RIGHT \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:54 \
+            --assert-watch 250:t:0:eq:0x554E4452 \
+            --assert-watch 250:t:3:eq:0 \
+            --assert-watch 250:t:49:eq:2 \
+            --assert-watch 250:t:50:eq:2171 \
+            --assert-watch 250:t:16:eq:32 \
+            --assert-watch 250:t:51:eq:1 \
+            --assert-watch 250:t:52:eq:35
+      # Proof 7 — SYNTHESIZED AUDIO + v1.0 polish (slice 11): the pure cue +
+      # ambience decision layer drives the ROM's PSG/noise channels, and the
+      # additive telemetry [54..58] reports it. No --touch: the season/day clock
+      # is a pure function of the frame, so an undug run still marches SPRING ->
+      # SUMMER -> AUTUMN -> WINTER and the ambience drone RETUNES with the season
+      # (the drone tier IS the live season, ur_amb_* keyed on it). The WINTER
+      # toll (UR_CUE_WINTER, the highest-priority cue) fires exactly on the frame
+      # the year clock crosses into WINTER (day 14 = ROM frame UR_DAY_FRAMES*14 =
+      # 3584), winning its frame over the SIMULTANEOUS hawk-crossing edge at that
+      # same frame (winter id 3 > hawk id 2 — the highest-id-wins rule, mirrored
+      # in main.c and proven exhaustively host-side by check-underroot.py's
+      # prove_audio). At boot (emu frame 250, still SPRING day 0) no cue has
+      # fired yet (t[54]=0 last cue, t[55]=0 count) and the ambience is the
+      # spring tier (t[58]=0) — prev_hawk_on is seeded with the boot hawk state
+      # so a shadow already mid-crossing at power-on does not phantom-cry.
+      # Mid-run in SUMMER (emu 1800, the pin proof 3 uses, t[3]=1) the ambience
+      # has retuned to the summer tier (t[58]=1). At/after the winter edge (emu
+      # 3800, t[3]=3, the same pin proof 3 uses) the ambience is the winter tier
+      # (t[58]=3), the last cue played is the WINTER toll (t[54]=3), and at least
+      # one cue has fired across the year (t[55] >= 1). ur-v1-final.png is the
+      # final-frame polished dual-screen shot (the v1.0 HUD in winter). The exact
+      # cue table, priority order and ambience climb are proven host-side.
+      - name: 'proof 7 — synthesized audio: ambience retunes per season, the WINTER toll tolls at the winter edge (highest-id-wins)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/underroot-nds/underroot-nds.nds ur-v1-final.png \
+            --frames 3850 \
+            --shot 240:ur-audio-spring.png \
+            --shot 1800:ur-audio-summer.png \
+            --elf games/underroot-nds/build/underroot-nds.elf \
+            --watch t:ur_telemetry:59 \
+            --assert-watch 250:t:0:eq:0x554E4452 \
+            --assert-watch 250:t:3:eq:0 \
+            --assert-watch 250:t:54:eq:0 \
+            --assert-watch 250:t:55:eq:0 \
+            --assert-watch 250:t:58:eq:0 \
+            --assert-watch 1800:t:3:eq:1 \
+            --assert-watch 1800:t:58:eq:1 \
+            --assert-watch 3800:t:3:eq:3 \
+            --assert-watch 3800:t:58:eq:3 \
+            --assert-watch 3800:t:54:eq:3 \
+            --assert-watch 3800:t:55:ge:1
+      - name: upload Underroot ROM + proof screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: underroot-nds-${{ github.sha }}
+          path: |
+            games/underroot-nds/underroot-nds.nds
+            underroot-sha256.txt
+            ur-boot-300.png
+            ur-boot-120.png
+            ur-boot-240.png
+            ur-boot-trace.csv
+            ur-dig-280.png
+            ur-dig-165.png
+            ur-dig-195.png
+            ur-year-3850.png
+            ur-year-summer.png
+            ur-year-autumn.png
+            ur-year-winter.png
+            ur-winter-410.png
+            ur-winter-starve.png
+            ur-winter-survive.png
+            ur-save-commit.png
+            ur-save-committed.png
+            ur-save-spring-blocked.png
+            ur-save-reload.png
+            ur-save-corrupt.png
+            ur-save-vbump.png
+            ur-dial-300.png
+            ur-dial-240.png
+            ur-v1-final.png
+            ur-audio-spring.png
+            ur-audio-summer.png
+            ur-save1.sav
+            ur-save2.sav
           if-no-files-found: error
           retention-days: 14

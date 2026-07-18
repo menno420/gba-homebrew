@@ -145,13 +145,21 @@ BW_PORT_ROW_HULL = 0
 BW_PORT_ROW_CANNON = 1
 BW_PORT_ROW_SAIL = 2
 BW_PORT_ROW_REPAIR = 3
-BW_PORT_ROWS = 4
+BW_PORT_ROW_HOLD = 4                     # bestiary cut 4: the hold track,
+BW_PORT_ROWS = 5                         #   APPENDED (rows 0..3 unchanged)
 BW_UP_HULL_OF = (BW_HULL_MAX, 150, 220)
 BW_UP_RELOAD_OF = (BW_RELOAD_PLAYER, 70, 55)
 BW_UP_BALLS_OF = (BW_BALLS_PER_SIDE, BW_BALLS_PER_SIDE, 4)
 BW_UP_SPEED_OF = (0, 24, 48)
 BW_UP_TURN_OF = (0, 1, 2)
 BW_UP_COST = (0, 15, 45)
+
+# the hold track (bestiary cut 4) — a fourth port line raising the crate
+# cap in tiers; tier 0 = the legacy BW_HOLD_CAP exactly (check_hold_track
+# asserts the identity), tiers strictly raise it, prices triple
+BW_HOLD_TIERS = 3
+BW_UP_HOLD_OF = (BW_HOLD_CAP, 12, 16)
+BW_UP_HOLD_COST = (0, 15, 45)
 
 # wind + sailing feel (slice 6) — a slow-rotating seeded wind vector;
 # the point of sail scales the trim target speed, canvas quarters per
@@ -205,6 +213,26 @@ BW_GRASPER_HIT_RANGE = 14 * BW_ONE
 BW_GRASPER_HARBOR = 40 * BW_ONE
 BW_GRASPER_LOOT_DROPS = 3
 BW_GRASPER_DOWN, BW_GRASPER_REACH, BW_GRASPER_HOLD = 0, 1, 2
+# Cut 2 «Ram/brace» — the break-free B verb. A seized sloop braces to
+# wrench loose early: the first brace that would shorten the hold pays
+# BW_GRASPER_BRACE_HULL hull ONCE and slips the arms BW_GRASPER_BRACE_
+# FRAMES frames later. A B-silent route (brace == 0) is bit-identical.
+BW_GRASPER_BRACE_HULL = 10
+BW_GRASPER_BRACE_FRAMES = 12
+# Cut 3 «The ambush» — while the Grasper HOLDs, BW_CUTTER_COUNT light
+# sloops converge on the pinned ship and bite. The ambush water is a fresh
+# salt sub-bucket over the grasper bucket (BW_AMBUSH_SALT/BUCKET), pinned so
+# no committed/host-checked grasper seed ambushes; the braced break (cut 2)
+# ends the hold before the cutters reach -> «ambush survived». Spawn offsets
+# tuned so each cutter bites at ~43/47/51 frames (< HOLD 90, > a braced ~20).
+BW_AMBUSH_SALT = 0x10000045
+BW_AMBUSH_BUCKET = 3
+BW_CUTTER_COUNT = 3
+BW_CUTTER_SPEED = 256
+BW_CUTTER_HIT_RANGE = 6 * BW_ONE
+BW_CUTTER_BITE = 8
+BW_CUTTER_DX = (-48, 52, 8)
+BW_CUTTER_DY = (-36, -30, 56)
 
 # danger bands + reefs (slice 7) — band tables whose band-0 row is the
 # legacy constants (check_band_tables asserts the identities: the
@@ -363,11 +391,23 @@ class Maw:
                  'stirs', 'slain', 'bit')
 
 
+class Cutter:
+    """Mirror of BwCutter (bestiary cut 3 — a converging cutter)."""
+
+    __slots__ = ('x', 'y', 'bit')
+
+    def __init__(self):
+        self.x = self.y = self.bit = 0
+
+
 class Grasper:
-    """Mirror of BwGrasper (bestiary cut 1)."""
+    """Mirror of BwGrasper (bestiary cut 1; cut 3 adds the ambush cutters)."""
 
     __slots__ = ('x', 'y', 'gx', 'gy', 'state', 'hull', 'timer', 'wake',
-                 'stirs', 'slain')
+                 'stirs', 'slain', 'cutters')
+
+    def __init__(self):
+        self.cutters = [Cutter() for _ in range(BW_CUTTER_COUNT)]
 
 
 class Reef:
@@ -384,8 +424,9 @@ class Duel:
 
     __slots__ = ('player', 'enemy', 'balls', 'loot', 'maw', 'grasper',
                  'reefs', 'hold', 'hold_gold', 'up_hull', 'up_cannon',
-                 'up_sail', 'wind_level', 'wind_base', 'band',
-                 'grasper_water', 'groundings', 'frame', 'over')
+                 'up_sail', 'up_hold', 'wind_level', 'wind_base', 'band',
+                 'grasper_water', 'ambush_water', 'groundings', 'frame',
+                 'over')
 
     def __init__(self):
         self.player = Ship()
@@ -400,13 +441,14 @@ class Duel:
 class Inputs:
     """Mirror of BwInputs."""
 
-    __slots__ = ('turn', 'trim_delta', 'fire_l', 'fire_r')
+    __slots__ = ('turn', 'trim_delta', 'fire_l', 'fire_r', 'brace')
 
-    def __init__(self, turn=0, trim_delta=0, fire_l=0, fire_r=0):
+    def __init__(self, turn=0, trim_delta=0, fire_l=0, fire_r=0, brace=0):
         self.turn = turn
         self.trim_delta = trim_delta
         self.fire_l = fire_l
         self.fire_r = fire_r
+        self.brace = brace              # cut 2: break-free wrench (0 = legacy)
 
 
 def bw_wind_heading(d):
@@ -516,6 +558,7 @@ def bw_balls_step(d):
                 d.grasper.hull = 0
                 d.grasper.slain = 1
                 d.grasper.state = BW_GRASPER_DOWN
+                bw_cutters_clear(d.grasper)  # cut 3: a slain hold disperses
                 bw_loot_spawn_at(d, d.grasper.x, d.grasper.y,
                                  BW_GRASPER_LOOT_DROPS,
                                  BW_BAND_MAW_VALUE_OF[d.band])
@@ -560,8 +603,8 @@ def bw_loot_step(d):
     for c in d.loot:
         if not c.live:
             continue
-        if d.hold >= BW_HOLD_CAP:
-            return
+        if d.hold >= BW_UP_HOLD_OF[d.up_hold]:   # cut 4: tiered cap
+            return                               #   (tier 0 = BW_HOLD_CAP)
         if bw_chebyshev(c.x, c.y, d.player.x, d.player.y) < BW_SCOOP_RANGE:
             c.live = 0
             d.hold += 1
@@ -632,6 +675,14 @@ def bw_has_grasper(seed):
     """Mirror of bw_has_grasper() — 1 in a grasper water, else 0."""
     return 1 if (bw_hash(seed & U32, BW_GRASPER_SALT)
                  & BW_GRASPER_BUCKET) == 0 else 0
+
+
+def bw_grasper_ambush(seed):
+    """Mirror of bw_grasper_ambush() — 1 in an ambush water (a grasper
+    water that also passes the ambush salt sub-bucket), else 0."""
+    return 1 if (bw_has_grasper(seed)
+                 and (bw_hash(seed & U32, BW_AMBUSH_SALT)
+                      & BW_AMBUSH_BUCKET) == 0) else 0
 
 
 def bw_maw_step(d):
@@ -716,16 +767,28 @@ def bw_maw_step(d):
             bw_maw_sound(m, d.frame)         # missed: stalk again
 
 
+def bw_cutters_clear(g):
+    """Mirror of bw_cutters_clear() — cut 3: disperse the ambush (zero all
+    cutter state; a no-op on a non-ambush water's already-zero cutters)."""
+    for c in g.cutters:
+        c.x = 0
+        c.y = 0
+        c.bit = 0
+
+
 def bw_grasper_sound(g, frame):
-    """Mirror of bw_grasper_sound()."""
+    """Mirror of bw_grasper_sound() — cut 3 also disperses the cutters (the
+    release path for a held sloop: a full hold OR a braced break)."""
     g.state = BW_GRASPER_DOWN
     g.timer = 0
     g.wake = frame + BW_GRASPER_RESTIR
+    bw_cutters_clear(g)
 
 
-def bw_grasper_step(d):
+def bw_grasper_step(d, inputs):
     """Mirror of bw_grasper_step() — salvage water only; a no-op in a
-    Maw water (grasper_water == 0), so committed routes are bit-exact."""
+    Maw water (grasper_water == 0), so committed routes are bit-exact.
+    Cut 2 reads inputs.brace to break a seized sloop free (see HOLD)."""
     if not d.grasper_water:
         return
     g = d.grasper
@@ -771,16 +834,51 @@ def bw_grasper_step(d):
                 d.player.hull -= BW_GRASPER_GRAB_BITE
                 if d.player.hull < 0:
                     d.player.hull = 0
+                # cut 3: in an ambush water the seize springs the trap —
+                # the cutters appear at fixed offsets (NOT sea-clamped, so
+                # the closing time is pin-position-independent) and close in.
+                if d.ambush_water:
+                    for i in range(BW_CUTTER_COUNT):
+                        g.cutters[i].x = g.gx + BW_CUTTER_DX[i] * BW_ONE
+                        g.cutters[i].y = g.gy + BW_CUTTER_DY[i] * BW_ONE
+                        g.cutters[i].bit = 0
             else:
                 bw_grasper_sound(g, d.frame)   # closed on empty water
 
     elif g.state == BW_GRASPER_HOLD:
         g.timer += 1
+        # cut 2: the break-free wrench. The first brace that would shorten
+        # the hold pays BW_GRASPER_BRACE_HULL hull ONCE and slips the arms
+        # BW_GRASPER_BRACE_FRAMES frames later; a brace with nothing left
+        # to shorten (or brace == 0) does nothing, so a B-silent route is
+        # bit-identical. Self-limiting: once fast-forwarded the guard is
+        # false, so the cost lands exactly once even if B is held.
+        if (inputs.brace
+                and g.timer < BW_GRASPER_HOLD_FRAMES - BW_GRASPER_BRACE_FRAMES):
+            d.player.hull -= BW_GRASPER_BRACE_HULL
+            if d.player.hull < 0:
+                d.player.hull = 0
+            g.timer = BW_GRASPER_HOLD_FRAMES - BW_GRASPER_BRACE_FRAMES
         d.player.x = g.gx                # held still: no way, no helm
         d.player.y = g.gy
         d.player.speed = 0
         g.x = g.gx
         g.y = g.gy
+        # cut 3: the cutters close on the pinned sloop. Each live cutter
+        # homes one clamped step per axis toward the pin (the REACH idiom)
+        # and, once inside BW_CUTTER_HIT_RANGE, BITES once and STOPS. Ambush
+        # water only — a non-ambush hold never steps them (cut 1/2 carry).
+        if d.ambush_water:
+            for c in g.cutters:
+                if c.bit:
+                    continue
+                c.x += _clamp(g.gx - c.x, -BW_CUTTER_SPEED, BW_CUTTER_SPEED)
+                c.y += _clamp(g.gy - c.y, -BW_CUTTER_SPEED, BW_CUTTER_SPEED)
+                if bw_chebyshev(c.x, c.y, g.gx, g.gy) < BW_CUTTER_HIT_RANGE:
+                    d.player.hull -= BW_CUTTER_BITE
+                    if d.player.hull < 0:
+                        d.player.hull = 0
+                    c.bit = 1
         if g.timer >= BW_GRASPER_HOLD_FRAMES:
             bw_grasper_sound(g, d.frame)       # the arms slip: released
 
@@ -800,6 +898,16 @@ def bw_up_price(tier):
     return BW_UP_COST[tier]
 
 
+def bw_up_hold_max(tier):
+    """Mirror of bw_up_hold_max() (bestiary cut 4)."""
+    return BW_UP_HOLD_OF[tier]
+
+
+def bw_up_hold_price(tier):
+    """Mirror of bw_up_hold_price() (bestiary cut 4)."""
+    return BW_UP_HOLD_COST[tier]
+
+
 def bw_repair_cost(d):
     """Mirror of bw_repair_cost()."""
     missing = BW_UP_HULL_OF[d.up_hull] - d.player.hull
@@ -816,6 +924,15 @@ def bw_port_buy(d, row, gold):
         if cost <= 0 or gold < cost:
             return 0
         d.player.hull = BW_UP_HULL_OF[d.up_hull]
+        return cost
+
+    if row == BW_PORT_ROW_HOLD:          # cut 4: the hold track (own table)
+        if d.up_hold >= BW_HOLD_TIERS - 1:
+            return 0
+        cost = BW_UP_HOLD_COST[d.up_hold + 1]
+        if gold < cost:
+            return 0
+        d.up_hold += 1                   # a deeper hold; crates aboard untouched
         return cost
 
     attr = {BW_PORT_ROW_HULL: 'up_hull',
@@ -889,21 +1006,22 @@ def bw_save_checksum(words):
     return h
 
 
-def bw_save_encode(gold, up_hull, up_cannon, up_sail, best_band):
+def bw_save_encode(gold, up_hull, up_cannon, up_sail, up_hold, best_band):
     """Mirror of bw_save_encode() -> BW_SAVE_BYTES bytes."""
     w = [BW_SAVE_MAGIC, BW_SAVE_VERSION, gold & U32,
-         (up_hull | (up_cannon << 8) | (up_sail << 16)) & U32,
+         (up_hull | (up_cannon << 8) | (up_sail << 16)
+          | (up_hold << 24)) & U32,      # cut 4: the hold byte (0 = stock)
          best_band & U32, 0, 0, 0]
     w[BW_SAVE_WORDS - 1] = bw_save_checksum(w)
     return b''.join(x.to_bytes(4, 'little') for x in w)
 
 
 def bw_save_decode(blob):
-    """Mirror of bw_save_decode() -> (ok, gold, hull, cannon, sail,
+    """Mirror of bw_save_decode() -> (ok, gold, hull, cannon, sail, hold,
     band); ok = 0 leaves the fresh ledger standing."""
     w = [int.from_bytes(blob[4 * i:4 * i + 4], 'little')
          for i in range(BW_SAVE_WORDS)]
-    fresh = (0, 0, 0, 0, 0, 0)
+    fresh = (0, 0, 0, 0, 0, 0, 0)
     if w[0] != BW_SAVE_MAGIC:
         return fresh                         # blank/garbage chip
     if w[1] != BW_SAVE_VERSION:
@@ -913,12 +1031,13 @@ def bw_save_decode(blob):
     hull = w[3] & 0xFF
     cannon = (w[3] >> 8) & 0xFF
     sail = (w[3] >> 16) & 0xFF
+    hold = (w[3] >> 24) & 0xFF                # cut 4: the hold byte
     if (hull >= BW_UP_TIERS or cannon >= BW_UP_TIERS
-            or sail >= BW_UP_TIERS or (w[3] >> 24) != 0):
+            or sail >= BW_UP_TIERS or hold >= BW_HOLD_TIERS):
         return fresh                         # impossible tiers: reset
     if w[4] >= BW_BANDS:
         return fresh                         # impossible chart: reset
-    return (1, w[2], hull, cannon, sail, w[4])
+    return (1, w[2], hull, cannon, sail, hold, w[4])
 
 
 class AudioGlue:
@@ -1088,6 +1207,9 @@ def bw_duel_init(d, seed):
     # Maw water grasper_water is 0 and the Grasper is a pure no-op, so
     # every committed route/pin is bit-identical.
     d.grasper_water = bw_has_grasper(seed)
+    # cut 3: an ambush water is a grasper water whose HOLDs draw cutters;
+    # pinned so every committed/host-checked grasper seed is 0 (cut 1/2 carry).
+    d.ambush_water = bw_grasper_ambush(seed)
     g = d.grasper
     g.x = g.y = g.gx = g.gy = 0
     g.state = BW_GRASPER_DOWN
@@ -1096,6 +1218,7 @@ def bw_duel_init(d, seed):
     g.wake = 0
     g.stirs = 0
     g.slain = 0
+    bw_cutters_clear(g)                  # cut 3: no cutters until a seize
     for r in d.reefs:                    # slice 7: the band-0 water is
         r.x = r.y = 0                    #   open sea — no rocks; deeper
         r.live = 0                       #   waters lay theirs in
@@ -1105,6 +1228,7 @@ def bw_duel_init(d, seed):
     d.up_hull = 0                        # caller re-injects the bought
     d.up_cannon = 0                      #   tiers (upgrades are NEVER
     d.up_sail = 0                        #   lost — main.c's Score owns them)
+    d.up_hold = 0                        # cut 4: the hold track, same rule
     # slice 6: this water's weather, pure f(seed) like the spawn ring
     d.wind_level = BW_WIND_LEVEL_OF[bw_hash(seed, BW_WIND_SALT) & 3]
     d.wind_base = bw_hash(seed, BW_WIND_DIR_SALT) & (BW_CIRCLE - 1)
@@ -1186,8 +1310,8 @@ def bw_salvage_step(d, inputs):
                  bw_wind_heading(d), bw_wind_push(d))
     bw_reefs_step(d)                     # slice 7: rocks scrape salvage
     bw_maw_step(d)                       # slice 5: the water is not empty
-    bw_grasper_step(d)                   # bestiary cut 1: the OTHER terror
-    #   (a no-op in a Maw water)
+    bw_grasper_step(d, inputs)           # bestiary cut 1: the OTHER terror
+    #   (a no-op in a Maw water); cut 2 reads inputs.brace to break free
 
     # the batteries WAKE while a monster is up; cold on quiet water. In a
     # Maw water grasper_water is 0, so this is the legacy condition.
@@ -1741,6 +1865,17 @@ def check_upgrade_tables():
         assert BW_UP_TURN_OF[t] >= BW_UP_TURN_OF[t - 1], t
         assert BW_UP_COST[t] >= 3 * BW_UP_COST[t - 1], t   # doc: ~triple
     assert BW_UP_COST[1] > 0
+    # the hold track (bestiary cut 4): tier 0 = the legacy BW_HOLD_CAP
+    # EXACTLY (the pin-carry identity — the whole cut rests on it), tiers
+    # strictly RAISE the cap, prices triple, and tier 0 is free
+    assert BW_UP_HOLD_OF[0] == BW_HOLD_CAP
+    assert BW_UP_HOLD_COST[0] == 0
+    assert len(BW_UP_HOLD_OF) == BW_HOLD_TIERS
+    assert len(BW_UP_HOLD_COST) == BW_HOLD_TIERS
+    for t in range(1, BW_HOLD_TIERS):
+        assert BW_UP_HOLD_OF[t] > BW_UP_HOLD_OF[t - 1], t
+        assert BW_UP_HOLD_COST[t] >= 3 * BW_UP_HOLD_COST[t - 1], t
+    assert BW_UP_HOLD_COST[1] > 0
     # a max-tier player rake + a full enemy rake still fit the ball pool
     assert BW_UP_BALLS_OF[-1] + BW_BALLS_PER_SIDE <= BW_MAX_BALLS
     # the player can always outshoot the enemy crew at any tier
@@ -1748,13 +1883,14 @@ def check_upgrade_tables():
     assert BW_UP_RELOAD_OF[0] < BW_RELOAD_ENEMY
     print('upgrade tables: tier 0 = the slice-2 sloop exactly (route '
           'guard), tiers strictly improve, prices triple, hull ladder '
-          f'{BW_UP_HULL_OF} per the concept doc')
+          f'{BW_UP_HULL_OF}, hold ladder {BW_UP_HOLD_OF} per the concept doc')
 
 
-def _fresh_port_duel(hull=None, tiers=(0, 0, 0)):
+def _fresh_port_duel(hull=None, tiers=(0, 0, 0), hold_tier=0):
     d = Duel()
     bw_duel_init(d, 7)
     d.up_hull, d.up_cannon, d.up_sail = tiers
+    d.up_hold = hold_tier
     d.player.hull = BW_UP_HULL_OF[tiers[0]] if hull is None else hull
     return d
 
@@ -1775,14 +1911,18 @@ def _duel_fingerprint(d):
 
 
 def check_port_buy():
-    tracks = ((BW_PORT_ROW_HULL, 'up_hull'),
-              (BW_PORT_ROW_CANNON, 'up_cannon'),
-              (BW_PORT_ROW_SAIL, 'up_sail'))
-    for row, attr in tracks:
+    # (row, attr, cost table, tier count) — the hold track (cut 4) is a
+    # fourth line with its OWN table + ceiling; the loop is table-aware so
+    # it proves the same ledger contract over all four.
+    tracks = ((BW_PORT_ROW_HULL, 'up_hull', BW_UP_COST, BW_UP_TIERS),
+              (BW_PORT_ROW_CANNON, 'up_cannon', BW_UP_COST, BW_UP_TIERS),
+              (BW_PORT_ROW_SAIL, 'up_sail', BW_UP_COST, BW_UP_TIERS),
+              (BW_PORT_ROW_HOLD, 'up_hold', BW_UP_HOLD_COST, BW_HOLD_TIERS))
+    for row, attr, costtab, ntiers in tracks:
         d = _fresh_port_duel()
         fp = _duel_fingerprint(d)
-        for t in (1, 2):
-            cost = BW_UP_COST[t]
+        for t in range(1, ntiers):
+            cost = costtab[t]
             # one gold short: refused, NOTHING changes
             assert bw_port_buy(d, row, cost - 1) == 0, (row, t)
             assert getattr(d, attr) == t - 1, (row, t)
@@ -1791,15 +1931,18 @@ def check_port_buy():
             assert getattr(d, attr) == t, (row, t)
         # maxed: refused no matter the purse
         assert bw_port_buy(d, row, 10 ** 6) == 0, row
-        assert getattr(d, attr) == BW_UP_TIERS - 1, row
+        assert getattr(d, attr) == ntiers - 1, row
         # no cross-talk and no side effects on the water
-        for other_row, other in tracks:
+        for other_row, other, _ct, _nt in tracks:
             if other != attr:
                 assert getattr(d, other) == 0, (row, other)
         assert _duel_fingerprint(d) == fp, row
         # buying a hull tier raises the ceiling, never heals (row HULL)
         if row == BW_PORT_ROW_HULL:
             assert d.player.hull == BW_HULL_MAX
+        # buying a hold tier raises the cap, never scoops: the crates
+        # aboard (d.hold / d.hold_gold) are in the fingerprint asserted
+        # unchanged just above — the deeper hold is empty until you fill it
     # unknown rows are refused
     d = _fresh_port_duel()
     for row in (-1, BW_PORT_ROWS, 99):
@@ -1821,11 +1964,76 @@ def check_port_buy():
             assert bw_port_buy(d, BW_PORT_ROW_REPAIR, cost) == cost
             assert d.player.hull == hull_max, (tier, hull)
             assert bw_repair_cost(d) == 0
-    print('port ledger: every buy spends exactly the price; one gold '
-          'short / max tier / sound hull / unknown row all refused '
-          'changing nothing; repair = ceil(missing/'
-          f'{BW_REPAIR_PER_GOLD}) exact for every hull value at every '
-          'tier; no cross-talk; the water untouched')
+    print('port ledger: every buy (all 4 tracks incl. the hold line) '
+          'spends exactly the price; one gold short / max tier / sound '
+          'hull / unknown row all refused changing nothing; repair = '
+          f'ceil(missing/{BW_REPAIR_PER_GOLD}) exact for every hull value '
+          'at every tier; no cross-talk; the water untouched')
+
+
+def check_hold_track():
+    # Cut 4 «The hold track» — the crate-cap economy. Proven the
+    # port-ledger way (like check_port_buy): tier 0 IS the legacy cap
+    # exactly (the pin-carry identity every prior salvage route rests on),
+    # each tier fills to its own ceiling, and the payoff — a deep haul the
+    # STOCK hold could not carry home, that a bought hold banks whole.
+
+    # (a) the tiered cap: at tier t a hold from empty fills to EXACTLY
+    #     min(pool, BW_UP_HOLD_OF[t]); tier 0's cap is BW_HOLD_CAP, so a
+    #     stock hold scoops byte-identical to the slice-3 loop.
+    for t in range(BW_HOLD_TIERS):
+        cap = BW_UP_HOLD_OF[t]
+        d = Duel()
+        bw_duel_init(d, 3)
+        d.up_hold = t
+        d.hold = 0
+        d.hold_gold = 0
+        for c in d.loot:                 # every slot live, right on the hull
+            c.x, c.y = d.player.x, d.player.y
+            c.value = BW_LOOT_VALUE
+            c.live = 1
+        bw_loot_step(d)
+        scooped = min(BW_MAX_LOOT, cap)
+        assert d.hold == scooped, (t, d.hold)
+        assert d.hold_gold == scooped * BW_LOOT_VALUE, t
+        left = sum(1 for c in d.loot if c.live)
+        assert left == BW_MAX_LOOT - scooped, (t, left)
+    assert BW_UP_HOLD_OF[0] == BW_HOLD_CAP    # the identity, stated loud
+
+    # (b) THE PAYOFF — «bigger hold». A sloop already carrying a running
+    #     haul meets a full pool: total demand exceeds the stock cap. The
+    #     stock hold (tier 0) fills to BW_HOLD_CAP and must ABANDON the
+    #     rest afloat; a bought hold (tier 1) carries strictly more home
+    #     and banks strictly more gold — the concept's "deeper, richer
+    #     water is worth the hold to carry it home".
+    carried = BW_HOLD_CAP - 3            # crates already aboard (a running haul)
+    banked, left_afloat = {}, {}
+    for t in (0, 1):
+        d = Duel()
+        bw_duel_init(d, 3)
+        d.up_hold = t
+        d.player.x, d.player.y = BW_PIER_X, BW_PIER_Y   # bank where we stand
+        d.hold = carried
+        d.hold_gold = carried * BW_LOOT_VALUE
+        for c in d.loot:
+            c.x, c.y = d.player.x, d.player.y
+            c.value = BW_LOOT_VALUE
+            c.live = 1
+        bw_loot_step(d)
+        assert d.hold == min(carried + BW_MAX_LOOT, BW_UP_HOLD_OF[t]), t
+        left_afloat[t] = sum(1 for c in d.loot if c.live)
+        banked[t] = bw_dock_step(d)
+        assert d.hold == 0 and d.hold_gold == 0, t   # banked clean at the pier
+    assert banked[0] == BW_HOLD_CAP * BW_LOOT_VALUE
+    assert banked[1] == BW_UP_HOLD_OF[1] * BW_LOOT_VALUE
+    assert banked[1] > banked[0]                 # the bigger hold is worth it
+    assert left_afloat[0] > left_afloat[1]       # stock leaves crates behind
+    print(f'the hold track (cut 4): tier 0 = the legacy cap '
+          f'{BW_HOLD_CAP} EXACTLY (route guard), tiers fill to '
+          f'{BW_UP_HOLD_OF} crates, prices {BW_UP_HOLD_COST} triple; a '
+          f'deep haul the stock hold banks {banked[0]}g of (leaving '
+          f'{left_afloat[0]} crates) a bought hold banks {banked[1]}g of '
+          f'(leaving {left_afloat[1]}) — worth the hold to carry it home')
 
 
 def check_upgraded_duels():
@@ -2277,6 +2485,260 @@ def check_grasper_containment():
           f'the sea, hulls stay bounded, a slain Grasper stays down')
 
 
+def _grasper_to_seize(seed):
+    """Manufacture a seize (the check_grasper_holds idiom): a full-hull
+    idle sloop a few px off a fixed open-water wreck, the arms armed to
+    reach at once; drive IDLE salvage until the HOLD. Returns the duel
+    the instant the sloop is pinned (grasper.timer == 0, hull docked one
+    grab-bite)."""
+    d = Duel()
+    bw_duel_init(d, seed)
+    assert d.grasper_water == 1 and d.band == 0, seed
+    d.over = BW_DUEL_ENEMY_SUNK
+    d.enemy.x, d.enemy.y = 128 * BW_ONE, 90 * BW_ONE
+    d.player.x, d.player.y = 128 * BW_ONE, 96 * BW_ONE
+    d.player.hull = BW_HULL_MAX
+    d.player.speed = 0
+    d.frame = 1000
+    d.grasper.wake = d.frame
+    idle = Inputs()
+    while d.grasper.state != BW_GRASPER_HOLD:
+        bw_salvage_step(d, idle)
+        assert d.over == BW_DUEL_ENEMY_SUNK, seed
+    assert d.grasper.timer == 0 and d.player.hull == BW_HULL_MAX \
+        - BW_GRASPER_GRAB_BITE, seed
+    return d
+
+
+def check_grasper_breakfree():
+    # Cut 2 «Ram/brace» — the reserved B verb built as the BREAK-FREE
+    # wrench. In a real grasper water, manufacture a seize (the
+    # check_grasper_holds idiom), then prove the braced break:
+    #   (a) a B-silent hold still runs the FULL BW_GRASPER_HOLD_FRAMES
+    #       (the input-verb carry identity — brace == 0 is legacy);
+    #   (b) an early brace shortens the hold to its cost frames — the arms
+    #       slip exactly BW_GRASPER_BRACE_FRAMES after the wrench — and it
+    #       costs exactly BW_GRASPER_BRACE_HULL hull, ONCE (a second brace
+    #       is inert), the sloop pinned STILL until it slips;
+    #   (c) a LATE brace (already inside the last BRACE_FRAMES) buys
+    #       nothing: no hull cost, the full-length release stands;
+    #   (d) a Maw water ignores B entirely (the grasper-water gate).
+    seed = _grasper_seeds(1)[0]
+
+    # (a) baseline: a B-silent hold runs the FULL hold (the carry identity)
+    d = _grasper_to_seize(seed)
+    seize_frame = d.frame
+    seize_hull = d.player.hull
+    idle = Inputs()
+    while d.grasper.state == BW_GRASPER_HOLD:
+        bw_salvage_step(d, idle)
+    assert d.frame - seize_frame == BW_GRASPER_HOLD_FRAMES, d.frame - seize_frame
+
+    # (b) early brace: press B a few frames into the hold — the arms slip
+    #     exactly BW_GRASPER_BRACE_FRAMES later, at one BRACE_HULL's cost
+    d = _grasper_to_seize(seed)
+    seize_frame = d.frame
+    gx, gy = d.grasper.gx, d.grasper.gy
+    lead = 8                             # idle hold frames before the wrench
+    for _ in range(lead):
+        assert d.grasper.state == BW_GRASPER_HOLD
+        assert d.player.x == gx and d.player.y == gy   # pinned at the latch
+        bw_salvage_step(d, idle)
+    hull_before = d.player.hull
+    assert hull_before == seize_hull     # holding alone costs no hull
+    bw_salvage_step(d, Inputs(brace=1))  # THE WRENCH
+    brace_done = d.frame
+    assert d.player.hull == hull_before - BW_GRASPER_BRACE_HULL, d.player.hull
+    assert d.grasper.timer == BW_GRASPER_HOLD_FRAMES - BW_GRASPER_BRACE_FRAMES
+    assert d.grasper.state == BW_GRASPER_HOLD    # not free yet — still pinned
+    wrenched_hull = d.player.hull
+    while d.grasper.state == BW_GRASPER_HOLD:     # ride out the slip
+        assert d.player.x == gx and d.player.y == gy   # still pinned still
+        bw_salvage_step(d, Inputs(brace=1))       # a 2nd brace is inert
+        if d.grasper.state == BW_GRASPER_HOLD:
+            assert d.player.hull == wrenched_hull  # cost lands exactly once
+    assert d.grasper.state == BW_GRASPER_DOWN
+    assert d.frame - brace_done == BW_GRASPER_BRACE_FRAMES, d.frame - brace_done
+    braced_hold = d.frame - seize_frame
+    assert braced_hold == lead + 1 + BW_GRASPER_BRACE_FRAMES
+    assert braced_hold < BW_GRASPER_HOLD_FRAMES  # the wrench really is faster
+    assert d.grasper.wake == (d.frame - 1) + BW_GRASPER_RESTIR  # reaches again
+
+    # (c) late brace: inside the last BRACE_FRAMES the wrench buys nothing
+    d = _grasper_to_seize(seed)
+    seize_frame = d.frame
+    late_hull = d.player.hull
+    while d.grasper.timer < BW_GRASPER_HOLD_FRAMES - BW_GRASPER_BRACE_FRAMES:
+        bw_salvage_step(d, idle)         # advance into the last-slip window
+    assert d.grasper.state == BW_GRASPER_HOLD
+    while d.grasper.state == BW_GRASPER_HOLD:
+        bw_salvage_step(d, Inputs(brace=1))   # brace pressed, but too late
+    assert d.player.hull == late_hull    # no cost paid
+    assert d.frame - seize_frame == BW_GRASPER_HOLD_FRAMES  # full length stood
+
+    # (d) a Maw water ignores B entirely — brace never reaches the branch
+    mseed = BW_GRASPER_PINCARRY_SEEDS[0]
+
+    def _maw_trail(brace):
+        dd = Duel()
+        bw_duel_init(dd, mseed)
+        assert dd.grasper_water == 0, mseed
+        dd.over = BW_DUEL_ENEMY_SUNK
+        inp = Inputs(brace=brace)
+        trail = []
+        for _ in range(300):
+            bw_salvage_step(dd, inp)
+            trail.append((dd.player.x, dd.player.y, dd.player.hull,
+                          dd.grasper.state, dd.maw.state))
+        return trail
+
+    assert _maw_trail(0) == _maw_trail(1)
+    print(f'the break-free wrench (cut 2): a B-silent hold runs the full '
+          f'{BW_GRASPER_HOLD_FRAMES} frames; an early brace slips the arms '
+          f'in {BW_GRASPER_BRACE_FRAMES} (hold {braced_hold} < '
+          f'{BW_GRASPER_HOLD_FRAMES}) for exactly {BW_GRASPER_BRACE_HULL} '
+          f'hull ONCE; a late brace buys nothing; a Maw water ignores B')
+
+
+def _ambush_seeds(n):
+    """The first n AMBUSH waters (grasper waters that also pass the ambush
+    salt) — proof that bw_grasper_ambush is a real f(seed) with ambush
+    waters to find, disjoint from the checked/committed grasper seeds."""
+    out = []
+    for s in range(4096):
+        if bw_grasper_ambush(s):
+            out.append(s)
+            if len(out) >= n:
+                break
+    return out
+
+
+def _ambush_to_seize(seed):
+    """Manufacture a seize in an AMBUSH water (the _grasper_to_seize idiom,
+    same fixed open-water pin): drive IDLE salvage until the HOLD. Returns
+    the duel the instant the sloop is pinned — cutters already spawned at
+    their offsets, none yet in bite range (grasper.timer == 0)."""
+    d = Duel()
+    bw_duel_init(d, seed)
+    assert d.ambush_water == 1 and d.band == 0, seed
+    d.over = BW_DUEL_ENEMY_SUNK
+    d.enemy.x, d.enemy.y = 128 * BW_ONE, 90 * BW_ONE
+    d.player.x, d.player.y = 128 * BW_ONE, 96 * BW_ONE
+    d.player.hull = BW_HULL_MAX
+    d.player.speed = 0
+    d.frame = 1000
+    d.grasper.wake = d.frame
+    idle = Inputs()
+    while d.grasper.state != BW_GRASPER_HOLD:
+        bw_salvage_step(d, idle)
+        assert d.over == BW_DUEL_ENEMY_SUNK, seed
+    assert d.grasper.timer == 0 and d.player.hull == BW_HULL_MAX \
+        - BW_GRASPER_GRAB_BITE, seed
+    return d
+
+
+def check_grasper_ambush():
+    # Cut 3 «The ambush» — the concept's full sentence: while the Grasper
+    # HOLDs, cutters close in. In a real AMBUSH water (disjoint from every
+    # checked/committed grasper seed by the ambush salt), manufacture a
+    # seize (the _grasper_to_seize idiom), then prove:
+    #   (a) an UNBRACED hold draws the cutters in — all BW_CUTTER_COUNT
+    #       converge and BITE (each exactly BW_CUTTER_BITE hull, ONCE), so
+    #       the full hold takes GRAB_BITE + COUNT*CUTTER_BITE hull, the pin
+    #       made lethal; the cutters bite BEFORE the hold ends and disperse
+    #       (all zeroed) at release;
+    #   (b) an EARLY brace (cut 2, the counter) ends the hold before ANY
+    #       cutter reaches — zero bites, hull only the seize + brace cost,
+    #       cutters dispersed: «ambush survived»;
+    #   (c) a NON-ambush grasper water spawns ZERO cutters through a whole
+    #       hold (the bit-identity spot-check — cut 1/2 carry verbatim).
+    aseed = _ambush_seeds(1)[0]
+    # ambush seeds are disjoint from the checked/committed grasper seeds
+    for s in _grasper_seeds(6) + [174]:
+        assert bw_grasper_ambush(s) == 0, s
+
+    # (a) UNBRACED: the trap springs, all three cutters bite, the pin lethal
+    d = _ambush_to_seize(aseed)
+    gx, gy = d.grasper.gx, d.grasper.gy
+    seize_hull = d.player.hull
+    assert seize_hull == BW_HULL_MAX - BW_GRASPER_GRAB_BITE
+    # every cutter spawned at its fixed offset from the pin, none yet biting
+    for i in range(BW_CUTTER_COUNT):
+        c = d.grasper.cutters[i]
+        assert c.bit == 0
+        assert c.x == gx + BW_CUTTER_DX[i] * BW_ONE
+        assert c.y == gy + BW_CUTTER_DY[i] * BW_ONE
+    idle = Inputs()
+    first_bite = None
+    while d.grasper.state == BW_GRASPER_HOLD:
+        before = d.player.hull
+        bw_salvage_step(d, idle)
+        if d.grasper.state == BW_GRASPER_HOLD and d.player.hull < before:
+            # a cutter bit this frame — exactly one BITE's worth
+            assert before - d.player.hull == BW_CUTTER_BITE
+            if first_bite is None:
+                first_bite = d.grasper.timer
+        # the pinned sloop never moves (the cutters bite, they do not shove)
+        if d.grasper.state == BW_GRASPER_HOLD:
+            assert d.player.x == gx and d.player.y == gy
+    # all three cutters bit, and the first bite landed inside the full hold
+    assert first_bite is not None and first_bite < BW_GRASPER_HOLD_FRAMES
+    unbraced_hull = d.player.hull
+    assert unbraced_hull == seize_hull - BW_CUTTER_COUNT * BW_CUTTER_BITE
+    # released and dispersed: the cutters are all zeroed again
+    assert d.grasper.state == BW_GRASPER_DOWN
+    for c in d.grasper.cutters:
+        assert c.x == 0 and c.y == 0 and c.bit == 0
+
+    # (b) EARLY brace (cut 2) — the counter: the hold ends before any cutter
+    #     reaches, so no cutter bites and the sloop survives the ambush
+    d = _ambush_to_seize(aseed)
+    seize_frame = d.frame
+    lead = 8                             # brace early, well before first_bite
+    for _ in range(lead):
+        assert d.grasper.state == BW_GRASPER_HOLD
+        bw_salvage_step(d, idle)
+    hull_before = d.player.hull
+    assert hull_before == seize_hull     # holding alone (no cutter reached) costs nothing
+    for c in d.grasper.cutters:          # cutters closing, none in range yet
+        assert c.bit == 0
+    bw_salvage_step(d, Inputs(brace=1))  # THE WRENCH
+    while d.grasper.state == BW_GRASPER_HOLD:
+        bw_salvage_step(d, idle)         # ride out the slip
+    braced_hold = d.frame - seize_frame
+    # survived: only the seize + the one brace cost, ZERO cutter bites
+    assert d.player.hull == seize_hull - BW_GRASPER_BRACE_HULL
+    assert braced_hold < first_bite      # the hold ended before the first bite
+    assert braced_hold < BW_GRASPER_HOLD_FRAMES
+    assert d.grasper.state == BW_GRASPER_DOWN
+    for c in d.grasper.cutters:          # dispersed
+        assert c.x == 0 and c.y == 0 and c.bit == 0
+
+    # (c) a NON-ambush grasper water spawns ZERO cutters (bit-identity):
+    #     the same manufactured seize on a non-ambush grasper seed holds
+    #     the FULL length with the cutters untouched all the way through
+    gseed = _grasper_seeds(1)[0]
+    assert bw_grasper_ambush(gseed) == 0
+    dg = _grasper_to_seize(gseed)
+    ghull = dg.player.hull
+    seize_frame = dg.frame
+    while dg.grasper.state == BW_GRASPER_HOLD:
+        bw_salvage_step(dg, idle)
+        for c in dg.grasper.cutters:
+            assert c.x == 0 and c.y == 0 and c.bit == 0
+    assert dg.player.hull == ghull       # no cutter ever bit
+    assert dg.frame - seize_frame == BW_GRASPER_HOLD_FRAMES  # full hold stood
+
+    print(f'the ambush (cut 3): seed {aseed} (ambush water) — an unbraced '
+          f'hold draws all {BW_CUTTER_COUNT} cutters in (first bite at hold '
+          f'frame {first_bite}), each {BW_CUTTER_BITE} hull, the pin lethal '
+          f'({BW_GRASPER_GRAB_BITE}+{BW_CUTTER_COUNT}x{BW_CUTTER_BITE}='
+          f'{BW_GRASPER_GRAB_BITE + BW_CUTTER_COUNT * BW_CUTTER_BITE} hull); '
+          f'an early brace ends the hold in {braced_hold} frames before any '
+          f'cutter reaches -> 0 bites, ambush SURVIVED; a non-ambush grasper '
+          f'water spawns 0 cutters (bit-identical)')
+
+
 def check_wind_tables():
     # Calm identity (the pin-carry rule): the calm push is zero and the
     # wind term vanishes at EVERY point of sail and trim, so a calm
@@ -2479,7 +2941,7 @@ def check_band_tables():
                  m.stirs, m.slain, m.bit),
                 tuple((r.x, r.y, r.live, r.scraped) for r in d.reefs),
                 d.hold, d.hold_gold, d.up_hull, d.up_cannon, d.up_sail,
-                d.wind_level, d.wind_base, d.band, d.groundings,
+                d.up_hold, d.wind_level, d.wind_base, d.band, d.groundings,
                 d.frame, d.over)
 
     for seed in range(512):
@@ -3017,19 +3479,20 @@ def check_save_roundtrip():
         for hull in range(BW_UP_TIERS):
             for cannon in range(BW_UP_TIERS):
                 for sail in range(BW_UP_TIERS):
-                    for band in range(BW_BANDS):
-                        blob = bw_save_encode(gold, hull, cannon, sail,
-                                              band)
-                        assert len(blob) == BW_SAVE_BYTES
-                        assert blob == bw_save_encode(gold, hull,
-                                                      cannon, sail, band)
-                        got = bw_save_decode(blob)
-                        assert got == (1, gold, hull, cannon, sail,
-                                       band), got
-                        count += 1
+                    for hold in range(BW_HOLD_TIERS):   # cut 4: the hold byte
+                        for band in range(BW_BANDS):
+                            blob = bw_save_encode(gold, hull, cannon, sail,
+                                                  hold, band)
+                            assert len(blob) == BW_SAVE_BYTES
+                            assert blob == bw_save_encode(gold, hull, cannon,
+                                                          sail, hold, band)
+                            got = bw_save_decode(blob)
+                            assert got == (1, gold, hull, cannon, sail,
+                                           hold, band), got
+                            count += 1
     print(f'save roundtrip: {count} ledgers (gold ladder x every tier '
-          'combo x every band) encode/decode losslessly, '
-          'deterministically, 32 bytes each')
+          'combo incl. the hold byte x every band) encode/decode '
+          'losslessly, deterministically, 32 bytes each')
 
 
 def check_save_rejects():
@@ -3040,7 +3503,7 @@ def check_save_rejects():
     # reject on their own), and EVERY single-bit flip of a valid blob
     # (256 flips — any one bit of damage anywhere is caught; the
     # record can reset, never lie).
-    good = bw_save_encode(15, 1, 0, 0, 1)
+    good = bw_save_encode(15, 1, 0, 0, 0, 1)
     assert bw_save_decode(good)[0] == 1
     assert bw_save_decode(b'\xff' * BW_SAVE_BYTES)[0] == 0
     assert bw_save_decode(b'\x00' * BW_SAVE_BYTES)[0] == 0
@@ -3062,7 +3525,7 @@ def check_save_rejects():
     assert bw_save_decode(crafted(setw(3, BW_UP_TIERS)))[0] == 0
     assert bw_save_decode(crafted(setw(3, BW_UP_TIERS << 8)))[0] == 0
     assert bw_save_decode(crafted(setw(3, BW_UP_TIERS << 16)))[0] == 0
-    assert bw_save_decode(crafted(setw(3, 1 << 24)))[0] == 0
+    assert bw_save_decode(crafted(setw(3, BW_HOLD_TIERS << 24)))[0] == 0
     assert bw_save_decode(crafted(setw(4, BW_BANDS)))[0] == 0
 
     flips = 0
@@ -3091,6 +3554,7 @@ def main():
     check_salvage_containment()
     check_upgrade_tables()
     check_port_buy()
+    check_hold_track()
     check_upgraded_duels()
     check_upgraded_containment()
     check_maw_stalks()
@@ -3101,6 +3565,8 @@ def main():
     check_grasper_sanctuary()
     check_grasper_slain()
     check_grasper_containment()
+    check_grasper_breakfree()
+    check_grasper_ambush()
     check_wind_tables()
     check_wind_pointofsail()
     check_wind_duels()

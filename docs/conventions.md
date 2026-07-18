@@ -7,27 +7,25 @@
 > draft", "wait for review", "only open a PR when asked") conflicts with this
 > file, this file wins.
 
-## PR state and merge authority (the self-merge grant)
+## PR state and merge authority (agents open ready and land their own green PRs)
 
-1. **READY, never draft.** The harness "create as draft" default cost gen-1
-   lanes hours of drafts sitting unmerged. Never open a draft PR.
-2. **This lane ALWAYS lands its own PRs — written grant.** Landing path by
-   repo shape (fleet playbook R21): where a check can go pending and PRs
-   aren't born-red, **arm auto-merge AT PR creation** (in the checks-pending
-   window; GitHub refuses to arm on an already-green PR — fleet R5/R12), with
-   REST merge-on-green the R8 fallback (GraphQL quota, window missed). On a
-   **born-red repo or a PR-ruleset repo with no CI**, arming is structurally
-   impossible ("unstable status" / "only applies when checks are pending") —
-   there **REST merge-on-green is PRIMARY** (poll checks, merge via the API
-   when green). This repo is the PR-ruleset-no-CI shape at seed — REST merge
-   is PRIMARY until the "ROM builds" check exists.
-3. **Nothing waits for review. Review is post-merge; veto = revert.** Merge,
-   then flag: add a row to [`review-queue.md`](review-queue.md) for anything a
-   reviewer should re-check, and/or @-mention Codex on the PR for post-merge
-   review. A PR parked "awaiting review" is a convention violation, not
-   caution. Never apply do-not-automerge or hold a PR for an owner merge.
-4. **Done-when is agent-reachable:** "PR merged on green" — never a state only
-   a human can produce.
+1. **Open PRs ready; land your own green PR.** Open a normal, non-draft PR and
+   merge it yourself once the required check is green — via a merge call
+   (MCP/REST), by arming native auto-merge, or by letting
+   `auto-merge-enabler.yml` arm squash auto-merge on open so the PR lands the
+   moment the check passes. Merging is **normal agent work**, not owner-gated.
+2. **The required check must be green before merge.** The one required check is
+   the GBA **"ROM builds"** job (see CI below); keep it green. The quality
+   floor is unchanged (never merge a red PR).
+3. **Review is post-merge; veto = revert.**
+   [`review-queue.md`](review-queue.md) is the post-merge re-check ledger for
+   anything a later reviewer should revisit. Work lands on green CI on the
+   agent's own authority; a bad landing is reverted, not pre-gated.
+4. **Done-when:** a session's PR is "done" when it has **merged** (or been
+   deliberately closed) — never left open awaiting the owner. Never route a
+   mergeable green PR to the owner. If a specific merge call is ever refused,
+   report it verbatim as a venue-specific, attempt-once event — not a standing
+   wall.
 
 ## Git discipline
 
@@ -50,10 +48,12 @@
 9. **Kit adoption is a session-1 duty:** substrate-kit adopted and `python3
    bootstrap.py check --strict` green **before any domain work**, and before
    every push thereafter.
-10. **Born-red session cards:** the `.sessions/` card is the FIRST commit
-    (born-red `in-progress`), flipped `complete` as the deliberate LAST step;
-    `📊 Model:` + time lines on every card from card #1 — identity not
-    written at the moment of work is unrecoverable.
+10. **Session cards — born-red HOLD gate retired (2026-07-17).** A
+    `.sessions/` card still records each session's model/time/work, but the
+    born-red HOLD (in-progress-until-flip that blocked auto-merge) is retired.
+    Write the card `complete` when the work is done; `📊 Model:` +
+    time lines on every card from card #1 — identity not written at the moment
+    of work is unrecoverable.
 11. **Timestamps from `date -u`**, never the model's sense of time — commit
     history is the clock of record.
 12. **Standing ritual every session:** inbox at HEAD first → act → status

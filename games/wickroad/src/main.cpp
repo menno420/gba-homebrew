@@ -121,8 +121,12 @@
  *     world.
  *
  * DETERMINISM CONTRACT (headless proof relies on all of this):
- *   - One xorshift32 PRNG at fixed seed 0x5749434B ('WICK'), consumed
- *     ONLY at world init, in a fixed order (base prices then phases).
+ *   - One xorshift32 PRNG at the DIALED seed (crossroads cut 3; dial 0
+ *     == 0x5749434B 'WICK', the pinned default world), consumed ONLY at
+ *     world init, in a fixed order (base prices then phases). The
+ *     title-screen seed dial (LEFT/RIGHT) picks the seed; dial 0 draws
+ *     the exact committed stream, so every proof at the default seed is
+ *     bit-identical. The live seed is published in telemetry word [56].
  *   - Integer math only. Prices are a CLOSED FORM of (day, impact):
  *     price = clamp(base + tri12(day + phase) * step + impact),
  *     where tri12 is a triangle wave over a 12-day period — no
@@ -131,8 +135,9 @@
  *     input script replays bit-identically.
  *
  * Telemetry mailbox for the headless harness (tools/headless-screenshot.py
- * --elf --watch wr:wr_telemetry:52; the v0.1/v0.2/v0.3/v0.4/v0.5 proofs
- * keep watching the first 16/24/32/40/48 words unchanged), volatile,
+ * --elf --watch wr:wr_telemetry:57; the v0.1/v0.2/v0.3/v0.4/v0.5/v0.6 proofs
+ * keep watching the first 16/24/32/40/48/52 words unchanged, and cut 1's P9
+ * the first 56 — the seed word [56] is appended behind them, cut 3), volatile,
  * C-linkage, every frame:
  *   [0] 0x5749434B 'WICK' magic     [8]  pack used (0..8)
  *   [1] 0x524F4144 'ROAD' magic     [9]  cargo TALLOW
@@ -246,11 +251,92 @@
  * Actual audible output (mix levels, timbre, the DAC) is NOT
  * headlessly assertable — that is named owner-playtest territory.
  *
- * Presentation is deliberately trivial (breadth-program slice): the
- * market table and the ledger are fixed-font glyph lines; headers,
- * title and end cards use the common variable 8x8 font (the one
- * --assert-text can read). All code original; fonts are Butano's
- * zlib-licensed common assets (third_party/butano/common).
+ * Crossroads witness words (crossroads cut 1; all 0 on the title):
+ *   [52] on-branch flag: 1 while    [54] TRUE price of WYRMHOLLOW's
+ *        standing on WYRMHOLLOW           produce good (RESIN) — the
+ *        (town 7), else 0                 branch-town price witness,
+ *   [53] fork-edge id: branch_leg         so the fork market is pinned
+ *        (7) while a fork is live         from the mirror even from
+ *        from the current town (at        across the spine
+ *        the junction DUNWICK or on  [55] free / reserved (0)
+ *        WYRMHOLLOW), else 0
+ * Words 52/53 make THE FORK verb assertable: the harness pins the flag
+ * flipping 0 -> 1 on the L+R chord that rides onto the branch and back
+ * to 0 on the return, and word 53 reading 7 exactly at the two ends of
+ * the fork road (junction + branch) and 0 elsewhere — the branch is
+ * reachable ONLY by the chord, never by a spine R. Word 54 pins the
+ * branch market against the host mirror. Words 0-51 are byte-unchanged.
+ *
+ * Seed-dial witness word (crossroads cut 3; APPENDED — telemetry grows
+ * [56] -> [57], the append-only wire-format discipline):
+ *   [56] the live dialed world seed (dial 0 == seed_constant
+ *        0x5749434B, the pinned 'WICK' world). Unlike the 0-on-title
+ *        witnesses this is published on EVERY frame incl. the title, so
+ *        each LEFT/RIGHT dial step is watchable as its own literal. The
+ *        run draws its whole world from exactly this seed; word 56 makes
+ *        THE DIAL assertable — the harness pins it stepping on each dial
+ *        edge, returning to seed_constant on the reverse (fully
+ *        reversible), and carrying unchanged into the run a START begins.
+ *        At dial 0 it is seed_constant on every frame, so words 0-55 are
+ *        byte-unchanged and P1-P10 carry verbatim.
+ *
+ * PRESENTATION MAILBOX (crossroads cut 2, the sprite art pass) — a SECOND
+ * committed symbol, volatile unsigned wr_art[8], separate from
+ * wr_telemetry so the 56 sim words stay byte-identical by contract. The
+ * cut adds an authored 32x32-cell regular_bg baked from the SAME sim
+ * state (town, price[], cargo[], cursor, the fork/junction words) at
+ * backmost priority (3), so every variable-font glyph sprite still draws
+ * ON TOP (GBA draws OBJ over BG) and every --assert-text line and every
+ * P1-P9 pin carries verbatim. wr_art, updated every frame:
+ *   [0] 0x57415254 'WART' magic     [4] checksum fold of the 32x32 baked
+ *   [1] scene id (= state: 0 title,     bg cells (a deterministic hash of
+ *       1 trading, 2 win, 3 closed)     the authored art on screen)
+ *   [2] town id (0..7)              [5] bg-enabled flag (1 once the road
+ *   [3] cursor good (0..3)              bg is created + shown)
+ *                                   [6] fork-edge mirror (branch_leg while
+ *                                       a fork is live here, else 0)
+ *                                   [7] rebake count (cumulative bakes
+ *                                       since boot — bumps only when the
+ *                                       cached scene key changes)
+ * Words [4]/[5] make THE ART PASS assertable off the machine: the harness
+ * pins the checksum distinct across scenes (title vs junction vs branch),
+ * the bg-enable bit in DISPCNT, the committed palette's BGR555 colors in
+ * BG palette RAM, and the baked cells in the map's VRAM screenblock —
+ * proofs.sh P10 pins exactly that, run twice byte-identical. The bake
+ * re-runs (and reload_cells_ref()) ONLY when the scene key changes, so
+ * quiet frames and the committed dawn edges do no extra bg work.
+ *
+ * PERSISTENCE MAILBOX (crossroads cut 4, the best ledger) — a THIRD
+ * committed symbol, volatile unsigned wr_ledger[6], separate from
+ * wr_telemetry AND wr_art so the 57 sim words stay byte-identical by
+ * contract (the same discipline cut 2 used for wr_art). The cut persists
+ * the best run across power cycles in SRAM behind gl_save.h's magic tag
+ * ("WLDGR1", POD {best_gold, best_day_reached, best_seed, runs}). The
+ * ledger loads ONCE at boot (a fresh / foreign / erased cart reads as NO
+ * save -> a zero ledger), is NOT reset by reset_run(), and is (re)written
+ * to SRAM the instant a run ENDS (win st_balanced or loss st_closed) — so
+ * a power-off right after the end card keeps the record. wr_ledger,
+ * published every frame:
+ *   [0] 0x574C4447 'WLDG' magic     [3] best_seed (the dialed world that
+ *   [1] best_gold (highest gold at      set the best; run_seed at record)
+ *       any run-end so far)         [4] runs (cumulative run-ends banked)
+ *   [2] best_day_reached (the day   [5] loaded flag (1 once a prior SRAM
+ *       the best-gold run ended)        save was restored at boot, else 0)
+ * Word [5] makes THE POWER-CYCLE assertable off the machine: a fresh cart
+ * reads 0 (no save), a reboot on a written save reads 1 with the restored
+ * best_gold in [1] on the title BEFORE any input. The best line is drawn
+ * on the end cards ONLY when the ledger loaded (so the default no-save
+ * path is byte-identical and P1-P11 carry verbatim); proofs.sh P12 pins
+ * exactly that — fresh-cart baseline, write+persist, power-cycle restore,
+ * run twice byte-identical (watch-logs AND the written .sav files).
+ *
+ * Presentation was deliberately trivial through v0.7 (breadth-program
+ * slice): the market table and the ledger are fixed-font glyph lines;
+ * headers, title and end cards use the common variable 8x8 font (the one
+ * --assert-text can read). Crossroads cut 2 gives that glyph-only face an
+ * authored background WITHOUT touching the glyphs. All code and art
+ * original; fonts are Butano's zlib-licensed common assets
+ * (third_party/butano/common).
  */
 
 #include "bn_core.h"
@@ -264,6 +350,18 @@
 #include "bn_sprite_ptr.h"
 #include "bn_sound_items.h"
 #include "bn_sprite_text_generator.h"
+#include "bn_regular_bg_ptr.h"
+#include "bn_regular_bg_item.h"
+#include "bn_regular_bg_map_ptr.h"
+#include "bn_regular_bg_map_item.h"
+#include "bn_regular_bg_map_cell_info.h"
+
+#include "bn_regular_bg_tiles_items_wr_tiles.h"
+#include "bn_bg_palette_items_wr_palette.h"
+
+#include "gl_save.h"
+
+#include "wr_milestones.h"
 
 #include "common_fixed_8x8_sprite_font.h"
 #include "common_variable_8x8_sprite_font.h"
@@ -271,7 +369,20 @@
 extern "C"
 {
     // Headless telemetry mailbox — layout in the header comment.
-    volatile unsigned wr_telemetry[52];
+    volatile unsigned wr_telemetry[57];
+
+    // Presentation telemetry (crossroads cut 2, the sprite art pass) — the
+    // authored regular_bg's OWN mailbox, so wr_telemetry's 56 simulation
+    // words stay untouched by contract. volatile so every write lands on
+    // the emulator bus. Layout in the header comment (search 'wr_art').
+    volatile unsigned wr_art[8];
+
+    // Persistence witness (crossroads cut 4, the best ledger) — the SRAM
+    // best-run ledger's OWN mailbox (mirrors how cut 2 added wr_art), so
+    // wr_telemetry's 57 words stay byte-identical by contract. volatile so
+    // every write lands on the emulator bus. Layout in the header comment
+    // (search 'wr_ledger').
+    volatile unsigned wr_ledger[6];
 }
 
 namespace
@@ -284,7 +395,8 @@ namespace
         st_closed = 3,               //   balances / the pass closed
     };
 
-    constexpr unsigned seed_constant = 0x5749434Bu;  // 'WICK'; init-only
+    constexpr unsigned seed_constant = 0x5749434Bu;  // 'WICK'; init-only,
+                                                     //   the dial-0 world
 
     struct rng_t
     {
@@ -306,8 +418,65 @@ namespace
         }
     };
 
+    // --- the SEED DIAL (crossroads cut 3) -----------------------------------
+    // A title-screen dial picks the world seed, turning the single fixed
+    // 'WICK' world into a family of daily/challenge worlds (the
+    // Cindervault-seed / Underroot slice-10 precedent). THE CONTRACT: dial 0
+    // IS seed_constant, so the default boot world — and every committed proof
+    // P1-P10 — is BIT-IDENTICAL (zero behavioural change at default). Higher
+    // positions hash off the constant down a DIAL-salted xorshift into the
+    // bounded seed space [1, dial_seed_mask+1], never 0 (the xorshift dead
+    // state), so each is its own repeatable world. LEFT/RIGHT scan the dial
+    // on the TITLE ONLY (its keys are trading verbs everywhere else); the
+    // live seed is published in the APPENDED telemetry word [56] so each step
+    // is watchable, and reset_run() seeds from it, so START from a win/lose
+    // card reruns the SAME dialed world.
+    constexpr int dial_count = 16;                   // positions 0..15
+    constexpr unsigned dial_salt = 0x9E3779B9u;      // golden-ratio odd salt
+    constexpr unsigned dial_seed_mask = 0x00FFFFFFu; // seed space [1, 2^24]
+
+    inline unsigned dial_seed(int dial)
+    {
+        int d = ((dial % dial_count) + dial_count) % dial_count;
+
+        if(d == 0)
+        {
+            return seed_constant;     // dial 0 == the pinned 'WICK' stream
+        }
+
+        unsigned h = seed_constant ^ (dial_salt * unsigned(d));
+        h ^= h << 13;
+        h ^= h >> 17;
+        h ^= h << 5;
+        return (h & dial_seed_mask) + 1u;
+    }
+
+    // --- the best ledger (crossroads cut 4) ---------------------------------
+    // The persistent best-run record, stored behind gl_save.h's magic tag in
+    // SRAM. A small trivially-copyable POD: the highest gold banked at any
+    // run-end, the day that run ended, the dialed world seed that set it, and
+    // the count of run-ends. Bump the tag ("WLDGR1" -> "WLDGR2") to invalidate
+    // old saves if this layout ever changes.
+    constexpr const char* wr_save_magic = "WLDGR1";  // <=7 chars (gl_save.h)
+
+    struct wr_ledger_save
+    {
+        int best_gold = 0;
+        int best_day_reached = 0;
+        int best_seed = 0;
+        int runs = 0;
+    };
+
     // --- the road (all owner-tunable integers) ------------------------------
-    constexpr int town_count = 7;        // widened from 5 (growth cut 4)
+    constexpr int town_count = 8;        // widened to 8 (crossroads cut 1:
+                                         //   +WYRMHOLLOW, the off-spine
+                                         //   branch town — was 7 in v0.5/0.6)
+    constexpr int spine_town_count = 7;  // the LINEAR spine 0<->1<->...<->6
+                                         //   that L/R walk (crossroads cut 1);
+                                         //   town 7 hangs off it, fork-only —
+                                         //   the spine travel/display bounds
+                                         //   use this, not town_count, so R at
+                                         //   MIRGATE never falls onto the branch
     constexpr int legacy_town_count = 5; // the v0.4 world: its 40 world-init
                                          //   draws keep their exact stream
                                          //   order (see reset_run)
@@ -315,7 +484,7 @@ namespace
 
     constexpr const char* town_names[town_count] = {
         "EMBERTON", "GLASSMERE", "SALTCOMBE", "THORNBY", "DUNWICK",
-        "HOLLOWFEN", "MIRGATE",
+        "HOLLOWFEN", "MIRGATE", "WYRMHOLLOW",
     };
 
     constexpr const char* good_names[good_count] = {
@@ -340,6 +509,33 @@ namespace
     // The stale-ink witness pair (mailbox words 14/15).
     constexpr int witness_town = 3;      // THORNBY
     constexpr int witness_good = 1;      // SALT
+
+    // --- the CROSSROADS (crossroads cut 1) ----------------------------------
+    // The map is no longer a bare linear index. A tiny static adjacency
+    // table names, per town, its spine-left / spine-right neighbours
+    // (-1 = none) and its FORK neighbour (the off-spine town reached by
+    // the L+R chord; -1 = none). L/R read the .left/.right columns and
+    // still walk the spine 0<->1<->...<->6 BIT-IDENTICALLY (the spine
+    // legs and their hazards are unchanged); only WYRMHOLLOW (7) hangs
+    // off the junction DUNWICK (4), reachable ONLY by the fork verb, and
+    // R at DUNWICK still follows the spine to HOLLOWFEN.
+    constexpr int junction_town = 4;     // DUNWICK: the mid-spine fork
+    constexpr int branch_town = 7;       // WYRMHOLLOW: the off-spine child
+    constexpr int branch_leg = spine_town_count;  // 7: a leg id the hazard
+                                         //   deck never uses, so the fork
+                                         //   road carries no bandits/storm
+
+    struct adj_t { int left; int right; int fork; };
+    constexpr adj_t adjacency[town_count] = {
+        { -1,  1, -1 },   // 0 EMBERTON  (spine start)
+        {  0,  2, -1 },   // 1 GLASSMERE
+        {  1,  3, -1 },   // 2 SALTCOMBE
+        {  2,  4, -1 },   // 3 THORNBY
+        {  3,  5,  7 },   // 4 DUNWICK    (the junction: fork -> WYRMHOLLOW)
+        {  4,  6, -1 },   // 5 HOLLOWFEN
+        {  5, -1, -1 },   // 6 MIRGATE    (spine end)
+        {  4, -1,  4 },   // 7 WYRMHOLLOW (branch: left/fork -> DUNWICK)
+    };
 
     // --- the MULES (growth cut 4) --------------------------------------------
     // Gold buys logistics: at the Hollowfen fair START buys a mule,
@@ -562,9 +758,30 @@ int main()
         road_line.clear();
     };
 
+    // --- the best ledger (crossroads cut 4): the persistent meta, restored
+    // from the magic-checked SRAM slot at boot. A fresh / foreign / erased
+    // cart loads as NO save -> a zero ledger, so the default cartridge boots
+    // exactly like v0.9. Deliberately declared OUTSIDE the run-state block and
+    // NOT reset by reset_run(): the best run is the run-to-run meta (the
+    // Deepcast meta_slot pattern). ledger_loaded records whether a prior save
+    // was restored — it gates the end-card best line so the no-save path stays
+    // byte-identical (P1-P11 carry verbatim).
+    gl::save_slot<wr_ledger_save> ledger_slot(wr_save_magic);
+    wr_ledger_save best;
+    bool ledger_loaded = ledger_slot.load(best);
+
+    if(! ledger_loaded)
+    {
+        best = wr_ledger_save{};
+    }
+
     // --- world + run state (reset_run() restores the exact boot world) -----
     unsigned state = st_title;
     unsigned frames = 0;                 // monotonic since boot
+    int seed_dial = 0;                   // title dial position (0..dial_count-1;
+                                         //   0 == the pinned 'WICK' world)
+    unsigned run_seed = seed_constant;   // the dialed world seed (dial 0 ==
+                                         //   seed_constant; reset_run seeds it)
     unsigned head_quiet = 0;             // frames since the head line
                                          // last changed (regen stagger)
     int base[town_count][good_count];
@@ -776,16 +993,59 @@ int main()
         ledger_day[town] = int(day);
     };
 
+    // A run ended (win st_balanced or loss st_closed): fold this run into the
+    // best ledger and land it in SRAM immediately (power-off safe — a pull
+    // right after the end card keeps the record). Best = highest gold at any
+    // run-end; the day + dialed seed that set it ride along, and every end
+    // bumps the run counter. Called EXACTLY once per run-end transition — the
+    // three end sites (dawn's st_closed, the sell win, the pact win).
+    // NEW RECORD flash (WIK-03 follow-on to #184): true when the run whose
+    // end is being banked beat the prior persisted best. Captured INSIDE
+    // record_run() BEFORE the overwrite below clobbers `best`, so the end
+    // card flashes the record the player just broke, not the one they now
+    // hold. Read-only; the end-card render gates it on ledger_loaded.
+    bool new_record = false;
+
+    // Run-count milestone flourish (follow-on to #186): the end-card callout
+    // ("10TH RUN" / "25TH RUN" / "50TH RUN") for the run whose end is being
+    // banked, or nullptr. Captured INSIDE record_run() BEFORE ++best.runs, the
+    // same compare-before-increment shape as new_record above: best.runs holds
+    // the count of PRIOR run-ends, so this run's ordinal is best.runs + 1. The
+    // decision is the pure wr::run_milestone_label (wr_milestones.h) so it is
+    // host-testable (tools/check-run-milestones.py). Read-only; the end-card
+    // render gates it on ledger_loaded, so the no-save path never draws it.
+    const char* milestone_label = nullptr;
+
+    auto record_run = [&]()
+    {
+        new_record = gold > best.best_gold || int(day) > best.best_day_reached;
+        milestone_label = wr::run_milestone_label(best.runs + 1);
+
+        if(gold > best.best_gold)
+        {
+            best.best_gold = gold;
+            best.best_day_reached = int(day);
+            best.best_seed = int(run_seed);
+        }
+
+        ++best.runs;
+        ledger_slot.save(best);
+    };
+
     auto reset_run = [&]()
     {
-        // The SAME world every run: the PRNG restarts at the fixed
-        // seed and is consumed only here, in a fixed order. THE ORDER
-        // IS A COMMITTED INTERFACE (growth cut 4): the five legacy
-        // towns draw base then phase EXACTLY as in v0.1-v0.4 (40
-        // draws, bit-identical world, every committed pin carries),
-        // and the two new towns' 16 draws (base then phase) are
-        // APPENDED strictly after — the cut's whole RNG delta.
-        rng_t rng(seed_constant);
+        // The SAME world every run for a given seed: the PRNG restarts at
+        // the DIALED seed (run_seed; dial 0 == seed_constant, the pinned
+        // 'WICK' world) and is consumed only here, in a fixed order. THE ORDER
+        // IS A COMMITTED INTERFACE (growth cut 4, extended crossroads
+        // cut 1): the five legacy towns draw base then phase EXACTLY
+        // as in v0.1-v0.4 (40 draws), the two wider-map towns (5-6)
+        // draw their 16 (base then phase) APPENDED after that, and the
+        // branch town (7 = WYRMHOLLOW) draws its 8 (4 base + 4 phase,
+        // mirroring town 6's pattern) APPENDED strictly after town 6 —
+        // each delta counted, the old stream order frozen, so towns
+        // 0-6's world is bit-identical and P1-P8 carry verbatim.
+        rng_t rng(run_seed);
 
         for(int t = 0; t < legacy_town_count; ++t)
         {
@@ -804,7 +1064,7 @@ int main()
             }
         }
 
-        for(int t = legacy_town_count; t < town_count; ++t)
+        for(int t = legacy_town_count; t < spine_town_count; ++t)
         {
             for(int g = 0; g < good_count; ++g)
             {
@@ -813,12 +1073,27 @@ int main()
             }
         }
 
-        for(int t = legacy_town_count; t < town_count; ++t)
+        for(int t = legacy_town_count; t < spine_town_count; ++t)
         {
             for(int g = 0; g < good_count; ++g)
             {
                 phase[t][g] = rng.range(12);
             }
+        }
+
+        // The branch town (crossroads cut 1): +8 draws, appended after
+        // town 6 — 4 base then 4 phase, mirroring town 6's pattern.
+        // THE FREEZE POINT: any future off-spine town appends its draws
+        // strictly after this, never in between (the wire-format rule).
+        for(int g = 0; g < good_count; ++g)
+        {
+            base[branch_town][g] = (price_lo[g] + price_hi[g]) / 2 - 3
+                                 + rng.range(7);
+        }
+
+        for(int g = 0; g < good_count; ++g)
+        {
+            phase[branch_town][g] = rng.range(12);
         }
 
         // Every town produces one good cheap and craves another dear —
@@ -896,6 +1171,7 @@ int main()
             bn::sound_items::wr_wind.play(bn::fixed(0.8));
             ++audio_wind;
 
+            record_run();          // the run ended: bank it (crossroads cut 4)
             clear_lines();
             return;
         }
@@ -951,6 +1227,244 @@ int main()
         }
     };
 
+    // --- the authored background (crossroads cut 2, the sprite art pass) -----
+    // A 32x32-cell regular_bg baked from the SAME sim state the glyph rows
+    // read, at BACKMOST priority so every text sprite (OBJ) draws on top.
+    // Pure presentation: nothing here feeds back into the sim, so
+    // wr_telemetry's 56 words and every P1-P9 pin are byte-identical to
+    // v0.7 (the Cindervault art-pass method: a second mailbox + hardware
+    // pins, never a widened sim mailbox).
+    constexpr int bg_cols = 32;
+    constexpr int bg_rows = 32;
+    // create_bg() places the MAP CENTER; putting cell (0,0)'s top-left on
+    // the screen top-left (-120,-80) means the center sits (16,16) cells =
+    // (128,128) px past that. The 30x20 visible cells then tile the screen.
+    constexpr int bg_origin_x = -120;
+    constexpr int bg_origin_y = -80;
+
+    // tile ids in wr_tiles (see graphics/generate_assets.py)
+    enum tile_t : int {
+        T_SKY = 1, T_ROAD = 2, T_EDGE = 3, T_WALL = 4, T_ROOF = 5,
+        T_WINDOW = 6, T_BAR_FILL = 7, T_BAR_EMPTY = 8, T_CURSOR = 9,
+        T_FORK = 10, T_PIP = 11,
+    };
+
+    alignas(int) bn::regular_bg_map_cell bg_cells[bg_cols * bg_rows] = {};
+    bn::regular_bg_map_item bg_map_item(bg_cells[0],
+                                        bn::size(bg_cols, bg_rows));
+    bn::regular_bg_item bg_item(bn::regular_bg_tiles_items::wr_tiles,
+                                bn::bg_palette_items::wr_palette, bg_map_item);
+    bn::regular_bg_ptr road_bg = bg_item.create_bg(
+            bg_origin_x + bg_cols * 4, bg_origin_y + bg_rows * 4);
+    road_bg.set_priority(3);
+    bn::regular_bg_map_ptr road_map = road_bg.map();
+
+    auto set_cell = [&](int x, int y, int gfx)
+    {
+        if(x < 0 || x >= bg_cols || y < 0 || y >= bg_rows)
+        {
+            return;
+        }
+
+        bn::regular_bg_map_cell& cell = bg_cells[bg_map_item.cell_index(x, y)];
+        bn::regular_bg_map_cell_info info(cell);
+        info.set_tile_index(gfx);
+        cell = info.cell();
+    };
+
+    // Bake the current scene into bg_cells and return a checksum fold of the
+    // whole 32x32 grid. Reads ONLY sim state (never writes it). Layout, in
+    // the 30x20 visible cells: sky, a town skyline whose building heights
+    // key off the town id (each town a distinct roofline), a road band (the
+    // fork drawn when a junction is live from here), and — while trading —
+    // a four-good market whose bars scale to price(town, g), the cursor good
+    // chevroned and cargo shown as coin pips.
+    auto bake_scene = [&]() -> unsigned
+    {
+        for(int y = 0; y < bg_rows; ++y)
+        {
+            for(int x = 0; x < bg_cols; ++x)
+            {
+                set_cell(x, y, T_SKY);
+            }
+        }
+
+        constexpr int road_top = 7;      // road band rows 7..10
+        constexpr int road_bot = 10;
+        constexpr int base_row = 18;     // market bars sit on this row
+        constexpr int cargo_row = 19;
+
+        for(int x = 0; x < bg_cols; ++x)
+        {
+            set_cell(x, road_top, T_EDGE);
+            set_cell(x, 8, T_ROAD);
+            set_cell(x, 9, T_ROAD);
+            set_cell(x, road_bot, T_EDGE);
+        }
+
+        // town skyline: five buildings, heights keyed off the town id
+        constexpr int slot_x[5] = {2, 8, 14, 20, 26};
+        int t = (state == st_title) ? 0 : town;
+        for(int i = 0; i < 5; ++i)
+        {
+            int h = 2 + ((t * 3 + i * 2) % 4);   // 2..5 rows tall
+            int bx = slot_x[i];
+            int roof = road_top - 1 - h;
+
+            for(int by = roof + 1; by <= road_top - 1; ++by)
+            {
+                for(int dx = 0; dx < 3; ++dx)
+                {
+                    set_cell(bx + dx, by, T_WALL);
+                }
+            }
+
+            for(int dx = 0; dx < 3; ++dx)
+            {
+                set_cell(bx + dx, roof, T_ROOF);
+            }
+
+            set_cell(bx + 1, road_top - 2, T_WINDOW);
+        }
+
+        // the fork: a signpost on the road + a branch spur climbing away,
+        // drawn only when a fork is live from here (the junction DUNWICK or
+        // the branch WYRMHOLLOW) — the junction's face on the road
+        bool fork_live = (state != st_title) && adjacency[t].fork >= 0;
+        if(fork_live)
+        {
+            set_cell(15, road_bot, T_FORK);
+            set_cell(16, 9, T_ROAD);
+            set_cell(17, 8, T_ROAD);
+            set_cell(18, road_top, T_ROAD);
+        }
+
+        // the market panel — only while trading (prices are undefined until
+        // the first reset_run). Four goods, one bar each, height scaled per
+        // good into 1..8 cells; the cursor good chevroned, cargo pipped.
+        if(state == st_trading)
+        {
+            constexpr int bar_x[good_count] = {3, 10, 17, 24};
+
+            for(int g = 0; g < good_count; ++g)
+            {
+                int p = price(town, g);
+                int span = price_hi[g] - price_lo[g];
+                int h = 1 + (span > 0 ? (p - price_lo[g]) * 7 / span : 0);
+                h = h < 1 ? 1 : (h > 8 ? 8 : h);
+                int bx = bar_x[g];
+
+                for(int k = 0; k < 8; ++k)
+                {
+                    int gfx = (k < h) ? T_BAR_FILL : T_BAR_EMPTY;
+
+                    for(int dx = 0; dx < 3; ++dx)
+                    {
+                        set_cell(bx + dx, base_row - k, gfx);
+                    }
+                }
+
+                if(g == cursor)
+                {
+                    set_cell(bx + 1, base_row - h, T_CURSOR);
+                }
+
+                int pips = cargo[g] > 3 ? 3 : cargo[g];
+                for(int k = 0; k < pips; ++k)
+                {
+                    set_cell(bx + k, cargo_row, T_PIP);
+                }
+            }
+        }
+        else if(state == st_balanced)    // win: a full row of coin pips
+        {
+            for(int x = 2; x < 28; x += 2)
+            {
+                set_cell(x, base_row, T_PIP);
+            }
+        }
+        else if(state == st_closed)      // pass closed: empty market frames
+        {
+            constexpr int bar_x[good_count] = {3, 10, 17, 24};
+
+            for(int g = 0; g < good_count; ++g)
+            {
+                for(int k = 0; k < 8; ++k)
+                {
+                    for(int dx = 0; dx < 3; ++dx)
+                    {
+                        set_cell(bar_x[g] + dx, base_row - k, T_BAR_EMPTY);
+                    }
+                }
+            }
+        }
+        else                             // title: a coin banner + a signpost
+        {
+            for(int x = 2; x < 28; x += 3)
+            {
+                set_cell(x, base_row, T_PIP);
+            }
+
+            set_cell(15, base_row - 2, T_FORK);
+        }
+
+        // checksum fold of the whole grid (a deterministic hash of the
+        // authored art actually on screen — the FNV-1a of every tile index)
+        unsigned sum = 2166136261u;
+        for(int i = 0; i < bg_cols * bg_rows; ++i)
+        {
+            bn::regular_bg_map_cell_info info(bg_cells[i]);
+            sum = (sum ^ unsigned(info.tile_index())) * 16777619u;
+        }
+
+        return sum;
+    };
+
+    // Scene cache key: the bake re-runs (and reload_cells_ref DMAs to VRAM)
+    // ONLY when this changes, so quiet frames and the committed dawn edges
+    // do no extra bg work — the staggered dawn budget is respected.
+    auto scene_key = [&]() -> unsigned
+    {
+        unsigned k = unsigned(state) * 131u + unsigned(town) * 17u
+                   + unsigned(cursor);
+
+        if(state == st_trading)
+        {
+            for(int g = 0; g < good_count; ++g)
+            {
+                k = k * 41u + unsigned(price(town, g)) * 7u
+                    + unsigned(cargo[g]);
+            }
+
+            k += adjacency[town].fork >= 0 ? 999u : 0u;
+        }
+
+        return k;
+    };
+
+    // Boot bake: paint the title scene once, off any committed edge frame
+    // (this runs before the first bn::core::update(), long before P1's
+    // frame-60 title pins).
+    unsigned art_key = scene_key();
+    unsigned art_checksum = bake_scene();
+    road_map.reload_cells_ref();
+    unsigned art_rebakes = 1;
+
+    // Deferred-bake budget (crossroads cut 2). The bake is ~1024 cells of
+    // CPU; running it ON a head-redraw / stagger frame overruns that frame's
+    // vblank and slips the road-line sprite one frame late — measurably
+    // breaking P6's frame-100 pin (the day-13 hazard-announce redraw, the
+    // route's heaviest text regeneration). So the bake NEVER runs on a busy
+    // frame: it waits for the scene to fall CALM (no head redraw, no stagger
+    // line still regenerating, no card just flipped) for a few frames, then
+    // catches up. Presentation-only: the bg simply settles a beat after the
+    // player acts, and every committed text pin is byte-identical to v0.7.
+    constexpr unsigned art_calm_needed = 6;   // past head(0)+crier/pact/road
+                                              // (1-3)+ledgers(4,5): frame 6
+                                              // is the first with no regen
+    unsigned art_calm = 0;
+    unsigned prev_state = state;
+
     while(true)
     {
         bool start = bn::keypad::start_pressed();
@@ -961,6 +1475,27 @@ int main()
         case st_title:
         case st_balanced:
         case st_closed:
+            // The seed dial (crossroads cut 3): LEFT/RIGHT scan the world
+            // seed on the TITLE ONLY — edge-triggered (one press = one step,
+            // so a challenge code is a repeatable press sequence), wrapping
+            // over dial_count. Dial 0 is the pinned 'WICK' world; run_seed
+            // (and the published word [56]) follow the dial live. The end
+            // cards do NOT dial — START there reruns the current dialed world.
+            if(state == st_title)
+            {
+                if(bn::keypad::left_pressed())
+                {
+                    seed_dial = (seed_dial + dial_count - 1) % dial_count;
+                    run_seed = dial_seed(seed_dial);
+                }
+
+                if(bn::keypad::right_pressed())
+                {
+                    seed_dial = (seed_dial + 1) % dial_count;
+                    run_seed = dial_seed(seed_dial);
+                }
+            }
+
             if(start)
             {
                 reset_run();
@@ -1019,29 +1554,63 @@ int main()
                     if(gold >= gold_target)
                     {
                         state = st_balanced;
+                        record_run();        // the run won: bank it (cut 4)
                         clear_lines();
                     }
                 }
             }
 
-            if(state == st_trading && bn::keypad::l_pressed()
-               && town > 0 && gold >= travel_toll)
+            // The travel verbs read the adjacency table (crossroads
+            // cut 1). A ride is the same everywhere: pay the toll, move,
+            // mark visited, dawn, then resolve the leg's hazards. The
+            // leg id is the LOWER town index for a spine leg (so a spine
+            // L/R ride is byte-identical to v0.6 — min(4,3)=3 is the
+            // (3,4) leg, min(3,4)=3 the same), or branch_leg for a fork
+            // ride (the fork road carries no deck hazard).
+            auto ride = [&](int dest)
             {
+                int leg = (int(town) == branch_town || dest == branch_town)
+                        ? branch_leg
+                        : (int(town) < dest ? int(town) : dest);
                 gold -= travel_toll;
-                --town;
+                town = unsigned(dest);
                 visited_mask |= 1u << unsigned(town);
                 dawn();
-                cross(town);             // rode the (town, town+1) leg
+                cross(leg);
+            };
+
+            // L: walk the spine left (or ride the branch back down to the
+            // junction). Guarded against the chord frame so L+R never
+            // also fires a single move — byte-identical, since no
+            // committed route presses both shoulders on one frame.
+            if(state == st_trading && bn::keypad::l_pressed()
+               && !bn::keypad::r_pressed()
+               && adjacency[town].left >= 0 && gold >= travel_toll)
+            {
+                ride(adjacency[town].left);
             }
 
+            // R: walk the spine right — never onto the branch (the fork
+            // column is separate), so R at the junction still goes to
+            // HOLLOWFEN and R at MIRGATE (spine end, .right == -1) does
+            // nothing, exactly as the old `town < town_count - 1` bound.
             if(state == st_trading && bn::keypad::r_pressed()
-               && town < town_count - 1 && gold >= travel_toll)
+               && !bn::keypad::l_pressed()
+               && adjacency[town].right >= 0 && gold >= travel_toll)
             {
-                gold -= travel_toll;
-                ++town;
-                visited_mask |= 1u << unsigned(town);
-                dawn();
-                cross(town - 1);         // rode the (town-1, town) leg
+                ride(adjacency[town].right);
+            }
+
+            // THE FORK VERB (crossroads cut 1): L+R chorded on one frame —
+            // "take the fork". Purely additive (no committed route chords
+            // the shoulders): from the junction it rides ONTO the branch
+            // (WYRMHOLLOW), from the branch it rides back to the junction.
+            // Same toll + dawn() + cross(leg) as any spine ride.
+            if(state == st_trading && bn::keypad::l_pressed()
+               && bn::keypad::r_pressed()
+               && adjacency[town].fork >= 0 && gold >= travel_toll)
+            {
+                ride(adjacency[town].fork);
             }
 
             if(state == st_trading && bn::keypad::select_pressed())
@@ -1080,6 +1649,7 @@ int main()
                         if(gold >= gold_target)
                         {
                             state = st_balanced;
+                            record_run();    // the run won: bank it (cut 4)
                             clear_lines();
                         }
                     }
@@ -1127,8 +1697,84 @@ int main()
             ui_lines[2].set(ui_gen, ui_x, -42, "BUY LOW - SELL HIGH");
             ui_lines[3].set(ui_gen, ui_x, -30, "300 GOLD BEFORE DAY 30");
             title_lines[0].set(ui_gen, ui_x, -14, "YOUR LEDGER REMEMBERS");
-            title_lines[1].set(ui_gen, ui_x, -2, "BUT THE INK AGES");
-            title_lines[2].set(ui_gen, ui_x, 12, "PRESS START");
+
+            // The best on the title (WIK-03): once a prior SRAM save has
+            // been restored, the second pitch line carries the record a
+            // score-attack player is chasing — BEST GOLD x DAY y, both the
+            // persisted best_gold AND best_day_reached (the latter banked
+            // since crossroads cut 4 but never shown anywhere until now).
+            // Gated on ledger_loaded, which is FALSE on every fresh /
+            // foreign / erased cart (and on every proof booted without
+            // --savefile), so the default no-save path renders EXACTLY the
+            // committed flavor line at the same slot/position — byte-
+            // identical, and P1-P12 carry verbatim. Render-only: no RNG
+            // draw, no telemetry word, no new sprite line.
+            //
+            // The lifetime run count (follow-on): best.runs is banked in
+            // SRAM (wr_ledger[4]) and bumped in record_run() at every
+            // run-end since crossroads cut 4, but was shown on no screen.
+            // Ride it on this same best line as " RUNS n" — plain-space
+            // separator matching " DAY " (no new font glyphs), still under
+            // the ledger_loaded gate, so the no-save path is unchanged.
+            // Capacity widened to hold the extra segment.
+            //
+            // The persistent tier tag (follow-on to #189): #189's milestone
+            // flourish flashes "50TH RUN" once, on the end card of the
+            // crossing run, then is gone. This surfaces the DURABLE side of
+            // the same fact — once best.runs reaches a tier threshold, the
+            // pure wr::run_tier_label (wr_milestones.h) returns the earned
+            // persistent label (runs >= 50 -> "VETERAN"), which we append to
+            // this same best line beside RUNS n so it re-shows every boot.
+            // It is a >= LEVEL on the current stored total, not a crossing,
+            // so it persists above the threshold. Still inside this
+            // ledger_loaded gate and drawn with the same text primitive, so
+            // the no-save else branch stays byte-identical. Capacity widened
+            // once more to hold the tag.
+            if(ledger_loaded)
+            {
+                bn::string<64> best_line("BEST GOLD ");
+                best_line.append(bn::to_string<8>(best.best_gold));
+                best_line.append(" DAY ");
+                best_line.append(bn::to_string<8>(best.best_day_reached));
+                best_line.append(" RUNS ");
+                best_line.append(bn::to_string<8>(best.runs));
+                if(const char* tier_label = wr::run_tier_label(best.runs))
+                {
+                    best_line.append(' ');
+                    best_line.append(tier_label);
+                }
+                title_lines[1].set(ui_gen, ui_x, -2, best_line);
+            }
+            else
+            {
+                title_lines[1].set(ui_gen, ui_x, -2, "BUT THE INK AGES");
+            }
+            // The seed dial (crossroads cut 3): once dialed OFF 0, the START
+            // line carries the live dialed world seed as SEED xxxxxxxx (the
+            // pinned "PRESS START" prefix carries, so the P1 text pin holds)
+            // plus the L/R dial hint — two players who dial the same 8 hex
+            // digits trade the SAME world. At dial 0 (the default) the title
+            // renders EXACTLY the committed line, byte-for-byte identical
+            // sprite work — "zero behavioural change at default", so the
+            // frame-alignment the START-window pins own (P2-P10) is untouched
+            // and the enrichment only ever runs once a human has dialed.
+            if(seed_dial == 0)
+            {
+                title_lines[2].set(ui_gen, ui_x, 12, "PRESS START");
+            }
+            else
+            {
+                bn::string<40> start_line("PRESS START  L/R SEED ");
+
+                for(int i = 7; i >= 0; --i)
+                {
+                    unsigned nib = (run_seed >> (i * 4)) & 0xFu;
+                    start_line.append(char(nib < 10u ? '0' + int(nib)
+                                                     : 'A' + int(nib) - 10));
+                }
+
+                title_lines[2].set(ui_gen, ui_x, 12, start_line);
+            }
             title_lines[3].set(ui_gen, ui_x, 26,
                                "A BUY  B SELL  L/R GO  SEL WAIT");
             pact_line.set(ui_gen, ui_x, 40, "RIGHT TAKES A PACT");
@@ -1312,7 +1958,15 @@ int main()
 
             int slot = 0;
 
-            for(int t = 0; t < town_count; ++t)
+            // The ledger lists the SPINE towns (crossroads cut 1 bounds
+            // this to spine_town_count, not town_count): standing on a
+            // spine town this renders the other six EXACTLY as v0.6
+            // (byte-identical display), and standing on the branch it
+            // shows all seven spine towns — WYRMHOLLOW's own row is
+            // never listed (you are standing in it, and its price is in
+            // the market table). ledger_lines has town_count - 1 = 7
+            // slots, room for the seven-row branch case.
+            for(int t = 0; t < spine_town_count; ++t)
             {
                 if(t == town)
                 {
@@ -1373,6 +2027,41 @@ int main()
             ui_lines[2].set(ui_gen, ui_x, -28, line2);
             ui_lines[3].set(ui_gen, ui_x, -16, "THE ROAD MADE YOU");
             title_lines[0].set(ui_gen, ui_x, 8, "PRESS START");
+
+            // The best ledger (crossroads cut 4): the persisted record, drawn
+            // ONLY when a prior SRAM save was restored — so the default no-save
+            // path leaves this line clear and P1-P11 carry byte-identical.
+            if(ledger_loaded)
+            {
+                bn::string<40> bestline("BEST GOLD ");
+                bestline.append(bn::to_string<8>(best.best_gold));
+                title_lines[1].set(ui_gen, ui_x, 24, bestline);
+
+                // NEW RECORD flash (WIK-03 follow-on): when THIS run beat the
+                // prior best (gold or day, captured in record_run before the
+                // overwrite), celebrate it below the best line. Unreachable on
+                // the no-save path (ledger_loaded false), so byte-identical
+                // there — clear_lines() blanks title_lines[2] each transition,
+                // so it stays clear on a non-record run-end.
+                if(new_record)
+                {
+                    title_lines[2].set(ui_gen, ui_x, 40, "NEW RECORD");
+                }
+
+                // Run-count milestone flourish (follow-on to #186): when this
+                // run-end reaches a lifetime threshold (10/25/50, decided by
+                // the pure wr::run_milestone_label captured in record_run
+                // before ++best.runs), mark it one row below NEW RECORD. Same
+                // no-save gate (ledger_loaded false -> unreachable) and same
+                // clear_lines() blank-per-transition, so title_lines[3] stays
+                // clear on a non-milestone run-end and the no-save card is
+                // byte-identical.
+                if(milestone_label)
+                {
+                    title_lines[3].set(ui_gen, ui_x, 56, milestone_label);
+                }
+            }
+
             break;
         }
 
@@ -1386,6 +2075,35 @@ int main()
             ui_lines[2].set(ui_gen, ui_x, -28, "30 DAYS SPENT");
             ui_lines[3].set(ui_gen, ui_x, -16, "WINTER TAKES THE ROAD");
             title_lines[0].set(ui_gen, ui_x, 8, "PRESS START");
+
+            // The best ledger (crossroads cut 4): see st_balanced above — the
+            // persisted best gold, drawn ONLY when a save was restored, so the
+            // default no-save closed card is byte-identical to v0.9.
+            if(ledger_loaded)
+            {
+                bn::string<40> bestline("BEST GOLD ");
+                bestline.append(bn::to_string<8>(best.best_gold));
+                title_lines[1].set(ui_gen, ui_x, 24, bestline);
+
+                // NEW RECORD flash (WIK-03 follow-on): a losing run can still
+                // set a new best (more gold than before, or a later day) — the
+                // pass-closing card celebrates it too. Same no-save gate, same
+                // free slot as st_balanced above.
+                if(new_record)
+                {
+                    title_lines[2].set(ui_gen, ui_x, 40, "NEW RECORD");
+                }
+
+                // Run-count milestone flourish (follow-on to #186): a losing
+                // run still ends a run and can reach a lifetime threshold —
+                // the pass-closing card marks 10/25/50 too. Same no-save gate,
+                // same free title_lines[3] slot as st_balanced above.
+                if(milestone_label)
+                {
+                    title_lines[3].set(ui_gen, ui_x, 56, milestone_label);
+                }
+            }
+
             break;
         }
 
@@ -1495,6 +2213,76 @@ int main()
         wr_telemetry[49] = audio_dawn;
         wr_telemetry[50] = audio_wind;
         wr_telemetry[51] = audio_coin + audio_dawn + audio_wind;
+
+        // Crossroads witness words (crossroads cut 1) — layout in the
+        // header. All 0 on the title.
+        {
+            bool title = state == st_title;
+            wr_telemetry[52] = title ? 0u
+                                     : (int(town) == branch_town ? 1u : 0u);
+            wr_telemetry[53] = title || adjacency[town].fork < 0
+                                     ? 0u : unsigned(branch_leg);
+            wr_telemetry[54] = title ? 0u
+                                     : unsigned(price(branch_town,
+                                                      branch_town % good_count));
+            wr_telemetry[55] = 0u;       // reserved
+        }
+
+        // Seed-dial witness word (crossroads cut 3) — APPENDED behind the
+        // frozen 0-55 (the append-only wire-format discipline: telemetry
+        // grows [56] -> [57]). Published on EVERY frame incl. the title
+        // (unlike the 0-on-title witnesses) so each dial step is watchable;
+        // at dial 0 it is seed_constant = 0x5749434B on every frame, so the
+        // 56 committed sim words 0-55 stay byte-identical and P1-P10 carry
+        // verbatim. The run draws its world from exactly this seed.
+        wr_telemetry[56] = run_seed;     // the live dialed world seed
+
+        // --- the authored background: rebake only when the scene changed,
+        // and ONLY on a calm frame (crossroads cut 2). A frame is BUSY while
+        // a card just flipped or a trading head redraw / stagger line is
+        // still regenerating (head_quiet < art_calm_needed); the bake defers
+        // until the scene has been calm for art_calm_needed frames, so no
+        // committed edge frame carries the bake's CPU (P1-P9 text pins stay
+        // byte-identical). wr_art publishes the presentation for the headless
+        // harness (P10) — a SECOND mailbox, so wr_telemetry above is
+        // byte-identical to v0.7 by contract.
+        {
+            bool busy = (state != prev_state)
+                        || (state == st_trading
+                            && head_quiet < art_calm_needed);
+            prev_state = state;
+            art_calm = busy ? 0u : art_calm + 1u;
+
+            unsigned key = scene_key();
+            if(key != art_key && art_calm >= art_calm_needed)
+            {
+                art_checksum = bake_scene();
+                road_map.reload_cells_ref();
+                art_key = key;
+                ++art_rebakes;
+            }
+
+            wr_art[0] = 0x57415254u;      // 'WART'
+            wr_art[1] = state;
+            wr_art[2] = unsigned(town);
+            wr_art[3] = unsigned(cursor);
+            wr_art[4] = art_checksum;
+            wr_art[5] = 1u;              // the road bg is created + shown
+            wr_art[6] = adjacency[town].fork >= 0 ? unsigned(branch_leg) : 0u;
+            wr_art[7] = art_rebakes;
+        }
+
+        // Persistence mailbox (crossroads cut 4, the best ledger) — a THIRD
+        // committed symbol, published every frame from the restored/updated
+        // ledger, so the harness reads a stable record at any watched frame.
+        // A pure witness: nothing here feeds back into the sim, and it never
+        // touches wr_telemetry / wr_art, so both stay byte-identical to v0.9.
+        wr_ledger[0] = 0x574C4447u;          // 'WLDG'
+        wr_ledger[1] = unsigned(best.best_gold);
+        wr_ledger[2] = unsigned(best.best_day_reached);
+        wr_ledger[3] = unsigned(best.best_seed);
+        wr_ledger[4] = unsigned(best.runs);
+        wr_ledger[5] = ledger_loaded ? 1u : 0u;
 
         bn::core::update();
     }

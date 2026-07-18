@@ -1,9 +1,17 @@
 # Brineward — arc B3: the bestiary
 
-> **Status:** `arc-plan` — the second Brineward arc (owner menu B3,
-> `docs/NEXT-MENU-2026-07-15.md`). The base is arc slice 9 (loot, port,
-> upgrades, the Maw, wind, danger bands, audio, the Graywake ledger save).
-> This doc plans the arc in build order and pins each cut's proof
+> **Status:** `arc-built — growth-complete pending owner clicks` — the
+> second Brineward arc (owner menu B3, `docs/NEXT-MENU-2026-07-15.md`).
+> The base is arc slice 9 (loot, port, upgrades, the Maw, wind, danger
+> bands, audio, the Graywake ledger save). All FOUR cuts are BUILT as a
+> stacked draft chain — cut 1 «The Grasper» (PR #176), cut 2 «Ram/brace»
+> (PR #177), cut 3 «The ambush» (PR #178), cut 4 «The hold track» (this
+> PR) — each additive behind its gate (seed bucket / fresh input verb /
+> seed sub-bucket / legacy-constant tier-0 row), every prior route and
+> emulator pin re-derived byte-identical. The arc is GROWTH-COMPLETE;
+> what remains is owner landing clicks under the standing 07-16 wall
+> (land order #176 → #177 → #178 → this, born-red HOLD until each flip).
+> This doc planned the arc in build order and pins each cut's proof
 > strategy; `docs/current-state.md` wins as the repo moves.
 
 ## Why this arc
@@ -24,7 +32,7 @@ concept sketched around it. Four cuts, in build order:
 
 ## The four cuts (build order)
 
-### Cut 1 — «The Grasper» — the second sea monster  ✅ (this PR)
+### Cut 1 — «The Grasper» — the second sea monster  ✅ (PR #176)
 
 The break-the-geometry **sibling** of the Maw, with the OPPOSITE gimmick:
 where the Maw is a telegraphed one-shot LUNGE you dodge, the Grasper
@@ -54,7 +62,7 @@ full-sail beam clears it, a battle-sail scooper does not.
   against `bw_telemetry`. Existing host output AND every committed route
   re-derive **byte-identical**.
 
-### Cut 2 — «Ram/brace» — the reserved B verb
+### Cut 2 — «Ram/brace» — the reserved B verb  ✅ (PR #177)
 
 Build the concept's reserved B button as the **break-free** verb: a
 braced ram that lets a seized sloop wrench loose from the Grasper's hold
@@ -70,7 +78,7 @@ slice-2..9 and cut-1 route carries verbatim because none of them press B.
   B-silent route changes. A recorded «break free» route shows a held
   sloop wrenching loose. Zero re-pins by the gate.
 
-### Cut 3 — «The ambush» — the Grasper holds while cutters close in
+### Cut 3 — «The ambush» — the Grasper holds while cutters close in  ✅ (PR #178)
 
 Complete the concept's full sentence: while the Grasper **holds** you,
 **cutters close in** — light enemy sloops that converge on the pinned
@@ -84,7 +92,7 @@ ambush composes cut 1's hold with cut 3's converging AI.
   and that the braced break (cut 2) is the counter. A recorded «ambush
   survived» route.
 
-### Cut 4 — «The hold track» — the hold-cap economy
+### Cut 4 — «The hold track» — the hold-cap economy  ✅ (this PR — arc closer)
 
 Build the concept's "Hold cap starts at 8 crates" as a **progression**
 track: a fourth port upgrade line that raises `BW_HOLD_CAP` in tiers, so

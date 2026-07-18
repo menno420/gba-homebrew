@@ -37,6 +37,15 @@
  *      provably winnable by its own solver line, entries are sorted
  *      hardest-first, and the pinned pars show the packs are genuinely
  *      harder than the baseline caverns
+ *  14. shareable line (arc 2, cut 1): encodeShare/decodeShare round-trip
+ *      (level=0 omitted, non-zero level carried), line validation +
+ *      normalization (junk/glyphs stripped, 64 cap, illegal line throws on
+ *      encode / degrades on decode), decodeShare across all three input
+ *      shapes + null on junk, and the load-bearing proof — spectate()
+ *      reconstructs the sharer's OWN run byte-identically to a live replay
+ *      (every step's trace grid == the authoritative grid) across the
+ *      seed-42 line and the 12-seed sweep, freezes at a terminal win, and a
+ *      share carries only seed+line (the solver's line stays hidden)
  *
  * Exits nonzero on any failed assertion; prints one PASS/FAIL line each.
  */
@@ -540,6 +549,412 @@ check("daily seed is a pure date mapping", E.dailySeed("2026-07-13") === 2026071
   check("packById: resolves both shipped ids, unknown -> null",
     E.packById("granite-gauntlet") === E.PACKS[0] && E.packById("deep-cuts") === E.PACKS[1] &&
     E.packById("nope") === null);
+}
+
+// ----------------------------------- 14. shareable line (arc 2, cut 1)
+{
+  // encode/decode round-trip on a real cleared line (the seed-42 solver line)
+  const shareA = { seed: SEED, levelIndex: 0, line: g0.level.solution };
+  const encA = E.encodeShare(shareA);
+  const decA = E.decodeShare(encA);
+  check("encodeShare: canonical fragment, level=0 omitted",
+    encA === `seed=${SEED}&replay=${g0.level.solution}`, encA);
+  check("decodeShare(encodeShare(x)) round-trips seed/level/line",
+    decA && decA.seed === (SEED >>> 0) && decA.levelIndex === 0 && decA.line === g0.level.solution,
+    JSON.stringify(decA));
+
+  // level > 0 is carried; encode/decode round-trips it too
+  const encB = E.encodeShare({ seed: 7, levelIndex: 4, line: "LRRL" });
+  const decB = E.decodeShare(encB);
+  check("encodeShare/decodeShare carry a non-zero level",
+    encB === "seed=7&level=4&replay=LRRL" &&
+    decB.seed === 7 && decB.levelIndex === 4 && decB.line === "LRRL", encB);
+
+  // isReplayLine + normalizeLine: legal core kept, junk/glyphs stripped, cap held
+  check("isReplayLine: accepts LR-only, rejects junk / over-cap / non-strings",
+    E.isReplayLine("") && E.isReplayLine("LRRL") &&
+    !E.isReplayLine("LxR") && !E.isReplayLine("lr") &&
+    !E.isReplayLine("L".repeat(65)) && !E.isReplayLine(42) && !E.isReplayLine(null));
+  check("normalizeLine: uppercases, drops non-L/R, caps at 64",
+    E.normalizeLine("l r→R l") === "LRRL" &&
+    E.normalizeLine("♞RR♞L") === "RRL" &&
+    E.normalizeLine("R".repeat(100)).length === 64);
+  check("encodeShare throws on an illegal line (never silently corrupts a share)",
+    (() => { try { E.encodeShare({ seed: 1, line: "LXR" }); return false; } catch (e) { return true; } })());
+
+  // decodeShare accepts all three input shapes and returns null on junk
+  const fromParams = E.decodeShare(new URLSearchParams("seed=99&replay=RR&level=2"));
+  const fromBag = E.decodeShare({ seed: 99, level: 2, replay: "RR" });
+  const fromLead = E.decodeShare("?seed=99&level=2&replay=RR");
+  check("decodeShare: URLSearchParams, plain bag, and ?-led string all agree",
+    JSON.stringify(fromParams) === JSON.stringify(fromBag) &&
+    JSON.stringify(fromBag) === JSON.stringify(fromLead) &&
+    fromParams.seed === 99 && fromParams.levelIndex === 2 && fromParams.line === "RR",
+    JSON.stringify(fromParams));
+  check("decodeShare: null when seed or replay is missing, or on a malformed escape",
+    E.decodeShare("seed=5") === null && E.decodeShare("replay=RR") === null &&
+    E.decodeShare("") === null && E.decodeShare(123) === null &&
+    E.decodeShare("seed=%zz&replay=RR") === null);
+  check("decodeShare: a URL-junk replay degrades to its legal core, not a throw",
+    E.decodeShare("seed=1&replay=Rx-L").line === "RL");
+
+  // the load-bearing proof: spectate() reconstructs the sharer's OWN run
+  // byte-identically to a live replay, and every step's trace grid matches the
+  // authoritative post-rotation grid
+  const spec = E.spectate(SEED, 0, g0.level.solution);
+  const live = E.replay(E.newGame(SEED, 0), g0.level.solution);
+  const gridsAgree = spec.steps.every(s => E.gridString(s.trace.grid) === E.gridString(s.state.grid));
+  check("spectate: final state == live replay, every step trace grid == authoritative grid",
+    E.gridString(spec.final.grid) === E.gridString(live.grid) &&
+    spec.final.status === live.status && spec.final.collected === live.collected &&
+    spec.final.status === "won" && spec.clean && gridsAgree && spec.consumed === g0.level.solution.length,
+    `status=${spec.final.status} consumed=${spec.consumed}/${g0.level.solution.length}`);
+
+  // a won cavern freezes: extra rotations past the win are ignored (consumed
+  // stops at the winning line's length, not the padded line's)
+  const padded = g0.level.solution + "LRLR";
+  const specPad = E.spectate(SEED, 0, padded);
+  check("spectate: stops at terminal — trailing rotations after a win are ignored",
+    specPad.consumed === g0.level.solution.length &&
+    E.gridString(specPad.final.grid) === E.gridString(spec.final.grid));
+
+  // determinism + the OWN-line-only guarantee across the 12-seed sweep: every
+  // seed's solver line spectates identically to a live replay, and no share
+  // function ever emits the solver's hidden line for you
+  let sweepOk = 0;
+  for (let s = SEED; s < SEED + 12; s++) {
+    const lvl = E.newGame(s, 0).level;
+    const sp = E.spectate(s, 0, lvl.solution);
+    const lv = E.replay(E.newGame(s, 0), lvl.solution);
+    const enc = E.encodeShare({ seed: s, levelIndex: 0, line: lvl.solution });
+    // the encoded share contains ONLY what the sharer chose to send (seed +
+    // their line) — decoding it never reveals more than went in
+    const dec = E.decodeShare(enc);
+    if (E.gridString(sp.final.grid) === E.gridString(lv.grid) &&
+        sp.final.status === "won" && dec.line === lvl.solution &&
+        !enc.includes("solution")) sweepOk++;
+  }
+  check("spectate == live replay across the 12-seed sweep; a share carries only seed+line",
+    sweepOk === 12, `${sweepOk}/12`);
+}
+
+// ----------------------------------- 15. solver hints (arc 2, cut 2)
+{
+  const par0 = E.par(g0.level);
+
+  // the hint from a pristine board is exactly the solver's first stored move —
+  // hintFrom re-derives it via the SAME BFS `solve` uses, it doesn't read the line
+  check("hintFrom(pristine) == level.solution[0] (agrees with the stored solver line)",
+    E.hintFrom(E.newGame(SEED, 0)) === g0.level.solution.charAt(0),
+    `${E.hintFrom(E.newGame(SEED, 0))} vs ${g0.level.solution.charAt(0)}`);
+
+  // never reveal a hint for a terminal or malformed board
+  check("hintFrom: null on won / lost / gridless / junk states",
+    E.hintFrom({ status: "won" }) === null &&
+    E.hintFrom({ status: "lost" }) === null &&
+    E.hintFrom({ status: "playing" }) === null &&   // no grid/quota -> defensive null
+    E.hintFrom(null) === null && E.hintFrom(undefined) === null);
+
+  // following the hint move-by-move ALWAYS reaches 'won', within budget, in
+  // exactly par turns (each hint is the first step of a shortest winning
+  // continuation, so greedily following stays optimal)
+  function followHints(seed) {
+    let st = E.newGame(seed, 0), guard = 0, taken = "";
+    while (st.status === "playing") {
+      const h = E.hintFrom(st);
+      if (h !== "L" && h !== "R") return { ok: false, taken, st };
+      taken += h;
+      st = E.rotate(st, h === "R" ? "cw" : "ccw");
+      if (++guard > st.budget + 2) return { ok: false, taken, st };
+    }
+    return { ok: st.status === "won" && st.used <= st.budget, taken, st };
+  }
+  const f0 = followHints(SEED);
+  check("hintFrom: following hints from seed 42 wins within budget, in exactly par turns",
+    f0.ok && f0.st.used === par0 && f0.taken.length === par0 && E.hintFrom(f0.st) === null,
+    `used=${f0.st.used} par=${par0} taken=${f0.taken} terminalHint=${E.hintFrom(f0.st)}`);
+
+  let hintSweep = 0;
+  for (let s = SEED; s < SEED + 12; s++) {
+    const f = followHints(s);
+    const p = E.par(E.newGame(s, 0).level);
+    if (f.ok && f.st.used === p && f.taken.length === p && E.hintFrom(f.st) === null) hintSweep++;
+  }
+  check("hintFrom: hint-follow wins in exactly par across the 12-seed sweep",
+    hintSweep === 12, `${hintSweep}/12`);
+
+  // OFF-LINE HONESTY: after a deliberate NON-solver first move, hintFrom re-solves
+  // from the ACTUAL board — either pointing along a fresh shortest win (following
+  // it still wins in the remaining budget) or honestly returning null when the
+  // detour made the cavern unwinnable. It never parrots the stale stored line.
+  {
+    const start = E.newGame(SEED, 0);
+    const off = g0.level.solution.charAt(0) === "R" ? "ccw" : "cw";   // opposite of the solver
+    const s1 = E.rotate(start, off);
+    const offHint = E.hintFrom(s1);
+    const need1 = s1.quota - s1.collected;
+    const rec = E.search(s1.grid, s1.budget - s1.used).records.find(r => r.collected >= need1);
+    if (rec) {
+      let st = s1, guard = 0;
+      while (st.status === "playing") {
+        const h = E.hintFrom(st);
+        if (h !== "L" && h !== "R") break;
+        st = E.rotate(st, h === "R" ? "cw" : "ccw");
+        if (++guard > st.budget + 2) break;
+      }
+      check("hintFrom: after an off-line detour it re-solves the ACTUAL board and still wins in budget",
+        offHint === rec.path.charAt(0) && st.status === "won" && st.used <= st.budget,
+        `offHint=${offHint} used=${st.used} par=${par0}`);
+    } else {
+      check("hintFrom: an off-line detour that kills the cavern returns an honest null",
+        offHint === null, `offHint=${offHint}`);
+    }
+  }
+
+  // spend-gating: hintedGrade folds hints into `used` like over-par turns, so a
+  // par run leaning on 2 hints grades GOOD not PERFECT; 0 hints == plain grade
+  check("hintedGrade: pinned spend-gating truth table (a hint dings the card like an over-par turn)",
+    E.hintedGrade(par0, par0, 0).label === "PERFECT" && E.hintedGrade(par0, par0, 0).diff === 0 &&
+    E.hintedGrade(par0, par0, 1).label === "GREAT"   && E.hintedGrade(par0, par0, 1).diff === 1 &&
+    E.hintedGrade(par0, par0, 2).label === "GOOD"    && E.hintedGrade(par0, par0, 2).diff === 2 &&
+    E.hintedGrade(par0, par0, 3).label === "CLEARED" && E.hintedGrade(par0, par0, 3).diff === 3 &&
+    JSON.stringify(E.hintedGrade(par0 + 4, par0, 0)) === JSON.stringify(E.grade(par0 + 4, par0)) &&
+    JSON.stringify(E.hintedGrade(par0, par0, -5)) === JSON.stringify(E.grade(par0, par0)),
+    JSON.stringify(E.hintedGrade(par0, par0, 2)));
+}
+
+// ----------------------------- 16. undo×par deception (arc 2, cut 3)
+{
+  const par0 = E.par(g0.level);
+  // pinned truth table: [undos, used, par, want deception scalar, want label]
+  const rows = [
+    [0, par0,     par0, 0,  "clean-honest"],
+    [6, par0,     par0, 12, "HARD-deceptive"],
+    [0, par0 + 2, par0, 0,  "medium-honest"],
+    [2, par0,     par0, 4,  "medium-deceptive"],
+    [3, par0 + 3, par0, 3,  "HARD-tricky"],
+    [1, par0,     par0, 2,  "medium-tricky"],
+    [1, par0 + 1, par0, 1,  "medium-tricky"],
+  ];
+  for (const [undos, used, p, wantD, wantLabel] of rows) {
+    check(`deception(${undos},${used},${p})==${wantD}`, E.deception(undos, used, p) === wantD, `got ${E.deception(undos, used, p)}`);
+    check(`deceptionLabel(${undos},${used},${p})=="${wantLabel}"`, E.deceptionLabel(undos, used, p) === wantLabel, `got "${E.deceptionLabel(undos, used, p)}"`);
+  }
+  const a = E.deception(4, par0 + 1, par0), b = E.deception(4, par0 + 1, par0);
+  check("deception deterministic", a === b, `${a} vs ${b}`);
+  let mono = true, prev = -1;
+  for (let k = 0; k <= 8; k++) { const v = E.deception(k, par0, par0); if (v < prev) mono = false; prev = v; }
+  check("deception monotone in undos", mono, "");
+  check("deception floors at 0", E.deception(-3, par0, par0) === 0 && E.deception(0, par0 + 9, par0) === 0, "");
+}
+
+// ----------------------------- 17. mechanic fingerprint (arc 2, cut 4)
+{
+  // base cavern (seed 42 level 0 places ZERO slice-4 cells): every class is
+  // absent, so neutralizing any of them is a no-op and the tag is "no-mechanic".
+  const fp0 = E.fingerprint(g0.level);
+  check("fingerprint(base cavern): base == par, all classes absent, no-op deltas",
+    fp0.base === E.par(g0.level) &&
+    !fp0.ice.present && !fp0.lock.present && !fp0.grate.present &&
+    fp0.ice.delta === 0 && fp0.lock.delta === 0 && fp0.grate.delta === 0 &&
+    !fp0.ice.loadBearing && !fp0.lock.loadBearing && !fp0.grate.loadBearing,
+    `base=${fp0.base} par=${E.par(g0.level)}`);
+  check("fingerprintTag(base cavern) == 'no-mechanic'",
+    E.fingerprintTag(g0.level) === "no-mechanic", E.fingerprintTag(g0.level));
+
+  // neutralizeClass is a PURE grid transform: on cell content with none of the
+  // class it is byte-identical to the input, and it never mutates its argument.
+  {
+    const before = E.gridString(g0.grid);
+    const idIce = E.neutralizeClass(g0.grid, "ice");
+    const idLock = E.neutralizeClass(g0.grid, "lock");
+    const idGrate = E.neutralizeClass(g0.grid, "grate");
+    check("neutralizeClass: identity on class-free content, and never mutates input",
+      E.gridString(idIce) === before && E.gridString(idLock) === before &&
+      E.gridString(idGrate) === before && E.gridString(g0.grid) === before);
+  }
+
+  // a hand-built lock-dependent cavern: the locked blue at the floor is a
+  // dead-weight PLUG the winning line needs. Pre-freeing it (neutralize "lock")
+  // lets it collect and vanish, so quota is no longer reachable within budget —
+  // the class is DEAD-without and therefore load-bearing. Ice/grate are absent.
+  {
+    const A = E.GEM0, B = E.GEM0 + 1, LOCKB = E.LOCK0 + 1, WALL = E.WALL;
+    const cells = [[6,3,B],[5,4,B],[7,4,B],[7,1,B],[5,2,A],[6,4,WALL],[7,5,LOCKB]];
+    const raw = E.emptyGrid(8);
+    for (const [r,c,v] of cells) raw[r][c] = v;
+    const grid = E.settle(raw);
+    const found = E.search(grid, 6);
+    let solution = null;
+    for (const rec of found.records) if (rec.collected >= 4) { solution = rec.path; break; }
+    const level = { size: 8, grid, quota: 4, budget: 6, best: found.best, solution };
+
+    const PINNED_LOCK_CAVERN = [
+      "........",
+      "........",
+      "........",
+      "........",
+      "........",
+      "....B...",
+      "....#...",
+      ".BABBb..",
+    ].join("\n");
+    check("hand cavern: pinned grid, merge-free at spawn, solver line wins WITH the lock",
+      E.gridString(grid) === PINNED_LOCK_CAVERN && E.findGroups(grid).length === 0 &&
+      solution !== null && E.par(level) === 5,
+      `par=${E.par(level)} solution="${solution}"`);
+    // replay the solver line manually (no seed -> no newGame) and confirm the win
+    {
+      let g = E.cloneGrid(grid), collected = 0, used = 0, status = "playing";
+      for (const ch of solution) {
+        if (status !== "playing") break;
+        const res = E.resolve(E.rotateGrid(g, ch === "R" ? "cw" : "ccw"));
+        g = res.grid; collected += res.collected; used += 1;
+        status = collected >= level.quota ? "won" : (used >= level.budget ? "lost" : "playing");
+      }
+      check("hand cavern: manual replay of the solver line reaches quota (won)",
+        status === "won" && collected >= level.quota,
+        `status=${status} collected=${collected}/${level.quota} used=${used}`);
+    }
+
+    const fp = E.fingerprint(level);
+    check("fingerprint(lock cavern): lock present + DEAD-without + load-bearing; ice/grate absent",
+      fp.base === 5 && fp.lock.present && fp.lock.dead && fp.lock.par === null &&
+      fp.lock.delta === null && fp.lock.loadBearing &&
+      !fp.ice.present && !fp.grate.present &&
+      !fp.ice.loadBearing && !fp.grate.loadBearing,
+      JSON.stringify(fp.lock));
+    check("fingerprintTag(lock cavern) == 'NEEDS lock'",
+      E.fingerprintTag(level) === "NEEDS lock", E.fingerprintTag(level));
+    check("fingerprint is deterministic (same level twice -> identical JSON)",
+      JSON.stringify(E.fingerprint(level)) === JSON.stringify(fp));
+    // neutralizing the lock really removes it (pre-frees to a normal gem) -> the
+    // dead verdict is the solver's, on a genuinely different board
+    const neu = E.neutralizeClass(grid, "lock");
+    const neuWinnable = E.search(neu, level.budget).records.some(r => r.collected >= level.quota);
+    check("neutralizeClass('lock') pre-frees the locked gem and kills solvability",
+      E.gridString(neu) !== E.gridString(grid) && !E.isLocked(neu[7][5]) && !neuWinnable,
+      `neu[7][5]=${neu[7][5]} winnable=${neuWinnable}`);
+  }
+
+  // a REAL deep daily (seed 42 level 4): the grate is load-bearing — removing the
+  // one-way barrier lets pieces fall freely and par DROPS by 2, so the honest tag
+  // is "NEEDS grate". Ice + locks are present here but neutralizing them leaves
+  // par unmoved, so they are not tagged. Pinned exactly (deterministic generator).
+  {
+    const l4 = E.generateLevel(SEED, 4);
+    const fp = E.fingerprint(l4);
+    check("fingerprint(seed 42 lv4): base 5 == par; grate delta -2 load-bearing; ice/lock not",
+      fp.base === 5 && fp.base === E.par(l4) &&
+      fp.grate.present && fp.grate.delta === -2 && fp.grate.loadBearing &&
+      fp.ice.present && fp.ice.delta === 0 && !fp.ice.loadBearing &&
+      fp.lock.present && fp.lock.delta === 0 && !fp.lock.loadBearing,
+      JSON.stringify(fp));
+    check("fingerprintTag(seed 42 lv4) == 'NEEDS grate'",
+      E.fingerprintTag(l4) === "NEEDS grate", E.fingerprintTag(l4));
+  }
+
+  // determinism + base-honesty across the deep 12-seed sweep: every level-4
+  // cavern fingerprints identically twice and its base is exactly par(level).
+  {
+    let sweepOk = 0;
+    for (let s = 100; s < 112; s++) {
+      const lvl = E.generateLevel(s, 4);
+      const a = E.fingerprint(lvl), b = E.fingerprint(lvl);
+      if (JSON.stringify(a) === JSON.stringify(b) && a.base === E.par(lvl)) sweepOk++;
+    }
+    check("12-seed sweep at level 4: fingerprint deterministic and base == par(level)",
+      sweepOk === 12, `${sweepOk}/12`);
+  }
+}
+
+// -------------------------- 18. monotone difficulty ramp (arc 2, cut 5)
+{
+  // rampFloor is the running max difficulty score of the prefix: 0 on empty
+  // (a no-op floor every level clears), else the largest score so far. Pure and
+  // non-decreasing in the prefix — the property that makes the ramp monotone.
+  check("rampFloor([]) == 0 (empty prefix -> no-op floor)", E.rampFloor([]) === 0, `${E.rampFloor([])}`);
+  check("rampFloor([10,3,7]) == 10 (running max, order-independent)",
+    E.rampFloor([10, 3, 7]) === 10 && E.rampFloor([7, 10, 3]) === 10);
+
+  // ADDITIVE / default-unchanged: the optional floor never moves floor-off output.
+  // generateLevel with no opts, {} , and {floor:0} are byte-identical to today
+  // across a 14-seed x 6-level sweep — the same RNG stream, the same first-valid
+  // salt. This is the load-bearing "no pinned level moves" guarantee for cut 5.
+  {
+    let bad = 0;
+    for (const seed of [42, 7, 100, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12])
+      for (let lv = 0; lv < 6; lv++) {
+        const base = JSON.stringify(E.generateLevel(seed, lv));
+        if (base !== JSON.stringify(E.generateLevel(seed, lv, undefined)) ||
+            base !== JSON.stringify(E.generateLevel(seed, lv, {})) ||
+            base !== JSON.stringify(E.generateLevel(seed, lv, { floor: 0 }))) bad++;
+      }
+    check("floor-off generation byte-identical to pre-cut-5 (14 seeds x 6 levels, opts absent/empty/floor:0)",
+      bad === 0, `${bad} mismatch(es)`);
+  }
+
+  // The natural (floor-off) daily chain is NOT monotone: seed 42 dips from a
+  // score of 7992 at LV3 (par 7) to 5991 at LV4 (par 5). generateRamp with no
+  // flag reproduces exactly the per-level chain, pinned — this is the ramp cut 5
+  // improves on, and it must stay byte-identical to plain generateLevel.
+  const NAT = E.generateRamp(SEED, 6);
+  check("floor-off ramp == per-level generateLevel chain (byte-identical), scores pinned",
+    NAT.monotone === false &&
+    NAT.levels.every((l, i) => E.gridString(l.grid) === E.gridString(E.generateLevel(SEED, i).grid)) &&
+    JSON.stringify(NAT.scores) === JSON.stringify([3995, 3995, 4993, 7992, 5991, 6992]) &&
+    JSON.stringify(NAT.floors) === JSON.stringify([0, 0, 0, 0, 0, 0]),
+    `scores=${NAT.scores.join(",")}`);
+  check("the natural chain genuinely DIPS (LV4 < LV3) — so the floor is not a no-op",
+    NAT.scores[4] < NAT.scores[3], `${NAT.scores[4]} vs ${NAT.scores[3]}`);
+
+  // With the monotone flag ON, the same seed re-salts each level against the
+  // running-max floor, yielding a chain that is PROVABLY non-decreasing in
+  // difficulty. Seed 42 count 6: LV4 lifts 5991 -> 8991 and LV5 6992 -> 9991.
+  // Pinned exactly (deterministic generator): scores/floors/salts/pars.
+  const RAMP = E.generateRamp(SEED, 6, { monotone: true });
+  check("monotone ramp (seed 42 x6): scores pinned = [3995,3995,4993,7992,8991,9991]",
+    JSON.stringify(RAMP.scores) === JSON.stringify([3995, 3995, 4993, 7992, 8991, 9991]),
+    `scores=${RAMP.scores.join(",")}`);
+  check("monotone ramp: applied floors pinned = [0,3995,3995,4993,7992,8991]",
+    JSON.stringify(RAMP.floors) === JSON.stringify([0, 3995, 3995, 4993, 7992, 8991]),
+    `floors=${RAMP.floors.join(",")}`);
+  check("monotone ramp: per-level pars pinned = [3,3,4,7,8,9]",
+    JSON.stringify(RAMP.levels.map((l) => E.par(l))) === JSON.stringify([3, 3, 4, 7, 8, 9]),
+    `pars=${RAMP.levels.map((l) => E.par(l)).join(",")}`);
+  {
+    let mono = true;
+    for (let i = 1; i < RAMP.scores.length; i++) if (RAMP.scores[i] < RAMP.scores[i - 1]) mono = false;
+    check("monotone ramp: difficulty(LV n+1).score >= difficulty(LV n).score across the chain",
+      mono, `scores=${RAMP.scores.join(",")}`);
+    // each level clears its own applied floor (the by-construction guarantee)
+    let clears = 0;
+    for (let i = 0; i < RAMP.scores.length; i++) if (RAMP.scores[i] >= RAMP.floors[i]) clears++;
+    check("monotone ramp: every level clears its applied floor", clears === RAMP.scores.length, `${clears}/${RAMP.scores.length}`);
+    // the floor only ever RAISES difficulty: monotone score >= natural score at each index
+    check("monotone ramp dominates the natural chain pointwise (floor never lowers difficulty)",
+      RAMP.scores.every((s, i) => s >= NAT.scores[i]), `${RAMP.scores.join(",")} vs ${NAT.scores.join(",")}`);
+  }
+
+  // opening level is untouched: rampFloor([]) == 0, so LV0 of a monotone chain is
+  // byte-identical to the natural LV0 (floor 0 is cleared by the first valid salt).
+  check("monotone ramp LV0 byte-identical to natural LV0 (floor 0 is a no-op)",
+    E.gridString(RAMP.levels[0].grid) === E.gridString(E.generateLevel(SEED, 0).grid) &&
+    RAMP.levels[0].salt === E.generateLevel(SEED, 0).salt);
+
+  // determinism: the whole monotone chain is a pure function of (seed, count).
+  check("monotone ramp is deterministic (same seed/count twice -> identical JSON)",
+    JSON.stringify(E.generateRamp(SEED, 6, { monotone: true })) === JSON.stringify(RAMP));
+
+  // honest bound: a floor no layout can clear within MAX_SALT throws a floor-named
+  // error rather than silently returning an under-floor level (the re-salt is a
+  // genuine gate, not best-effort). An unreachable floor on the base cavern proves it.
+  {
+    let threw = false, msg = "";
+    try { E.generateLevel(SEED, 0, { floor: 9_999_999 }); } catch (e) { threw = true; msg = e.message; }
+    check("generateLevel: an unclearable floor throws a floor-named error (gate is honest)",
+      threw && /difficulty floor 9999999/.test(msg), msg);
+  }
 }
 
 // ------------------------------------------------------------------- verdict

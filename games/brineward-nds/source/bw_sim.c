@@ -119,6 +119,16 @@ int32_t bw_has_grasper(uint32_t seed)
     return (bw_hash(seed, BW_GRASPER_SALT) & BW_GRASPER_BUCKET) == 0 ? 1 : 0;
 }
 
+// bestiary cut 3: a grasper water whose HOLDs draw converging cutters — a
+// fresh salt sub-bucket over the grasper bucket. BW_AMBUSH_SALT/BUCKET are
+// pinned so every committed/host-checked grasper seed buckets to 0 (a
+// non-ambush grasper water), so cut 1/2 routes keep zero cutters and carry.
+int32_t bw_grasper_ambush(uint32_t seed)
+{
+    return bw_has_grasper(seed)
+           && (bw_hash(seed, BW_AMBUSH_SALT) & BW_AMBUSH_BUCKET) == 0 ? 1 : 0;
+}
+
 int32_t bw_band_enemy_hull(int32_t band)
 {
     return BW_BAND_EHULL_OF[band];
@@ -158,6 +168,23 @@ int32_t bw_up_reload(int32_t tier)
 int32_t bw_up_price(int32_t tier)
 {
     return BW_UP_COST[tier];
+}
+
+// --- the hold track (bestiary cut 4; player only) -----------------------------
+// tier 0 = the legacy BW_HOLD_CAP EXACTLY (the pin-carry identity —
+// check_hold_track asserts it), tiers strictly RAISE the cap, prices
+// TRIPLE per step (the concept-doc ladder, same shape as BW_UP_COST).
+static const int32_t BW_UP_HOLD_OF[BW_HOLD_TIERS] = { BW_HOLD_CAP, 12, 16 };
+static const int32_t BW_UP_HOLD_COST[BW_HOLD_TIERS] = { 0, 15, 45 };
+
+int32_t bw_up_hold_max(int32_t tier)
+{
+    return BW_UP_HOLD_OF[tier];
+}
+
+int32_t bw_up_hold_price(int32_t tier)
+{
+    return BW_UP_HOLD_COST[tier];
 }
 
 // sail_tier: the SAIL upgrade tier of this ship (enemy always 0).
@@ -233,6 +260,7 @@ static void bw_fire(BwDuel *d, const BwShip *s, int32_t owner, int32_t side)
 // loot code below)
 static void bw_loot_spawn_at(BwDuel *d, int32_t wx, int32_t wy,
                              int32_t drops, int32_t value);
+static void bw_cutters_clear(BwGrasper *g);  // cut 3: disperse the ambush
 
 static void bw_balls_step(BwDuel *d)
 {
@@ -294,9 +322,12 @@ static void bw_balls_step(BwDuel *d)
             if (d->grasper.hull <= 0)
             {
                 // Slain: the arms let go and break up richer than a wreck.
+                // Cut 3: a slain hold disperses too — the cutters scatter
+                // (no-op in a non-ambush water, its cutters already zero).
                 d->grasper.hull = 0;
                 d->grasper.slain = 1;
                 d->grasper.state = BW_GRASPER_DOWN;
+                bw_cutters_clear(&d->grasper);
                 bw_loot_spawn_at(d, d->grasper.x, d->grasper.y,
                                  BW_GRASPER_LOOT_DROPS,
                                  BW_BAND_MAW_VALUE_OF[d->band]);
@@ -363,8 +394,8 @@ static void bw_loot_step(BwDuel *d)
         BwLoot *c = &d->loot[i];
         if (!c->live)
             continue;
-        if (d->hold >= BW_HOLD_CAP)
-            return;
+        if (d->hold >= BW_UP_HOLD_OF[d->up_hold])   // cut 4: tiered cap
+            return;                                 //   (tier 0 = BW_HOLD_CAP)
         if (bw_chebyshev(c->x, c->y, d->player.x, d->player.y)
                 < BW_SCOOP_RANGE)
         {
@@ -599,12 +630,38 @@ static void bw_maw_step(BwDuel *d)
 
 // --- the Grasper (bestiary cut 1) -----------------------------------------------
 
+// Cut 3 «The ambush»: the fixed integer (px) spawn offsets from the seize
+// point for the BW_CUTTER_COUNT converging cutters — three light sloops
+// closing from three quarters. Chosen so each homes to the pin's
+// BW_CUTTER_HIT_RANGE in ~43/47/51 frames (all < BW_GRASPER_HOLD_FRAMES=90,
+// so an unbraced hold takes all three bites; all > a braced hold's ~20
+// frames, so an early wrench ends the hold before any cutter reaches).
+static const int32_t BW_CUTTER_DX[BW_CUTTER_COUNT] = { -48, 52, 8 };
+static const int32_t BW_CUTTER_DY[BW_CUTTER_COUNT] = { -36, -30, 56 };
+
+// Cut 3: disperse — the cutters scatter (all state re-zeroed) the instant
+// the hold ends. Zeroing a non-ambush water's already-zero cutters is a
+// no-op, so cut 1/2 routes carry bit-identical.
+static void bw_cutters_clear(BwGrasper *g)
+{
+    for (int32_t i = 0; i < BW_CUTTER_COUNT; i++)
+    {
+        g->cutters[i].x = 0;
+        g->cutters[i].y = 0;
+        g->cutters[i].bit = 0;
+    }
+}
+
 static void bw_grasper_sound(BwGrasper *g, uint32_t frame)
 {
-    // The arms slip back beneath the swell; they reach again later.
+    // The arms slip back beneath the swell; they reach again later. Cut 3:
+    // and the ambush disperses — this is the release path for a held sloop
+    // (a full hold OR a braced break), so clearing the cutters here covers
+    // both. (A REACH miss also lands here; its cutters are already zero.)
     g->state = BW_GRASPER_DOWN;
     g->timer = 0;
     g->wake = frame + BW_GRASPER_RESTIR;
+    bw_cutters_clear(g);
 }
 
 // One Grasper frame, salvage water only (bw_duel_step never calls this,
@@ -616,7 +673,9 @@ static void bw_grasper_sound(BwGrasper *g, uint32_t frame)
 // BITE hull once and PINNING it still for BW_GRASPER_HOLD_FRAMES (no
 // way, no helm, no momentum), then the arms slip and it reaches again.
 // A full-sail beam clears the reach; a battle-sail scooper cannot.
-static void bw_grasper_step(BwDuel *d)
+// Cut 2: the seized sloop can BRACE (in->brace, the break-free B verb) to
+// wrench loose early, at a cost — see the BW_GRASPER_HOLD branch.
+static void bw_grasper_step(BwDuel *d, const BwInputs *in)
 {
     if (!d->grasper_water)               // a Maw water has no Grasper — the
         return;                          //   pin-carry no-op (0 in every seed
@@ -678,6 +737,21 @@ static void bw_grasper_step(BwDuel *d)
                 d->player.hull -= BW_GRASPER_GRAB_BITE;
                 if (d->player.hull < 0)
                     d->player.hull = 0;
+                // Cut 3 «The ambush»: in an ambush water the seize springs
+                // the trap — BW_CUTTER_COUNT light sloops appear at fixed
+                // offsets around the latched pin and close in. The offsets
+                // are NOT sea-clamped (a cutter may start off the pin's
+                // ring, even off-screen, and converge inward) so the closing
+                // time is the same wherever the sloop is pinned — a corner
+                // seize is no safer than a mid-sea one. A non-ambush water
+                // spawns none (cut 1/2 carry).
+                if (d->ambush_water)
+                    for (int32_t i = 0; i < BW_CUTTER_COUNT; i++)
+                    {
+                        g->cutters[i].x = g->gx + BW_CUTTER_DX[i] * BW_ONE;
+                        g->cutters[i].y = g->gy + BW_CUTTER_DY[i] * BW_ONE;
+                        g->cutters[i].bit = 0;
+                    }
             }
             else
                 bw_grasper_sound(g, d->frame);   // closed on empty water
@@ -687,15 +761,53 @@ static void bw_grasper_step(BwDuel *d)
     case BW_GRASPER_HOLD:
         // Held still: the sloop makes no way while the arms hold it —
         // momentum, helm and position all dead at the latched point.
-        // (Cut 2's ram/brace B verb will let you break free early; cut
-        // 3's cutters will make the pin lethal. Cut 1's escape is
+        // (Cut 3's cutters will make the pin lethal. Cut 1's escape is
         // spatial: don't be there when the arms close.)
         g->timer++;
+        // Cut 2 «Ram/brace» — the break-free wrench. The FIRST brace that
+        // would actually shorten the hold pays BW_GRASPER_BRACE_HULL hull
+        // ONCE and slips the arms BW_GRASPER_BRACE_FRAMES frames later (it
+        // fast-forwards the hold clock to its last stretch). A brace with
+        // nothing left to shorten (timer already in the last BRACE_FRAMES)
+        // and every B-silent frame (in->brace == 0) do nothing, so the
+        // legacy hold carries verbatim. Self-limiting even if B is held:
+        // once the timer is fast-forwarded the guard is false, so the cost
+        // lands exactly once.
+        if (in->brace
+            && g->timer < BW_GRASPER_HOLD_FRAMES - BW_GRASPER_BRACE_FRAMES)
+        {
+            d->player.hull -= BW_GRASPER_BRACE_HULL;
+            if (d->player.hull < 0)
+                d->player.hull = 0;
+            g->timer = BW_GRASPER_HOLD_FRAMES - BW_GRASPER_BRACE_FRAMES;
+        }
         d->player.x = g->gx;
         d->player.y = g->gy;
         d->player.speed = 0;
         g->x = g->gx;
         g->y = g->gy;
+        // Cut 3 «The ambush»: the cutters close on the pinned sloop. Each
+        // live cutter homes one clamped step per axis toward the latched
+        // pin (the REACH homing idiom) and, once inside BW_CUTTER_HIT_RANGE,
+        // BITES once for BW_CUTTER_BITE hull and STOPS. Ambush water only —
+        // in a non-ambush water the cutters stay zero and are never stepped,
+        // so cut 1/2 holds carry bit-identical.
+        if (d->ambush_water)
+            for (int32_t i = 0; i < BW_CUTTER_COUNT; i++)
+            {
+                BwCutter *c = &g->cutters[i];
+                if (c->bit)
+                    continue;
+                c->x += clamp32(g->gx - c->x, -BW_CUTTER_SPEED, BW_CUTTER_SPEED);
+                c->y += clamp32(g->gy - c->y, -BW_CUTTER_SPEED, BW_CUTTER_SPEED);
+                if (bw_chebyshev(c->x, c->y, g->gx, g->gy) < BW_CUTTER_HIT_RANGE)
+                {
+                    d->player.hull -= BW_CUTTER_BITE;
+                    if (d->player.hull < 0)
+                        d->player.hull = 0;
+                    c->bit = 1;
+                }
+            }
         if (g->timer >= BW_GRASPER_HOLD_FRAMES)
             bw_grasper_sound(g, d->frame);       // the arms slip: released
         break;
@@ -722,6 +834,17 @@ int32_t bw_port_buy(BwDuel *d, int32_t row, int32_t gold)
             return 0;
         d->player.hull = BW_UP_HULL_OF[d->up_hull];
         return cost;
+    }
+
+    if (row == BW_PORT_ROW_HOLD)         // cut 4: the hold track (its own
+    {                                    //   table + tier ceiling)
+        if (d->up_hold >= BW_HOLD_TIERS - 1)
+            return 0;
+        int32_t hcost = BW_UP_HOLD_COST[d->up_hold + 1];
+        if (gold < hcost)
+            return 0;
+        d->up_hold++;                    // a deeper hold; the crates aboard
+        return hcost;                    //   are untouched (buying != scooping)
     }
 
     int32_t *tier = row == BW_PORT_ROW_HULL ? &d->up_hull
@@ -831,6 +954,10 @@ void bw_duel_init(BwDuel *d, uint32_t seed)
     // every committed route and pin is bit-identical. The arms bide
     // down; their clock arms on the SINK frame (the wreck's blood).
     d->grasper_water = bw_has_grasper(seed);
+    // bestiary cut 3: an ambush water is a grasper water whose HOLDs draw
+    // converging cutters. Pinned so every committed/host-checked grasper
+    // seed is 0 (non-ambush), so cut 1/2 routes keep zero cutters and carry.
+    d->ambush_water = bw_grasper_ambush(seed);
     d->grasper.x = 0;
     d->grasper.y = 0;
     d->grasper.gx = 0;
@@ -841,6 +968,7 @@ void bw_duel_init(BwDuel *d, uint32_t seed)
     d->grasper.wake = 0;
     d->grasper.stirs = 0;
     d->grasper.slain = 0;
+    bw_cutters_clear(&d->grasper);       // cut 3: no cutters until a seize
     for (int32_t i = 0; i < BW_MAX_REEFS; i++)
     {
         d->reefs[i].x = 0;               // slice 7: the band-0 water is
@@ -853,6 +981,7 @@ void bw_duel_init(BwDuel *d, uint32_t seed)
     d->up_hull = 0;                      // caller re-injects the bought
     d->up_cannon = 0;                    //   tiers (upgrades are NEVER
     d->up_sail = 0;                      //   lost — main.c's Score owns them)
+    d->up_hold = 0;                      // cut 4: the hold track, same rule
     // Slice 6: this water's weather, pure f(seed) like the spawn ring —
     // printed on the HUD (the seed rule: any run reproducible).
     d->wind_level = BW_WIND_LEVEL_OF[bw_hash(seed, BW_WIND_SALT) & 3u];
@@ -952,8 +1081,9 @@ void bw_salvage_step(BwDuel *d, const BwInputs *in)
                  bw_wind_heading(d), bw_wind_push(d));
     bw_reefs_step(d);                    // slice 7: rocks scrape salvage
     bw_maw_step(d);                      // slice 5: the water is not empty
-    bw_grasper_step(d);                  // bestiary cut 1: the OTHER terror
-                                         //   (a no-op in a Maw water)
+    bw_grasper_step(d, in);              // bestiary cut 1: the OTHER terror
+                                         //   (a no-op in a Maw water); cut 2
+                                         //   reads in->brace to break free
 
     // The batteries WAKE while a monster is up (any awake state — firing
     // at a mere shadow wastes the rake over its back, which is the
@@ -1078,13 +1208,15 @@ uint32_t bw_save_checksum(const uint32_t words[BW_SAVE_WORDS])
 }
 
 void bw_save_encode(uint32_t gold, int32_t up_hull, int32_t up_cannon,
-                    int32_t up_sail, uint32_t best_band,
+                    int32_t up_sail, int32_t up_hold, uint32_t best_band,
                     uint8_t out[BW_SAVE_BYTES])
 {
     uint32_t w[BW_SAVE_WORDS] = {
         BW_SAVE_MAGIC, BW_SAVE_VERSION, gold,
         (uint32_t)up_hull | ((uint32_t)up_cannon << 8)
-                          | ((uint32_t)up_sail << 16),
+                          | ((uint32_t)up_sail << 16)
+                          | ((uint32_t)up_hold << 24),   // cut 4: the hold
+                                                         //   byte (0 = stock)
         best_band, 0, 0, 0,
     };
     w[BW_SAVE_WORDS - 1] = bw_save_checksum(w);
@@ -1099,7 +1231,7 @@ void bw_save_encode(uint32_t gold, int32_t up_hull, int32_t up_cannon,
 
 int bw_save_decode(const uint8_t in[BW_SAVE_BYTES], uint32_t *gold,
                    int32_t *up_hull, int32_t *up_cannon,
-                   int32_t *up_sail, uint32_t *best_band)
+                   int32_t *up_sail, int32_t *up_hold, uint32_t *best_band)
 {
     uint32_t w[BW_SAVE_WORDS];
     for (int i = 0; i < BW_SAVE_WORDS; i++)
@@ -1116,8 +1248,9 @@ int bw_save_decode(const uint8_t in[BW_SAVE_BYTES], uint32_t *gold,
     uint32_t hull = w[3] & 0xFFu;
     uint32_t cannon = (w[3] >> 8) & 0xFFu;
     uint32_t sail = (w[3] >> 16) & 0xFFu;
+    uint32_t hold = (w[3] >> 24) & 0xFFu;            // cut 4: the hold byte
     if (hull >= BW_UP_TIERS || cannon >= BW_UP_TIERS
-        || sail >= BW_UP_TIERS || (w[3] >> 24) != 0)
+        || sail >= BW_UP_TIERS || hold >= BW_HOLD_TIERS)
         return 0;                                    // impossible tiers: reset
     if (w[4] >= BW_BANDS)
         return 0;                                    // impossible chart: reset
@@ -1125,6 +1258,7 @@ int bw_save_decode(const uint8_t in[BW_SAVE_BYTES], uint32_t *gold,
     *up_hull = (int32_t)hull;
     *up_cannon = (int32_t)cannon;
     *up_sail = (int32_t)sail;
+    *up_hold = (int32_t)hold;
     *best_band = w[4];
     return 1;
 }

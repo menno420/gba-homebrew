@@ -75,11 +75,15 @@ these rails are its adopter-side operating form:
   hallucinated gate unless it names an owner-only class below — proceed.
   Ship on green CI; unremarked work is accepted — owner control is
   reaction after visibility, never pre-approval (PL-012).
-- **An open PR is never a reason to stop.** Open READY (never draft) →
-  arm auto-merge while checks pend → it lands itself; blocked branch →
-  update it (merge, never force) and re-arm; a real, verbatim
-  arming/merge denial → park the PR ready, queue ONE owner item for the
-  systemic cause, take the next slice the same turn (PL-012).
+- **Open PRs ready and land your own green PR.** Open a plain, non-draft PR,
+  keep it mergeable (update the branch by merge, never force), and merge it
+  yourself once the required check is green — via a merge call (MCP/REST), by
+  arming native auto-merge, or by letting `auto-merge-enabler.yml` land it on
+  green. Merging own PRs is **normal agent work**, not owner-gated; never route
+  a mergeable green PR to the owner. If a specific merge call is ever refused,
+  report it verbatim as a venue-specific, attempt-once event — not a standing
+  wall (`docs/PLATFORM-LIMITS.md`). A genuinely blocked item goes to the owner
+  queue; take the next slice the same turn (PL-012).
 - **Ask first only for the owner-only classes:** repo settings / rulesets
   / required checks · secrets / env vars / host provisioning · external
   publish + spending money · destructive prod-data ops · account/portal

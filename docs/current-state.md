@@ -17,6 +17,14 @@
 > Row-level reconcile 2026-07-16 against the live GitHub PR list at
 > HEAD `d38887c` (post-#151): In-flight row resolved, ledger carried
 > through #151.
+>
+> **Fresh-start reconcile 2026-07-17** (post-#153, main HEAD `2a34653`):
+> the read-path gate is green on main again — **#153** (the Doc-index
+> reachability fix) merged on 2026-07-17. The In-flight section below is the
+> real open-PR state (four finished game arcs + #154 + #171). Those PRs are
+> landable now — agents merge their own green PRs directly; none is held open
+> awaiting the owner. The ordered landing mission lives in
+> [`NEXT-TASKS.md`](NEXT-TASKS.md).
 
 ## Stability baseline
 
@@ -59,19 +67,24 @@
 Six GBA ROMs, two NDS ROMs, two browser games, one mobile PWA — all
 original IP. Shipped builds and hashes: [`dist/README.md`](../dist/README.md).
 
+> Game-count note: this table reads **eleven** games at HEAD. Underroot
+> (game **#12**, the marquee) and the four in-flight arcs below are **not yet
+> reflected** — the table is rewritten to twelve once those arcs land (see
+> [`NEXT-TASKS.md`](NEXT-TASKS.md)).
+
 | # | Game | Platform | State at HEAD |
 |---|---|---|---|
 | 1 | **Lumen Drift** (gravity cave drifter) | GBA | v1.3, scope-complete + 3 polish passes (PRs #2–#29; endless cave, graze, pause/mute) |
 | 2 | **Gloamline** (zombie horde defense) | NDS | concept tree COMPLETE (PRs #50–#75: skeleton → shove/waves → barricades → scavenge → oil → audio → saves → watch-map) + slice 11 best-night rematch; 28 proofs / 517 asserts |
 | 3 | **Brineward** (pirate broadside duel) | NDS | arc slice 9: loot/port/upgrades/wind/reefs/audio/saves (PRs #82, #91, #94); the Graywake ledger survives the power switch |
 | 4 | **Undertow** (one-hand trench diver) | web | v1.5 — named growth path COMPLETE: prototype #79, daily dive #110, cosmetics #114, ghost replays #118, oxygen #123, jellyfish hazards #126 |
-| 5 | **Tiltstone** (turn-based gravity puzzle) | web | v1.1 — prototype #81 (provably-winnable seeds); growth stack #92/#93/#95/#97 (par+undo, juice, cell types, level packs) landed on main; packaged at v1.1 with `juice.js` by the ORDER 006 repin (#134, arcade bundle v1.3) |
+| 5 | **Tiltstone** (turn-based gravity puzzle) | web | v1.1 — prototype #81 (provably-winnable seeds); growth stack #92/#93/#95/#97 (par+undo, juice, cell types, level packs) landed on main; packaged at v1.1 with `juice.js` by the ORDER 006 repin (#134, arcade bundle v1.3). **Arc 2 «the shareable daily» (docs/arcs/TILTSTONE.md) — all 5 cuts BUILT, growth-complete pending owner clicks:** share-your-line #166 (cut 1), solver hints #167 (cut 2), undo×par deception #168 (cut 3), mechanic fingerprints #169 (cut 4), monotone difficulty ramp (cut 5, arc closer) — a stacked DRAFT chain draft-parked under the 2026-07-16 landing wall (land order #153 → #166 → #167 → #168 → #169 → cut 5); every cut is an ADDITIVE pure-engine extension (engine v1.8.0), default output byte-identical, headless-proven by `games/web-tiltstone/smoke.mjs` (§14–§18, 119/0) |
 | 6 | **Drift Garden** (ambient touch garden PWA) | mobile | v1.4 — named growth path COMPLETE: playable slice #84, daily weather #111, species #115, essence spending #119, biomes #124; installable offline PWA |
 | 7 | **Deepcast** (fishing tension-management) | GBA | v0.6 — named growth path COMPLETE: prototype #83, audio #113, seed dial #117, species/catch log #121, line upgrades #125, art pass #128 |
 | 8 | **Cindervault** (turn-based dungeon dive) | GBA | v0.6 — named growth path COMPLETE: prototype #86, items #112, species #116, endless depth #120, seed-select #122, art pass #127 |
 | 9 | **Clockwork Courier** (rewind-ghost platformer) | GBA | v1.0 CONCEPT COMPLETE: prototype #96, ghost platform #105, timed chutes #106, three floors #107, audio #108 |
 | 10 | **Shoal** (flock-herding action puzzler) | GBA | v1.0 CONCEPT COMPLETE: prototype #98, predators #99, gates #100, star ratings #101, tuned levels #102, audio #103 |
-| 11 | **Wickroad** (market-route trading, aging ledger) | GBA | v0.6 — named growth path COMPLETE: prototype #129 (2026-07-14, the generative rung), rumors (cut 1) #142, contracts (cut 2) #143, road hazards (cut 3) #144, wider map + mules (cut 4) #145, audio (cut 5) #146 (2026-07-15); growth cuts: none open |
+| 11 | **Wickroad** (market-route trading, aging ledger) | GBA | v1.0 — named growth path COMPLETE (cuts 1–5 #142–#146); **crossroads arc** (2nd arc, `games/wickroad/ARC-CROSSROADS.md`) BUILT cuts 1–4, arc growth-complete pending owner clicks + audio playtest (land order #172 → #173 → #174 → cut 4): cut 1 THE JUNCTION PR #172 (branch roads + the L+R fork verb, WYRMHOLLOW off DUNWICK, +8 RNG draws, telemetry 52→56, proof P9); cut 2 THE SPRITE ART PASS PR #173 in-progress (2026-07-16, DRAFT/held, stacked on #172): an authored `regular_bg` baked from the same sim state (`games/wickroad/graphics/`), glyphs on top, presentation-only — 56 telemetry words + 27 text lines + P1-P9 byte-identical; second `wr_art` mailbox + hardware pins in proof P10; cut 3 THE SEED DIAL PR #174 in-progress (2026-07-16, DRAFT/held, stacked on #173): a title-screen world-seed dial (LEFT/RIGHT, edge-triggered, title only), dial 0 == `seed_constant` so P1-P10 byte-identical; `run_seed` feeds `reset_run()`, live seed in appended telemetry word 56 (56→57), proof P11; cut 4 THE BEST LEDGER (arc closer) DRAFT/held (2026-07-17, stacked on #174): SRAM-persisted best runs via `gl_save.h` (POD `{best_gold, best_day_reached, best_seed, runs}` behind magic `WLDGR1`, loaded at boot / written on run-end / survives power-off), the score-attack hook the seed dial's repeatable worlds enable — zero new RNG draws, `wr_telemetry` UNCHANGED at 57, ledger in a THIRD `wr_ledger[6]` mailbox, end-card best line gated on `ledger_loaded` so the no-save path is byte-identical and P1-P11 carry verbatim; the Deepcast SRAM power-cycle proof P12 (fresh-cart baseline · write+persist · power-cycle restore · restored line renders, run twice byte-identical incl. the `.sav`) |
 
 All four games that had named growth paths (Undertow, Drift Garden,
 Cindervault, Deepcast) completed them across PRs #110–#128 on the
@@ -80,21 +93,42 @@ complete titles is new-concept material or owner-gated.
 
 ## In flight
 
-- Nothing at HEAD apart from this reconcile slice's own PR (#152): the
-  live open-PR list (fetched 2026-07-16) is otherwise empty.
-  [NEXT-MENU-2026-07-15.md](NEXT-MENU-2026-07-15.md) — the owner
-  decision menu previously listed here as an open slice — **merged as
-  #150** (`588aa4e`, 2026-07-15T21:42:05Z) and now awaits the owner's
-  letter (in-doc recommendation: B1). (The Tiltstone growth stack
-  #92–#97 landed and was packaged by the ORDER 006 repin #134; PR #85
-  was closed unmerged on 2026-07-14, long superseded on main by #109 →
-  the #130 arcade-refresh → #134.)
+**24 PRs are open** — finished, **ROM-builds-green** content awaiting one
+coordinated **rebase-onto-current-`main`** landing pass. Agents land these
+directly on green; the only reason they aren't already merged is ordering,
+not an owner gate. Do **not** bulk-merge and do **not** merge out of order:
+the arc children are stacked on their parents, so land parents first. The
+full ordered landing mission + conflict recipe live in
+[`NEXT-TASKS.md`](NEXT-TASKS.md). The open set:
+
+- **Underroot** (new game **#12**, the marquee) — arc slices **#155 → #165**
+  (v1.0 at slice 11).
+- **Tiltstone arc 2** — **#166 → #170** (share-a-line replay → solver hints →
+  deception curation → mechanic-fingerprint deltas → monotone difficulty ramp).
+- **Wickroad crossroads arc** — **#172 → #175**.
+- **Brineward bestiary arc** — **#176 → #179**.
+- **#154** — standalone denial-triage docs (two dated classifier-denial
+  entries for the capabilities/walls ledger).
+- **#171** — the overnight veto-menu
+  (`docs/planning/OVERNIGHT-MENU-2026-07-16.md`, 84 proposals; lives only on
+  #171's branch). Owner-curated into a small next set, then closed (see
+  NEXT-TASKS.md).
+
+The **only** required check is the GBA **"ROM builds"** job, green on every
+open PR (NDS builds green too). `substrate-gate` red on these is **by design**
+(born-red session cards) and **non-blocking** — #152 merged with it red. The
+real merge blocker is the stacked bases (land parents first), not any gate.
 
 ## Recently shipped (newest first)
 
 Arc summaries with their PR trails; per-slice narrative lives in the
 PR bodies and `.sessions/` cards.
 
+- **Read-path gate fix** (2026-07-17, PR #153): a "Doc index" section in this
+  ledger relinked the 5 docs orphaned when #151 condensed
+  `control/status.md`, turning `python3 bootstrap.py check --strict` green on
+  main again. Owner-merged 2026-07-17 (docs-only). #152 (`478bf16`) carried
+  the ledger through #151 just before it.
 - **Ops + decision-surface day** (2026-07-15 → 16, PRs #142–#151):
   Wickroad growth cuts 1–5 #142–#146 (v0.6 — table row 11) and the
   current-state reconcile #147 (`0048a5d`), then: merge-automation
@@ -147,4 +181,36 @@ PR bodies and `.sessions/` cards.
 
 ## Review rhythm
 
-Review is post-merge (conventions rule 3): merge on green, add a row to docs/review-queue.md and/or mention Codex on the PR; veto = revert. Nothing waits for pre-merge review
+Review is post-merge: merge on green, add a row to
+[`review-queue.md`](review-queue.md), veto = revert. Agents open PRs ready and
+land their own green PRs directly (via a merge call, native auto-merge, or the
+`auto-merge-enabler.yml` workflow); a mergeable green PR is never routed to the
+owner. See the merge doctrine in [`conventions.md`](conventions.md) and
+[`PLATFORM-LIMITS.md`](PLATFORM-LIMITS.md).
+
+## Doc index
+
+Read-path anchors for docs whose only inbound links previously lived in
+`control/status.md` and were dropped by the #151 condensing (`d38887c`);
+this ledger is a reachability root (`substrate.config.json`
+`readpath_docs`), so these rows keep them on the read path:
+
+- [NEXT-TASKS.md](NEXT-TASKS.md) — the fresh-start landing mission (land the
+  four finished game arcs, in order) + the owner-console checklist (Pages
+  go-live, branch-protection required checks, #171 menu curation).
+- [Next-menu (2026-07-15)](NEXT-MENU-2026-07-15.md) — the prior 7-option owner
+  decision menu (merged as #150, in-doc rec B1); superseded by the #171
+  overnight menu but kept on the read path.
+- [Routines & wake-chain doctrine](ROUTINES.md) — reference doctrine for
+  self-arming wake chains / failsafe cron; re-verify platform delivery
+  observations in your own environment before relying on them.
+- [EAP close-out walkthrough (2026-07-14)](eap-closeout-walkthrough-2026-07-14.md)
+  — what the seat did during the EAP, owner-actions checklist, handoff notes
+  (landed per ORDER 006, PR #133 `2cbeb7b`).
+- [Session-1 game concepts](concepts/session-1-concepts.md) — the original
+  ORDER-001 three-concept menu.
+- [Gloamline concept](concepts/gloamline-concept.md) — the owner-picked NDS
+  horde-defense concept page (arc PRs #50–#75).
+- [Retro questions ledger](retro/QUESTIONS.md) — open/answered questions log.
+- [Archive-ready retro (2026-07-11)](retro/archive-ready-2026-07-11.md) —
+  Lumen Drift arc archive-readiness review.

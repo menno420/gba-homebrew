@@ -44,6 +44,13 @@ Live GitHub `list_pull_requests` state=open across gba / pml / product-forge ret
 - **Post-morning (since #191):** **#165** `40779f8` Underroot slice-11 audio+polish → v1.0. **#192** `c9b73b6` — **claims sweep**: 12 terminal-stale claim files removed (incl. tiltstone cut3/cut4 which were closed-unmerged), 11 live claims kept at the time (brineward #176–#178 + underroot #157–#164). **#195** `db56df9` — **Wickroad MASTER tier**: the title tier tag is now a descending first-match table (`runs>=100 → MASTER`, `50..99 → VETERAN`, `<50 → none`), host-tested boundaries 49/50/51/99/100/101 in `tools/check-run-tier.py`. (Also #193 `f1ba84d` — doc-doctrine correction.)
 - All render-only polish / dated-doc / new-logic slices are byte-identical on the no-save (fresh/foreign/erased cart) path.
 
+## Track-A gameplay proof — headless-boot on main-with-#201 (post-landing)
+
+- updated: 2026-07-18T21:26Z (`date -u`). NEUTRAL facts + pointer; "armed ≠ proven" — the #201 tier-up flash now carries a headless-boot citation on `main` at HEAD `6d1d97a` (the #201 merge commit).
+- **Run:** `headless-boot.yml` (workflow_dispatch-only heavy tier) dispatched against `main`; run **29661566170** (run #5, event `workflow_dispatch`, head SHA `6d1d97a`) — **conclusion `success`**. URL: https://github.com/menno420/gba-homebrew/actions/runs/29661566170
+- **What it proves:** both jobs green — `headless boot proof` (skeleton ROM built + booted headless in mGBA 300 frames, non-blank frame, `boot-proof.png` artifact uploaded) and `lumen drift scripted-run assertions` (committed replay + deep-run / difficulty / graze / pause-mute / SRAM-persistence asserts). Main carrying #201 boots clean and the committed proof loop is green.
+- **Scope note (no overclaim):** headless-boot exercises the skeleton + Lumen Drift proof tiers, not the Wickroad end card directly. The #201 tier-up flash decision logic (`wr::run_tier_up_label`) is host-proven for every reachable run ordinal by `tools/check-run-tier-up.py` (landed in #201, `6d1d97a`), which runs in the ROM-builds / substrate lane. This citation is the seat's post-landing boot-proof bar on main-with-#201, not a per-flash pixel assert.
+
 ## Flags
 
 - `arcs/TILTSTONE.md` is missing its `> **Status:** ` badge — that is the **Tiltstone lane's** scope; do NOT fix it here. The `substrate-gate` non-required red stems from that pre-existing orphan, not from control-lane work.

@@ -26,7 +26,7 @@ Live GitHub `list_pull_requests` state=open across gba / pml / product-forge ret
 - gba **#176** — Brineward «The Grasper» (cut 1) — **MERGED** on green `eb717e6` (was: re-greened, lands-on-green). Terminal; drops off the open set.
 - gba **#177** — Brineward «Ram/brace» (cut 2) — **OPEN / READY** (`claude/brineward-bestiary-cut2`, stacked base `claude/brineward-bestiary-cut1`). Landing path: **lands-on-green** — with #176 merged this is next; agent merges directly / server enabler backstops on green.
 - gba **#178** — Brineward «The ambush» (cut 3) — **OPEN / READY** (`claude/brineward-bestiary-cut3`, stacked base `claude/brineward-bestiary-cut2`). Landing path: **lands-on-green** behind #177 (land order #177 → #178).
-- product-forge **#29** — phone-controller Gradle CI lane (slice 2) — **OPEN / READY** (`claude/controller-gradle-ci`, base `main`). Landing path: **hub-venue — workflow-file carve-out** (touches `.github/workflows/**`, which `merge-on-green.yml` skips as owner-merge-only). Owner/hub merge.
+- product-forge **#29** — phone-controller Gradle CI lane (slice 2) — **OPEN / READY** (`claude/controller-gradle-ci`, base `main`). Landing path: **hub-venue — workflow-file carve-out** (touches `.github/workflows/**`, which `auto-merge-enabler.yml` skips as owner-merge-only). Owner/hub merge.
 - pml **#98** — Reconcile QoL count to 16 + CI drift guard — **OPEN / READY** (`claude/qol-count-guard`, base `main`). Landing path: **hub-venue — workflow-file carve-out** (touches `.github/workflows/rom-builds.yml`). Owner/hub merge; R22-private verified.
 - This control PR: plain READY, control fast lane (`control/**`-only, no session card); agent merges it directly / server enabler backstops on green.
 

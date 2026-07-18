@@ -1,1 +1,0 @@
-- `claude/underroot-slice-2` · **Underroot arc slice 2 — meadow food patches (pure f(seed,season,index), on-meadow/off-hawk-lanes) + host mirror + ROM patch-count telemetry** · games/underroot-nds/, tools/check-underroot.py, .github/workflows/rom-builds.yml · 2026-07-16

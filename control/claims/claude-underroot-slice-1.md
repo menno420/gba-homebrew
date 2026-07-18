@@ -1,1 +1,0 @@
-- `claude/underroot-slice-1` · **Underroot arc kickoff (A2) — dual-screen NDS burrow-colony survival, slice 1 skeleton** · docs/arcs/, games/underroot-nds/, tools/check-underroot.py, .github/workflows/rom-builds.yml · 2026-07-16

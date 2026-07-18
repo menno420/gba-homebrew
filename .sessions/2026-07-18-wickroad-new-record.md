@@ -1,9 +1,12 @@
 # Session — Wickroad: NEW RECORD on the end card
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
-- date: 2026-07-18 (branch `claude/wickroad-new-record`, PR **#[[fill:pr]]**;
-  born-red card written at 2026-07-18T00:06:27Z from `date -u`).
+- date: 2026-07-18 (branch `claude/wickroad-new-record`, PR **#185**;
+  born-red card written at 2026-07-18T00:06:27Z, flipped to complete at
+  2026-07-18T00:09:00Z, both from `date -u`).
+- **📊 Model:** opus-4.8 · high · polish slice — flash NEW RECORD on the
+  Wickroad end card when a returning run beats the SRAM-persisted best.
 - mission: **Wickroad polish — "NEW RECORD" on the end card** (a follow-on to
   PR **#184**, which put the persisted best on the TITLE screen). #184 opened
   the score-attack loop by making the SRAM best legible before START; this
@@ -50,8 +53,36 @@
 
 ## 💡 Session idea
 
-[[fill:idea]]
+**A persistence feature isn't finished when the value is stored and legible —
+it's finished when the player is told, at the exact instant, that the number
+moved.** #184 made the SRAM best legible on the two screens where a
+score-attack player forms and reviews intent (title before START, best line on
+the end card). But legible ≠ noticed: the end card already SHOWED `BEST GOLD
+n`, yet a player who just set that record had to read the number and recall
+their old one to know they'd won — the achievement was on screen but silent.
+This slice cost one captured bool and two `if` blocks to convert a passive
+readout into an event. The reusable move: a stored value has three tiers of
+surfacing — (1) persisted, (2) legible on a decision screen, (3) *announced at
+the transition that changes it*. Tier 3 is almost always the cheapest yet the
+one most often skipped, because the value is "already shown." The tell here
+was the same one #184 flagged: `best_day_reached` had been banked since
+crossroads cut 4 and only reached tier 2 in #184; folding it into the
+new-record test (gold OR day) finally lets a survival-further run — one that
+didn't out-earn the best but out-lasted it — announce itself too, so the loss
+card can celebrate progress the win-only framing would have swallowed.
 
 ## Previous-session review
 
-[[fill:review]]
+Prior slice: `.sessions/2026-07-17-wickroad-title-best.md` (PR **#184**, THE
+BEST ON THE TITLE) — **holds up, and set this slice up cleanly.** Its central
+claim was that a persisted field is a latent feature until a screen reads it,
+and its practical gift was the `ledger_loaded` gate: one flag that makes every
+new best-render unreachable on the no-save path by construction. This slice
+reused that gate verbatim for a THIRD render site (the NEW RECORD line) — the
+default cart stays byte-identical again, no new proof pins, exactly as #184's
+gate was built to let presentation grow. One honest forward note the #184 card
+predicted and this one confirms: #184 asked "on which screen does the player
+DECIDE" and answered title + end card; the missing beat it left was the
+*transition*, not a screen — the moment the best is beaten. That's this slice,
+and it's the natural terminus of the loop, so the WIK-03 score-attack thread is
+now closed end-to-end (chase it on the title, catch it on the end card).

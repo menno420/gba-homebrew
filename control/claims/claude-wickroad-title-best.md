@@ -1,1 +1,0 @@
-- `claude/wickroad-title-best` · **Wickroad: the best on the title — surface the SRAM-persisted best run (BEST GOLD x DAY y) on the TITLE screen, gated on `ledger_loaded` so the default no-save path stays byte-identical; render-only, zero RNG/telemetry delta, proofs P1-P12 carry verbatim** · games/wickroad/src/main.cpp · 2026-07-17

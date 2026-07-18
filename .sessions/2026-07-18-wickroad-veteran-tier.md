@@ -1,9 +1,10 @@
 # Session — Wickroad: persistent VETERAN tier tag on the title screen
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
-- date: 2026-07-18 (branch `claude/wickroad-veteran-tier`, PR **#[[fill: PR number]]**;
-  born-red card written at 2026-07-18T02:18:30Z from `date -u`).
+- date: 2026-07-18 (branch `claude/wickroad-veteran-tier`, PR **#190**;
+  born-red card written at 2026-07-18T02:18:30Z, flipped to complete at
+  2026-07-18T02:27:20Z, both from `date -u`).
 - **📊 Model:** Opus 4.8 · high · new-logic gameplay slice — a deterministic
   persistent tier tag on the Wickroad title screen keyed on lifetime run count.
 - mission: **Wickroad — "THE VETERAN TAG"** (a follow-on to PR **#184** the
@@ -42,7 +43,7 @@
 ## What shipped
 
 1. Born-red gate: this card `in-progress` +
-   `control/claims/2026-07-18-wickroad-veteran-tier.md`, PR **#[[fill: PR number]]**
+   `control/claims/2026-07-18-wickroad-veteran-tier.md`, PR **#190**
    opened READY.
 2. **The pure helper** (`games/wickroad/src/wr_milestones.h`): a SECOND
    self-contained, Butano/GBA-free function `wr::run_tier_label(int
@@ -65,8 +66,30 @@
 
 ## 💡 Session idea
 
-[[fill: one genuine next-slice idea at flip]]
+**Add a SECOND tier row and let the descending table earn its keep.** This
+slice ships a one-row tier table (`runs >= 50 -> "VETERAN"`) whose
+first-match-wins descending shape is deliberately built for growth but is
+currently untested beyond a single threshold. The natural next slice adds
+`runs >= 100 -> "MASTER"` ABOVE the VETERAN row: it exercises the multi-tier
+lookup for real (100 must return MASTER not VETERAN, 50..99 still VETERAN, and
+the host sweep gains one boundary — 99/100/101 pinned alongside 49/50/51). It
+stays exactly this slice's shape — render-only, ledger-gated, zero-RNG, the tag
+already renders beside `RUNS n` so no new draw site — one table row and one
+host-test column, no `main.cpp` render change at all. That is the honest cheap
+follow-on; anything richer (per-tier colour, a title tier BADGE sprite) crosses
+out of the pure-string / same-primitive discipline and is a bigger slice.
 
 ## Previous-session review
 
-[[fill: one-line review remark on the #189 prior slice at flip]]
+Prior slice: `.sessions/2026-07-18-wickroad-run-milestones.md` (PR **#189**, the
+run-count milestone flourish on the end card) — **holds up, and it explicitly
+specified this slice.** #189's own 💡 idea named the exact next surface ("promote
+`run_milestone_label` to also return a persistent TIER (e.g. runs >= 50 → a
+"VETERAN" tag) and render that on the TITLE screen"). One deliberate divergence:
+#189 suggested *promoting* the existing function, but a persistent LEVEL on the
+current total is a genuinely different contract from an ordinal CROSSING (49→
+nullptr vs a one-shot ==50 hit), so this slice added a SEPARATE
+`run_tier_label` rather than overloading `run_milestone_label` — cleaner, and it
+keeps #189's end-card behaviour byte-for-byte untouched. Same pure-helper +
+stdlib-mirror discipline, same `ledger_loaded` byte-identical-no-save gate, one
+surface up (transient end card → durable title).

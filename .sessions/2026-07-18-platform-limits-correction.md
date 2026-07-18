@@ -1,9 +1,13 @@
 # Session — PLATFORM-LIMITS: correct the 2026-07-16 landing-path wall
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
-- date: 2026-07-18 (branch `claude/platform-limits-correction`, PR pending;
-  born-red card written at 2026-07-18T00:59:18Z).
+- date: 2026-07-18 (branch `claude/platform-limits-correction`, PR **#188**;
+  born-red card written at 2026-07-18T00:59:18Z, flipped to complete at
+  2026-07-18T01:00:49Z, both from `date -u`).
+- **📊 Model:** Claude Opus family · high · docs-correction — append a dated
+  CORRECTION to the stale 2026-07-16 landing-path wall in
+  `docs/PLATFORM-LIMITS.md`.
 - mission: **Docs correction — the "SUPERSEDED 2026-07-16" landing-path entry
   in `docs/PLATFORM-LIMITS.md` is now partially stale.** That entry claims the
   WHOLE agent-landing path is walled ("arming auto-merge, flipping
@@ -37,3 +41,37 @@
    `**CORRECTION 2026-07-18 ...**` continuation appended beneath the
    "SUPERSEDED 2026-07-16" self-merge/landing-path bullet — the 2026-07-16
    text is left verbatim, the correction sits below it citing PRs #183–#187.
+3. **PR #188 opened READY** (not draft) — the practice the correction
+   documents, applied to the correction's own PR.
+
+## 💡 Session idea
+
+**A "walled" ledger entry has a machine-checkable expiry the moment it names
+the mechanism that supposedly blocks it — cross-reference that mechanism
+against merged-PR history and stale entries surface themselves.** This entry
+went stale precisely because it made a falsifiable claim ("READY/auto-merge
+levers all trip the guard, so nothing lands autonomously") that the merge
+record could refute — and did, five times overnight (#183–#187). The reusable
+move: a small hygiene check that, for each wall entry mentioning
+`auto-merge` / `draft` / `merge`, greps the last N merged PRs for
+`merged_by == github-actions[bot]` with no owner review event; any hit against
+an entry that says "autonomous landing is walled" is flagged as a
+correction-candidate. Walls that name a concrete, observable mechanism are the
+cheapest to keep honest, because the mechanism leaves a paper trail — the
+danger is the absolute-sounding entry that no longer matches the trail but is
+still cited as current (as #154/#180 cited this one). Auto-detection turns
+"someone eventually notices" into a scheduled diff.
+
+## Previous-session review
+
+Prior card: `.sessions/2026-07-18-wickroad-new-record.md` (PR **#185**, NEW
+RECORD on the Wickroad end card) — **its landing posture is exactly the
+evidence this correction rests on.** That card opened its PR READY and
+explicitly documented the born-red hold + server-side `auto-merge-enabler`
+arming native auto-merge on green, "no self-merge, no manual auto-merge arm" —
+and #185 is one of the #183–#187 set that merged autonomously overnight,
+retiring the very wall its own posture note quietly worked around. Honest
+review: the card's landing-posture paragraph was already living the corrected
+rule before the ledger caught up, which is exactly why the 2026-07-16 wall
+read as stale rather than merely wrong — the sessions had moved on; the doc
+hadn't.

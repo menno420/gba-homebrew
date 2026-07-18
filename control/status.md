@@ -26,6 +26,7 @@ Live GitHub `list_pull_requests` state=open across gba / pml / product-forge ret
 - gba **#176** — Brineward «The Grasper» (cut 1) — **MERGED** on green `eb717e6` (was: re-greened, lands-on-green). Terminal; drops off the open set.
 - gba **#177** — Brineward «Ram/brace» (cut 2) — **OPEN / READY** (`claude/brineward-bestiary-cut2`, stacked base `claude/brineward-bestiary-cut1`). Landing path: **lands-on-green** — with #176 merged this is next; agent merges directly / server enabler backstops on green.
 - gba **#178** — Brineward «The ambush» (cut 3) — **OPEN / READY** (`claude/brineward-bestiary-cut3`, stacked base `claude/brineward-bestiary-cut2`). Landing path: **lands-on-green** behind #177 (land order #177 → #178).
+- gba **#201** — Wickroad end-card **tier-up flash** (announce VETERAN/MASTER the run its tier is first crossed) — **OPEN / READY** (`claude/wickroad-tier-up-flash`, base `main`). Born-red HOLD while the session card is `in-progress` (clears at flip). Landing path: **lands-on-green** — plain `claude/*` READY, server enabler backstops on green `rom-builds`.
 - product-forge **#29** — phone-controller Gradle CI lane (slice 2) — **OPEN / READY** (`claude/controller-gradle-ci`, base `main`). Landing path: **hub-venue — workflow-file carve-out** (touches `.github/workflows/**`, which `auto-merge-enabler.yml` skips as owner-merge-only). Owner/hub merge.
 - pml **#98** — Reconcile QoL count to 16 + CI drift guard — **OPEN / READY** (`claude/qol-count-guard`, base `main`). Landing path: **hub-venue — workflow-file carve-out** (touches `.github/workflows/rom-builds.yml`). Owner/hub merge; R22-private verified.
 - This control PR: plain READY, control fast lane (`control/**`-only, no session card); agent merges it directly / server enabler backstops on green.
@@ -57,7 +58,7 @@ Reconciled against the live claim-file set at `control/claims/` HEAD (after #192
 
 ## next-2-tasks baton
 
-1. Wickroad end-card **tier-up flash** / **GRANDMASTER ≥200** — new-logic slice, recorded in the #190/#195 cards as the forward seam; pick up mirroring #189/#190/#195's pure-helper + stdlib-host-test convention.
+1. Wickroad end-card **tier-up flash** — **IN-FLIGHT as gba #201** (`claude/wickroad-tier-up-flash`, pure `wr::run_tier_up_label` derived off `run_tier_label` + `tools/check-run-tier-up.py`). The remaining forward seam is **GRANDMASTER ≥200** — same one-row pattern, but the #195 card gates it on evidence players reach 200 lifetime runs (playtest/telemetry), so it is NOT a headless-only pickup yet.
 2. Controller **Slice 3** — assembleDebug lane + real-receiver end-to-end — once product-forge #29 (the android-ci lane) lands.
 
 ## Owner-pending (live-reconciled 2026-07-18T17:03Z)

@@ -1717,14 +1717,32 @@ int main()
             // separator matching " DAY " (no new font glyphs), still under
             // the ledger_loaded gate, so the no-save path is unchanged.
             // Capacity widened to hold the extra segment.
+            //
+            // The persistent tier tag (follow-on to #189): #189's milestone
+            // flourish flashes "50TH RUN" once, on the end card of the
+            // crossing run, then is gone. This surfaces the DURABLE side of
+            // the same fact — once best.runs reaches a tier threshold, the
+            // pure wr::run_tier_label (wr_milestones.h) returns the earned
+            // persistent label (runs >= 50 -> "VETERAN"), which we append to
+            // this same best line beside RUNS n so it re-shows every boot.
+            // It is a >= LEVEL on the current stored total, not a crossing,
+            // so it persists above the threshold. Still inside this
+            // ledger_loaded gate and drawn with the same text primitive, so
+            // the no-save else branch stays byte-identical. Capacity widened
+            // once more to hold the tag.
             if(ledger_loaded)
             {
-                bn::string<56> best_line("BEST GOLD ");
+                bn::string<64> best_line("BEST GOLD ");
                 best_line.append(bn::to_string<8>(best.best_gold));
                 best_line.append(" DAY ");
                 best_line.append(bn::to_string<8>(best.best_day_reached));
                 best_line.append(" RUNS ");
                 best_line.append(bn::to_string<8>(best.runs));
+                if(const char* tier_label = wr::run_tier_label(best.runs))
+                {
+                    best_line.append(' ');
+                    best_line.append(tier_label);
+                }
                 title_lines[1].set(ui_gen, ui_x, -2, best_line);
             }
             else

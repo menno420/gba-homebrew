@@ -1,0 +1,1 @@
+- `claude/brineward-bestiary-cut2` · **Brineward bestiary cut 2 — ram/brace (the break-free B verb)** · games/brineward-nds/, tools/check-brine.py, .github/workflows/rom-builds.yml · 2026-07-17

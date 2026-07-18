@@ -1306,6 +1306,15 @@ jobs:
       # scrape latch frame-exact (player-only; groundings can sink),
       # band duels converge both ways (band-2 tier-0 losses flip to
       # wins with cannons II), and the band-2 rock water stays
+      # contained under adversarial input — PLUS the bestiary cut-1
+      # Grasper rails: the pin-carry rule (every committed anchor and
+      # host-checked salvage seed is a Maw water, so every route/pin is
+      # bit-identical), the seize-and-hold contract frame-exact (bide ->
+      # reach -> SEIZE for exactly one grab-bite -> PIN the sloop still
+      # for the whole hold -> release), the escapability rail (full sail
+      # outruns the reach, a battle-sail scooper does not), pier
+      # sanctuary (a berthed sloop is never seized), the arms slain by a
+      # rake break up richer and stay down, and the grasper water stays
       # contained under adversarial input.
       - name: Brineward host proof (bw_sim mirror)
         run: python3 tools/check-brine.py
@@ -1337,6 +1346,19 @@ jobs:
           diff /tmp/bands/bands-bank-keys.txt games/brineward-nds/proof/bands-bank-keys.txt
           diff /tmp/bands/bands-reef-deep-keys.txt games/brineward-nds/proof/bands-reef-deep-keys.txt
           diff /tmp/bands/bands-reef-keys.txt games/brineward-nds/proof/bands-reef-keys.txt
+          mkdir -p /tmp/grasper
+          python3 games/brineward-nds/tools/record-grasper.py --outdir /tmp/grasper
+          diff /tmp/grasper/grasper-duel-keys.txt games/brineward-nds/proof/grasper-duel-keys.txt
+          diff /tmp/grasper/grasper-seize-keys.txt games/brineward-nds/proof/grasper-seize-keys.txt
+          mkdir -p /tmp/breakfree
+          python3 games/brineward-nds/tools/record-breakfree.py --outdir /tmp/breakfree
+          diff /tmp/breakfree/grasper-breakfree-keys.txt games/brineward-nds/proof/grasper-breakfree-keys.txt
+          mkdir -p /tmp/ambush
+          python3 games/brineward-nds/tools/record-ambush.py --outdir /tmp/ambush
+          diff /tmp/ambush/ambush-survived-keys.txt games/brineward-nds/proof/ambush-survived-keys.txt
+          mkdir -p /tmp/bighold
+          python3 games/brineward-nds/tools/record-bighold.py --outdir /tmp/bighold
+          diff /tmp/bighold/bighold-keys.txt games/brineward-nds/proof/bighold-keys.txt
       - name: make /opt/wonderful runner-writable
         run: sudo mkdir -p /opt/wonderful && sudo chown "$(id -u):$(id -g)" /opt/wonderful
       - name: cache NDS toolchain (BlocksDS 1.21.1 + Wonderful GCC pins)
@@ -2509,6 +2531,166 @@ jobs:
             --assert-watch 250:t:18:eq:0 \
             --assert-watch 250:t:47:eq:0 \
             --assert-watch 250:t:2:ge:200
+      # Proof 23 — the Grasper (bestiary cut 1): the committed grasper
+      # route (games/brineward-nds/proof/grasper-*-keys.txt, seed 174 —
+      # a GRASPER water, t:54 == 1) plays the recorded duel win, then the
+      # victor LINGERS over the wreck (pure idle: no salvage input) and
+      # the arms rise, reach, and SEIZE her — the frame-exact seize/hold
+      # contract is proven for whole input families in check-brine.py
+      # (check_grasper_holds); this ROM pin confirms the ROM surfaces it.
+      # Additive at the ROM level too: the Grasper stays DOWN (t:50 == 0)
+      # all through the duel phase (t:3 == 1). Every frame below is the
+      # recorder's step<->frame map (step j at frame j+seed+3), the same
+      # calibrated convention as proof 2; the mirror predicts the pins and
+      # the ROM build is byte-deterministic, so drift == regression.
+      - name: 'proof 23 — the Grasper seizes and holds (bestiary cut 1)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-grasper.png \
+            --frames 1100 \
+            $(cat games/brineward-nds/proof/grasper-duel-keys.txt) \
+            --shot 970:bw-grasper-held.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:56 \
+            --assert-watch 190:t:0:eq:0x4252494E \
+            --assert-watch 190:t:13:eq:174 \
+            --assert-watch 190:t:54:eq:1 \
+            --assert-watch 250:t:3:eq:1 \
+            --assert-watch 250:t:50:eq:0 \
+            --assert-watch 970:t:3:eq:3 \
+            --assert-watch 970:t:50:eq:2 \
+            --assert-watch 970:t:7:eq:53 \
+            --assert-watch 1020:t:50:eq:2 \
+            --assert-watch 1020:t:7:eq:53 \
+            --assert-watch 1080:t:50:eq:0 \
+            --assert-watch 1080:t:53:eq:90
+      # Proof 24 — the break-free B verb (bestiary cut 2 «Ram/brace»): the
+      # committed break-free route (games/brineward-nds/proof/grasper-
+      # breakfree-keys.txt) is the seize route's twin — the SAME seed-174
+      # duel and the SAME lingering seize — but a few frames into the hold
+      # the player BRACES (one B press at tool frame 956) and WRENCHES
+      # LOOSE. The wrench costs exactly BW_GRASPER_BRACE_HULL (10) hull and
+      # the arms slip BW_GRASPER_BRACE_FRAMES (12) frames later, a hold cut
+      # to 22 frames — well under the full 90 (proof 23's route was still
+      # held at frame 1020). The frame-exact break contract is proven for
+      # whole families in check-brine.py (check_grasper_breakfree); this
+      # ROM pin confirms the wiring surfaces it. Every frame is the
+      # recorder's step<->frame map (step j at frame j+177), mirror-
+      # predicted; the ROM build is byte-deterministic, so drift ==
+      # regression.
+      - name: 'proof 24 — the seized sloop wrenches free (bestiary cut 2)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-grasper-breakfree.png \
+            --frames 1080 \
+            $(cat games/brineward-nds/proof/grasper-breakfree-keys.txt) \
+            --shot 962:bw-grasper-wrench.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:56 \
+            --assert-watch 190:t:0:eq:0x4252494E \
+            --assert-watch 190:t:13:eq:174 \
+            --assert-watch 190:t:54:eq:1 \
+            --assert-watch 250:t:3:eq:1 \
+            --assert-watch 250:t:50:eq:0 \
+            --assert-watch 950:t:50:eq:2 \
+            --assert-watch 950:t:7:eq:53 \
+            --assert-watch 962:t:50:eq:2 \
+            --assert-watch 962:t:7:eq:43 \
+            --assert-watch 974:t:50:eq:0 \
+            --assert-watch 974:t:7:eq:43 \
+            --assert-watch 974:t:53:eq:90 \
+            --assert-watch 1030:t:7:eq:43
+      # Proof 25 — the ambush (bestiary cut 3 «The ambush»): the committed
+      # ambush route (games/brineward-nds/proof/ambush-survived-keys.txt,
+      # seed 439 — an AMBUSH water, t:54 == 1) plays the recorded duel win,
+      # then the victor lingers and the arms SEIZE her — and the seize
+      # SPRINGS THE TRAP: BW_CUTTER_COUNT (3) converging cutters, witnessed
+      # by t:55 (cutters alive) going 0 -> 3. A few frames into the hold the
+      # player BRACES (one B press at tool frame 1236) and WRENCHES LOOSE —
+      # the hold ends (release tool frame 1248) BEFORE any cutter reaches the
+      # pin (the first unbraced bite would land ~1271), so ZERO cutters bite:
+      # the hull holds at the seize+brace cost (73 -> 53 -> 43, never the
+      # extra 3x8 the pin would have taken) and the cutters DISPERSE
+      # (t:55 -> 0). The ambush composition + the braced counter are proven
+      # for whole families in check-brine.py (check_grasper_ambush); this ROM
+      # pin confirms the wiring surfaces it. Every frame is the recorder's
+      # step<->frame map (step j at frame j+442), mirror-predicted; the ROM
+      # build is byte-deterministic, so drift == regression.
+      - name: 'proof 25 — the ambush: cutters close, a brace survives (bestiary cut 3)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-ambush.png \
+            --frames 1300 \
+            $(cat games/brineward-nds/proof/ambush-survived-keys.txt) \
+            --shot 1232:bw-ambush-cutters.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:56 \
+            --assert-watch 460:t:0:eq:0x4252494E \
+            --assert-watch 515:t:13:eq:439 \
+            --assert-watch 515:t:54:eq:1 \
+            --assert-watch 515:t:3:eq:1 \
+            --assert-watch 515:t:50:eq:0 \
+            --assert-watch 515:t:55:eq:0 \
+            --assert-watch 1232:t:3:eq:3 \
+            --assert-watch 1232:t:50:eq:2 \
+            --assert-watch 1232:t:7:eq:53 \
+            --assert-watch 1232:t:55:eq:3 \
+            --assert-watch 1242:t:50:eq:2 \
+            --assert-watch 1242:t:7:eq:43 \
+            --assert-watch 1242:t:55:eq:3 \
+            --assert-watch 1254:t:50:eq:0 \
+            --assert-watch 1254:t:7:eq:43 \
+            --assert-watch 1254:t:53:eq:90 \
+            --assert-watch 1254:t:55:eq:0
+      # Proof 26 — THE HOLD TRACK (bestiary cut 4): the crate-cap economy
+      # witnessed the ROM-honest way. Same proof-7 bank (seed 127 salvage,
+      # 15g at the pier) and the same berth window opens the Graywake port
+      # (state 4); the cursor walks DOWN to the APPENDED fourth line, HOLD
+      # (row 4, t[23]=4), and A buys hold tier I — gold 15 -> 0 (t[18]) and
+      # the crate cap BW_T_HOLDCAP 8 -> 12 (t[56], the hold-track witness).
+      # BEFORE the buy the cap reads 8 == BW_HOLD_CAP (the tier-0 pin-carry
+      # identity, live in the ROM); START walks back to the water and the
+      # next duel (seed 748) sails with the bigger hold PERSISTING. The
+      # >8-crate deep-haul bank is host-proven (check_hold_track /
+      # record-bighold) — a natural water does not yet overflow the stock
+      # hold — so the ROM pins the ECONOMY (buy it, cap rises, it persists),
+      # not a >8 bank. Mirror-predicted, reusing proof 7's proven berth
+      # window; the pins shift only in the navigation depth and the row.
+      - name: 'proof 26 — the hold track: buy a bigger hold, the cap rises 8->12 (bestiary cut 4)'
+        run: |
+          python3 tools/nds-headless-check.py \
+            games/brineward-nds/brineward-nds.nds bw-hold.png \
+            --frames 790 $(cat games/brineward-nds/proof/salvage-duel-keys.txt) \
+            $(cat games/brineward-nds/proof/salvage-scoop-keys.txt) \
+            $(cat games/brineward-nds/proof/salvage-bank-keys.txt) \
+            --keys 650-655:A --keys 670-672:DOWN --keys 674-676:DOWN \
+            --keys 678-680:DOWN --keys 682-684:DOWN --keys 690-695:A \
+            --keys 710-715:A --keys 730-735:START --keys 750-755:START \
+            --shot 660:bw-hold-menu.png --shot 705:bw-hold-bought.png \
+            --elf games/brineward-nds/build/brineward-nds.elf \
+            --watch t:bw_telemetry:57 \
+            --assert-watch 145:t:3:eq:1 \
+            --assert-watch 145:t:13:eq:127 \
+            --assert-watch 640:t:3:eq:3 \
+            --assert-watch 640:t:18:eq:15 \
+            --assert-watch 655:t:3:eq:4 \
+            --assert-watch 655:t:18:eq:15 \
+            --assert-watch 655:t:23:eq:0 \
+            --assert-watch 655:t:56:eq:8 \
+            --assert-watch 672:t:23:eq:1 \
+            --assert-watch 676:t:23:eq:2 \
+            --assert-watch 680:t:23:eq:3 \
+            --assert-watch 684:t:23:eq:4 \
+            --assert-watch 700:t:3:eq:4 \
+            --assert-watch 700:t:18:eq:0 \
+            --assert-watch 700:t:56:eq:12 \
+            --assert-watch 725:t:18:eq:0 \
+            --assert-watch 725:t:56:eq:12 \
+            --assert-watch 740:t:3:eq:3 \
+            --assert-watch 770:t:3:eq:1 \
+            --assert-watch 770:t:13:eq:748 \
+            --assert-watch 770:t:16:eq:0 \
+            --assert-watch 770:t:56:eq:12
       - name: upload Brineward ROM as workflow artifact
         uses: actions/upload-artifact@v4
         with:

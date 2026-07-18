@@ -361,6 +361,8 @@
 
 #include "gl_save.h"
 
+#include "wr_milestones.h"
+
 #include "common_fixed_8x8_sprite_font.h"
 #include "common_variable_8x8_sprite_font.h"
 
@@ -997,8 +999,28 @@ int main()
     // run-end; the day + dialed seed that set it ride along, and every end
     // bumps the run counter. Called EXACTLY once per run-end transition — the
     // three end sites (dawn's st_closed, the sell win, the pact win).
+    // NEW RECORD flash (WIK-03 follow-on to #184): true when the run whose
+    // end is being banked beat the prior persisted best. Captured INSIDE
+    // record_run() BEFORE the overwrite below clobbers `best`, so the end
+    // card flashes the record the player just broke, not the one they now
+    // hold. Read-only; the end-card render gates it on ledger_loaded.
+    bool new_record = false;
+
+    // Run-count milestone flourish (follow-on to #186): the end-card callout
+    // ("10TH RUN" / "25TH RUN" / "50TH RUN") for the run whose end is being
+    // banked, or nullptr. Captured INSIDE record_run() BEFORE ++best.runs, the
+    // same compare-before-increment shape as new_record above: best.runs holds
+    // the count of PRIOR run-ends, so this run's ordinal is best.runs + 1. The
+    // decision is the pure wr::run_milestone_label (wr_milestones.h) so it is
+    // host-testable (tools/check-run-milestones.py). Read-only; the end-card
+    // render gates it on ledger_loaded, so the no-save path never draws it.
+    const char* milestone_label = nullptr;
+
     auto record_run = [&]()
     {
+        new_record = gold > best.best_gold || int(day) > best.best_day_reached;
+        milestone_label = wr::run_milestone_label(best.runs + 1);
+
         if(gold > best.best_gold)
         {
             best.best_gold = gold;
@@ -1675,7 +1697,58 @@ int main()
             ui_lines[2].set(ui_gen, ui_x, -42, "BUY LOW - SELL HIGH");
             ui_lines[3].set(ui_gen, ui_x, -30, "300 GOLD BEFORE DAY 30");
             title_lines[0].set(ui_gen, ui_x, -14, "YOUR LEDGER REMEMBERS");
-            title_lines[1].set(ui_gen, ui_x, -2, "BUT THE INK AGES");
+
+            // The best on the title (WIK-03): once a prior SRAM save has
+            // been restored, the second pitch line carries the record a
+            // score-attack player is chasing — BEST GOLD x DAY y, both the
+            // persisted best_gold AND best_day_reached (the latter banked
+            // since crossroads cut 4 but never shown anywhere until now).
+            // Gated on ledger_loaded, which is FALSE on every fresh /
+            // foreign / erased cart (and on every proof booted without
+            // --savefile), so the default no-save path renders EXACTLY the
+            // committed flavor line at the same slot/position — byte-
+            // identical, and P1-P12 carry verbatim. Render-only: no RNG
+            // draw, no telemetry word, no new sprite line.
+            //
+            // The lifetime run count (follow-on): best.runs is banked in
+            // SRAM (wr_ledger[4]) and bumped in record_run() at every
+            // run-end since crossroads cut 4, but was shown on no screen.
+            // Ride it on this same best line as " RUNS n" — plain-space
+            // separator matching " DAY " (no new font glyphs), still under
+            // the ledger_loaded gate, so the no-save path is unchanged.
+            // Capacity widened to hold the extra segment.
+            //
+            // The persistent tier tag (follow-on to #189): #189's milestone
+            // flourish flashes "50TH RUN" once, on the end card of the
+            // crossing run, then is gone. This surfaces the DURABLE side of
+            // the same fact — once best.runs reaches a tier threshold, the
+            // pure wr::run_tier_label (wr_milestones.h) returns the earned
+            // persistent label (runs >= 50 -> "VETERAN"), which we append to
+            // this same best line beside RUNS n so it re-shows every boot.
+            // It is a >= LEVEL on the current stored total, not a crossing,
+            // so it persists above the threshold. Still inside this
+            // ledger_loaded gate and drawn with the same text primitive, so
+            // the no-save else branch stays byte-identical. Capacity widened
+            // once more to hold the tag.
+            if(ledger_loaded)
+            {
+                bn::string<64> best_line("BEST GOLD ");
+                best_line.append(bn::to_string<8>(best.best_gold));
+                best_line.append(" DAY ");
+                best_line.append(bn::to_string<8>(best.best_day_reached));
+                best_line.append(" RUNS ");
+                best_line.append(bn::to_string<8>(best.runs));
+                if(const char* tier_label = wr::run_tier_label(best.runs))
+                {
+                    best_line.append(' ');
+                    best_line.append(tier_label);
+                }
+                title_lines[1].set(ui_gen, ui_x, -2, best_line);
+            }
+            else
+            {
+                title_lines[1].set(ui_gen, ui_x, -2, "BUT THE INK AGES");
+            }
             // The seed dial (crossroads cut 3): once dialed OFF 0, the START
             // line carries the live dialed world seed as SEED xxxxxxxx (the
             // pinned "PRESS START" prefix carries, so the P1 text pin holds)
@@ -1963,6 +2036,30 @@ int main()
                 bn::string<40> bestline("BEST GOLD ");
                 bestline.append(bn::to_string<8>(best.best_gold));
                 title_lines[1].set(ui_gen, ui_x, 24, bestline);
+
+                // NEW RECORD flash (WIK-03 follow-on): when THIS run beat the
+                // prior best (gold or day, captured in record_run before the
+                // overwrite), celebrate it below the best line. Unreachable on
+                // the no-save path (ledger_loaded false), so byte-identical
+                // there — clear_lines() blanks title_lines[2] each transition,
+                // so it stays clear on a non-record run-end.
+                if(new_record)
+                {
+                    title_lines[2].set(ui_gen, ui_x, 40, "NEW RECORD");
+                }
+
+                // Run-count milestone flourish (follow-on to #186): when this
+                // run-end reaches a lifetime threshold (10/25/50, decided by
+                // the pure wr::run_milestone_label captured in record_run
+                // before ++best.runs), mark it one row below NEW RECORD. Same
+                // no-save gate (ledger_loaded false -> unreachable) and same
+                // clear_lines() blank-per-transition, so title_lines[3] stays
+                // clear on a non-milestone run-end and the no-save card is
+                // byte-identical.
+                if(milestone_label)
+                {
+                    title_lines[3].set(ui_gen, ui_x, 56, milestone_label);
+                }
             }
 
             break;
@@ -1987,6 +2084,24 @@ int main()
                 bn::string<40> bestline("BEST GOLD ");
                 bestline.append(bn::to_string<8>(best.best_gold));
                 title_lines[1].set(ui_gen, ui_x, 24, bestline);
+
+                // NEW RECORD flash (WIK-03 follow-on): a losing run can still
+                // set a new best (more gold than before, or a later day) — the
+                // pass-closing card celebrates it too. Same no-save gate, same
+                // free slot as st_balanced above.
+                if(new_record)
+                {
+                    title_lines[2].set(ui_gen, ui_x, 40, "NEW RECORD");
+                }
+
+                // Run-count milestone flourish (follow-on to #186): a losing
+                // run still ends a run and can reach a lifetime threshold —
+                // the pass-closing card marks 10/25/50 too. Same no-save gate,
+                // same free title_lines[3] slot as st_balanced above.
+                if(milestone_label)
+                {
+                    title_lines[3].set(ui_gen, ui_x, 56, milestone_label);
+                }
             }
 
             break;

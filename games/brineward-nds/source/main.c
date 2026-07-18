@@ -122,7 +122,7 @@
 #define BW_T_DIST 14    // chebyshev player<->enemy, 8.8 fixed
 #define BW_T_TRIM 15    // player sail trim, 0..2
 // slice 3 (extension; words 0-15 stay pinned)
-#define BW_T_HOLD 16    // crates aboard, 0..BW_HOLD_CAP
+#define BW_T_HOLD 16    // crates aboard, 0..BW_T_HOLDCAP (the tiered cap)
 #define BW_T_HOLDGOLD 17 // unbanked gold the hold is worth
 #define BW_T_GOLD 18    // gold banked at Graywake (safe forever)
 #define BW_T_LOOT 19    // crates afloat right now
@@ -163,8 +163,22 @@
 #define BW_T_SAVEWR 47  // ledger writes to the backup this power-on
 #define BW_T_SAVEVER 48 // save format version (build-flag visibility)
 #define BW_T_SPARE0 49  // reserved, always 0
+// bestiary cut 1 (extension; words 0-49 stay pinned)
+#define BW_T_GRASPSTATE 50 // Grasper state, BW_GRASPER_* (0 down/1 reach/2 hold)
+#define BW_T_GRASPX 51  // Grasper x, 8.8 fixed (meaningful while not down)
+#define BW_T_GRASPY 52  // Grasper y
+#define BW_T_GRASPHULL 53 // Grasper hull, 0..BW_GRASPER_HULL (0 = slain)
+#define BW_T_GRASPW 54  // 1 = this water holds a Grasper (not a Maw)
 
-volatile uint32_t bw_telemetry[50];
+#define BW_T_CUTTERS 55 // cut 3: converging cutters alive right now (0 unless
+                        //   an ambush water's HOLD has sprung them; 0 again on
+                        //   disperse). A pure witness — the sim needs no word.
+
+#define BW_T_HOLDCAP 56 // cut 4: the crate cap at the current hold tier —
+                        //   BW_HOLD_CAP (8) at tier 0 (bit-identical), the
+                        //   bought ceiling above it (the hold-track witness)
+
+volatile uint32_t bw_telemetry[57];
 
 enum
 {
@@ -397,6 +411,7 @@ typedef struct
     int32_t up_hull;                     // upgrade tiers — bought with
     int32_t up_cannon;                   //   banked gold, NEVER lost
     int32_t up_sail;                     //   (concept-doc rule)
+    int32_t up_hold;                     // hold-track tier (bestiary cut 4)
 } Score;
 
 // --- slice-9 backup I/O (bounded card-SPI EEPROM read + page program) ----------
@@ -611,9 +626,18 @@ static void draw_salvage_hud(const BwDuel *d, const Score *sc)
     else if (d->maw.state != BW_MAW_DOWN)
         printf("\x1b[1;1HTHE MAW %3d  FIRE OR FLY\x1b[K",
                (int)d->maw.hull);
+    else if (d->grasper.state == BW_GRASPER_HOLD && d->ambush_water)
+        printf("\x1b[1;1HCUTTERS! B WRENCH FREE NOW\x1b[K");
+    else if (d->grasper.state == BW_GRASPER_HOLD)
+        printf("\x1b[1;1HHELD FAST! B WRENCH / RAKE %3d\x1b[K",
+               (int)d->grasper.hull);
+    else if (d->grasper.state != BW_GRASPER_DOWN)
+        printf("\x1b[1;1HTHE GRASPER %3d  KEEP CLEAR\x1b[K",
+               (int)d->grasper.hull);
     else
         printf("\x1b[1;1HSALVAGE hold %d/%d %3dg >PIER\x1b[K",
-               (int)d->hold, BW_HOLD_CAP, (int)d->hold_gold);
+               (int)d->hold, (int)bw_up_hold_max(d->up_hold),
+               (int)d->hold_gold);
 }
 
 // --- the Graywake port menu (slice 4) ----------------------------------------
@@ -636,7 +660,7 @@ static void draw_port_row(int row, int cursor, const char *label,
 
 static void draw_port(const BwDuel *d, const Score *sc, int row)
 {
-    static char fx[3][10];
+    static char fx[4][10];
     consoleSelect(&top_console);
     printf("\x1b[3;9HGRAYWAKE PORT");
     printf("\x1b[5;7HGOLD BANKED %lug\x1b[K", (unsigned long)sc->gold);
@@ -644,11 +668,14 @@ static void draw_port(const BwDuel *d, const Score *sc, int row)
     int hull_maxed = d->up_hull >= BW_UP_TIERS - 1;
     int can_maxed = d->up_cannon >= BW_UP_TIERS - 1;
     int sail_maxed = d->up_sail >= BW_UP_TIERS - 1;
+    int hold_maxed = d->up_hold >= BW_HOLD_TIERS - 1;   // cut 4
     snprintf(fx[0], sizeof fx[0], "%d hp",
              (int)bw_up_hull_max(hull_maxed ? d->up_hull : d->up_hull + 1));
     snprintf(fx[1], sizeof fx[1], "rld %d",
              (int)bw_up_reload(can_maxed ? d->up_cannon : d->up_cannon + 1));
     snprintf(fx[2], sizeof fx[2], "swifter");
+    snprintf(fx[3], sizeof fx[3], "%d crt",     // cut 4: the hold-track effect
+             (int)bw_up_hold_max(hold_maxed ? d->up_hold : d->up_hold + 1));
     draw_port_row(BW_PORT_ROW_HULL, row, "HULL   ", d->up_hull,
                   fx[0], bw_up_price(hull_maxed ? d->up_hull
                                                 : d->up_hull + 1),
@@ -671,8 +698,16 @@ static void draw_port(const BwDuel *d, const Score *sc, int row)
     else
         printf("hull sound\x1b[K");
 
-    printf("\x1b[18;3HUP/DOWN pick   A buy");
-    printf("\x1b[19;3HSTART: back to the water");
+    // cut 4: the hold track — the fourth line, APPENDED at row 4 so the
+    // three upgrade rows and REPAIR keep their positions (every prior port
+    // proof/route holds).
+    draw_port_row(BW_PORT_ROW_HOLD, row, "HOLD   ", d->up_hold,
+                  fx[3], bw_up_hold_price(hold_maxed ? d->up_hold
+                                                     : d->up_hold + 1),
+                  hold_maxed);
+
+    printf("\x1b[19;3HUP/DOWN pick   A buy");
+    printf("\x1b[20;3HSTART: back to the water");
 }
 
 // --- bottom-screen ship status v0 ------------------------------------------------
@@ -720,7 +755,7 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
            (unsigned long)sc->wins, (unsigned long)sc->sinks,
            (unsigned long)sc->maws);
     printf("\x1b[13;1Hhold %d/%d crates %3dg\x1b[K",
-           (int)d->hold, BW_HOLD_CAP, (int)d->hold_gold);
+           (int)d->hold, (int)bw_up_hold_max(d->up_hold), (int)d->hold_gold);
     printf("\x1b[14;1HGOLD BANKED %lug\x1b[K", (unsigned long)sc->gold);
     draw_bar(17, "HULL", d->enemy.hull, bw_band_enemy_hull(d->band));
     printf("\x1b[19;1Hrange %3d yd\x1b[K",
@@ -743,6 +778,15 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
                (int)d->maw.hull);
     else if (d->maw.slain)
         printf("\x1b[21;1Hthe maw is dead planking\x1b[K");
+    else if (d->grasper.state == BW_GRASPER_HOLD && d->ambush_water)
+        printf("\x1b[21;1Hcutters close on the held ship\x1b[K");
+    else if (d->grasper.state == BW_GRASPER_HOLD)
+        printf("\x1b[21;1HTHE ARMS HAVE YOU  hull %3d\x1b[K",
+               (int)d->grasper.hull);
+    else if (d->grasper.state != BW_GRASPER_DOWN)
+        printf("\x1b[21;1Harms reach from the deep\x1b[K");
+    else if (d->grasper.slain)
+        printf("\x1b[21;1Hthe grasper drifts, still\x1b[K");
     else
         printf("\x1b[21;1H\x1b[K");
 }
@@ -754,6 +798,8 @@ static void draw_status(const BwDuel *d, const Score *sc, int state)
 #define OAM_LOOT0 (OAM_BALL0 + BW_MAX_BALLS)
 #define OAM_MAW (OAM_LOOT0 + BW_MAX_LOOT)
 #define OAM_REEF0 (OAM_MAW + 1)
+#define OAM_GRASPER (OAM_REEF0 + BW_MAX_REEFS)
+#define OAM_CUTTER0 (OAM_GRASPER + 1)   // cut 3: the converging ambush cutters
 
 static void draw_ships_and_balls(const BwDuel *d,
                                  u16 *player_gfx, u16 *enemy_gfx,
@@ -828,6 +874,32 @@ static void draw_ships_and_balls(const BwDuel *d,
                reef_gfx, -1, false,
                !(r->live && water_live), false, false, false);
     }
+    // The Grasper (bestiary cut 1): the risen arms while it reaches or
+    // holds. A grasper water shows this INSTEAD of the Maw (never both),
+    // so it reuses the Maw's risen 32x32 gfx — a big dark shape breaking
+    // the swell. REGULAR sprite (the affine no-hide-bit trap does not
+    // apply — plain hide works, the session-20 rule).
+    bool grasper_shown = water_live && d->grasper.state != BW_GRASPER_DOWN;
+    oamSet(&oamMain, OAM_GRASPER,
+           d->grasper.x / BW_ONE - 16, d->grasper.y / BW_ONE - 16,
+           2, 0, SpriteSize_32x32, SpriteColorFormat_16Color,
+           maw_risen_gfx, -1, false, !grasper_shown, false, false, false);
+    // The ambush cutters (bestiary cut 3): light enemy sloops converging on
+    // the pinned ship while the Grasper HOLDs it in an ambush water. They
+    // exist only during the hold — shown while the arms hold and the cutter
+    // has not yet bitten (a bitten cutter has stopped alongside; keep it
+    // drawn where it struck). They reuse the enemy sloop gfx (they ARE light
+    // sloops). REGULAR sprites (plain hide works — the session-20 rule).
+    bool holding = water_live && d->grasper.state == BW_GRASPER_HOLD;
+    for (int i = 0; i < BW_CUTTER_COUNT; i++)
+    {
+        const BwCutter *c = &d->grasper.cutters[i];
+        bool cutter_shown = holding && !(c->x == 0 && c->y == 0);
+        oamSet(&oamMain, OAM_CUTTER0 + i,
+               c->x / BW_ONE - 8, c->y / BW_ONE - 8,
+               1, 0, SpriteSize_16x16, SpriteColorFormat_16Color,
+               enemy_gfx, -1, false, !cutter_shown, false, false, false);
+    }
 }
 
 // Begin a duel: latch the frame-counter seed, reset the sim, and re-inject
@@ -851,6 +923,7 @@ static void begin_duel(BwDuel *duel, Score *sc, uint32_t frame,
     duel->up_hull = sc->up_hull;
     duel->up_cannon = sc->up_cannon;
     duel->up_sail = sc->up_sail;
+    duel->up_hold = sc->up_hold;         // cut 4: the bought hold ceiling
     duel->player.hull = carry_hull > 0 ? carry_hull
                                        : bw_up_hull_max(sc->up_hull);
     consoleSelect(&top_console);
@@ -922,6 +995,7 @@ int main(void)
                                            &score.up_hull,
                                            &score.up_cannon,
                                            &score.up_sail,
+                                           &score.up_hold,
                                            &score.best_band);
     }
     // The wear gate: the ledger AS LAST PERSISTED (what the chip
@@ -933,6 +1007,7 @@ int main(void)
     int32_t sv_hull = score.up_hull;
     int32_t sv_cannon = score.up_cannon;
     int32_t sv_sail = score.up_sail;
+    int32_t sv_hold = score.up_hold;         // cut 4: the hold tier persists
     uint32_t sv_band = score.best_band;
 
     int state = STATE_TITLE;
@@ -1107,6 +1182,11 @@ int main(void)
                 // committed slice-3/4 stories are untouched
                 .fire_l = pad_seen_idle && (down & KEY_L),
                 .fire_r = pad_seen_idle && (down & KEY_R),
+                // cut 2: B is the break-free wrench. Edge-triggered
+                // (keysDown), it only bites while the Grasper HOLDs the
+                // sloop; on any other frame bw_grasper_step ignores it, so
+                // no committed story that never presses B is disturbed.
+                .brace = pad_seen_idle && (down & KEY_B),
             };
             bw_salvage_step(&duel, &in);
             uint32_t banked = (uint32_t)bw_dock_step(&duel);
@@ -1157,6 +1237,7 @@ int main(void)
                     score.up_hull = duel.up_hull;      // tiers are score:
                     score.up_cannon = duel.up_cannon;  // bought once,
                     score.up_sail = duel.up_sail;      // kept forever
+                    score.up_hold = duel.up_hold;      // cut 4: the hold too
                 }
             }
             if (start || (pad_seen_idle && (down & KEY_B)))
@@ -1288,16 +1369,18 @@ int main(void)
         // changes nothing banked and writes nothing) ------------------
         if (score.gold != sv_gold || score.up_hull != sv_hull
             || score.up_cannon != sv_cannon || score.up_sail != sv_sail
-            || score.best_band != sv_band)
+            || score.up_hold != sv_hold || score.best_band != sv_band)
         {
             uint8_t blob[BW_SAVE_BYTES];
             bw_save_encode(score.gold, score.up_hull, score.up_cannon,
-                           score.up_sail, score.best_band, blob);
+                           score.up_sail, score.up_hold, score.best_band,
+                           blob);
             save_write_backup(blob);
             sv_gold = score.gold;
             sv_hull = score.up_hull;
             sv_cannon = score.up_cannon;
             sv_sail = score.up_sail;
+            sv_hold = score.up_hold;
             sv_band = score.best_band;
             save_writes++;
         }
@@ -1327,6 +1410,8 @@ int main(void)
         bw_telemetry[BW_T_TRIM] = (uint32_t)duel.player.trim;
         bw_telemetry[BW_T_HOLD] = (uint32_t)duel.hold;
         bw_telemetry[BW_T_HOLDGOLD] = (uint32_t)duel.hold_gold;
+        bw_telemetry[BW_T_HOLDCAP] =                 // cut 4: the hold-track
+            (uint32_t)bw_up_hold_max(duel.up_hold);  //   witness (8 at tier 0)
         bw_telemetry[BW_T_GOLD] = score.gold;
         uint32_t afloat = 0;
         for (int i = 0; i < BW_MAX_LOOT; i++)
@@ -1367,6 +1452,18 @@ int main(void)
         bw_telemetry[BW_T_SAVEWR] = save_writes;
         bw_telemetry[BW_T_SAVEVER] = BW_SAVE_VERSION;
         bw_telemetry[BW_T_SPARE0] = 0;
+        bw_telemetry[BW_T_GRASPSTATE] = (uint32_t)duel.grasper.state;
+        bw_telemetry[BW_T_GRASPX] = (uint32_t)duel.grasper.x;
+        bw_telemetry[BW_T_GRASPY] = (uint32_t)duel.grasper.y;
+        bw_telemetry[BW_T_GRASPHULL] = (uint32_t)duel.grasper.hull;
+        bw_telemetry[BW_T_GRASPW] = (uint32_t)duel.grasper_water;
+        // cut 3: the converging cutters alive right now — a pure witness
+        // (0 in every non-ambush water; 0->N at a seize, N->0 on disperse).
+        int cutters_alive = 0;
+        for (int i = 0; i < BW_CUTTER_COUNT; i++)
+            if (duel.grasper.cutters[i].x != 0 || duel.grasper.cutters[i].y != 0)
+                cutters_alive++;
+        bw_telemetry[BW_T_CUTTERS] = (uint32_t)cutters_alive;
     }
 
     return 0;

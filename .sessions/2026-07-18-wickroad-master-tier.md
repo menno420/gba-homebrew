@@ -1,11 +1,11 @@
 # Session — Wickroad: MASTER tier on the title screen (runs>=100)
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
-- date: 2026-07-18 (branch `claude/wickroad-master-tier`, PR **[[fill: PR#]]**;
+- date: 2026-07-18 (branch `claude/wickroad-master-tier`, PR **#195**;
   born-red card written at 2026-07-18T09:10:22Z, flipped to complete at
-  [[fill: flip ISO]], both from `date -u`).
-- **📊 Model:** [[fill: model]] · high · gameplay-polish slice — grow the
+  2026-07-18T09:16:15Z, both from `date -u`).
+- **📊 Model:** Sonnet family · high effort · gameplay-polish slice — grow the
   persistent Wickroad title tier tag from one tier to a descending first-match
   tier table keyed on lifetime run count.
 - mission: **Wickroad — "THE MASTER TIER"** (a follow-on to PR **#184** the
@@ -42,8 +42,8 @@
 ## What shipped
 
 1. Born-red gate: this card `in-progress` +
-   `control/claims/2026-07-18-wickroad-master-tier.md`, PR **[[fill: PR#]]**
-   opened READY.
+   `control/claims/2026-07-18-wickroad-master-tier.md`, PR **#195**
+   opened READY; flipped to `complete` on green `ROM builds`.
 2. **The pure helper** (`games/wickroad/src/wr_milestones.h`): the descending
    tier table inside `wr::run_tier_label(int lifetime_runs)` grows from one row
    to two — `{ 100, "MASTER" }` ABOVE `{ 50, "VETERAN" }` — keeping the
@@ -58,18 +58,49 @@
    the same two-row table, sweeps 0..300, and pins the boundaries 49→none,
    50/51→"VETERAN", 99→"VETERAN", 100/101→"MASTER". `check-run-milestones.py`
    re-run for no-regression.
-5. **Build**: [[fill: local build result or wall]] — the "ROM builds" gate is
-   proven by CI `rom-builds.yml`.
+5. **Build**: local ROM build unavailable in this clone (`arm-none-eabi-g++`
+   not found, `third_party/butano` source absent) — the "ROM builds" gate is
+   proven by CI `rom-builds.yml`, which went **green** on head `3e48250`
+   (`ROM builds`, `NDS ROM build`, `NDS Underroot build`, `NDS Brineward build`
+   all `success`; `substrate-gate` red by design — born-red hold now cleared +
+   the pre-existing non-required TILTSTONE.md orphan).
 
 ## 💡 Session idea
 
-[[fill: idea at flip — the one-row-table-with-a-forward-note pattern from #190
-paid off: growing an established descending first-match table is a
-single-row edit plus a boundary-pin in the mirror, no render or state change,
-because the earlier slice deliberately shaped the helper to be extended.]]
+**A descending first-match table shaped to grow turns each new tier into a
+one-row edit — the cheapest kind of gameplay slice, so the real question is
+not "can we add a tier" but "which tier earns its row."** #190 deliberately
+built `run_tier_label` as a one-row table with a forward note ("add higher
+rows ABOVE this one"); this slice cashed that in — MASTER cost exactly one C++
+row + one mirror row + a boundary pin, zero render and zero state change,
+because the seam was pre-shaped. That cheapness is a trap as much as a gift:
+it invites piling on thresholds nobody reaches. The disciplined next moves,
+in order of value: (1) a **GRANDMASTER tier at runs>=200** — same one-row
+pattern, but only worth it if telemetry/playtest shows players actually reach
+200 lifetime runs (a tier no one sees is dead weight on the title string's
+`bn::string<64>` budget); (2) more valuable than another static row, a
+**tier-up FLASH on the end card the run a boundary is first crossed** — reuse
+`run_milestone_label`'s transient-flash surface (#189) to *announce* the
+level-up (e.g. "MASTER" once at run 100) so the persistent title tag has a
+paired "you just earned this" beat, closing the persisted→legible→announced
+model #185 named for tiers the way it already exists for records. Idea (2) is
+the one with player-facing juice; idea (1) is a trivial follow-on gated on
+evidence the tier is reachable.
 
 ## Previous-session review
 
-[[fill: review at flip — prior slice `.sessions/2026-07-18-wickroad-veteran-tier.md`
-(PR #190): whether its forward note ("add higher rows ABOVE this one") held up
-in practice for this extension.]]
+Prior slice: `.sessions/2026-07-18-wickroad-veteran-tier.md` (PR **#190**, the
+persistent VETERAN tier tag) — **holds up, and its forward note was exactly
+right.** #190 shipped the tier table with one row and an explicit invariant:
+"add higher rows ABOVE this one to keep first-match-wins correct." This slice
+followed that note literally — `{ 100, "MASTER" }` above `{ 50, "VETERAN" }` —
+and the descending loop needed no change, confirming the note described a real,
+stable extension point rather than aspirational tidiness. One honest self-review
+of THIS slice: the change is genuinely minimal (helper table + host mirror +
+boundary pins, main.cpp untouched — verified at the call site, not assumed),
+and the pinned boundaries 49/50/51/99/100/101 catch the only off-by-one risk a
+first-match table has (the rim between two live tiers), so the proof is
+proportionate to the risk. The single thing to watch forward is string budget:
+each tier row can lengthen `title_lines[1]` (currently `bn::string<64>`); MASTER
+fits, but a third/fourth tier label should re-check the worst-case
+`BEST GOLD … DAY … RUNS … <TIER>` length against that cap.

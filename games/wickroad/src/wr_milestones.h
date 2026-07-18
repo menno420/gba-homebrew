@@ -46,18 +46,21 @@ namespace wr
     // boundary is INCLUSIVE at each threshold and the label persists above it:
     //   run_tier_label(49)  -> nullptr   (below the first tier)
     //   run_tier_label(50)  -> "VETERAN" (first tier reached, inclusive)
-    //   run_tier_label(200) -> "VETERAN" (still, until a higher tier is added)
+    //   run_tier_label(99)  -> "VETERAN" (still, below the next tier)
+    //   run_tier_label(100) -> "MASTER"  (higher tier reached, inclusive)
+    //   run_tier_label(300) -> "MASTER"  (still, until a higher tier is added)
     // Pure and self-contained (no Butano/GBA/std includes, no state, no RNG);
     // the stdlib mirror is tools/check-run-tier.py — keep the two in lockstep
     // (any threshold/label change lands in BOTH in the same PR).
     inline const char* run_tier_label(int lifetime_runs)
     {
-        // Descending by threshold: return the FIRST (highest) tier met. Starts
-        // with a single tier; add higher rows ABOVE this one (e.g. 100/MASTER)
-        // to keep first-match-wins correct.
+        // Descending by threshold: return the FIRST (highest) tier met. Rows
+        // stay ordered high-to-low so first-match-wins yields the highest
+        // earned tier; add any further rows ABOVE these to keep that correct.
         struct tier { int at_least; const char* label; };
         static const tier tiers[] = {
-            { 50, "VETERAN" },
+            { 100, "MASTER"  },
+            { 50,  "VETERAN" },
         };
 
         for(const tier& t : tiers)

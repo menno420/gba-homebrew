@@ -19,16 +19,12 @@
 > through #151.
 >
 > **Fresh-start reconcile 2026-07-17** (post-#153, main HEAD `2a34653`):
-> the read-path gate is green on main again — the owner (menno420) merged
-> **#153** (the Doc-index reachability fix) on 2026-07-17. The In-flight
-> section below is rewritten to the real open-PR state (four finished game
-> arcs + #154 + #171, all held open by design), and the autonomy / merge
-> apparatus is being **wound down** for the owner-driven relaunch. The
-> ordered landing mission + owner-console checklist live in
-> [`NEXT-TASKS.md`](NEXT-TASKS.md). **Context:** the Claude Code Projects EAP
-> goes **read-only Tue 2026-07-21**; after that the owner **recreates** the
-> projects and drives sessions directly (no self-arming routines; the owner
-> reviews and merges).
+> the read-path gate is green on main again — **#153** (the Doc-index
+> reachability fix) merged on 2026-07-17. The In-flight section below is the
+> real open-PR state (four finished game arcs + #154 + #171). Those PRs are
+> landable now — agents merge their own green PRs directly; none is held open
+> awaiting the owner. The ordered landing mission lives in
+> [`NEXT-TASKS.md`](NEXT-TASKS.md).
 
 ## Stability baseline
 
@@ -97,12 +93,13 @@ complete titles is new-concept material or owner-gated.
 
 ## In flight
 
-**24 PRs are open and DELIBERATELY held open** — finished,
-**ROM-builds-green** content that needs one coordinated
-**rebase-onto-current-`main`** landing pass. Do **not** bulk-merge and do
-**not** merge out of order: the arc children are stacked on their parents.
-The full ordered landing mission + conflict recipe + owner-console checklist
-live in [`NEXT-TASKS.md`](NEXT-TASKS.md). The open set:
+**24 PRs are open** — finished, **ROM-builds-green** content awaiting one
+coordinated **rebase-onto-current-`main`** landing pass. Agents land these
+directly on green; the only reason they aren't already merged is ordering,
+not an owner gate. Do **not** bulk-merge and do **not** merge out of order:
+the arc children are stacked on their parents, so land parents first. The
+full ordered landing mission + conflict recipe live in
+[`NEXT-TASKS.md`](NEXT-TASKS.md). The open set:
 
 - **Underroot** (new game **#12**, the marquee) — arc slices **#155 → #165**
   (v1.0 at slice 11).
@@ -119,9 +116,8 @@ live in [`NEXT-TASKS.md`](NEXT-TASKS.md). The open set:
 
 The **only** required check is the GBA **"ROM builds"** job, green on every
 open PR (NDS builds green too). `substrate-gate` red on these is **by design**
-(born-red session cards + the now-retired auto-merge machinery) and
-**non-blocking** — #152 merged with it red. The real merge blockers are draft
-state + stacked bases, not the gate.
+(born-red session cards) and **non-blocking** — #152 merged with it red. The
+real merge blocker is the stacked bases (land parents first), not any gate.
 
 ## Recently shipped (newest first)
 
@@ -185,11 +181,11 @@ PR bodies and `.sessions/` cards.
 
 ## Review rhythm
 
-Review was post-merge during the EAP autonomy epoch (merge on green, add a row
-to [`review-queue.md`](review-queue.md), veto = revert). **For the owner-driven
-relaunch this is wound down:** the owner reviews and merges PRs directly
-(server-side, in the GitHub UI); agents open plain, mergeable PRs and stop. See
-the rewritten merge doctrine in [`conventions.md`](conventions.md) and
+Review is post-merge: merge on green, add a row to
+[`review-queue.md`](review-queue.md), veto = revert. Agents open PRs ready and
+land their own green PRs directly (via a merge call, native auto-merge, or the
+`auto-merge-enabler.yml` workflow); a mergeable green PR is never routed to the
+owner. See the merge doctrine in [`conventions.md`](conventions.md) and
 [`PLATFORM-LIMITS.md`](PLATFORM-LIMITS.md).
 
 ## Doc index
@@ -201,14 +197,13 @@ this ledger is a reachability root (`substrate.config.json`
 
 - [NEXT-TASKS.md](NEXT-TASKS.md) — the fresh-start landing mission (land the
   four finished game arcs, in order) + the owner-console checklist (Pages
-  go-live, branch-protection required checks, #171 menu curation) + the
-  autonomy wind-down context.
+  go-live, branch-protection required checks, #171 menu curation).
 - [Next-menu (2026-07-15)](NEXT-MENU-2026-07-15.md) — the prior 7-option owner
   decision menu (merged as #150, in-doc rec B1); superseded by the #171
   overnight menu but kept on the read path.
-- [Routines & wake-chain doctrine](ROUTINES.md) — **DEPRECATED** EAP-era
-  autonomy machinery (self-arming wake chains / failsafe cron); retired for
-  the owner-driven relaunch, kept for history.
+- [Routines & wake-chain doctrine](ROUTINES.md) — reference doctrine for
+  self-arming wake chains / failsafe cron; re-verify platform delivery
+  observations in your own environment before relying on them.
 - [EAP close-out walkthrough (2026-07-14)](eap-closeout-walkthrough-2026-07-14.md)
   — what the seat did during the EAP, owner-actions checklist, handoff notes
   (landed per ORDER 006, PR #133 `2cbeb7b`).

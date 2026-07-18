@@ -361,6 +361,8 @@
 
 #include "gl_save.h"
 
+#include "wr_milestones.h"
+
 #include "common_fixed_8x8_sprite_font.h"
 #include "common_variable_8x8_sprite_font.h"
 
@@ -1004,9 +1006,20 @@ int main()
     // hold. Read-only; the end-card render gates it on ledger_loaded.
     bool new_record = false;
 
+    // Run-count milestone flourish (follow-on to #186): the end-card callout
+    // ("10TH RUN" / "25TH RUN" / "50TH RUN") for the run whose end is being
+    // banked, or nullptr. Captured INSIDE record_run() BEFORE ++best.runs, the
+    // same compare-before-increment shape as new_record above: best.runs holds
+    // the count of PRIOR run-ends, so this run's ordinal is best.runs + 1. The
+    // decision is the pure wr::run_milestone_label (wr_milestones.h) so it is
+    // host-testable (tools/check-run-milestones.py). Read-only; the end-card
+    // render gates it on ledger_loaded, so the no-save path never draws it.
+    const char* milestone_label = nullptr;
+
     auto record_run = [&]()
     {
         new_record = gold > best.best_gold || int(day) > best.best_day_reached;
+        milestone_label = wr::run_milestone_label(best.runs + 1);
 
         if(gold > best.best_gold)
         {
@@ -2016,6 +2029,19 @@ int main()
                 {
                     title_lines[2].set(ui_gen, ui_x, 40, "NEW RECORD");
                 }
+
+                // Run-count milestone flourish (follow-on to #186): when this
+                // run-end reaches a lifetime threshold (10/25/50, decided by
+                // the pure wr::run_milestone_label captured in record_run
+                // before ++best.runs), mark it one row below NEW RECORD. Same
+                // no-save gate (ledger_loaded false -> unreachable) and same
+                // clear_lines() blank-per-transition, so title_lines[3] stays
+                // clear on a non-milestone run-end and the no-save card is
+                // byte-identical.
+                if(milestone_label)
+                {
+                    title_lines[3].set(ui_gen, ui_x, 56, milestone_label);
+                }
             }
 
             break;
@@ -2048,6 +2074,15 @@ int main()
                 if(new_record)
                 {
                     title_lines[2].set(ui_gen, ui_x, 40, "NEW RECORD");
+                }
+
+                // Run-count milestone flourish (follow-on to #186): a losing
+                // run still ends a run and can reach a lifetime threshold —
+                // the pass-closing card marks 10/25/50 too. Same no-save gate,
+                // same free title_lines[3] slot as st_balanced above.
+                if(milestone_label)
+                {
+                    title_lines[3].set(ui_gen, ui_x, 56, milestone_label);
                 }
             }
 

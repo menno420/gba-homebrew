@@ -1696,12 +1696,22 @@ int main()
             // committed flavor line at the same slot/position — byte-
             // identical, and P1-P12 carry verbatim. Render-only: no RNG
             // draw, no telemetry word, no new sprite line.
+            //
+            // The lifetime run count (follow-on): best.runs is banked in
+            // SRAM (wr_ledger[4]) and bumped in record_run() at every
+            // run-end since crossroads cut 4, but was shown on no screen.
+            // Ride it on this same best line as " RUNS n" — plain-space
+            // separator matching " DAY " (no new font glyphs), still under
+            // the ledger_loaded gate, so the no-save path is unchanged.
+            // Capacity widened to hold the extra segment.
             if(ledger_loaded)
             {
-                bn::string<40> best_line("BEST GOLD ");
+                bn::string<56> best_line("BEST GOLD ");
                 best_line.append(bn::to_string<8>(best.best_gold));
                 best_line.append(" DAY ");
                 best_line.append(bn::to_string<8>(best.best_day_reached));
+                best_line.append(" RUNS ");
+                best_line.append(bn::to_string<8>(best.runs));
                 title_lines[1].set(ui_gen, ui_x, -2, best_line);
             }
             else

@@ -997,8 +997,17 @@ int main()
     // run-end; the day + dialed seed that set it ride along, and every end
     // bumps the run counter. Called EXACTLY once per run-end transition — the
     // three end sites (dawn's st_closed, the sell win, the pact win).
+    // NEW RECORD flash (WIK-03 follow-on to #184): true when the run whose
+    // end is being banked beat the prior persisted best. Captured INSIDE
+    // record_run() BEFORE the overwrite below clobbers `best`, so the end
+    // card flashes the record the player just broke, not the one they now
+    // hold. Read-only; the end-card render gates it on ledger_loaded.
+    bool new_record = false;
+
     auto record_run = [&]()
     {
+        new_record = gold > best.best_gold || int(day) > best.best_day_reached;
+
         if(gold > best.best_gold)
         {
             best.best_gold = gold;
@@ -1986,6 +1995,17 @@ int main()
                 bn::string<40> bestline("BEST GOLD ");
                 bestline.append(bn::to_string<8>(best.best_gold));
                 title_lines[1].set(ui_gen, ui_x, 24, bestline);
+
+                // NEW RECORD flash (WIK-03 follow-on): when THIS run beat the
+                // prior best (gold or day, captured in record_run before the
+                // overwrite), celebrate it below the best line. Unreachable on
+                // the no-save path (ledger_loaded false), so byte-identical
+                // there — clear_lines() blanks title_lines[2] each transition,
+                // so it stays clear on a non-record run-end.
+                if(new_record)
+                {
+                    title_lines[2].set(ui_gen, ui_x, 40, "NEW RECORD");
+                }
             }
 
             break;
@@ -2010,6 +2030,15 @@ int main()
                 bn::string<40> bestline("BEST GOLD ");
                 bestline.append(bn::to_string<8>(best.best_gold));
                 title_lines[1].set(ui_gen, ui_x, 24, bestline);
+
+                // NEW RECORD flash (WIK-03 follow-on): a losing run can still
+                // set a new best (more gold than before, or a later day) — the
+                // pass-closing card celebrates it too. Same no-save gate, same
+                // free slot as st_balanced above.
+                if(new_record)
+                {
+                    title_lines[2].set(ui_gen, ui_x, 40, "NEW RECORD");
+                }
             }
 
             break;

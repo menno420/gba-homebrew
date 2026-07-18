@@ -13,3 +13,4 @@ this directory holds the newer, slice-planned arcs.
 | Arc | Platform | Doc | State |
 |---|---|---|---|
 | **Underroot** — dual-screen burrow-colony survival | NDS | [`UNDERROOT.md`](UNDERROOT.md) | kickoff — slice 1 (dual-screen skeleton) |
+| **Tiltstone** — the shareable daily gravity puzzle | Web | [`TILTSTONE.md`](TILTSTONE.md) | arc 2 — 5/5 cuts built |

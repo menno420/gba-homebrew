@@ -1,0 +1,69 @@
+# Session — Wickroad: run-count milestone flourish on the end card
+
+> **Status:** `in-progress`
+
+- date: 2026-07-18 (branch `claude/wickroad-run-milestones`, PR **#[[fill:pr]]**;
+  born-red card written at 2026-07-18T02:04:10Z, flipped to complete at
+  [[fill:flip-stamp]], both from `date -u`).
+- **📊 Model:** Opus 4.8 · high · new-logic gameplay slice — a deterministic
+  run-count milestone callout on the Wickroad end card.
+- mission: **Wickroad — "THE MILESTONE FLOURISH"** (a follow-on to PR **#184**
+  the persisted best on the title, PR **#185** the NEW RECORD end-card flash,
+  and PR **#186** the lifetime RUNS count on the title). #186's own session idea
+  named this exact next surface: `best.runs` is a monotone lifetime counter with
+  no "record" beat, so its natural celebration is a milestone nudge at runs
+  10 / 25 / 50. This slice adds it: when a just-completed run's ordinal crosses
+  a threshold, the end card shows a one-line callout ("10TH RUN" / "25TH RUN" /
+  "50TH RUN") on a free card slot below the NEW RECORD line. The crossing
+  decision is a PURE helper — `wr::run_milestone_label(int completed_run_ordinal)`
+  in `games/wickroad/src/wr_milestones.h`, no Butano/GBA headers — so it is
+  trivially inspectable and host-testable; a stdlib mirror `tools/check-run-
+  milestones.py` proves the threshold table for every ordinal. Following #185's
+  discipline the ordinal is captured INSIDE `record_run()` BEFORE `++best.runs`,
+  so the 10th completed run-end (pre-increment `best.runs == 9`, ordinal 10)
+  triggers "10TH RUN" — the same number #186 shows as "RUNS 10". **Zero new RNG
+  draws, `wr_telemetry` / `wr_art` / `wr_ledger` unchanged.** THE CONTRACT: the
+  callout draws ONLY inside the existing `ledger_loaded` gate, so the default
+  no-save path (fresh / foreign / erased cart, any proof booted without
+  `--savefile`) is byte-identical — `clear_lines()` blanks the slot each
+  transition, so it stays clear on a non-milestone run-end. Branches from main
+  (#184 + #185 + #186 in).
+- landing posture: PR opened **READY** (not draft). Plain `claude/*` READY PRs
+  auto-land server-side on green `rom-builds` under owner merge authority — no
+  self-merge, no manual auto-merge arm from this session. substrate-gate is RED
+  BY DESIGN while this card is `in-progress` (the born-red hold) and
+  additionally red on a pre-existing arcs/TILTSTONE.md orphan owned by another
+  team — neither blocks the required `ROM builds` gate; flipping this card to
+  `complete` (the deliberate LAST step) releases the born-red hold.
+
+## What shipped
+
+1. Born-red gate: this card `in-progress` +
+   `control/claims/2026-07-18-wickroad-run-milestones.md`, PR **#[[fill:pr]]**
+   opened READY.
+2. **The pure helper** (`games/wickroad/src/wr_milestones.h`): a self-contained,
+   Butano/GBA-free header with `wr::run_milestone_label(int completed_run_ordinal)
+   -> const char*` returning the callout for ordinals 10 / 25 / 50 and `nullptr`
+   otherwise. No state, no RNG, `constexpr`-friendly `switch`.
+3. **The slice** (`games/wickroad/src/main.cpp`): `record_run()` captures
+   `milestone_label = wr::run_milestone_label(best.runs + 1)` BEFORE
+   `++best.runs` (compare-before-increment, mirroring `new_record`); both end
+   cards (`st_balanced` win, `st_closed` loss) draw the callout on
+   `title_lines[3]` (y=56, one 16px row below the NEW RECORD line) inside the
+   existing `ledger_loaded` branch. No RNG/telemetry/art/ledger change; the
+   no-save path is byte-identical.
+4. **Host test** (`tools/check-run-milestones.py`): a stdlib-only mirror of the
+   helper (the check-underroot.py convention), asserting ordinals 1..9 → none,
+   10 → "10TH RUN", 11..24 → none, 25 → "25TH RUN", 26..49 → none, 50 →
+   "50TH RUN", 51..200 → none. Exit 0 = green.
+5. **Build**: local ROM build unavailable in this clone (no
+   `third_party/butano` source) — the "ROM builds" gate is proven by CI
+   `rom-builds.yml`.
+
+## 💡 Session idea
+
+[[fill:idea]]
+
+## Previous-session review
+
+[[fill:review]]

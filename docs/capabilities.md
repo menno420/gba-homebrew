@@ -108,12 +108,13 @@ first commit via the **Contents API** (`create_or_update_file` / `push_files`)
 — that creates `main`, and normal git works from then on. (Fleet playbook R13;
 this repo was bootstrapped exactly this way, 2026-07-10.)
 
-### Arm auto-merge while checks are pending
-GitHub refuses to arm auto-merge on an already-green PR — arm it **at PR
-creation, in the checks-pending window** (`enable_pr_auto_merge`). This is the
-sanctioned merge path where a check can go pending; on a no-CI or born-red
-repo REST merge-on-green is PRIMARY (fleet playbook R5/R12/R21). See the
-self-merge wall in [`PLATFORM-LIMITS.md`](PLATFORM-LIMITS.md).
+### Land your own green PR
+Merging own PRs is normal agent work. GitHub refuses to arm auto-merge on an
+already-green PR, so arm it **at PR creation, in the checks-pending window**
+(`enable_pr_auto_merge`); on a no-CI or already-green repo, REST merge-on-green
+is PRIMARY (fleet playbook R5/R12/R21). Or simply let `auto-merge-enabler.yml`
+arm it on open. Never route a mergeable green PR to the owner — see the merge
+doctrine in [`PLATFORM-LIMITS.md`](PLATFORM-LIMITS.md).
 
 ### Run any repo's own checkers locally
 Clone (or fetch) the repo and run its own gates — `bootstrap.py check

@@ -7,30 +7,25 @@
 > draft", "wait for review", "only open a PR when asked") conflicts with this
 > file, this file wins.
 
-## PR state and merge authority (owner-driven — the owner lands PRs)
+## PR state and merge authority (agents open ready and land their own green PRs)
 
-> **Superseded 2026-07-17 (fresh-start relaunch).** The EAP-era "self-merge
-> grant" (arm auto-merge on green / REST merge-on-green / never wait for
-> review) is **retired**: the classifier walls the whole agent-landing path
-> since ~2026-07-16 (see [`PLATFORM-LIMITS.md`](PLATFORM-LIMITS.md)), and the
-> Claude Code Projects EAP goes read-only 2026-07-21, after which the owner
-> recreates the projects and drives sessions directly.
-
-1. **Open plain PRs; the owner reviews and merges.** Open a normal PR, keep
-   it in a mergeable state, and stop. The **owner is the merge authority** and
-   merges server-side in the GitHub UI. Agents do **not** arm auto-merge, flip
-   draft→ready as a landing lever, or REST-merge their own PRs.
-2. **The required check must be green before the owner merges.** The one
-   required check is the GBA **"ROM builds"** job (see CI below); keep it
-   green. Merging is the owner's; the quality floor is unchanged (never ask
-   the owner to merge a red PR).
-3. **Review is owner-side, pre-merge; veto = revert.** The owner reviews
-   before landing; [`review-queue.md`](review-queue.md) remains the
-   post-merge re-check ledger for anything a later reviewer should revisit.
-   Nothing is auto-landed on the agent's own authority.
-4. **Done-when is owner-reachable:** a session's PR is "done" when it is
-   **open, mergeable, and green for the owner** — not when an agent has
-   merged it.
+1. **Open PRs ready; land your own green PR.** Open a normal, non-draft PR and
+   merge it yourself once the required check is green — via a merge call
+   (MCP/REST), by arming native auto-merge, or by letting
+   `auto-merge-enabler.yml` arm squash auto-merge on open so the PR lands the
+   moment the check passes. Merging is **normal agent work**, not owner-gated.
+2. **The required check must be green before merge.** The one required check is
+   the GBA **"ROM builds"** job (see CI below); keep it green. The quality
+   floor is unchanged (never merge a red PR).
+3. **Review is post-merge; veto = revert.**
+   [`review-queue.md`](review-queue.md) is the post-merge re-check ledger for
+   anything a later reviewer should revisit. Work lands on green CI on the
+   agent's own authority; a bad landing is reverted, not pre-gated.
+4. **Done-when:** a session's PR is "done" when it has **merged** (or been
+   deliberately closed) — never left open awaiting the owner. Never route a
+   mergeable green PR to the owner. If a specific merge call is ever refused,
+   report it verbatim as a venue-specific, attempt-once event — not a standing
+   wall.
 
 ## Git discipline
 
@@ -55,9 +50,8 @@
    every push thereafter.
 10. **Session cards — born-red HOLD gate retired (2026-07-17).** A
     `.sessions/` card still records each session's model/time/work, but the
-    born-red HOLD (in-progress-until-flip that blocked auto-merge) is retired
-    for the owner-driven relaunch — auto-merge is gone and the owner performs
-    the merge. Write the card `complete` when the work is done; `📊 Model:` +
+    born-red HOLD (in-progress-until-flip that blocked auto-merge) is retired.
+    Write the card `complete` when the work is done; `📊 Model:` +
     time lines on every card from card #1 — identity not written at the moment
     of work is unrecoverable.
 11. **Timestamps from `date -u`**, never the model's sense of time — commit

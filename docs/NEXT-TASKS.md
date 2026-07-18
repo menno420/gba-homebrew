@@ -2,19 +2,17 @@
 
 > **Status:** `owner-guidance`
 >
-> Written 2026-07-17 by the fresh-start cleanup pass, for the owner-driven
-> relaunch. The Claude Code Projects EAP goes **read-only Tue 2026-07-21**;
-> after that the owner recreates the projects and drives sessions directly.
-> This is the ordered work list the next (human-driven or re-created) session
-> picks up. Source code + merged PRs win over this file; re-verify PR state at
-> HEAD before acting (MCP PR reads lag; confirm via `git fetch` / the Actions
-> runs).
+> Written 2026-07-17 by the fresh-start cleanup pass; this is the ordered work
+> list the next session picks up. Agents land these PRs themselves on green CI.
+> Source code + merged PRs win over this file; re-verify PR state at HEAD before
+> acting (MCP PR reads lag; confirm via `git fetch` / the Actions runs).
 
 ## Mission #1 — LAND THE FOUR FINISHED GAME ARCS
 
-24 PRs are open and were **deliberately left open**: finished,
-**ROM-builds-green** content that needs one coordinated **rebase-onto-current-
-`main`** pass. All branches are preserved. Land each chain **in order** — the
+24 PRs are open, awaiting one coordinated **rebase-onto-current-`main`** pass:
+finished, **ROM-builds-green** content. All branches are preserved. Agents land
+these directly on green — the only reason they aren't merged yet is ordering.
+Land each chain **in order** — the
 children are stacked on their parents (each cut targets its sibling branch, not
 `main`), so merge cut-1 first, let GitHub retarget the next child to `main`,
 then merge in order:
@@ -44,8 +42,9 @@ and update `docs/current-state.md` (game count 11 → 12 with Underroot added;
 per-arc rows).
 
 **Do NOT bulk-merge** and do NOT merge out of order — the stacked bases make
-order load-bearing. All arcs are ROM-builds-green today; the blockers are draft
-state + stacked bases, not the (non-required, by-design-red) `substrate-gate`.
+order load-bearing. All arcs are ROM-builds-green today; the only blocker is the
+stacked bases (land parents first), not the (non-required, by-design-red)
+`substrate-gate`.
 
 ## Owner console items (require an owner click — no agent API surface)
 
@@ -80,24 +79,24 @@ state + stacked bases, not the (non-required, by-design-red) `substrate-gate`.
    - one **engine / tooling** item — e.g. the HUD-depth CI assert or the
      toolchain-checksum pin already sitting in `docs/ideas/`.
 
-## Autonomy wind-down (context — being retired this relaunch)
+## Retired scaffolding (context)
 
-For the owner-driven model the EAP autonomy apparatus is stood down. These are
-EAP-era machinery, **not** durable project rules:
+Some EAP-era scaffolding is no longer load-bearing and is kept only for history
+— **not** durable project rules:
 
 - the `control/` manager↔lane order-bus (`control/inbox.md` / `outbox.md` /
   `status.md` / `README.md`) — kept for history; `control/inbox.md` is
   append-only-protected by `substrate-gate`, so it is left untouched rather
   than banner-stamped;
-- `docs/ROUTINES.md` wake-chain doctrine — banner-deprecated
-  (`Status: historical`);
-- the `auto-merge-enabler` workflow — inert (`enable-auto-merge` skipped
-  everywhere) and the mechanism the classifier fights;
+- `docs/ROUTINES.md` wake-chain doctrine — kept as reference doctrine
+  (`Status: reference`);
 - the failsafe cron **`trig_0123fLkN1pzY6uNN3Y7ksYaW`** ("Game Lab failsafe
-  wake", `50 */2 * * *`) — delete in the owner's Routines screen.
+  wake", `50 */2 * * *`) — delete in the owner's Routines screen if no longer
+  wanted.
 
+Note: the `auto-merge-enabler` workflow is **kept and live** — it arms native
+squash auto-merge on open so agents' green PRs land without a manual merge call.
 The merge doctrine in `CONSTITUTION.md`, `docs/conventions.md`, and
-`docs/PLATFORM-LIMITS.md` has been rewritten from "agents arm auto-merge on
-green" to **"the owner reviews and merges server-side."** Workflow files,
-`games/` source, and `dist/` ROMs are **kept** — only the doctrine text and the
-retired-scaffolding banners changed in the cleanup PR.
+`docs/PLATFORM-LIMITS.md` is: **agents open PRs ready and merge their own green
+PRs directly** (via a merge call, native auto-merge, or the enabler workflow).
+Workflow files, `games/` source, and `dist/` ROMs are all **kept**.

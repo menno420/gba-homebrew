@@ -1,11 +1,16 @@
 # Underroot — arc design doc (A2)
 
-> **Status:** `plan` — the design of record for the Underroot arc.
-> Source code and merged slices always win over this file; it states the
-> plan and the decide-and-flag design calls, and is updated as slices land.
-> Kicked off 2026-07-16 (owner NEXT-MENU-2026-07-15 §A2 → coordinator order,
-> judgment delegated to sharpen the concept). Precedent stack: the Gloamline
-> NDS arc (PRs #50–#75, `games/gloamline-nds/`, `tools/check-gloam.py`).
+> **Status:** slices **1–11 all BUILT** — **arc growth-complete pending owner
+> playtest + landing clicks**. Source code and merged slices always win over
+> this file; it states the plan and the decide-and-flag design calls, and is
+> updated as slices land. Kicked off 2026-07-16 (owner NEXT-MENU-2026-07-15 §A2
+> → coordinator order, judgment delegated to sharpen the concept). Slices 1–10
+> landed as PRs **#155–#164** (s1=#155 … s10=#164); slice 11 (audio + polish →
+> v1.0) is the closer PR, draft-parked with the whole stack under the standing
+> 2026-07-16 landing wall (no ready-flip / auto-merge). The v1.0 game is done and
+> proven headless (CI `nds-underroot-build`, 7 headless proofs); what remains is
+> the owner's playtest + the landing clicks. Precedent stack: the Gloamline NDS
+> arc (PRs #50–#75, `games/gloamline-nds/`, `tools/check-gloam.py`).
 
 ## The concept (A2, verbatim seed)
 
@@ -132,7 +137,7 @@ Gloamline precedent: ~PRs #50–#75. Each slice states its **headless proof**.
 | 8 | **Winter survival + the survival score** — winter drains the store; `SURVIVE`/`SCORE` per the model above. | **the marquee lockstep**: a committed *survivor* dig plan clears winter and a deliberately-too-small plan STARVES — both predicted exactly host-side and confirmed in ROM telemetry. |
 | 9 | **EEPROM best** — best `SCORE` / furthest season persisted via card EEPROM. | host mirror: save encode/decode roundtrip + golden bytes + every bad blob rejects to fresh (gl_save pattern); ROM `--battery-in/out` cycle. |
 | 10 | **Seed dial + balance** — pick/scan the year seed; a difficulty/escalation pass. | host mirror: seed→schedule wiring pure; ROM seed-select telemetry; balance asserts (a fair seed is always survivable with an optimal plan). |
-| 11 | **Audio + polish → v1.0** — synthesized PSG cues (forager return, hawk cry, winter toll), HUD/cross-section polish. | host mirror: audio decision layer pure/PSG-legal (gl_amb pattern); ROM cue telemetry; final dual-screen shots. |
+| 11 | **Audio + polish → v1.0** **(BUILT — the v1.0 closer)** — synthesized PSG cues (forager return, hawk cry, winter toll), a per-season ambience drone, HUD/cross-section polish. | host mirror: audio decision layer pure/PSG-legal (`ur_cue_*`/`ur_amb_*`, the gl_amb pattern) — `prove_audio`; ROM cue telemetry (`ur_telemetry[54..58]`, proof 7); final dual-screen shots (`ur-v1-final.png`). **DONE.** |
 
 ---
 

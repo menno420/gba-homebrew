@@ -1,0 +1,1 @@
+- `claude/underroot-slice-3` · **Underroot arc slice 3 — foragers + emergent pathing (BFS shortest dug-path from the mouth to the nearest reachable meadow patch; a disconnected patch is never visited) + host mirror + ROM route telemetry** · games/underroot-nds/, tools/check-underroot.py, .github/workflows/rom-builds.yml · 2026-07-16

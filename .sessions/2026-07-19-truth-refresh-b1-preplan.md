@@ -1,6 +1,6 @@
 # Session — Controller-lane truth refresh + B1 (Tiltstone arc 2) pre-plan judgment
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-19 (branch `claude/gba-truth-refresh-b1-preplan-0719`, main
   synced @ `01a72c5`; all timestamps from `date -u`)
@@ -108,8 +108,61 @@ would be planning already-completed work, which is misleading, not helpful.**
 
 ## 💡 Session idea
 
-*(added at flip)*
+**A "pick your next thing to build" menu is a liability document: each option
+is an assertion "this is still unbuilt" that silently decays as work lands, and
+nothing re-validates it — so a menu option should ship with a one-command
+falsifier, not just prose.** This session's headline finding was that NEXT-MENU
+§ B1 ("Tiltstone: the shareable daily") offers an arc whose entire engine is
+already on `main`, green, at v1.8.0 — the menu rotted from a to-do into a
+did-that without any edit, because a decision menu is written once and then
+trusted, while the code under it keeps moving. Reading three prose docs
+(NEXT-MENU says "pick it", TILTSTONE.md says "growth-complete pending clicks",
+close-out says "draft-parked menu option") would never resolve the
+contradiction — they're all confident and all stale. What resolved it in one
+step was running the arc's OWN proof: `node games/web-tiltstone/smoke.mjs` →
+SMOKE PASS at engine v1.8.0. The general move: every "unbuilt option" in a
+build-menu should carry a **falsifier command** — the smoke/test/grep that
+would go green (or the symbol that would already exist) IF the option were
+secretly already done — so re-offering it is a 5-second check, not a
+three-doc archaeology dig. A menu without falsifiers is a snapshot that ages
+into misinformation; a menu where each row says "still open UNLESS `X` passes"
+audits itself. (The neighbouring rot here — Pages "pending a click" when it's
+live, `dist/wickroad.gba` "predates the flash" when #206 refreshed it — is the
+same disease: a claim with no attached probe outlives the fact it described.)
 
 ## Previous-session review
 
-*(added at flip)*
+- Prior lane slices (same session_01343oPvj5bzQZUsHuVsC9cK): the EAP close-out
+  doc **#205** and the `dist/wickroad.gba` refresh **#206**, plus the earlier
+  #200→#201→#202→#204 chain — all merged autonomously on green via
+  `auto-merge-enabler.yml` (`github-actions[bot]`). Read at HEAD; the close-out
+  card `.sessions/2026-07-19-eap-closeout-gba.md` and the refresh card
+  `.sessions/2026-07-19-refresh-wickroad-rom.md` are both `complete`, matching
+  the empty live open-PR set at `01a72c5`.
+- **What transferred:** the close-out card's own thesis — *"a wind-down doc's
+  highest-value cells are the ones where the repo's own docs are confidently
+  WRONG"* — was the exact lens that surfaced this slice's biggest correction.
+  That card led with three doc-vs-ground-truth deltas (Pages live, stale ROM,
+  #171 on main); this slice found a **fourth of the same species** (Tiltstone
+  arc-2 "draft-parked" while its engine is on main and green) and closed one of
+  its three (#206 resolved the stale `dist/wickroad.gba`). The landing
+  discipline transferred verbatim: born-red card + claim first, one flip to
+  complete, land on green via `auto-merge-enabler.yml` (never the dead
+  `merge-on-green.yml` name #200 corrected).
+- **A divergence worth naming:** the close-out card *diffed docs against a live
+  HTTP probe / `git log`*; this slice sharpened that into *diffing a
+  build-menu's "unbuilt" claim against the code's own passing smoke* — the
+  falsifier-command idea above. The close-out asked "is the doc's fact still
+  true?"; this asked "is the doc's *to-do* already done?" — a subtly different
+  and, for a wind-down, higher-stakes question, because a stale to-do wastes a
+  whole re-picked arc, not just one wrong click.
+- **Judgment divergence (deliberate):** the coordinator's Slice-2 brief
+  anticipated *writing* a B1 pre-plan (and pre-drafted its section headers).
+  Ground truth inverted the premise — B1 is built — so the value-first call was
+  to **SKIP with citation** rather than pad a plan for done work. Decide, don't
+  stall: made the call, cited it, moved on.
+- **Guard honored:** every Bash pinned to the absolute repo root
+  `/home/user/gba-homebrew` (never a bare `~`), so the two-checkout footgun the
+  Brineward cards flagged stays shut; Track-A isolation held (original IP only,
+  public repo — no Track-B content); ORDER 007 respected (no routines armed);
+  no force-push.

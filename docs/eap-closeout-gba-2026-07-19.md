@@ -29,8 +29,8 @@ complete-to-the-gate and the gate is an owner decision, not an agent task.
 | **Lumen Drift — release gate R1–R5** | PARKED-owner-gated | Release-ready: v1.3 scope-complete + 3 polish passes, `dist/lumen-drift.gba` committed with sha256 provenance, **zero tags/releases exist**. R1–R2 are agent slices (polish + notes); **R3 (tag + GitHub Release) and R4 (itch.io/external publish) are owner clicks**; R5 (browser-wasm) needs an owner ruling. Cites: `docs/current-state.md` table row 1 + `docs/NEXT-MENU-2026-07-15.md` § C; recipe in `docs/retro/archive-ready-2026-07-11.md`. |
 | **Wickroad — tier-up flash (#201) + GRANDMASTER≥200 gate** | PARKED-owner-gated | The end-card tier-up flash **landed**: PR #201 merged 2026-07-18T21:22Z (merge `6d1d97a`), pure `wr::run_tier_up_label` in `games/wickroad/src/wr_milestones.h`. Current tier table is **VETERAN≥50 / MASTER≥100** (`wr_milestones.h:62-63`). **GRANDMASTER≥200 is UNBUILT** — a forward seam gated on playtest/telemetry evidence that players actually reach 200 lifetime runs (`control/status.md` "next-2-tasks"); no `GRANDMASTER` symbol exists in the tree. Owner playtest verdict unblocks (or parks) building it. ⚠ **Caveat:** the committed `dist/wickroad.gba` predates the tier work — see owner action (2). |
 | **Brineward — bestiary arc** | DONE | Arc closed by **#179** «bestiary cut 4 [arc closer]» (squash `37c4e99`), which stacked cut1→cut4; **Brineward ROM proof 24 green on main**. Cut 1 «The Grasper» merged as #176 (`c338301`). **#177 (cut 2 Ram/brace) + #178 (cut 3 ambush) were CLOSED unmerged as subsumed-by-#179** (2026-07-18T23:21Z) — a recut would diff empty (symbol-traced present on main). Their claim files were released by **#204** (merged 2026-07-18T23:26Z). Cite: `control/status.md` "Open PRs" resolution note + PR #204 body. *(Housekeeping residue: `control/claims/claude-brineward-bestiary-cut1.md` is terminal-stale — #176 merged — flagged for a later claims sweep, not this lane's scope.)* |
-| **Tiltstone — arc 2 «the shareable daily»** | PARKED-owner-gated | Arc-2 design doc `docs/arcs/TILTSTONE.md` records **all 5 of 5 cuts BUILT**, "growth-complete pending owner clicks" (cut PRs #166–#170 draft-parked under the standing 2026-07-16 landing wall; live open-PR set is now empty, so they are not open — carried as an owner **menu option B1**, not an active lane). Cite: `docs/arcs/TILTSTONE.md` Status badge + `docs/NEXT-MENU-2026-07-15.md` § B1. The Tiltstone/Underroot arc docs are the **doc-orphan** condition that reds the non-required `substrate-gate` — **other-lane scope, do not fix here** (`control/status.md` "Flags"). |
-| **Controller — Slice 3** | UNBLOCKED (reserved) | **product-forge #29 MERGED 2026-07-19T07:41:57Z** (merge commit `20be749`, landed via the hub per owner directive) — the Android/Gradle CI lane (slice 2) is in; Slice 3 (assembleDebug lane + real-receiver end-to-end) is now **UNBLOCKED**, but **reserved for the original Controller-lane session** (first right; do NOT start it here — collision guard). Cite: `control/status.md` "next-2-tasks" + "Owner-pending". |
+| **Tiltstone — arc 2 «the shareable daily» (= owner menu B1)** | **DONE (on main)** | **CORRECTION 2026-07-19 (ground truth beats the stale docs):** arc-2 is **not** "draft-parked / carried as menu option B1" — the five deterministic cuts' **engine work is fully on `main`**. `games/web-tiltstone/engine.js` is at **v1.8.0** and carries every cut's pure functions (`encodeShare`/`decodeShare`/`spectate` cut 1, `hintFrom`/`hintedGrade` cut 2, `deception` cut 3, `fingerprint` cut 4, `rampFloor`/`generateRamp` cut 5), landed via `c654e01` (cut 1, smoke §14), `46293b5` (cut 2, smoke §15), and `207e391` «arc 2 cut 5 the monotone ramp (arc closer) **(#170)**» (which also carries the cut-3/cut-4 functions). All three are ancestors of main HEAD `01a72c5` (`git merge-base --is-ancestor` → true) and `node games/web-tiltstone/smoke.mjs` → **SMOKE PASS: all assertions green (engine v1.8.0)**. So NEXT-MENU § B1 offers an arc that is **already built** — the only remaining Tiltstone work is the cut-5 daily-chain **browser-shell** opt-in + the optional **touch-controls** cut, both small agent follow-ups named in `docs/arcs/TILTSTONE.md`, neither owner-gated. (The Tiltstone/Underroot arc docs remain the **doc-orphan** condition that reds the non-required `substrate-gate` — other-lane scope, do not fix here.) |
+| **Controller — Android/Gradle lane** | **DONE** | The Controller lane **FINISHED** after this doc first landed. **product-forge #31 MERGED** (app module wired into the Gradle build, `:app:assembleDebug` proven green; merge commit `f527ca0`, `github-actions[bot]`, 2026-07-19T07:57:25Z; coordinator-relayed CI run 29679129919) and **product-forge #32 MERGED** (the `assembleDebug` **CI lane is live**; owner-merged `menno420`, merge `e3fc844`, 2026-07-19T09:05:57Z — a workflow-file PR, so owner-merge-only per the carve-out). Both **verified in-repo via github MCP `pull_request_read`** on `menno420/product-forge`. The only remaining Controller item is the **owner hardware playtest** (phone + a physical BT-HID receiver, end-to-end) — genuinely hardware-gated, no agent slice left. (Slices 1–2 were #27/#28/#29; slice-3 code #31; slice-3 CI #32.) |
 | **web-arcade / GitHub Pages go-live** | **DONE** | **The arcade is LIVE.** Live probe 2026-07-19: `GET https://menno420.github.io/gba-homebrew/` → **HTTP 200**, serving `<title>menno420 game-lab — web arcade</title>` (Undertow / Tiltstone / Drift Garden). Set up by **#149** (merged 2026-07-15T21:28Z, `.github/workflows/deploy-pages.yml`, publishes `dist/web/` only). ⚠ The docs (`dist/README.md` "Hosted arcade", `NEXT-MENU-2026-07-15.md` § C) still say "one owner Settings click" — that is **stale**; no click is pending. |
 
 ### This session's landed PRs (continuity)
@@ -42,8 +42,10 @@ All merged autonomously on green via the server-side `auto-merge-enabler.yml`
 - **#201** — Wickroad end-card tier-up flash (VETERAN/MASTER announce). Merged 2026-07-18T21:22Z, merge `6d1d97a`.
 - **#202** — control: record #201 headless-boot proof (dispatch run 29661566170, success) + outbox routing-correction. Merged 2026-07-18T21:30Z.
 - **#204** — control: close-subsumed sweep, release #177/#178 claim files (subsumed by #179). Merged 2026-07-18T23:26Z.
+- **#205** — docs: THIS close-out / continuity doc. Merged 2026-07-19 (`auto-merge-enabler.yml`).
+- **#206** — `dist/wickroad.gba` refreshed to the post-#201 tier-up build (sha256 `c7e2814e…`, 182,860 B) so the owner's Wickroad play-test can actually show the tier-up banner + provenance re-pinned. Merged 2026-07-19 (merge `01a72c5` = current main HEAD).
 
-Live open-PR set at HEAD `97ac85d`: **empty** (`list_pull_requests state=open` → `[]`).
+Refreshed-facts stamp: **main HEAD `01a72c5`** as of 2026-07-19T20:18Z (`git ls-remote` match); the doc's header facts were pinned at `97ac85d` and #205/#206 landed since. Live open-PR set beyond this refresh's own PR: **empty**.
 
 ---
 
@@ -164,14 +166,27 @@ two menus above first; then:
   never routed to the owner. Only genuinely owner-only acts (tags/Releases,
   external publish, repo Settings, cross-repo workflow merges) go to the owner
   queue — surfaced in plain language, never as a blocker to continuing.
-- **Stale-doc watch (found 2026-07-19).** Three repo self-descriptions are
-  currently wrong and a successor should trust ground truth over the doc:
+- **Stale-doc watch (found 2026-07-19, updated later same day).** Repo
+  self-descriptions a successor should trust ground truth over:
   (1) Pages "pending one owner click" — it's **live** (HTTP 200);
-  (2) "download `dist/wickroad.gba` to see the tier flash" — that binary
-  **predates** the flash (built #175 2026-07-17; tiers #189–#201 2026-07-18),
-  rebuild from source to see it; (3) current-state.md "#171 lives only on its
-  branch" — #171 **squash-merged to main** (`2a34653`), the 84-proposal menu is
-  on `main` at `docs/planning/OVERNIGHT-MENU-2026-07-16.md`.
+  (2) ~~"download `dist/wickroad.gba` to see the tier flash" — that binary
+  predates the flash~~ — **RESOLVED by #206**: the committed
+  `dist/wickroad.gba` was refreshed to the post-#201 build (sha256
+  `c7e2814e…`), so the download now shows the tiers/flash;
+  (3) current-state.md "#171 lives only on its branch" — #171
+  **squash-merged to main** (`2a34653`), the 84-proposal menu is on `main` at
+  `docs/planning/OVERNIGHT-MENU-2026-07-16.md`;
+  (4) **NEW — Tiltstone arc 2 "draft-parked / menu option B1" is stale.** Both
+  `docs/NEXT-MENU-2026-07-15.md` § B1 and `docs/arcs/TILTSTONE.md`'s old badge
+  said the arc was "growth-complete pending owner clicks, cut PRs #166–#170
+  draft-parked, not merged." Ground truth: the arc-2 **engine is on `main`** —
+  `games/web-tiltstone/engine.js` v1.8.0, all five cuts (`c654e01` cut 1,
+  `46293b5` cut 2, `207e391` «cut 5 arc closer #170» carrying cuts 3+4), `node
+  smoke.mjs` green. B1 is **already built**; a successor should NOT re-plan or
+  re-pick it. The only remaining Tiltstone work is the cut-5 daily-chain
+  browser-shell opt-in + the optional touch-controls cut (named in
+  `TILTSTONE.md`, neither owner-gated). NEXT-MENU § B1 itself still offers it as
+  a fresh option — retire that line in a later pass.
 - **Pointers:** `docs/current-state.md` (living ledger), `control/status.md`
   (coordinator heartbeat), `docs/NEXT-MENU-2026-07-15.md` +
   `docs/planning/OVERNIGHT-MENU-2026-07-16.md` (the two on-main decision menus),

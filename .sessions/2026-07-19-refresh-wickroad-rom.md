@@ -1,6 +1,6 @@
 # Session — Refresh dist/wickroad.gba to the post-#201 tier-up build
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-19 (branch `claude/refresh-wickroad-dist-rom`, main synced @
   `5d8b9a0`; all timestamps from `date -u`)

@@ -1,6 +1,6 @@
 # Session — gba EAP close-out / continuity doc
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-19 (branch `claude/eap-closeout-gba-0719`, main synced @
   `97ac85d`; all timestamps from `date -u`)
@@ -11,8 +11,8 @@
   read-only 2026-07-21 (ORDER 007 EAP extension), so a single owner-action +
   successor-baton page is the timely planning deliverable. pml already has its
   equivalent (pml#86); this is the gba half.
-- **📊 Model:** Claude Opus family · high effort · planning / continuity doc
-  (no gameplay code touched)
+- **📊 Model:** Claude Opus · high · idea/planning — EAP wind-down /
+  continuity doc (no gameplay code touched)
 - landing posture: READY (non-draft). Plain born-red `claude/*` card PR — the
   session card holds the PR red as `in-progress` until this close-out flip
   (the LAST commit), then it lands on green `ROM builds` via the existing

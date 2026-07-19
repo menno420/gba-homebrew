@@ -93,3 +93,12 @@ Reconciled against the live claim-file set at `control/claims/` HEAD (after #192
 - **PR:** #205 (`claude/eap-closeout-gba-0719`) — plain born-red `claude/*` card PR; lands on green `ROM builds` via `auto-merge-enabler.yml` at the card flip.
 - **Verified deltas vs stale docs (2026-07-19):** web-arcade Pages is **LIVE** (HTTP 200 at <https://menno420.github.io/gba-homebrew/>) — go-live is DONE, not a pending owner click; the committed `dist/wickroad.gba` **predates** the #201 tier-up flash (built at #175 on 2026-07-17; tiers #189–#201 on 2026-07-18), so the downloadable ROM cannot show the flash; #171's overnight menu **is on main** (`2a34653`). Live open-PR set: empty.
 - ORDER 007 honored: **no routines armed** this slice. Track-A isolation held (original IP only).
+
+## Execution — dist/wickroad.gba refreshed to the post-#201 build (worker, 2026-07-19)
+
+- updated: 2026-07-19T07:50Z (`date -u`; worker session_01343oPvj5bzQZUsHuVsC9cK, branch `claude/refresh-wickroad-dist-rom`, PR #206). **Append-only worker note — does NOT touch the coordinator sections above.**
+- **Closes the staleness gap the 2026-07-19 EAP doc flagged:** the committed `dist/wickroad.gba` was refreshed from the stale crossroads cut-4 build (`7e30756` #175, 2026-07-17, sha256 `d740b73…`, 180,008 B) to the **current post-#201 build** (sha256 `c7e2814e…`, 182,860 B). The downloadable ROM now contains the run-milestone flourish + VETERAN/MASTER tiers + **end-card tier-up flash** (#189/#190/#195/#201) — so the **owner's Wickroad play-test now uses the current build** and can actually see the tier-up banner.
+- **Provenance:** binary lifted from CI `rom-builds.yml` run `29678377739` (successful), artifact `gba-roms-7c811db6…` (id `8439735515`), head `0df73464` (contains #201; `git diff HEAD 0df73464 -- games/wickroad/` empty → byte-identical to `main` HEAD `5d8b9a0`); sha256 matches the run's `rom-sha256.txt`. `dist/README.md` provenance row re-pinned.
+- **Also folded in:** `docs/eap-closeout-gba-2026-07-19.md` Controller Slice-3 row corrected — product-forge **#29 MERGED** 2026-07-19T07:41:57Z (`20be749`); Slice 3 now UNBLOCKED but reserved for the original Controller lane (collision guard).
+- **PR:** #206 (`claude/refresh-wickroad-dist-rom`) — born-red `claude/*` card PR; binary + provenance-doc + control diff, does not break `ROM builds`; lands on green via `auto-merge-enabler.yml` at the card flip.
+- ORDER 007 honored: **no routines armed** this slice. Track-A isolation held (original IP only). No force-push.

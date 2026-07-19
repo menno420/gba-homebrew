@@ -1,8 +1,15 @@
 # Tiltstone — arc 2 design doc (the shareable daily)
 
-> **Status:** all **5 of 5 cuts BUILT** — arc **growth-complete pending owner
-> clicks** (the standing 2026-07-16 landing wall; the cut PRs are draft-parked, not
-> merged). Arc opened 2026-07-16. Source code and
+> **Status:** all **5 of 5 cuts BUILT and LANDED ON `main`** (corrected
+> 2026-07-19 — the earlier "draft-parked, not merged" badge was stale). The
+> arc-2 engine is on `main`: `games/web-tiltstone/engine.js` **v1.8.0** carries
+> every cut's pure functions, landed via `c654e01` (cut 1, smoke §14),
+> `46293b5` (cut 2, smoke §15), and `207e391` «cut 5 arc closer **(#170)**»
+> (which also carries the cut-3 `deception` + cut-4 `fingerprint` functions);
+> `node games/web-tiltstone/smoke.mjs` → SMOKE PASS (all green). **Remaining:**
+> the cut-5 daily-chain browser-shell opt-in + the optional touch-controls cut
+> (below) — small agent follow-ups, neither owner-gated. Arc opened 2026-07-16.
+> Source code and
 > merged PRs always win over this file; it states the plan and the
 > decide-and-flag design calls, updated as cuts land. Kicked off from the owner
 > decision menu (docs/NEXT-MENU-2026-07-15.md § B1, the in-doc recommendation)

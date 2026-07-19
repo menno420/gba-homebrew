@@ -1,6 +1,6 @@
 # Session — Commit Underroot NDS ROM + refresh Brineward NDS ROM to current main
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-19 (branch `claude/commit-nds-roms-0719`, main synced @
   `9dbde10`, ls-remote match; all timestamps from `date -u`)
@@ -18,9 +18,9 @@
   Committed ROM (07-13) predates last source change (07-17) → stale, exactly
   the way `dist/wickroad.gba` predated #201. This slice refreshes it from CI
   so the bestiary/crate-cap arc is actually playable.
-- **📊 Model:** Claude Opus · medium · mechanical artifact slice — commit one
-  new from-CI ROM + refresh one stale from-CI ROM + re-pin provenance (no
-  gameplay source touched)
+- **📊 Model:** Claude Opus · medium · mechanical refactor — commit one new
+  from-CI ROM + refresh one stale from-CI ROM + re-pin provenance (no gameplay
+  source touched)
 - landing posture: READY (non-draft). Born-red `claude/*` card PR — this card
   holds the PR red as `in-progress` until the close-out flip (the LAST commit),
   then it lands on green `ROM builds` via the existing `auto-merge-enabler.yml`.

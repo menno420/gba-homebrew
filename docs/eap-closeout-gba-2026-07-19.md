@@ -26,7 +26,9 @@ complete-to-the-gate and the gate is an owner decision, not an agent task.
 
 | Arc / lane | State | Status + citation |
 |---|---|---|
-| **Lumen Drift — release gate R1–R5** | PARKED-owner-gated | Release-ready: v1.3 scope-complete + 3 polish passes, `dist/lumen-drift.gba` committed with sha256 provenance, **zero tags/releases exist**. R1–R2 are agent slices (polish + notes); **R3 (tag + GitHub Release) and R4 (itch.io/external publish) are owner clicks**; R5 (browser-wasm) needs an owner ruling. Cites: `docs/current-state.md` table row 1 + `docs/NEXT-MENU-2026-07-15.md` § C; recipe in `docs/retro/archive-ready-2026-07-11.md`. |
+| **Lumen Drift — release gate R1–R5** | **DONE (R3) / R4 owner-gated** | **CORRECTION 2026-07-19 (audit): the GitHub Release IS published — the earlier "zero tags/releases exist" was stale.** `lumen-drift-v1.3` is a **published, non-draft Release** (created 2026-07-18T20:07:16Z by `menno420`, `html_url` `/releases/tag/lumen-drift-v1.3`, tag on main `e64651c`) with `dist/lumen-drift.gba` attached as an asset (167,996 B, digest `sha256:195a867…` matching the committed ROM) — verified via github MCP `get_release_by_tag`/`list_releases`. So **R1–R3 are DONE**. Remaining: **R4** (itch.io/external publish — owner action, off-repo, not verified done) and **R5** (browser-wasm stretch — unbuilt, needs an owner ruling). Cites: `docs/NEXT-MENU-2026-07-15.md` § C audit note; recipe in `docs/retro/archive-ready-2026-07-11.md`. |
+| **Underroot (A2) — NDS dual-screen colony** | DONE | Menu option **A2 was a Section-A *proposal* at menu time; it was subsequently BUILT.** `games/underroot-nds/` (2044 LOC `main.c`/`ur_sim.c`/`ur_sim.h`), slices 1–11 landed **#155–#165** (slice-11 v1.0 audio+polish `40779f8` #165 on main), `docs/arcs/UNDERROOT.md` "slices 1–11 all BUILT", CI `nds-underroot-build` + 7 headless proofs. **Growth-complete pending owner playtest.** ⚠ No committed `dist/` ROM (CI builds it each PR). |
+| **Wickroad (B2) — the crossroads arc** | DONE | Menu option **B2** built: all 4 named cuts on main — #172 «the junction» (`28d5980`), #173 «sprite art pass» (`1950f6e`), #174 «seed dial» (`f4fb8f4`), #175 «the best ledger» arc closer (`7e30756`) — code in `games/wickroad/src/`. (Distinct from the later tier-up-flash lane in the row below; `dist/wickroad.gba` was refreshed post-#201 by #206.) |
 | **Wickroad — tier-up flash (#201) + GRANDMASTER≥200 gate** | PARKED-owner-gated | The end-card tier-up flash **landed**: PR #201 merged 2026-07-18T21:22Z (merge `6d1d97a`), pure `wr::run_tier_up_label` in `games/wickroad/src/wr_milestones.h`. Current tier table is **VETERAN≥50 / MASTER≥100** (`wr_milestones.h:62-63`). **GRANDMASTER≥200 is UNBUILT** — a forward seam gated on playtest/telemetry evidence that players actually reach 200 lifetime runs (`control/status.md` "next-2-tasks"); no `GRANDMASTER` symbol exists in the tree. Owner playtest verdict unblocks (or parks) building it. ⚠ **Caveat:** the committed `dist/wickroad.gba` predates the tier work — see owner action (2). |
 | **Brineward — bestiary arc** | DONE | Arc closed by **#179** «bestiary cut 4 [arc closer]» (squash `37c4e99`), which stacked cut1→cut4; **Brineward ROM proof 24 green on main**. Cut 1 «The Grasper» merged as #176 (`c338301`). **#177 (cut 2 Ram/brace) + #178 (cut 3 ambush) were CLOSED unmerged as subsumed-by-#179** (2026-07-18T23:21Z) — a recut would diff empty (symbol-traced present on main). Their claim files were released by **#204** (merged 2026-07-18T23:26Z). Cite: `control/status.md` "Open PRs" resolution note + PR #204 body. *(Housekeeping residue: `control/claims/claude-brineward-bestiary-cut1.md` is terminal-stale — #176 merged — flagged for a later claims sweep, not this lane's scope.)* |
 | **Tiltstone — arc 2 «the shareable daily» (= owner menu B1)** | **DONE (on main)** | **CORRECTION 2026-07-19 (ground truth beats the stale docs):** arc-2 is **not** "draft-parked / carried as menu option B1" — the five deterministic cuts' **engine work is fully on `main`**. `games/web-tiltstone/engine.js` is at **v1.8.0** and carries every cut's pure functions (`encodeShare`/`decodeShare`/`spectate` cut 1, `hintFrom`/`hintedGrade` cut 2, `deception` cut 3, `fingerprint` cut 4, `rampFloor`/`generateRamp` cut 5), landed via `c654e01` (cut 1, smoke §14), `46293b5` (cut 2, smoke §15), and `207e391` «arc 2 cut 5 the monotone ramp (arc closer) **(#170)**» (which also carries the cut-3/cut-4 functions). All three are ancestors of main HEAD `01a72c5` (`git merge-base --is-ancestor` → true) and `node games/web-tiltstone/smoke.mjs` → **SMOKE PASS: all assertions green (engine v1.8.0)**. So NEXT-MENU § B1 offers an arc that is **already built** — the only remaining Tiltstone work is the cut-5 daily-chain **browser-shell** opt-in + the optional **touch-controls** cut, both small agent follow-ups named in `docs/arcs/TILTSTONE.md`, neither owner-gated. (The Tiltstone/Underroot arc docs remain the **doc-orphan** condition that reds the non-required `substrate-gate` — other-lane scope, do not fix here.) |
@@ -62,8 +64,18 @@ nothing breaks — the games are built and the arcade is live; these are the
   a single letter** to pick a direction, **or** skim the wide list and tell the
   seat which ideas to cross off. There is nothing to install or click — just a
   reply.
+- **▶ REMAINING REAL CHOICES (audit 2026-07-19, main `41a9a9f`):** of the short
+  menu's seven letters, **only A1 and A3 are still genuine open choices** —
+  unbuilt proposals you could pick as a next arc. **A1 Tinderhand** (GBA
+  press-your-luck card game, ~6 slices) and **A3 Starloom** (browser/PWA daily
+  constellation puzzle, ~6 slices). The rest are **already built or moot**: A2
+  Underroot BUILT (#155–#165), B1 Tiltstone arc 2 BUILT (v1.8.0, smoke green),
+  B2 Wickroad crossroads BUILT (#172–#175), B3 Brineward bestiary BUILT (#179),
+  C Lumen Drift Release published + arcade live (only R4 itch.io + R5 wasm
+  remain, owner/stretch). The short menu is annotated per-option with these
+  verdicts + citations.
 - **Where:**
-  - Short menu (pick ONE letter, A1/A2/A3/B1/B2/B3/C): <https://github.com/menno420/gba-homebrew/blob/main/docs/NEXT-MENU-2026-07-15.md>
+  - Short menu (pick ONE letter — realistically **A1 or A3**; annotated 2026-07-19): <https://github.com/menno420/gba-homebrew/blob/main/docs/NEXT-MENU-2026-07-15.md>
   - Wide menu (84 ideas, "cross off the ones you don't want"): <https://github.com/menno420/gba-homebrew/blob/main/docs/planning/OVERNIGHT-MENU-2026-07-16.md>
 - **Why / what it unblocks:** Every named game arc is either finished or waiting
   on you, so the seat's next direction is genuinely your call — a letter (or a
@@ -101,23 +113,24 @@ nothing breaks — the games are built and the arcade is live; these are the
   and yes build GRANDMASTER" or "banner too small, and skip GRANDMASTER"); the
   seat acts on exactly that.
 
-### 3. Release Lumen Drift (only if you want a public "1.0 release")
+### 3. Release Lumen Drift — the GitHub Release is ALREADY done; only itch.io is left
 
-- **What:** Lumen Drift is finished and polished and has never been cut as an
-  official release. Turning it into one is two clicks that only your account can
-  do: **(a)** create a version tag + GitHub Release, and **(b)** — if you want it
-  on a store — publish it to itch.io. The seat prepares everything (release
-  notes, the file, the copy); it cannot press the publish buttons.
+- **▶ UPDATE 2026-07-19 (audit):** the GitHub Release **already exists** — you
+  published it 2026-07-18. So the only remaining "ship it public" step is the
+  optional itch.io store page.
+- **What (done):** `lumen-drift-v1.3` is a live, non-draft **GitHub Release**
+  with the game file attached — <https://github.com/menno420/gba-homebrew/releases/tag/lumen-drift-v1.3>
+  (published 2026-07-18, `dist/lumen-drift.gba` asset, 4 downloads at audit
+  time). Nothing more to do there.
+- **What (optional, still yours):** if you want the game on a store, **publish it
+  to itch.io** (R4). The seat can stage the copy/screenshots; it cannot press the
+  publish button. The browser-wasm playable-in-page idea (R5) is a separate
+  stretch that needs your ruling first.
 - **Where:**
-  - Make the Release: <https://github.com/menno420/gba-homebrew/releases> ("Draft a new release")
-  - The finished game file: <https://github.com/menno420/gba-homebrew/blob/main/dist/lumen-drift.gba>
+  - The published Release: <https://github.com/menno420/gba-homebrew/releases/tag/lumen-drift-v1.3>
   - Paste-ready recipe the seat prepared: <https://github.com/menno420/gba-homebrew/blob/main/docs/retro/archive-ready-2026-07-11.md>
-- **Why / what it unblocks:** This is the only "ship it to the public" step left
-  for the release-ready game; everything up to the click is done. Skipping it
-  costs nothing — it just means no public release exists yet.
-- **How you'll know it worked:** A new entry appears on the Releases page with
-  the game file attached; if you also did itch.io, the game has a public store
-  page.
+- **How you'll know itch.io worked:** the game has a public store page. (The
+  GitHub Release box is already checked.)
 
 ### 4. (No action needed) The web arcade is already live
 

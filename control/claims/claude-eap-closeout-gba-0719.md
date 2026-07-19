@@ -1,0 +1,1 @@
+- `claude/eap-closeout-gba-0719` · **gba EAP wind-down / continuity doc (owner-action + successor baton)** · docs/eap-closeout-gba-2026-07-19.md, control/status.md, .sessions/2026-07-19-eap-closeout-gba.md · 2026-07-19

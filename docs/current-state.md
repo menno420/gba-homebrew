@@ -207,6 +207,9 @@ this ledger is a reachability root (`substrate.config.json`
 - [EAP close-out walkthrough (2026-07-14)](eap-closeout-walkthrough-2026-07-14.md)
   — what the seat did during the EAP, owner-actions checklist, handoff notes
   (landed per ORDER 006, PR #133 `2cbeb7b`).
+- [EAP close-out / continuity doc (2026-07-19)](eap-closeout-gba-2026-07-19.md)
+  — the gba wind-down for the EAP extension: finish/park enumeration of every
+  arc/lane, plain-language OWNER ACTIONS, and the successor baton (PR #205).
 - [Session-1 game concepts](concepts/session-1-concepts.md) — the original
   ORDER-001 three-concept menu.
 - [Gloamline concept](concepts/gloamline-concept.md) — the owner-picked NDS

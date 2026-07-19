@@ -84,3 +84,12 @@ Reconciled against the live claim-file set at `control/claims/` HEAD (after #192
 
 - updated: 2026-07-16T15:43:58Z (`date -u`); session card `.sessions/2026-07-16-underroot-slice-2.md`, branch `claude/underroot-slice-2`, draft-parked stacked on PR #155 (`claude/underroot-slice-1`).
 - What: a pure `f(seed, season, index)` food-patch layer on the meadow — positions + amounts on the foraging apron below the hawk lanes, rendered on the top screen, with a host↔ROM patch-count + total-food (patch_n=6 patch_sum=34) lockstep at pinned frames. Host mirror `tools/check-underroot.py` runs green locally; `nds-underroot-build` green pending CI.
+
+## Planning mode — EAP close-out continuity doc (worker, 2026-07-19)
+
+- updated: 2026-07-19T07:34Z (`date -u`; worker session_01343oPvj5bzQZUsHuVsC9cK, branch `claude/eap-closeout-gba-0719`, PR #205). **Append-only worker note — does NOT touch the coordinator sections above.**
+- **Mode: planning, not execution.** The gba execution backlog is dry — every remaining arc gate is owner-side — so per the owner's universal continue directive (2026-07-19: "when execution is dry, PLAN") this slice landed a consolidated EAP wind-down / continuity doc instead of new gameplay.
+- **New doc:** [`docs/eap-closeout-gba-2026-07-19.md`](../docs/eap-closeout-gba-2026-07-19.md) — (a) finish/park enumeration of every arc/lane with citations, (b) plain-language OWNER ACTIONS (What/Where/Why/How-you'll-know), (c) successor baton. pml's equivalent is pml#86.
+- **PR:** #205 (`claude/eap-closeout-gba-0719`) — plain born-red `claude/*` card PR; lands on green `ROM builds` via `auto-merge-enabler.yml` at the card flip.
+- **Verified deltas vs stale docs (2026-07-19):** web-arcade Pages is **LIVE** (HTTP 200 at <https://menno420.github.io/gba-homebrew/>) — go-live is DONE, not a pending owner click; the committed `dist/wickroad.gba` **predates** the #201 tier-up flash (built at #175 on 2026-07-17; tiers #189–#201 on 2026-07-18), so the downloadable ROM cannot show the flash; #171's overnight menu **is on main** (`2a34653`). Live open-PR set: empty.
+- ORDER 007 honored: **no routines armed** this slice. Track-A isolation held (original IP only).

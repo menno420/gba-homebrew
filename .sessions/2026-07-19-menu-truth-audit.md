@@ -1,6 +1,6 @@
 # Session — gba menu-vs-tree truth audit + annotations
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-19 (branch `claude/gba-menu-truth-audit-0719`, main synced @
   `41a9a9f`; all timestamps from `date -u`, session opened 20:29Z)

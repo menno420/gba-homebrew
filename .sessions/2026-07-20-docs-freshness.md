@@ -1,6 +1,6 @@
 # Session — Docs freshness verify (2026-07-20): close-out doc Underroot dist-ROM row + baton routine note
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-20 (branch `claude/gba-docs-freshness-0720`, main synced @
   `524cd02` = #209 merge, `git ls-remote` match; all timestamps from `date -u`)

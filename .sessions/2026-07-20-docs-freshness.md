@@ -64,6 +64,38 @@
   itch.io picks, and current-state/NEXT-MENU pointers — all still correct; the
   only baton gap was the routine/failsafe note added here.
 
+## 💡 Session idea
+
+**A "close-out doc vs dist/ ledger" cross-check would have auto-caught this
+staleness.** The Underroot row went stale the moment #209 committed
+`dist/underroot.nds` while the close-out finish-park table kept saying "no
+committed dist ROM" — the same *doc-lags-the-tree* shape #206/#209 kept fixing
+for the binaries themselves. `dist/README.md` is already the authoritative
+download index (it got the new Underroot row in #209); the close-out table is a
+second, hand-maintained assertion about the same facts. A cheap check: assert
+that every "no committed dist ROM" / "no dist ROM" phrase in a close-out/menu
+doc is FALSE if a matching `dist/<game>.*` exists — turning "a menu audit
+eventually notices the doc drifted" into a red the PR that commits the ROM.
+Single-source-of-truth beats two ledgers that must be kept in lockstep by hand.
+
+## Previous-session review
+
+- Directly continues **`.sessions/2026-07-19-commit-nds-roms.md`** (#209): that
+  slice *committed* `dist/underroot.nds`; this one closes the doc half it left
+  behind — the close-out finish-park table still asserted the ROM's absence.
+  #209's own idea ("presence is the floor the drift guard assumes") generalizes
+  here to the DOC ledger, not just CI.
+- Also builds on **`.sessions/2026-07-19-menu-truth-audit.md`** (#208) and the
+  #207 truth-refresh: those verified the close-out doc arc-by-arc; this is the
+  next-day re-verify that catches the one row #209 outdated.
+- **What transferred:** the born-red rhythm verbatim — card + claim first, ONE
+  flip to `complete` as the last commit, land on green `ROM builds` via
+  `auto-merge-enabler.yml` (never the dead `merge-on-green.yml` #200 retired);
+  every claim cited to a commit/PR/file@line; fix-only, no rewrite.
+- **What differs:** this is a *freshness verify*, not new content — the honest
+  default was NO-TOUCH, and the bulk of the pass confirmed-current; only two
+  named gaps (one stale fact, one baton omission) earned the diff.
+
 ## Guard honored
 
 - Track-A PUBLIC repo, original gba IP only (no Track-B / Nintendo / pokemon

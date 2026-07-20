@@ -26,7 +26,7 @@
   doc; nothing else touched. Everything else verified current is left alone
   (no padding). `control/status.md` is already current (it carries a full #209
   section) — NOT edited except this heartbeat.
-- **📊 Model:** Claude Opus 4.8 (1M) · low · two-line doc freshness fix
+- **📊 Model:** Claude Opus 4.8 (1M) · low · docs-only
 - landing posture: READY (non-draft). Born-red `claude/*` card PR — this card
   holds the PR red as `in-progress` until the close-out flip (the LAST commit),
   then it lands on green `ROM builds` via the existing `auto-merge-enabler.yml`.

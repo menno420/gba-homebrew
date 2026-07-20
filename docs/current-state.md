@@ -201,6 +201,13 @@ this ledger is a reachability root (`substrate.config.json`
 - [Next-menu (2026-07-15)](NEXT-MENU-2026-07-15.md) — the prior 7-option owner
   decision menu (merged as #150, in-doc rec B1); superseded by the #171
   overnight menu but kept on the read path.
+- [A1 Tinderhand pre-plan (2026-07-20)](plans/tinderhand-preplan-2026-07-20.md)
+  — executable 6-slice ladder + per-slice proof for menu option **A1** (one of
+  the two still-open choices); a PLAN, not a selection (the owner's letter
+  still governs).
+- [A3 Starloom pre-plan (2026-07-20)](plans/starloom-preplan-2026-07-20.md) —
+  executable 6-slice ladder + per-slice web proof for menu option **A3** (the
+  other still-open choice); a PLAN, not a selection.
 - [Routines & wake-chain doctrine](ROUTINES.md) — reference doctrine for
   self-arming wake chains / failsafe cron; re-verify platform delivery
   observations in your own environment before relying on them.

@@ -7,7 +7,7 @@
     "soft_target_sessions": 50
   },
   "graduation_proposed": false,
-  "kit_version": "1.17.0",
+  "kit_version": "1.20.1",
   "last_compaction_session": 0,
   "mode": "active",
   "mode_history": [
@@ -25,7 +25,7 @@
     "docs/AGENT_ORIENTATION.md": "8bb4e48d536715ad3d9a1de3f1a4bdcc18ae57c870c2fb2f4283e6a3757cdac7",
     "docs/CAPABILITIES.md": "9c8a5fe5f32716d87e363219464512f1961b846098b49138cdcabf02f68d5f1e",
     "docs/ROUTINES.md": "239ed588387e3a9d4e48175a390e2dac5314a8b52a4f00da80342f103b49ebef",
-    "docs/SKILLS.md": "00b4ab4b71d3ff8c8de920103f64cafc4559e4c67c280580e937042bf64a6263",
+    "docs/SKILLS.md": "5e7e4bcd37201b31df2b5147154031c1878e0393c00a6c115028ee2cafbbb53c",
     "docs/ai-project-workflow.md": "da120902c31bd15970cc88c2ae640d0d187e5d453982384ce52b0970ba6e9590",
     "docs/architecture.md": "71f28e51098f14f6eb3b69f9c900dad18436b82eea8577e47a4f92ce38ae5920",
     "docs/collaboration-model.md": "096c81e92ca336b63f0a4802c7d9a04c20f68d35e83ad9247f26d4c195f02560",
@@ -39,7 +39,7 @@
     "docs/reading-path.md": "9f0c170a9fcb74c83cc48a18980698b782a7503a61b1e91584c7c355c0cdccb7",
     "docs/repo-navigation-map.md": "1a15951e2ebfaeb6821053438dfca908953b7913d48f107af7dea526c78424ad",
     "docs/runtime_contracts.md": "3362373df19331af1f0b5c26bac63a5fbc4a0b46bba236ed0455a2dd601fd021",
-    "docs/seat-digest.md": "b6c75eb3c8ebcf20bfdaea01ff188418138e2ac453f52ad52b429d3977279f22",
+    "docs/seat-digest.md": "13c52ef7b7c168778b4999ce775a8dd0c8cfe979d6844e53931dfddd055835b6",
     "scripts/env-setup.sh": "cd2145129fcba288ff9399ad44146a09017d85813e282c16bcba22340b613a2c"
   },
   "project_id": "9dbe6fc2bf0e",

@@ -257,8 +257,8 @@ If you are a new Claude session picking this up cold, boot in this order:
   commit of the slice, so the PR only goes green (and auto-merges) once the work
   is actually done. This is a feature, not a failure.
 - **`substrate-gate` is NON-required and is red for a known reason.** It reds on
-  two **pre-existing** doc-orphans — [`arcs/TILTSTONE.md`](../arcs/TILTSTONE.md)
-  and [`arcs/UNDERROOT.md`](../arcs/UNDERROOT.md) are missing their Status badge
+  two **pre-existing** doc-orphans — [`docs/arcs/TILTSTONE.md`](arcs/TILTSTONE.md)
+  and [`docs/arcs/UNDERROOT.md`](arcs/UNDERROOT.md) are missing their Status badge
   (and a dateless-wall note on `docs/PLATFORM-LIMITS.md`). That red does **not**
   block merges (only `ROM builds` is required). Don't let it panic you — but make
   sure **your own** new doc has a Status badge and is reachable from a read-path

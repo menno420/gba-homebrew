@@ -1,6 +1,6 @@
 # Session — gba project closeout (public-facing wind-down doc)
 
-> **Status:** `in-progress`
+> **Status:** `complete`
 
 - date: 2026-07-21 (branch `claude/gba-project-closeout-0721`, main synced @
   `3377319` = #213 merge, `git ls-remote` match; all timestamps from `date -u`)

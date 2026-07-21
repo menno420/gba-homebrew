@@ -1,1 +1,0 @@
-- `claude/gba-truth-refresh-b1-preplan-0719` · **gba wind-down: Controller-lane truth refresh + B1 (Tiltstone arc 2) pre-plan judgment** · docs/eap-closeout-gba-2026-07-19.md, docs/arcs/TILTSTONE.md, control/status.md, .sessions/2026-07-19-truth-refresh-b1-preplan.md · 2026-07-19

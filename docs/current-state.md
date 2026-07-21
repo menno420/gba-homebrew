@@ -93,6 +93,15 @@ complete titles is new-concept material or owner-gated.
 
 ## In flight
 
+> **Reconcile 2026-07-21 (post-#213, HEAD `3377319`):** this section is
+> **historical** — that whole ordered landing pass has since **completed**. The
+> live open-PR set is now **empty** (`list_pull_requests state=open` → `[]`);
+> Underroot, Tiltstone arc 2, the Wickroad crossroads arc, and the Brineward
+> bestiary arc all **landed** (#155–#165, #166–#170, #172–#175, #176+#179);
+> #154/#171 are terminal. For the verified terminal state see
+> [`PROJECT-CLOSEOUT.md`](PROJECT-CLOSEOUT.md) §b. The snapshot below is kept
+> as the 2026-07-17 landing-mission record.
+
 **24 PRs are open** — finished, **ROM-builds-green** content awaiting one
 coordinated **rebase-onto-current-`main`** landing pass. Agents land these
 directly on green; the only reason they aren't already merged is ordering,
@@ -217,6 +226,14 @@ this ledger is a reachability root (`substrate.config.json`
 - [EAP close-out / continuity doc (2026-07-19)](eap-closeout-gba-2026-07-19.md)
   — the gba wind-down for the EAP extension: finish/park enumeration of every
   arc/lane, plain-language OWNER ACTIONS, and the successor baton (PR #205).
+- [Project closeout (2026-07-21)](PROJECT-CLOSEOUT.md) — the **terminal**
+  public-facing wind-down: what shipped (with PR/commit cites), the true state
+  verified live at HEAD `3377319` (9 committed ROMs + sha, arcade HTTP 200,
+  Lumen Drift release published, 0 open PRs), continuation threads in priority
+  order, a plain-language owner walkthrough with a clickable link per artifact,
+  and a fresh-session boot guide. Written for a reader with zero session context
+  (owner or a cold future seat). Supersedes the 2026-07-19 continuity doc for
+  the closing state.
 - [Session-1 game concepts](concepts/session-1-concepts.md) — the original
   ORDER-001 three-concept menu.
 - [Gloamline concept](concepts/gloamline-concept.md) — the owner-picked NDS

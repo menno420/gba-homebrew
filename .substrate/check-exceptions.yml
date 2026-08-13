@@ -1,0 +1,16 @@
+# gba-homebrew — false-wall allowlist (kit seam: engine.checks.allowlist)
+#
+# Schema: {path, kind, reason REQUIRED, triaged, by, verdict}. Matching is EXACT
+# on path + kind; a reason-less entry suppresses nothing and is itself reported
+# (fail-closed). Verdicts: false_positive | accepted_risk.
+# Format note: the parser accepts a FLAT list of FLAT mappings only — one line
+# per key, no folded or block scalars.
+#
+# Written 2026-08-13 during the substrate-kit v1.21.0 upgrade (measured firing
+# identically under the banked v1.20.1 dist — pre-existing, not release-new).
+- path: docs/PLATFORM-LIMITS.md
+  kind: false-wall:standing-platform-wall
+  reason: The flagged line 45 is the RECORD OF THE WALL'S REMOVAL, not a wall — it reads "Earlier 2026-07-16 text on this bullet claimed the classifier walled the whole agent-landing path; that was wrong and has been removed." The quoted phrase names what was deleted so the correction stays legible; the surrounding bullet already states the anti-wall rule (attempt once, report verbatim, never a standing wall). Rewording would erase the record of the fix.
+  verdict: false_positive
+  triaged: 2026-08-13
+  by: substrate-kit v1.21.0 upgrade (phase-3 wave)

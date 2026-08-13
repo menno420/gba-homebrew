@@ -2,7 +2,7 @@
 
 updated: 2026-07-21T18:02:09Z (`date -u`; final content stamp before the closeout flip). This is the **terminal heartbeat** for the gba-homebrew Track-A lane: the autonomous development period ends 2026-07-22T00:00Z, after which the working environment is gone and only committed state survives. This file is a wholesale final stamp — earlier working sections are folded into the pointers below.
 
-kit: v1.20.1
+kit: v1.21.0
 
 ## Closeout pointer
 

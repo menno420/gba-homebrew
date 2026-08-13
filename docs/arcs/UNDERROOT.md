@@ -1,6 +1,6 @@
 # Underroot — arc design doc (A2)
 
-> **Status:** slices **1–11 all BUILT** — **arc growth-complete pending owner
+> **Status:** `reference` — slices **1–11 all BUILT** — **arc growth-complete pending owner
 > playtest + landing clicks**. Source code and merged slices always win over
 > this file; it states the plan and the decide-and-flag design calls, and is
 > updated as slices land. Kicked off 2026-07-16 (owner NEXT-MENU-2026-07-15 §A2

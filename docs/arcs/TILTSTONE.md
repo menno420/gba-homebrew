@@ -1,6 +1,6 @@
 # Tiltstone — arc 2 design doc (the shareable daily)
 
-> **Status:** all **5 of 5 cuts BUILT and LANDED ON `main`** (corrected
+> **Status:** `reference` — all **5 of 5 cuts BUILT and LANDED ON `main`** (corrected
 > 2026-07-19 — the earlier "draft-parked, not merged" badge was stale). The
 > arc-2 engine is on `main`: `games/web-tiltstone/engine.js` **v1.8.0** carries
 > every cut's pure functions, landed via `c654e01` (cut 1, smoke §14),

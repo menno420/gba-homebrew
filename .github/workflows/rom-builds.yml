@@ -69,7 +69,7 @@ jobs:
           retention-days: 14
   # Parallel NDS job (Gloamline arc — slice 2 laid the toolchain, slice 3 is
   # the walking skeleton). Deliberately a SEPARATE job so the required "ROM
-  # builds" GBA gate is untouched: BlocksDS 1.21.1 + Wonderful GCC
+  # builds" GBA gate is untouched: BlocksDS 1.22.3 + Wonderful GCC
   # (sha256-pinned by tools/setup-nds-toolchain.sh, which the cache key
   # hashes), then the host-mirror proof + twenty-eight headless py-desmume proofs
   # against the ROM's gl_telemetry mailbox (ELF-symbol-resolved watches;
@@ -92,7 +92,7 @@ jobs:
       # cache step: actions/cache restores without sudo.
       - name: make /opt/wonderful runner-writable
         run: sudo mkdir -p /opt/wonderful && sudo chown "$(id -u):$(id -g)" /opt/wonderful
-      - name: cache NDS toolchain (BlocksDS 1.21.1 + Wonderful GCC pins)
+      - name: cache NDS toolchain (BlocksDS 1.22.3 + Wonderful GCC pins)
         uses: actions/cache@v4
         with:
           path: /opt/wonderful
@@ -1361,7 +1361,7 @@ jobs:
           diff /tmp/bighold/bighold-keys.txt games/brineward-nds/proof/bighold-keys.txt
       - name: make /opt/wonderful runner-writable
         run: sudo mkdir -p /opt/wonderful && sudo chown "$(id -u):$(id -g)" /opt/wonderful
-      - name: cache NDS toolchain (BlocksDS 1.21.1 + Wonderful GCC pins)
+      - name: cache NDS toolchain (BlocksDS 1.22.3 + Wonderful GCC pins)
         uses: actions/cache@v4
         with:
           path: /opt/wonderful
@@ -2760,7 +2760,7 @@ jobs:
 
   # Parallel NDS job (Underroot arc — slice 1: dual-screen skeleton). A
   # SEPARATE job so the required "ROM builds" GBA gate is untouched, mirroring
-  # nds-rom-build (Gloamline) and nds-brineward-build. BlocksDS 1.21.1 +
+  # nds-rom-build (Gloamline) and nds-brineward-build. BlocksDS 1.22.3 +
   # Wonderful GCC, sha256-pinned by tools/setup-nds-toolchain.sh.
   nds-underroot-build:
     name: NDS Underroot build
@@ -2782,7 +2782,7 @@ jobs:
         run: python3 tools/check-underroot.py
       - name: make /opt/wonderful runner-writable
         run: sudo mkdir -p /opt/wonderful && sudo chown "$(id -u):$(id -g)" /opt/wonderful
-      - name: cache NDS toolchain (BlocksDS 1.21.1 + Wonderful GCC pins)
+      - name: cache NDS toolchain (BlocksDS 1.22.3 + Wonderful GCC pins)
         uses: actions/cache@v4
         with:
           path: /opt/wonderful

@@ -4,9 +4,14 @@
 #
 # Installs the PINNED Nintendo DS toolchain the Gloamline arc builds with
 # (arc slice 2 feasibility gate, 2026-07-11):
-#   * BlocksDS 1.21.1 (open-source NDS SDK: libnds, ndstool, grit, mmutil,
-#     default ARM7 cores) — from the BlocksDS pacman repo
-#     (https://blocksds.skylyrac.net/packages/).
+#   * BlocksDS 1.22.3 (open-source NDS SDK: libnds, ndstool, grit, mmutil,
+#     default ARM7 cores) — from THIS REPO's release mirror
+#     (ci-toolchain-mirror-1). The upstream BlocksDS pacman repo
+#     (https://blocksds.skylyrac.net/packages/) is a ROLLING repo that
+#     deletes old versions on every release; the 1.21.1-1 rotation broke the
+#     required NDS ROM build check on every PR (2026-08-13, PR #215/#216),
+#     so the pinned package is now self-hosted. The sha256 pin below remains
+#     the integrity guarantee; the mirror is only stable hosting.
 #   * Wonderful toolchain arm-none-eabi GCC 16.1.1 + binutils 2.46.1 +
 #     picolibc — from the Wonderful pacman repo
 #     (https://wonderful.asie.pl/packages/).
@@ -46,7 +51,11 @@ WF_BOOTSTRAP_URL="https://wonderful.asie.pl/bootstrap/wf-bootstrap-x86_64.tar.gz
 WF_BOOTSTRAP_SHA256="923bcd6d0e6c89bc5d19d9a85d1dd0b749b2aa46dc4d470e106b3d7d547e96a3"
 
 WF_REPO="https://wonderful.asie.pl/packages/rolling/linux/x86_64"
-BDS_REPO="https://blocksds.skylyrac.net/packages/rolling/linux/x86_64"
+# BlocksDS package: self-hosted mirror (see header). The Wonderful repo
+# below is ALSO rolling — if one of its pinned packages ever 404s, apply
+# the same recipe: verify the replacement, attach it to the mirror
+# release, repoint the URL here.
+BDS_MIRROR="https://github.com/menno420/gba-homebrew/releases/download/ci-toolchain-mirror-1"
 # NOTE: the ':' in the gcc epoch ('1:16.1.1...') must be URL-encoded (%3A) in
 # the fetch URL but stays literal in the on-disk filename.
 PKG_URLS=(
@@ -57,7 +66,7 @@ PKG_URLS=(
     "$WF_REPO/toolchain-gcc-arm-none-eabi-gcc-libs-1%3A16.1.1.r228552.d6ba7128f65-2-x86_64.pkg.tar.xz"
     "$WF_REPO/toolchain-gcc-arm-none-eabi-libstdcxx-picolibc-16.1.1.r228552.d6ba7128f65-1-any.pkg.tar.xz"
     "$WF_REPO/toolchain-gcc-arm-none-eabi-picolibc-generic-1.8.11.r26127.2a7b920f5-1-any.pkg.tar.xz"
-    "$BDS_REPO/blocksds-toolchain-1.21.1-1-x86_64.pkg.tar.xz"
+    "$BDS_MIRROR/blocksds-toolchain-1.22.3-1-x86_64.pkg.tar.xz"
 )
 # SHA-256 pins (decoded basename -> hash), recorded 2026-07-11 from the
 # known-good install this container built and boot-verified with.
@@ -69,9 +78,9 @@ declare -A PKG_SHA256=(
     ["toolchain-gcc-arm-none-eabi-gcc-libs-1:16.1.1.r228552.d6ba7128f65-2-x86_64.pkg.tar.xz"]="3f707fd42d2e54714c3451e3a5d55658d9d1efe0fea669707511b357714064d2"
     ["toolchain-gcc-arm-none-eabi-libstdcxx-picolibc-16.1.1.r228552.d6ba7128f65-1-any.pkg.tar.xz"]="df9b6c1bb3acb9e7c79bae645e9991c2619e961cb53ebfb249f586bb4e16ec5d"
     ["toolchain-gcc-arm-none-eabi-picolibc-generic-1.8.11.r26127.2a7b920f5-1-any.pkg.tar.xz"]="42849a6d147f24100ebeb8556dab8c1921ac98bc4a19f96d279532134f7e24c6"
-    ["blocksds-toolchain-1.21.1-1-x86_64.pkg.tar.xz"]="2fff228c254aa6b286a59ddabba5984da7b6942e394e7a692022ec0393975bfa"
+    ["blocksds-toolchain-1.22.3-1-x86_64.pkg.tar.xz"]="ee665d7be6ab8d4ac07fe16c8361953a38eb9aa913b5293533521a69afeb4cc1"
 )
-TOOLCHAIN_STAMP="nds-lab-toolchain-blocksds1.21.1-gcc16.1.1-v1"
+TOOLCHAIN_STAMP="nds-lab-toolchain-blocksds1.22.3-gcc16.1.1-v1"
 
 WF="/opt/wonderful"   # prefix-bound by the packages — not relocatable
 
